@@ -187,7 +187,7 @@ test.describe('settings (Settings.dc.html)', () => {
     await expect(page.getByRole('radiogroup', { name: 'Theme' }).getByRole('radio', { name: 'Light' })).toHaveAttribute('aria-checked', 'true');
     await expect(page.getByRole('button', { name: 'Default video model: MiniMax H3' })).toBeVisible();
     // German number format after switching the language (text stays English).
-    await expect(page.getByRole('button', { name: 'Confirm before running: Over 1.000 credits' })).toBeVisible();
+    await expect(page.getByRole('button', { name: `Confirm before running: Over ${new Intl.NumberFormat('de').format(1000)} credits` })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Default aspect ratio: 1:1' })).toBeVisible();
     await expect(page.getByRole('switch', { name: 'Mature content' })).toHaveAttribute('aria-checked', 'true');
     await expect(page.getByRole('button', { name: 'Language: Deutsch' })).toBeVisible();

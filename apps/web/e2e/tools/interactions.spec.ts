@@ -193,3 +193,12 @@ test.describe('tools: left panels', () => {
     await expect(page.getByRole('dialog', { name: 'Pick a plan to generate' })).toBeVisible();
   });
 });
+
+test('Quick Create reads ?template and ?ratio from Templates', async ({ page }) => {
+  await setMode(page, 'simple');
+  await page.goto('/create/quick?template=tpl_03&ratio=1:1');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Quick Create · Unboxing close-ups');
+  await expect(page.locator('[data-pill="ratio"]')).toHaveText('1:1');
+  await expect(page.locator('[data-card="template"]')).toContainText('1:1 · 10s');
+});
+
