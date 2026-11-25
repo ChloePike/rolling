@@ -6,7 +6,8 @@
     "dev": "vite",
     "build": "vite build",
     "typecheck": "tsc -p .",
-    "test": "vitest run --passWithNoTests",
+    "test": "node scripts/check-colors.mjs && vitest run --passWithNoTests",
+    "check:colors": "node scripts/check-colors.mjs",
     "e2e": "playwright test --trace off"
   },
   "dependencies": {
