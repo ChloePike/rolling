@@ -3,7 +3,35 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
     <meta name="theme-color" content="#0B0B0C" />
+    <script>
+      /*
+       * D-010: apply the saved theme before first paint (no flash), and keep the
+       * theme-color meta on the active theme's --c-bg. The preference lives in
+       * localStorage "rolling.prefs" (src/lib/prefs: PREFS_KEY) as { theme:
+       * "system" | "light" | "dark" }; src/lib/prefs/theme.ts takes over once the app loads.
+       */
+      (function () {
+        var root = document.documentElement;
+        var light = window.matchMedia ? window.matchMedia('(prefers-color-scheme: light)') : null;
+        try {
+          var pref = JSON.parse(localStorage.getItem('rolling.prefs') || '{}').theme;
+          if (pref === 'light' || pref === 'dark') root.dataset.theme = pref;
+        } catch (e) {}
+        function active() {
+          var t = root.dataset.theme;
+          return t === 'light' || t === 'dark' ? t : light && light.matches ? 'light' : 'dark';
+        }
+        function sync() {
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute('content', active() === 'light' ? '#FFFFFF' : '#0B0B0C');
+        }
+        sync();
+        if (light && light.addEventListener) light.addEventListener('change', sync);
+        if (window.MutationObserver) new MutationObserver(sync).observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Rolling</title>
   </head>
