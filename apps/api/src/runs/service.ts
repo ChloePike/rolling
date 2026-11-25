@@ -342,6 +342,32 @@ export async function advanceWorkspace(env: Env, workspaceId: string, except?: s
   for (const r of rows.results) if (r.id !== except) await advanceRun(env, r.id);
 }
 
+/** Pending items untouched this long are re-advanced by the cron safety net. */
+export const STALLED_PENDING_MS = 2 * 60 * 1000;
+
+/**
+ * Cron safety net: a slot freed while nothing advanced (a crashed workflow
+ * step, a lost `advanceWorkspace` after settle) would leave items waiting on
+ * CONCURRENCY_LIMIT forever. Advances every workspace with pending items of an
+ * active run untouched for 2 minutes. Idempotent like `advanceRun`.
+ */
+export async function advanceStalledRuns(env: Env, now = Date.now()): Promise<{ workspaces: number }> {
+  const rows = await env.DB.prepare(
+    `SELECT DISTINCT r.workspace_id FROM run_items i JOIN runs r ON r.id = i.run_id
+     WHERE i.status = 'pending' AND i.updated_at < ? AND r.status IN ('queued','running') LIMIT 200`,
+  )
+    .bind(now - STALLED_PENDING_MS)
+    .all<{ workspace_id: string }>();
+  for (const r of rows.results) {
+    try {
+      await advanceWorkspace(env, r.workspace_id);
+    } catch (err) {
+      console.error(JSON.stringify({ msg: "runs: stalled advance failed", workspaceId: r.workspace_id, error: String(err) }));
+    }
+  }
+  return { workspaces: rows.results.length };
+}
+
 /** Live balance push (D-003): the user socket and, for canvas runs, the project socket. */
 export async function pushCredits(env: Env, run: Pick<RunRow, "created_by" | "project_id">, balance: { plan: number; purchased: number; held: number }): Promise<void> {
   const payload = { balance: balance.plan + balance.purchased, held: balance.held, plan: balance.plan, purchased: balance.purchased };

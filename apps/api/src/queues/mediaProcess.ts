@@ -141,3 +141,40 @@ export async function handleMediaProcess(batch: MessageBatch<unknown>, env: Env)
     }
   }
 }
+
+/** True when the FFmpeg container answers `/health` (never with `MEDIA_CONTAINER=off`). */
+export async function containerReachable(env: Env, timeoutMs = 30_000): Promise<boolean> {
+  if (env.MEDIA_CONTAINER === "off") return false;
+  try {
+    const stub = env.FFMPEG.get(env.FFMPEG.idFromName("media"));
+    const res = await Promise.race([
+      stub.fetch(new Request("http://container/health")),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("container timeout")), timeoutMs)),
+    ]);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** Uploads re-queued per cron run. */
+const REQUEUE_BATCH = 50;
+
+/**
+ * Cron: re-queues `media.process` for video/audio uploads left `ready` with
+ * `meta.processing = "pending"` (the container was down), once the container
+ * answers again. The consumer fills in poster/waveform and rates the video.
+ */
+export async function requeuePendingMedia(env: Env, opts: { reachable?: (env: Env) => Promise<boolean> } = {}): Promise<{ requeued: number }> {
+  const rows = await env.DB.prepare(
+    `SELECT id, r2_key, kind FROM assets
+     WHERE status = 'ready' AND kind IN ('video','audio') AND json_extract(meta, '$.processing') = 'pending'
+     ORDER BY created_at LIMIT ?`,
+  )
+    .bind(REQUEUE_BATCH)
+    .all<{ id: string; r2_key: string; kind: string }>();
+  if (!rows.results.length) return { requeued: 0 };
+  if (!(await (opts.reachable ?? containerReachable)(env))) return { requeued: 0 };
+  await env.MEDIA_PROCESS_QUEUE.sendBatch(rows.results.map((r) => ({ body: { assetId: r.id, r2Key: r.r2_key, kind: r.kind } satisfies MediaProcessMessage })));
+  return { requeued: rows.results.length };
+}

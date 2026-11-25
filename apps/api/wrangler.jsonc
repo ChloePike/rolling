@@ -18,10 +18,12 @@
     "nodejs_compat"
   ],
   "workers_dev": true,
-  // Model catalog sync (D-002): every 6 hours. Repeated in each env.
+  // Crons (apps/api/src/scheduled.ts), repeated in each env: model catalog sync + upload cleanup every 6 hours;
+  // safety-net sweep every 5 minutes (stalled runs, uploads left processing: pending).
   "triggers": {
     "crons": [
-      "0 */6 * * *"
+      "0 */6 * * *",
+      "*/5 * * * *"
     ]
   },
   "observability": {
@@ -206,7 +208,8 @@
       "name": "rolling-api-staging",
       "triggers": {
         "crons": [
-          "0 */6 * * *"
+          "0 */6 * * *",
+          "*/5 * * * *"
         ]
       },
       "vars": {
@@ -359,7 +362,8 @@
       "name": "rolling-api",
       "triggers": {
         "crons": [
-          "0 */6 * * *"
+          "0 */6 * * *",
+          "*/5 * * * *"
         ]
       },
       "vars": {
