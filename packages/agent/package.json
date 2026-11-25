@@ -1,5 +1,18 @@
-{ "name": "@rolling/agent", "private": true, "type": "module",
-  "exports": { ".": "./src/index.ts" },
-  "scripts": { "typecheck": "tsc -p .", "test": "vitest run --passWithNoTests" },
+{
+  "name": "@rolling/agent",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testkit": "./src/testkit.ts",
+    "./evals": "./evals/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p . && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "gen:prompts": "node scripts/gen-prompts.mjs",
+    "eval:live": "NODE_USE_ENV_PROXY=1 tsx evals/live.ts"
+  },
   "dependencies": { "@rolling/core": "workspace:*", "zod": "^3.25.76" },
-  "devDependencies": { "vitest": "^4.1.0", "typescript": "^5.9.3" } }
+  "devDependencies": { "vitest": "^4.1.0", "typescript": "^5.9.3", "tsx": "^4.20.6", "@types/node": "^22.0.0" }
+}
