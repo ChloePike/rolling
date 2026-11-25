@@ -10,3 +10,18 @@ export { Switch, type SwitchProps } from './components/Switch';
 export { Tabs, TabPanel, type TabsProps, type TabItem, type TabPanelProps } from './components/Tabs';
 export { Input, type InputProps } from './components/Input';
 export { Tooltip, type TooltipProps } from './components/Tooltip';
+export { Progress, type ProgressProps } from './components/Progress';
+export {
+  duration,
+  easing,
+  STAGGER_MS,
+  STAGGER_MAX,
+  usePresence,
+  presenceProps,
+  staggerStyle,
+  motionSafe,
+  usePrefersReducedMotion,
+  type Presence,
+  type PresenceState,
+} from './motion';
+export { useIndicator } from './motion/useIndicator';

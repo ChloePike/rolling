@@ -73,7 +73,7 @@ export function Tooltip({ content, enabled = true, delay = 300, offset = 8, desc
       {children(describe && pos ? { 'aria-describedby': id } : {})}
       {pos
         ? createPortal(
-            <span role="tooltip" id={id} className={styles.tip} style={{ left: pos.x, top: pos.y }}>
+            <span role="tooltip" id={id} data-motion="" className={styles.tip} style={{ left: pos.x, top: pos.y }}>
               {content}
             </span>,
             document.body,

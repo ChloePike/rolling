@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { cx } from '../cx';
 import { focusableIn } from './focus';
+import { presenceProps, usePresence } from '../motion';
 import styles from './Popover.module.css';
 
 export interface PopoverTriggerProps {
@@ -28,6 +29,13 @@ export interface PopoverProps {
   label: string;
   role?: 'dialog' | 'menu' | 'listbox';
   align?: 'start' | 'center' | 'end';
+  /** Open below (default) or above the trigger. The layer rises from the trigger side. */
+  side?: 'bottom' | 'top';
+  /**
+   * Drop the default chrome (padding, radius, background, shadow) so the
+   * child supplies its own panel. Enter/exit motion and dismissal still apply.
+   */
+  bare?: boolean;
   /** Gap between trigger and layer, px. */
   offset?: number;
   /** Shift along the cross axis (positive moves away from the aligned edge), px. */
@@ -41,7 +49,9 @@ export interface PopoverProps {
 
 /**
  * Anchored floating layer: closes on Escape (returning focus to the trigger)
- * and on pointer down outside.
+ * and on pointer down outside. Motion (Motion.dc.html "Popover"): enters in
+ * 200ms with the standard curve from 6px toward the trigger, leaves in 140ms
+ * with the exit curve; reduced motion fades only.
  */
 export function Popover({
   open,
@@ -50,6 +60,8 @@ export function Popover({
   label,
   role = 'dialog',
   align = 'end',
+  side = 'bottom',
+  bare = false,
   offset = 8,
   alignOffset = 0,
   autoFocus = true,
@@ -96,10 +108,12 @@ export function Popover({
     }
   }, [open, autoFocus]);
 
+  const presence = usePresence(open);
   const layerStyle = {
     ...style,
     '--popover-offset': `${offset}px`,
     '--popover-align-offset': `${-alignOffset}px`,
+    '--rl-pop-dir': side === 'top' ? 1 : -1,
   } as CSSProperties;
 
   return (
@@ -111,14 +125,15 @@ export function Popover({
         'aria-haspopup': role,
         onClick: () => onOpenChange(!open),
       })}
-      {open ? (
+      {presence.mounted ? (
         <div
           ref={contentRef}
-          id={id}
+          id={open ? id : undefined}
           role={role}
           aria-label={label}
           tabIndex={-1}
-          className={cx(styles.content, styles[align], className)}
+          {...presenceProps(presence.state)}
+          className={cx('rl-pop', styles.content, styles[align], styles[side], bare && styles.bare, className)}
           style={layerStyle}
         >
           {children}

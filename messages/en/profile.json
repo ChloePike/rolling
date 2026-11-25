@@ -1,0 +1,10 @@
+{
+  "profile.bio.placeholder": "[BIO: one or two lines the user writes about themselves]",
+  "profile.edit": "Edit profile",
+  "profile.share": "Share",
+  "profile.share.copied": "Profile link copied",
+  "profile.tabs": "Profile",
+  "profile.tab.published": "Published",
+  "profile.tab.template": "Templates",
+  "profile.empty": "Nothing here yet."
+}

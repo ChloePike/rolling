@@ -1,0 +1,62 @@
+/* Node prompt editor under the selected node. Values from Canvas.dc.html (genX/genY block). */
+.panel{
+  position:absolute;width:500px;border-radius:20px;background:#161618;box-shadow:0 16px 40px rgba(11,11,12,.6);
+  padding:12px;box-sizing:border-box;display:flex;flex-direction:column;gap:10px;z-index:3;
+  transition:left var(--dur-slow) var(--ease-standard),top var(--dur-slow) var(--ease-standard);
+}
+.top{display:flex;gap:8px;align-items:center}
+.ref{
+  position:relative;width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:700;color:var(--c-text-2);
+}
+.refBadge{
+  position:absolute;left:-4px;top:-4px;height:16px;padding:0 5px;border-radius:999px;background:var(--c-text-1);color:var(--c-bg);
+  font:700 10px/16px var(--font-sans);
+}
+.addRef{
+  width:44px;height:44px;border-radius:10px;border:0;background:#26262A;color:var(--c-text-3);font-size:18px;cursor:pointer;padding:0;
+  transition:background-color var(--dur-fast) var(--ease-standard),color var(--dur-fast) var(--ease-standard);
+}
+.addRef svg{display:block;margin:auto}
+.addRef:hover,.addRef[aria-expanded="true"]{background:#2E2E33;color:var(--c-text-1)}
+.spacer{flex:1}
+.quick{
+  height:28px;padding:0 9px;border-radius:999px;border:0;background:#26262A;color:var(--c-text-2);font:inherit;font-size:12px;cursor:pointer;
+  transition:background-color var(--dur-fast) var(--ease-standard);
+}
+.quick:hover{background:#2E2E33}
+.prompt{min-height:64px;padding:4px 2px;box-sizing:content-box;font-size:14px;line-height:1.6;color:var(--c-text-2);outline:none;white-space:pre-wrap}
+.chip{padding:1px 6px;border-radius:6px;background:rgba(59,130,246,.16);color:var(--c-accent-text);font-weight:600}
+.params{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.param{
+  height:30px;padding:0 10px;border-radius:999px;border:0;background:#26262A;color:var(--c-text-1);font:inherit;font-size:12px;font-weight:400;
+  cursor:pointer;display:flex;align-items:center;gap:5px;transition:background-color var(--dur-fast) var(--ease-standard);
+}
+.param:hover{background:#2E2E33}
+.model{background:#2E2E33;font-weight:600}
+.model:hover{background:#333338}
+.caret{opacity:.7}
+.cost{display:flex;align-items:center;gap:4px;font:600 12px/1 var(--font-sans);color:var(--c-text-2)}
+.costDot{width:10px;height:10px;border-radius:999px;background:var(--c-accent)}
+.go{
+  width:36px;height:36px;border-radius:999px;border:0;background:var(--c-text-1);color:var(--c-bg);cursor:pointer;padding:0;
+  display:flex;align-items:center;justify-content:center;
+}
+.go:disabled{background:#26262A;color:var(--c-text-4);cursor:default}
+
+/* Resolution menu (plan caps, D-006). Opens above the pill. */
+.pillWrap{position:relative;display:inline-flex}
+.resMenu{
+  position:absolute;left:0;bottom:calc(100% + 6px);z-index:5;min-width:180px;padding:6px;border-radius:14px;
+  background:var(--c-surface-4);box-shadow:var(--shadow-popover);display:flex;flex-direction:column;gap:2px;
+}
+.resTitle{padding:6px 8px 4px;font-size:11px;font-weight:600;color:var(--c-text-4)}
+.resItem{
+  height:32px;padding:0 8px;border-radius:8px;border:0;background:none;color:var(--c-text-1);font:inherit;font-size:12px;font-weight:600;
+  display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;transition:background-color var(--dur-fast) var(--ease-standard);
+}
+.resItem:hover{background:#26262A}
+.resItem[aria-checked="true"]{background:#2E2E33}
+.resItem[aria-disabled="true"]{color:var(--c-text-4);cursor:default}
+.resItem[aria-disabled="true"]:hover{background:none}
+.resLock{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 7px;border-radius:999px;background:rgba(184,149,90,.14);color:var(--c-pro);font-size:11px}

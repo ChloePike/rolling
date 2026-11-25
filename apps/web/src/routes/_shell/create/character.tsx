@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { PageStub } from '../../../pages/PageStub';
+import { CharacterPage } from '../../../features/tools';
 
 export const Route = createFileRoute('/_shell/create/character')({
-  component: () => <PageStub titleId="page.characters.title" />,
+  component: () => <CharacterPage />,
 });

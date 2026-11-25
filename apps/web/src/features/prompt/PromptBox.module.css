@@ -1,0 +1,185 @@
+/* Prompt box. Values from Main.dc.html (home) and QuickCreate.dc.html (dock). */
+.flex1{flex:1}
+
+/* ---- home ---- */
+.box{width:100%;border-radius:24px;background:var(--c-surface-2);padding:8px;box-sizing:border-box}
+.head{display:flex;align-items:center;gap:8px;padding:4px 4px 8px;flex-wrap:wrap}
+.modes{position:relative;display:flex;gap:4px}
+.modeIndicator{border-radius:999px;background:var(--c-text-1)}
+.mode{
+  position:relative;height:32px;padding:0 12px;border-radius:999px;border:0;background:transparent;color:var(--c-text-3);
+  font:inherit;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;
+  transition:color var(--dur-base) var(--ease-standard);
+}
+.mode:hover:not([aria-selected="true"]){color:var(--c-text-1)}
+.mode[aria-selected="true"]{color:var(--c-bg)}
+
+.inner{
+  position:relative;border-radius:18px;background:var(--c-surface-4);padding:14px 16px 12px;
+  display:flex;flex-direction:column;gap:10px;
+}
+.textarea{
+  background:none;border:0;outline:0;color:var(--c-text-1);font:inherit;font-size:16px;line-height:1.55;resize:none;
+  padding:2px;margin:0;
+}
+.textarea::placeholder{color:var(--c-text-4)}
+.textarea:focus-visible{box-shadow:none}
+
+/* Skill chip */
+.skillRow{display:flex}
+.skillChip{
+  height:28px;padding:0 6px 0 10px;border-radius:8px;background:var(--c-accent-soft);color:#93C5FD;
+  display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;
+}
+.skillRemove{
+  width:20px;height:20px;border-radius:6px;border:0;background:none;color:#93C5FD;font-size:14px;cursor:pointer;padding:0;
+  display:flex;align-items:center;justify-content:center;
+  transition:background-color var(--m-fast) var(--m-ease-standard);
+}
+.skillRemove:hover{background:rgba(59,130,246,.2)}
+
+/* Reference chips */
+.refRow{display:flex;gap:6px;flex-wrap:wrap}
+.refChip{
+  height:30px;padding:0 4px;border-radius:8px;background:var(--c-surface-5);
+  display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;
+}
+.refChipThumb{
+  width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;
+}
+.refChipSrc{font-size:11px;font-weight:500;color:var(--c-text-4)}
+.refChipRemove{
+  width:22px;height:22px;border-radius:6px;border:0;background:none;color:var(--c-text-3);cursor:pointer;padding:0;
+  display:flex;align-items:center;justify-content:center;
+  transition:background-color var(--m-fast) var(--m-ease-standard),color var(--m-fast) var(--m-ease-standard);
+}
+.refChipRemove:hover{background:var(--c-surface-6);color:var(--c-text-1)}
+
+/* Control row: left cluster wraps, right cluster never wraps. */
+.controls{display:flex;align-items:center;gap:6px}
+.left{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.right{flex:none;display:flex;align-items:center;gap:6px;white-space:nowrap}
+.plus{
+  flex:none;width:34px;height:34px;border-radius:999px;border:0;background:var(--c-surface-5);color:var(--c-text-1);cursor:pointer;padding:0;
+  display:flex;align-items:center;justify-content:center;
+  transition:background-color var(--m-fast) var(--m-ease-standard);
+}
+.plus:hover{background:var(--c-surface-6)}
+.plus[aria-expanded="true"]{background:var(--c-accent)}
+.pillAnchor{position:relative;display:flex}
+.pill{
+  height:34px;padding:0 12px;border-radius:999px;border:0;background:var(--c-surface-5);color:var(--c-text-2);
+  font:inherit;font-size:13px;font-weight:400;cursor:pointer;display:flex;align-items:center;gap:6px;white-space:nowrap;
+  transition:background-color var(--m-fast) var(--m-ease-standard),color var(--m-fast) var(--m-ease-standard);
+}
+.pill:hover{background:var(--c-surface-6);color:var(--c-text-1)}
+.pill[data-model]{background:var(--c-surface-6);color:var(--c-text-1);font-weight:600}
+.pill[data-model]:hover{background:#38383E}
+.pill[aria-expanded="true"]{background:var(--c-surface-6);color:var(--c-text-1)}
+.caret{opacity:.7;transition:transform var(--m-base) var(--m-ease-standard)}
+.pill[aria-expanded="true"] .caret{transform:rotate(180deg)}
+.pillPopover{position:absolute;left:0;top:calc(100% + 8px);z-index:45}
+.pillPopover:empty{display:none}
+.dock .pillPopover{top:auto;bottom:calc(100% + 8px)}
+
+.cost{display:flex;align-items:center;gap:5px;font-weight:500;font-size:12px;line-height:1;color:var(--c-text-4)}
+.send{
+  flex:none;width:40px;height:40px;border-radius:999px;border:0;background:var(--c-text-1);color:var(--c-bg);cursor:pointer;padding:0;
+  display:flex;align-items:center;justify-content:center;
+  transition:background-color var(--m-fast) var(--m-ease-standard),transform var(--m-instant) var(--m-ease-standard);
+}
+.send:hover{background:#FFFFFF}
+.send:active:not(:disabled){transform:scale(.97)}
+.send:disabled{background:var(--c-surface-5);color:var(--c-text-4);cursor:default}
+
+/* Overlays open 8px below the inner card (home) or above the dock. */
+.overlayPanel{position:absolute;left:8px;right:8px;top:calc(100% + 8px);z-index:40}
+.overlayPalette{position:absolute;left:8px;right:8px;top:calc(100% + 8px);z-index:21}
+.overlayMenu{position:absolute;left:8px;top:calc(100% + 8px);z-index:20;width:376px} /* 360 + padding (design is content-box) */
+.dock .overlayPanel,.dock .overlayPalette,.dock .overlayMenu{top:auto;bottom:calc(100% + 8px)}
+
+/* ---- `/` palette ---- */
+.palette{
+  border-radius:18px;background:var(--c-surface-4);box-shadow:var(--shadow-float);
+  padding:8px 4px 8px 8px;display:flex;flex-direction:column;gap:2px;max-height:436px; /* 420 + padding */
+  overflow:auto;color:var(--c-text-1);
+}
+.paletteGroup{display:flex;flex-direction:column;gap:2px}
+.paletteTitle{padding:8px 10px 4px;font-size:11px;font-weight:600;letter-spacing:.08em;color:var(--c-text-4)}
+.paletteRow{
+  padding:7px 10px;border-radius:12px;border:0;background:transparent;color:var(--c-text-1);font:inherit;
+  display:flex;align-items:center;gap:10px;cursor:pointer;text-align:left;
+  transition:background-color var(--m-fast) var(--m-ease-standard);
+}
+.paletteRow[aria-selected="true"]{background:var(--c-surface-6)}
+.paletteIcon{
+  flex:none;width:28px;height:28px;border-radius:8px;background:var(--c-surface-5);color:var(--c-text-2);
+  display:flex;align-items:center;justify-content:center;
+}
+.paletteRow[data-skill] .paletteIcon{background:var(--c-accent-soft);color:var(--c-accent-text)}
+.paletteName{flex:none;min-width:96px;font-weight:600;font-size:13px;line-height:1}
+.paletteDesc{flex:1;min-width:0;font-size:12px;color:var(--c-text-3)}
+.paletteEmpty{padding:14px 10px;font-size:13px;color:var(--c-text-3)}
+.paletteHints{display:flex;gap:14px;padding:8px 10px 2px;font-size:11px;color:var(--c-text-4)}
+.paletteHints b{color:var(--c-text-2)}
+
+/* ---- `+` menu ---- */
+.plusMenu{
+  border-radius:18px;background:var(--c-surface-4);box-shadow:var(--shadow-float);
+  padding:8px;display:flex;flex-direction:column;gap:2px;color:var(--c-text-1);
+}
+.menuTitle{padding:6px 10px 4px;font-size:11px;font-weight:600;letter-spacing:.08em;color:var(--c-text-4)}
+.menuDivider{height:1px;background:var(--c-surface-5);margin:6px 8px}
+.addItem{
+  height:40px;padding:0 10px;border-radius:12px;border:0;background:none;color:var(--c-text-1);font:inherit;font-size:13px;
+  display:flex;align-items:center;gap:10px;cursor:pointer;text-align:left;
+  transition:background-color var(--m-fast) var(--m-ease-standard);
+}
+.addIcon{
+  width:28px;height:28px;border-radius:8px;background:var(--c-surface-5);color:var(--c-text-2);
+  display:flex;align-items:center;justify-content:center;
+}
+.addKey{font-weight:500;font-size:11px;line-height:1;color:var(--c-text-4)}
+.skillItem{
+  padding:8px 10px;border-radius:12px;border:0;background:transparent;color:var(--c-text-1);font:inherit;
+  display:flex;align-items:center;gap:10px;cursor:pointer;text-align:left;
+  transition:background-color var(--m-fast) var(--m-ease-standard);
+}
+.skillItem[data-active]{background:var(--c-surface-5)}
+.addItem:hover,.skillItem:hover,.addItem:focus-visible,.skillItem:focus-visible{background:var(--c-surface-6)}
+.skillIcon{
+  flex:none;width:28px;height:28px;border-radius:8px;background:var(--c-accent-soft);color:var(--c-accent-text);
+  display:flex;align-items:center;justify-content:center;
+}
+.skillText{display:flex;flex-direction:column;gap:2px;min-width:0}
+.skillName{font-size:13px;font-weight:600}
+.skillDesc{font-size:12px;color:var(--c-text-3)}
+
+/* ---- dock (tool pages, QuickCreate.dc.html composer) ---- */
+.dock{
+  position:relative;width:100%;border-radius:24px;background:rgba(22,22,24,.94);
+  backdrop-filter:blur(24px) saturate(1.4);
+  box-shadow:0 20px 60px rgba(0,0,0,.55),inset 0 0 0 1px rgba(255,255,255,.06);
+  padding:12px;box-sizing:border-box;
+}
+.dock .inner{position:relative;background:none;border-radius:0;padding:0;gap:10px}
+.dockRow{display:flex;gap:10px;align-items:flex-start}
+.dockRef{flex:none;position:relative;width:44px;height:44px;border-radius:10px}
+.dockRefN{
+  position:absolute;left:-4px;top:-4px;height:16px;padding:0 5px;border-radius:999px;background:var(--c-text-1);color:var(--c-bg);
+  font-weight:700;font-size:10px;line-height:16px;
+}
+.dock .textarea{flex:1;min-width:0;font-size:15px;padding-top:2px}
+.dock .controls{align-items:flex-end;gap:12px}
+.dock .right{gap:8px}
+.dock .plus{width:32px;height:32px}
+.dock .pill{height:32px;padding:0 11px;font-size:12px;gap:5px}
+.refine{
+  height:32px;padding:0 10px;border-radius:999px;border:0;background:none;color:var(--c-text-3);
+  font:inherit;font-size:12px;font-weight:500;cursor:pointer;
+  transition:background-color var(--m-fast) var(--m-ease-standard),color var(--m-fast) var(--m-ease-standard);
+}
+.refine:hover{background:var(--c-surface-5);color:var(--c-text-1)}
+.costDock{font-size:12px;color:var(--c-text-3)}
+.costDock b{font-weight:600;color:#E4E4E7}
+.dock .send{width:38px;height:38px}

@@ -1,0 +1,48 @@
+/* Source: docs/design/screens/Paywall.dc.html (variant join and credits). */
+.panel{
+  width:520px;max-width:100%;max-height:calc(100vh - 48px);overflow:auto;box-sizing:border-box;border-radius:20px;
+  background:var(--c-surface-4);color:var(--c-text-1);padding:24px;display:flex;flex-direction:column;gap:16px;
+  box-shadow:var(--shadow-modal);
+}
+.head{display:flex;align-items:flex-start;gap:12px}
+.headText{flex:1;display:flex;flex-direction:column;gap:6px}
+.title{margin:0;font-size:20px;font-weight:700}
+.sub{margin:0;font-size:14px;line-height:1.55;color:var(--c-text-3)}
+.close{
+  width:32px;height:32px;flex:none;border-radius:8px;border:0;background:none;color:var(--c-text-3);cursor:pointer;padding:0;
+  display:flex;align-items:center;justify-content:center;
+  transition:background-color var(--dur-fast) var(--ease-standard),color var(--dur-fast) var(--ease-standard);
+}
+.close:hover{background:var(--c-surface-5);color:var(--c-text-1)}
+
+.numbers{display:flex;border-radius:12px;background:var(--c-surface-2);padding:14px 16px;gap:16px;font-size:13px}
+.num{flex:1;display:flex;flex-direction:column;gap:4px}
+.numLabel{color:var(--c-text-3)}
+.numValue{font-size:20px;font-weight:700}
+.short{color:var(--c-danger-strong)}
+
+.options{display:flex;flex-direction:column;gap:8px}
+.option{
+  border-radius:12px;border:0;background:var(--c-surface-2);padding:14px 16px;color:var(--c-text-1);font:inherit;text-align:left;cursor:pointer;
+  display:flex;align-items:center;gap:12px;
+  transition:box-shadow var(--dur-fast) var(--ease-standard),background-color var(--dur-fast) var(--ease-standard);
+}
+.option:hover:not([aria-checked="true"]){background:var(--c-surface-3)}
+.option[aria-checked="true"]{box-shadow:inset 0 0 0 1.5px var(--c-text-1)}
+.option:focus-visible{box-shadow:var(--focus-ring)}
+.dot{flex:none;width:18px;height:18px;border-radius:999px;box-shadow:inset 0 0 0 1.5px var(--c-text-1);transition:box-shadow var(--dur-instant) var(--ease-standard)}
+.option[aria-checked="true"] .dot{box-shadow:inset 0 0 0 5px var(--c-text-1)}
+.optText{flex:1;display:flex;flex-direction:column;gap:3px}
+.optName{font-size:14px;font-weight:700}
+.optMeta{font-size:12px;color:var(--c-text-3)}
+.optPrice{font-size:14px;font-weight:700}
+
+.auto{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--c-text-2);cursor:pointer}
+.checkbox{accent-color:var(--c-accent);width:16px;height:16px;margin:3px 3px 3px 4px}
+
+.cta{height:44px;border-radius:10px;border:0;background:var(--c-text-1);color:var(--c-bg);font:inherit;font-size:14px;font-weight:700;cursor:pointer}
+.cta:hover{background:#FFFFFF}
+
+.foot{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--c-text-4)}
+.link{color:var(--c-text-2)}
+.link:hover{color:var(--c-text-1)}

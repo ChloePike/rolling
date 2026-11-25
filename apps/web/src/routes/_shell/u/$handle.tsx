@@ -1,11 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { PageStub } from '../../../pages/PageStub';
+import { ProfilePage } from '../../../features/profile/ProfilePage';
 
 export const Route = createFileRoute('/_shell/u/$handle')({
-  component: ProfilePage,
+  component: ProfileRoute,
 });
 
-function ProfilePage() {
+function ProfileRoute() {
   const { handle } = Route.useParams();
-  return <PageStub titleId="page.profile.title" values={{ handle }} />;
+  return <ProfilePage handle={handle} />;
 }

@@ -1,6 +1,7 @@
 import { useRef, type ReactNode } from 'react';
 import { cx } from '../cx';
 import { nextRovingIndex } from './rovingFocus';
+import { useIndicator } from '../motion/useIndicator';
 import styles from './SegmentedControl.module.css';
 
 export interface SegmentedOption<T extends string> {
@@ -20,12 +21,19 @@ export interface SegmentedControlProps<T extends string> {
   className?: string;
 }
 
-/** Single-choice group rendered as a segmented pill row (role="radiogroup"). */
+/**
+ * Single-choice group rendered as a segmented pill row (role="radiogroup").
+ * The selected thumb slides between options (200ms, standard curve); labels
+ * change color in 140ms. Reduced motion: the thumb jumps.
+ */
 export function SegmentedControl<T extends string>({ options, value, onValueChange, label, className }: SegmentedControlProps<T>) {
   const refs = useRef<Array<HTMLButtonElement | null>>([]);
+  const groupRef = useRef<HTMLDivElement>(null);
   const selectedIndex = Math.max(0, options.findIndex((o) => o.value === value));
+  const thumb = useIndicator(groupRef, value, '[aria-checked="true"]');
   return (
-    <div role="radiogroup" aria-label={label} className={cx(styles.group, className)}>
+    <div ref={groupRef} role="radiogroup" aria-label={label} className={cx(styles.group, className)}>
+      <span className={styles.thumb} style={thumb} aria-hidden="true" />
       {options.map((o, i) => {
         const checked = o.value === value;
         return (

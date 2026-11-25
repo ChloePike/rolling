@@ -1,0 +1,33 @@
+/*
+ * Source: docs/design/screens/Splash.dc.html (desktop, --s 112px). The design
+ * loops a 5s demo; the app plays one pass in 1.15s (handoff 8: under 1.2s).
+ * Brand yellow is allowed here (splash only); the spring curve too.
+ */
+.sp{
+  --b:var(--c-brand);--s:112px;
+  position:fixed;inset:0;z-index:200;background:var(--c-bg);overflow:hidden;
+  display:flex;align-items:center;justify-content:center;font-family:var(--font-sans);
+  transition:opacity 200ms var(--ease-exit);
+}
+.sp[data-leaving]{opacity:0;pointer-events:none}
+.lk{display:flex;align-items:center}
+.mk{position:relative;width:var(--s);height:var(--s);flex:none}
+.c{position:absolute;inset:0;border-radius:50%;background:var(--b);animation:pop var(--dur-brand) var(--ease-spring) 60ms both}
+.h{position:absolute;width:29%;height:29%;left:53.9%;top:17.1%;border-radius:50%;background:var(--c-bg);animation:pop 300ms cubic-bezier(.3,1.5,.4,1) 300ms both}
+.r{position:absolute;inset:0;border-radius:50%;box-shadow:0 0 0 2px var(--b);opacity:0;animation:ping 360ms ease-out 480ms both}
+.tx{overflow:hidden;white-space:nowrap;animation:reveal 360ms cubic-bezier(.2,.8,.2,1) 500ms both}
+.tx>span{display:inline-flex;align-items:baseline;gap:calc(var(--s)*.2);padding-left:calc(var(--s)*.28);animation:slide 340ms cubic-bezier(.2,.8,.2,1) 520ms both}
+.en{font-weight:700;font-size:calc(var(--s)*.62);letter-spacing:-0.03em;color:var(--c-text-1)}
+.by{position:absolute;left:0;right:0;bottom:48px;text-align:center;font-size:13px;color:var(--c-text-4);animation:fade var(--dur-base) ease 700ms both}
+.tc{position:absolute;left:32px;top:28px;display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--c-text-4);animation:fade var(--dur-base) ease 700ms both}
+.tc i{width:7px;height:7px;border-radius:50%;background:var(--b);animation:blink 1s steps(1) infinite}
+@keyframes pop{from{transform:scale(0)}to{transform:scale(1)}}
+@keyframes ping{0%{opacity:.9;transform:scale(1)}100%{opacity:0;transform:scale(1.7)}}
+@keyframes reveal{from{max-width:0}to{max-width:900px}}
+@keyframes slide{from{opacity:0;transform:translateX(-12px)}to{opacity:1;transform:none}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes blink{0%{opacity:1}50%{opacity:0}}
+@media (prefers-reduced-motion:reduce){
+  .c,.h,.tx,.tx>span,.by,.tc,.tc i{animation:fade var(--dur-base) ease both}
+  .r{display:none}
+}

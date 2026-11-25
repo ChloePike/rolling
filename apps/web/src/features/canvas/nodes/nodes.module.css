@@ -1,0 +1,104 @@
+/* Node cards. Values from Canvas.dc.html (node blocks at the top of the artboard). */
+
+.node{position:relative;color:var(--c-text-1);font-size:16px;cursor:default}
+.build{transform-origin:50% 50%}
+
+/* Label row above the card body. */
+.head{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--c-text-3);margin-bottom:8px;line-height:normal}
+/* Video rows in the design have no gap and stretch their items. */
+.headTight{display:flex;font-size:12px;color:var(--c-text-3);margin-bottom:8px;line-height:normal}
+.headBlock{font-size:12px;color:var(--c-text-3);margin-bottom:8px;line-height:normal}
+.kind{font-weight:600;color:var(--c-text-2)}
+.spacer{flex:1}
+.status{transition:color var(--dur-fast) var(--ease-standard)}
+.status[data-status="outdated"]{color:var(--c-upgrade)}
+.status[data-status="generating"]{color:#4D9CFF}
+.status[data-status="queued"]{color:var(--c-text-3)}
+.status[data-status="failed"]{color:var(--c-danger)}
+.statusIn{animation:rl-fade-in var(--dur-base) var(--ease-standard) both}
+.cost{
+  display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 7px;border-radius:999px;background:var(--c-surface-4);
+  font:600 11px/1 var(--font-sans);color:var(--c-text-2);
+}
+.iconBtn{
+  width:22px;height:22px;border:0;border-radius:6px;background:none;color:var(--c-text-3);cursor:pointer;padding:1px 6px;font:13.333px Arial,sans-serif;
+  transition:background-color var(--dur-fast) var(--ease-standard),color var(--dur-fast) var(--ease-standard);
+}
+.iconBtn:hover{background:var(--c-surface-5);color:var(--c-text-1)}
+
+/* Card bodies. */
+.body{position:relative;border-radius:14px;transition:box-shadow var(--dur-fast) var(--ease-standard)}
+.selected .body{box-shadow:0 0 0 2px var(--c-accent)}
+.media{display:flex;align-items:center;justify-content:center}
+.versionChip{
+  position:absolute;left:8px;top:8px;height:20px;padding:0 8px;border-radius:999px;background:rgba(11,11,12,.6);
+  font-size:11px;font-weight:600;line-height:20px;
+}
+.playDisc{width:40px;height:40px;border-radius:999px;background:rgba(11,11,12,.55);display:flex;align-items:center;justify-content:center}
+.duration{
+  position:absolute;right:8px;bottom:8px;font:600 11px/1 var(--font-sans);padding:4px 6px;border-radius:6px;background:rgba(11,11,12,.6);
+}
+
+/* Generating: real progress fills the card from the left (linear), then the result fades in place. */
+.progressBody{background:var(--c-surface-3);overflow:hidden}
+.progressFill{position:absolute;left:0;top:0;bottom:0;background:#202330;transition:width var(--dur-slow) linear}
+.progressLabel{position:absolute;left:12px;bottom:12px;font:600 12px/1 var(--font-sans);color:var(--c-text-2)}
+.reveal{position:absolute;inset:0;border-radius:inherit;display:flex;align-items:center;justify-content:center}
+
+.emptyBody{background:var(--c-surface-3);flex-direction:column;gap:4px;font-size:12px;color:var(--c-text-4)}
+.failedBody{background:var(--c-surface-3);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center}
+.failedTitle{font-size:12px;font-weight:600;color:var(--c-text-2)}
+.failedNote{font-size:11px;color:var(--c-text-4)}
+.retry{
+  margin-top:4px;height:28px;padding:0 12px;border-radius:999px;border:0;background:var(--c-surface-5);color:var(--c-text-1);
+  font:inherit;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;
+}
+.retry:hover{background:var(--c-surface-6)}
+
+/* Script node table. */
+.table{border-radius:14px;background:var(--c-surface-3);overflow:hidden;font-size:12px}
+.row{display:grid;grid-template-columns:28px 28px 1fr 44px;padding:9px 10px;line-height:1.45;color:var(--c-text-2)}
+.rowHead{display:grid;grid-template-columns:28px 28px 1fr 44px;padding:8px 10px;color:var(--c-text-4);font-weight:600;background:var(--c-surface-4)}
+.check{width:14px;height:14px;border-radius:4px;background:var(--c-surface-7)}
+.checkOn{width:14px;height:14px;border-radius:4px;background:var(--c-accent)}
+.tableActions{padding:8px 10px 10px;display:flex;gap:6px}
+.pillBtn{
+  height:28px;padding:0 10px;border-radius:999px;border:0;background:var(--c-surface-5);color:var(--c-text-1);
+  font:inherit;font-size:12px;font-weight:600;cursor:pointer;
+}
+.pillBtn:hover{background:var(--c-surface-6)}
+.ghostBtn{height:28px;padding:0 10px;border-radius:999px;border:0;background:none;color:var(--c-text-3);font:inherit;font-size:12px;cursor:pointer}
+.ghostBtn:hover{color:var(--c-text-1)}
+
+/* Audio node. */
+.audioBody{background:var(--c-surface-3);padding:12px;display:flex;flex-direction:column;gap:8px}
+.wave{height:26px;display:flex;align-items:center;gap:2px}
+.waveBar{flex:1;border-radius:2px;background:var(--c-upgrade)}
+.audioMeta{display:flex;justify-content:space-between;font:500 11px/1 var(--font-sans);color:var(--c-text-4)}
+
+.textBody{background:var(--c-surface-3);padding:12px;font-size:13px;line-height:1.5;color:var(--c-text-2)}
+.assetBody{display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--c-text-4)}
+
+/* Ports. */
+.port{
+  position:absolute;width:14px;height:14px;min-width:0;min-height:0;border:0;border-radius:999px;
+  background:var(--c-bg);box-shadow:inset 0 0 0 2px var(--c-disabled-text);transform:none;
+  transition:box-shadow var(--dur-fast) var(--ease-standard),opacity var(--dur-fast) var(--ease-standard);
+}
+.port::before{content:'';position:absolute;inset:-7px;border-radius:999px}
+.portIn{left:-7px;right:auto}
+.portOut{right:-7px;left:auto}
+.portActive{box-shadow:inset 0 0 0 2px var(--c-accent)}
+.port:global(.connectionindicator):hover{box-shadow:inset 0 0 0 2px var(--c-text-2)}
+/* While dragging a connection: valid targets turn blue, refused ones red. */
+:global(.react-flow__handle.connectingto).port{box-shadow:inset 0 0 0 2px var(--c-danger),0 0 0 4px rgba(248,113,113,.2)}
+:global(.react-flow__handle.connectingto.valid).port{box-shadow:inset 0 0 0 2px var(--c-accent),0 0 0 4px rgba(59,130,246,.25)}
+.portRefused{box-shadow:inset 0 0 0 2px var(--c-danger),0 0 0 4px rgba(248,113,113,.2)}
+.portHidden{opacity:0}
+.node:hover .portHidden,.selected .portHidden{opacity:1}
+
+/* Group frame. */
+.group{
+  position:absolute;border-radius:20px;box-shadow:inset 0 0 0 1px var(--c-surface-5);background:rgba(245,245,245,.015);pointer-events:none;
+}
+.groupTitle{position:absolute;left:14px;top:10px;font-size:12px;font-weight:600;color:var(--c-text-3)}

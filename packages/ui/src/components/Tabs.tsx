@@ -1,6 +1,7 @@
 import { useId, useRef, type HTMLAttributes, type ReactNode } from 'react';
 import { cx } from '../cx';
 import { nextRovingIndex } from './rovingFocus';
+import { useIndicator } from '../motion/useIndicator';
 import styles from './Tabs.module.css';
 
 export interface TabItem<T extends string> {
@@ -30,13 +31,20 @@ export function panelId(idBase: string, value: string): string {
   return `${idBase}-panel-${value}`;
 }
 
-/** Tab list with automatic activation and arrow-key navigation. */
+/**
+ * Tab list with automatic activation and arrow-key navigation. The selected
+ * background slides to the new tab (200ms, standard curve). Wrap the panel
+ * content in `rl-fade` with a `key` per tab for the content cross-fade.
+ */
 export function Tabs<T extends string>({ items, value, onValueChange, label, shape = 'square', idBase, className }: TabsProps<T>) {
   const fallbackId = useId();
   const base = idBase ?? fallbackId;
   const refs = useRef<Array<HTMLButtonElement | null>>([]);
+  const listRef = useRef<HTMLDivElement>(null);
+  const indicator = useIndicator(listRef, value, '[aria-selected="true"]');
   return (
-    <div role="tablist" aria-label={label} className={cx(styles.list, shape === 'pill' && styles.pill, className)}>
+    <div ref={listRef} role="tablist" aria-label={label} className={cx(styles.list, shape === 'pill' && styles.pill, className)}>
+      <span className={styles.indicator} style={indicator} aria-hidden="true" />
       {items.map((t, i) => {
         const selected = t.value === value;
         return (

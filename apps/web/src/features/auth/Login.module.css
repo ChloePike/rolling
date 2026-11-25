@@ -1,0 +1,78 @@
+/* Login.dc.html: two columns, form on the left, preview panel on the right. */
+.page{min-height:100vh;background:var(--c-bg);color:var(--c-text-1);display:flex}
+.main{flex:1 1 520px;display:flex;flex-direction:column;padding:28px 40px;box-sizing:border-box}
+.brand{display:flex;align-items:center;gap:10px}
+.wordmark{font-size:16px;font-weight:700;letter-spacing:-0.02em}
+.center{flex:1;display:flex;align-items:center;justify-content:center}
+.form{width:100%;max-width:360px;display:flex;flex-direction:column;gap:14px}
+
+.title{margin:0 0 4px;font-size:28px;font-weight:700;letter-spacing:-0.02em;line-height:normal}
+.codeTitle{margin:0}
+.sub{margin:0 0 10px;font-size:14px;line-height:1.55;color:var(--c-text-3)}
+
+.btn{
+  height:44px;border-radius:10px;border:0;font:inherit;font-size:14px;font-weight:700;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:10px;width:100%;
+}
+.btn:disabled{cursor:default}
+.primary{background:var(--c-text-1);color:var(--c-bg)}
+.primary:hover:not(:disabled){background:#FFFFFF}
+.dark{background:var(--c-surface-4);color:var(--c-text-1)}
+.dark:hover:not(:disabled){background:var(--c-surface-5)}
+.mid{background:var(--c-surface-5);color:var(--c-text-1)}
+.mid:hover:not(:disabled){background:var(--c-surface-6)}
+
+.divider{display:flex;align-items:center;gap:12px;font-size:12px;color:var(--c-text-4)}
+.divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--c-surface-5)}
+
+.label{font-size:13px;font-weight:600;color:var(--c-text-2)}
+.input{
+  height:44px;border-radius:10px;border:0;background:var(--c-surface-4);padding:0 14px;color:var(--c-text-1);
+  font:inherit;font-size:14px;outline:0;
+  transition:box-shadow var(--m-fast) var(--m-ease-standard);
+}
+.input::placeholder{color:var(--c-text-4)}
+.input:focus-visible,.input:focus{box-shadow:inset 0 0 0 1.5px var(--c-accent)}
+.input[aria-invalid="true"]{box-shadow:inset 0 0 0 1.5px var(--c-danger)}
+.error{margin:-6px 0 0;font-size:12px;color:var(--c-danger)}
+
+.swap{font-size:13px;color:var(--c-text-3);text-align:center}
+.link{border:0;background:none;padding:0;color:var(--c-text-1);font:inherit;font-weight:600;cursor:pointer;border-radius:4px}
+.link:hover{color:#FFFFFF}
+.link:disabled{color:var(--c-text-1);cursor:default}
+
+.back{align-self:flex-start;border:0;background:none;padding:0;color:var(--c-text-3);font:inherit;font-size:13px;cursor:pointer;border-radius:4px}
+.back:hover{color:var(--c-text-1)}
+
+.code{position:relative;display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+.cell{
+  height:52px;border-radius:10px;background:var(--c-surface-4);display:flex;align-items:center;justify-content:center;
+  font-size:22px;font-weight:700;
+  transition:box-shadow var(--m-fast) var(--m-ease-standard);
+}
+.cellActive{box-shadow:inset 0 0 0 1.5px var(--c-text-1)}
+.digit{animation:rl-auth-digit var(--m-instant) var(--m-ease-standard) both}
+@keyframes rl-auth-digit{from{opacity:0;transform:scale(var(--m-scale-min))}to{opacity:1;transform:none}}
+/* The real input sits over the cells so taps and paste land on it. */
+.codeInput{
+  position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;padding:0;margin:0;
+  font-size:22px;letter-spacing:40px;caret-color:transparent;cursor:text;
+}
+.codeInput:focus-visible{box-shadow:none}
+.verify{margin-top:6px}
+
+.legal{margin:0;font-size:12px;line-height:1.5;color:var(--c-text-4)}
+.legal a{color:var(--c-text-2);text-decoration:underline}
+.legal a:hover{color:var(--c-text-1)}
+
+.aside{
+  flex:1 1 560px;margin:12px;border-radius:24px;background:var(--c-surface-2);position:relative;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;gap:16px;padding:40px;box-sizing:border-box;
+}
+.frames{display:flex;gap:16px;align-items:center}
+.frame{width:170px;aspect-ratio:9/16;border-radius:14px}
+.frameA{background:#202330;transform:translateY(24px)}
+.frameB{width:200px;border-radius:16px;background:#1F2628;position:relative}
+.frameC{background:#28251F;transform:translateY(-24px)}
+.caption{position:absolute;left:12px;right:12px;bottom:14px;text-align:center;font-size:12px;font-weight:600;line-height:1.4}
+.pitch{position:absolute;left:40px;right:40px;bottom:36px;margin:0;font-size:15px;line-height:1.5;color:var(--c-text-2)}

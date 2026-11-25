@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { PageStub } from '../../pages/PageStub';
+import { ActivityPage } from '../../features/activity/ActivityPage';
 
 export const Route = createFileRoute('/_shell/activity')({
-  component: () => <PageStub titleId="page.activity.title" />,
+  component: ActivityPage,
 });

@@ -12,18 +12,19 @@
 .wordmark{font-weight:700;font-size:16px;line-height:1;letter-spacing:-0.02em}
 
 .nav{
-  flex:0 1 auto;max-width:100%;overflow-x:auto;
+  position:relative;flex:0 1 auto;max-width:100%;overflow-x:auto;
   display:flex;gap:2px;padding:4px;border-radius:var(--r-pill);background:var(--c-surface-3);
 }
+.navPill{z-index:0;border-radius:var(--r-pill);background:var(--c-surface-6)}
 .navItem{
-  height:36px;padding:0 14px;border-radius:var(--r-pill);
+  position:relative;z-index:1;height:36px;padding:0 14px;border-radius:var(--r-pill);
   display:flex;align-items:center;gap:6px;white-space:nowrap;
   font-size:var(--fs-control);font-weight:600;color:var(--c-text-3);background:transparent;
-  transition:background-color var(--m-fast) var(--m-ease-standard),color var(--m-fast) var(--m-ease-standard);
+  transition:color var(--dur-fast) var(--ease-standard);
 }
 .navItem:hover{color:var(--c-text-1)}
 .navItem:focus-visible{box-shadow:inset 0 0 0 2px var(--c-accent)}
-.navItem[aria-current="page"]{background:var(--c-surface-6);color:var(--c-text-1)}
+.navItem[aria-current="page"]{color:var(--c-text-1)}
 .navItem svg{flex:none}
 
 /* Icons only below 1280px wide; the label stays for screen readers. */
@@ -61,3 +62,5 @@
   position:absolute;right:-7px;bottom:-5px;height:14px;padding:0 4px;border-radius:4px;
   background:var(--c-pro);color:var(--c-bg);font-size:9px;font-weight:800;line-height:14px;letter-spacing:.02em;
 }
+[role].creditsLayer{padding:16px}
+[role].accountLayer{padding:8px}

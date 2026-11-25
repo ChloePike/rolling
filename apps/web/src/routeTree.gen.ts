@@ -16,13 +16,15 @@ import { Route as ShellIndexRouteImport } from './routes/_shell/index'
 import { Route as ShellActivityRouteImport } from './routes/_shell/activity'
 import { Route as ShellTemplatesRouteImport } from './routes/_shell/templates'
 import { Route as ShellUpgradeRouteImport } from './routes/_shell/upgrade'
+import { Route as DevEditorRouteImport } from './routes/dev.editor'
+import { Route as PProjectIdRouteImport } from './routes/p/$projectId'
+import { Route as PreviewOverlaysRouteImport } from './routes/preview.overlays'
 import { Route as ShellAssetsIndexRouteImport } from './routes/_shell/assets/index'
 import { Route as ShellAssetsPublicRouteImport } from './routes/_shell/assets/public'
 import { Route as ShellCreateAvatarRouteImport } from './routes/_shell/create/avatar'
 import { Route as ShellCreateCharacterRouteImport } from './routes/_shell/create/character'
 import { Route as ShellCreateQuickRouteImport } from './routes/_shell/create/quick'
 import { Route as ShellCreateRemixRouteImport } from './routes/_shell/create/remix'
-import { Route as ShellPProjectIdRouteImport } from './routes/_shell/p/$projectId'
 import { Route as ShellSettingsIndexRouteImport } from './routes/_shell/settings/index'
 import { Route as ShellSettingsSectionRouteImport } from './routes/_shell/settings/$section'
 import { Route as ShellUHandleRouteImport } from './routes/_shell/u/$handle'
@@ -61,6 +63,21 @@ const ShellUpgradeRoute = ShellUpgradeRouteImport.update({
   path: '/upgrade',
   getParentRoute: () => ShellRoute,
 } as any)
+const DevEditorRoute = DevEditorRouteImport.update({
+  id: '/dev/editor',
+  path: '/dev/editor',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PProjectIdRoute = PProjectIdRouteImport.update({
+  id: '/p/$projectId',
+  path: '/p/$projectId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PreviewOverlaysRoute = PreviewOverlaysRouteImport.update({
+  id: '/preview/overlays',
+  path: '/preview/overlays',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ShellAssetsIndexRoute = ShellAssetsIndexRouteImport.update({
   id: '/assets/',
   path: '/assets/',
@@ -91,11 +108,6 @@ const ShellCreateRemixRoute = ShellCreateRemixRouteImport.update({
   path: '/create/remix',
   getParentRoute: () => ShellRoute,
 } as any)
-const ShellPProjectIdRoute = ShellPProjectIdRouteImport.update({
-  id: '/p/$projectId',
-  path: '/p/$projectId',
-  getParentRoute: () => ShellRoute,
-} as any)
 const ShellSettingsIndexRoute = ShellSettingsIndexRouteImport.update({
   id: '/settings/',
   path: '/settings/',
@@ -119,12 +131,14 @@ export interface FileRoutesByFullPath {
   '/activity': typeof ShellActivityRoute
   '/templates': typeof ShellTemplatesRoute
   '/upgrade': typeof ShellUpgradeRoute
+  '/dev/editor': typeof DevEditorRoute
+  '/p/$projectId': typeof PProjectIdRoute
+  '/preview/overlays': typeof PreviewOverlaysRoute
   '/assets/public': typeof ShellAssetsPublicRoute
   '/create/avatar': typeof ShellCreateAvatarRoute
   '/create/character': typeof ShellCreateCharacterRoute
   '/create/quick': typeof ShellCreateQuickRoute
   '/create/remix': typeof ShellCreateRemixRoute
-  '/p/$projectId': typeof ShellPProjectIdRoute
   '/settings/$section': typeof ShellSettingsSectionRoute
   '/u/$handle': typeof ShellUHandleRoute
   '/assets/': typeof ShellAssetsIndexRoute
@@ -136,13 +150,15 @@ export interface FileRoutesByTo {
   '/activity': typeof ShellActivityRoute
   '/templates': typeof ShellTemplatesRoute
   '/upgrade': typeof ShellUpgradeRoute
+  '/dev/editor': typeof DevEditorRoute
+  '/p/$projectId': typeof PProjectIdRoute
+  '/preview/overlays': typeof PreviewOverlaysRoute
   '/': typeof ShellIndexRoute
   '/assets/public': typeof ShellAssetsPublicRoute
   '/create/avatar': typeof ShellCreateAvatarRoute
   '/create/character': typeof ShellCreateCharacterRoute
   '/create/quick': typeof ShellCreateQuickRoute
   '/create/remix': typeof ShellCreateRemixRoute
-  '/p/$projectId': typeof ShellPProjectIdRoute
   '/settings/$section': typeof ShellSettingsSectionRoute
   '/u/$handle': typeof ShellUHandleRoute
   '/assets': typeof ShellAssetsIndexRoute
@@ -156,13 +172,15 @@ export interface FileRoutesById {
   '/_shell/activity': typeof ShellActivityRoute
   '/_shell/templates': typeof ShellTemplatesRoute
   '/_shell/upgrade': typeof ShellUpgradeRoute
+  '/dev/editor': typeof DevEditorRoute
+  '/p/$projectId': typeof PProjectIdRoute
+  '/preview/overlays': typeof PreviewOverlaysRoute
   '/_shell/': typeof ShellIndexRoute
   '/_shell/assets/public': typeof ShellAssetsPublicRoute
   '/_shell/create/avatar': typeof ShellCreateAvatarRoute
   '/_shell/create/character': typeof ShellCreateCharacterRoute
   '/_shell/create/quick': typeof ShellCreateQuickRoute
   '/_shell/create/remix': typeof ShellCreateRemixRoute
-  '/_shell/p/$projectId': typeof ShellPProjectIdRoute
   '/_shell/settings/$section': typeof ShellSettingsSectionRoute
   '/_shell/u/$handle': typeof ShellUHandleRoute
   '/_shell/assets/': typeof ShellAssetsIndexRoute
@@ -177,12 +195,14 @@ export interface FileRouteTypes {
     | '/activity'
     | '/templates'
     | '/upgrade'
+    | '/dev/editor'
+    | '/p/$projectId'
+    | '/preview/overlays'
     | '/assets/public'
     | '/create/avatar'
     | '/create/character'
     | '/create/quick'
     | '/create/remix'
-    | '/p/$projectId'
     | '/settings/$section'
     | '/u/$handle'
     | '/assets/'
@@ -194,13 +214,15 @@ export interface FileRouteTypes {
     | '/activity'
     | '/templates'
     | '/upgrade'
+    | '/dev/editor'
+    | '/p/$projectId'
+    | '/preview/overlays'
     | '/'
     | '/assets/public'
     | '/create/avatar'
     | '/create/character'
     | '/create/quick'
     | '/create/remix'
-    | '/p/$projectId'
     | '/settings/$section'
     | '/u/$handle'
     | '/assets'
@@ -213,13 +235,15 @@ export interface FileRouteTypes {
     | '/_shell/activity'
     | '/_shell/templates'
     | '/_shell/upgrade'
+    | '/dev/editor'
+    | '/p/$projectId'
+    | '/preview/overlays'
     | '/_shell/'
     | '/_shell/assets/public'
     | '/_shell/create/avatar'
     | '/_shell/create/character'
     | '/_shell/create/quick'
     | '/_shell/create/remix'
-    | '/_shell/p/$projectId'
     | '/_shell/settings/$section'
     | '/_shell/u/$handle'
     | '/_shell/assets/'
@@ -230,6 +254,9 @@ export interface RootRouteChildren {
   ShellRoute: typeof ShellRouteWithChildren
   LoginRoute: typeof LoginRoute
   SignupRoute: typeof SignupRoute
+  DevEditorRoute: typeof DevEditorRoute
+  PProjectIdRoute: typeof PProjectIdRoute
+  PreviewOverlaysRoute: typeof PreviewOverlaysRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -283,6 +310,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellUpgradeRouteImport
       parentRoute: typeof ShellRoute
     }
+    '/dev/editor': {
+      id: '/dev/editor'
+      path: '/dev/editor'
+      fullPath: '/dev/editor'
+      preLoaderRoute: typeof DevEditorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/p/$projectId': {
+      id: '/p/$projectId'
+      path: '/p/$projectId'
+      fullPath: '/p/$projectId'
+      preLoaderRoute: typeof PProjectIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/preview/overlays': {
+      id: '/preview/overlays'
+      path: '/preview/overlays'
+      fullPath: '/preview/overlays'
+      preLoaderRoute: typeof PreviewOverlaysRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_shell/assets/': {
       id: '/_shell/assets/'
       path: '/assets'
@@ -325,13 +373,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellCreateRemixRouteImport
       parentRoute: typeof ShellRoute
     }
-    '/_shell/p/$projectId': {
-      id: '/_shell/p/$projectId'
-      path: '/p/$projectId'
-      fullPath: '/p/$projectId'
-      preLoaderRoute: typeof ShellPProjectIdRouteImport
-      parentRoute: typeof ShellRoute
-    }
     '/_shell/settings/': {
       id: '/_shell/settings/'
       path: '/settings'
@@ -366,7 +407,6 @@ interface ShellRouteChildren {
   ShellCreateCharacterRoute: typeof ShellCreateCharacterRoute
   ShellCreateQuickRoute: typeof ShellCreateQuickRoute
   ShellCreateRemixRoute: typeof ShellCreateRemixRoute
-  ShellPProjectIdRoute: typeof ShellPProjectIdRoute
   ShellSettingsSectionRoute: typeof ShellSettingsSectionRoute
   ShellUHandleRoute: typeof ShellUHandleRoute
   ShellAssetsIndexRoute: typeof ShellAssetsIndexRoute
@@ -383,7 +423,6 @@ const ShellRouteChildren: ShellRouteChildren = {
   ShellCreateCharacterRoute: ShellCreateCharacterRoute,
   ShellCreateQuickRoute: ShellCreateQuickRoute,
   ShellCreateRemixRoute: ShellCreateRemixRoute,
-  ShellPProjectIdRoute: ShellPProjectIdRoute,
   ShellSettingsSectionRoute: ShellSettingsSectionRoute,
   ShellUHandleRoute: ShellUHandleRoute,
   ShellAssetsIndexRoute: ShellAssetsIndexRoute,
@@ -396,6 +435,9 @@ const rootRouteChildren: RootRouteChildren = {
   ShellRoute: ShellRouteWithChildren,
   LoginRoute: LoginRoute,
   SignupRoute: SignupRoute,
+  DevEditorRoute: DevEditorRoute,
+  PProjectIdRoute: PProjectIdRoute,
+  PreviewOverlaysRoute: PreviewOverlaysRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

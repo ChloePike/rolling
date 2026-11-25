@@ -1,0 +1,65 @@
+/* Floating composer at the bottom of the history section (QuickCreate.dc.html). */
+.dock{position:absolute;left:0;right:0;bottom:16px;display:flex;justify-content:center;padding:0 24px;pointer-events:none;z-index:4}
+.box{
+  pointer-events:auto;width:100%;max-width:904px;/* 880 content + 2×12 padding */border-radius:24px;
+  background:rgba(22,22,24,.94);
+  -webkit-backdrop-filter:blur(24px) saturate(1.4);backdrop-filter:blur(24px) saturate(1.4);
+  box-shadow:0 20px 60px rgba(0,0,0,.55),inset 0 0 0 1px rgba(255,255,255,.06);
+  padding:12px;display:flex;flex-direction:column;gap:10px;
+  transition:box-shadow var(--m-fast) var(--m-ease-standard);
+}
+.box:focus-within{box-shadow:0 20px 60px rgba(0,0,0,.55),inset 0 0 0 1px rgba(255,255,255,.12)}
+.note{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;color:var(--c-text-3);padding:0 4px}
+.noteChip{
+  height:22px;padding:0 8px;border-radius:6px;background:var(--c-surface-5);color:#E4E4E7;font-size:12px;font-weight:500;line-height:22px;
+  animation:chipIn var(--m-base) var(--m-ease-standard) both;
+}
+@keyframes chipIn{from{opacity:0;transform:translateY(var(--m-move-sm))}to{opacity:1;transform:none}}
+.input{display:flex;gap:10px;align-items:flex-start}
+.ref{flex:none;position:relative;width:44px;height:44px;border-radius:10px}
+.refBadge{font-variant-numeric:normal;
+  position:absolute;left:-4px;top:-4px;height:16px;padding:0 5px;border-radius:var(--r-pill);
+  background:var(--c-text-1);color:var(--c-bg);font-weight:700;font-size:10px;line-height:16px;
+}
+.textarea{
+  flex:1;min-width:0;background:none;border:0;outline:0;color:var(--c-text-1);
+  font:inherit;font-size:15px;line-height:1.55;resize:none;padding:2px 2px 2px 2px;margin:0;
+}
+.textarea::placeholder{color:var(--c-text-4)}
+.textarea:focus-visible{box-shadow:none}
+.bar{display:flex;align-items:flex-end;gap:12px}
+.left{flex:1;min-width:0;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.right{flex:none;display:flex;align-items:center;gap:8px;white-space:nowrap}
+.add{
+  width:32px;height:32px;border-radius:var(--r-pill);border:0;background:var(--c-surface-5);color:var(--c-text-1);
+  cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;
+  transition:background-color var(--m-fast) var(--m-ease-standard);
+}
+.add:hover{background:var(--c-surface-6)}
+.pill{
+  white-space:nowrap;height:32px;padding:0 11px;border-radius:var(--r-pill);border:0;
+  background:var(--c-surface-4);color:var(--c-text-2);font:inherit;font-size:12px;font-weight:400;
+  cursor:pointer;display:flex;align-items:center;gap:5px;
+  transition:background-color var(--m-fast) var(--m-ease-standard),color var(--m-fast) var(--m-ease-standard);
+}
+.pill:hover{background:var(--c-surface-5);color:var(--c-text-1)}
+.pillModel{background:var(--c-surface-6);color:var(--c-text-1);font-weight:600}
+.pillModel:hover{background:#38383E}
+.pill[aria-expanded="true"]{background:var(--c-accent);color:#FFFFFF}
+.caret{opacity:.7}
+.refine{
+  height:32px;padding:0 10px;border-radius:var(--r-pill);border:0;background:none;color:var(--c-text-3);
+  font:inherit;font-size:12px;font-weight:500;cursor:pointer;
+  transition:color var(--m-fast) var(--m-ease-standard),background-color var(--m-fast) var(--m-ease-standard);
+}
+.refine:hover{color:var(--c-text-1);background:var(--c-surface-5)}
+.cost{font-size:12px;color:var(--c-text-3)}
+.cost b{font-weight:600;color:#E4E4E7}
+.send{
+  width:38px;height:38px;border-radius:var(--r-pill);border:0;background:var(--c-text-1);color:var(--c-bg);
+  cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;
+  transition:background-color var(--m-fast) var(--m-ease-standard),transform var(--m-instant) var(--m-ease-standard);
+}
+.send:hover{background:#FFFFFF}
+.send:active{transform:scale(.97)}
+@media (prefers-reduced-motion:reduce){.send:active{transform:none}}

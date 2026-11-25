@@ -1,0 +1,72 @@
+/*
+ * Shared layout of the four tool screens. Measurements follow
+ * docs/design/screens/QuickCreate.dc.html (and its siblings OriginalVideo,
+ * DigitalHuman, Character), which share one layout.
+ */
+.root{
+  /* Fill the viewport under the shared header; cancel AppShell main padding. */
+  position:relative;
+  margin:0 -32px -64px;
+  height:calc(100dvh - var(--app-header-h,72px));
+  min-height:calc(860px - var(--app-header-h,72px));
+  display:flex;
+  overflow:hidden;
+  font-size:16px;
+  color:var(--c-text-1);
+}
+
+/* Left panel */
+.aside{
+  flex:0 0 340px;min-width:0;overflow:auto;
+  padding:8px 12px 24px 20px;
+  display:flex;flex-direction:column;gap:12px;
+}
+.card{border-radius:18px;background:var(--c-surface-2);padding:14px;display:flex;flex-direction:column;gap:10px}
+.cardRow{composes:card;flex-direction:row;align-items:center}
+.cardHead{display:flex;align-items:center;gap:8px}
+.cardTitle{margin:0;font-size:13px;font-weight:700;color:var(--c-text-2)}
+.spacer{flex:1}
+.cardHint{font-size:11px;color:var(--c-text-4)}
+.chipBtn{
+  height:28px;padding:0 10px;border-radius:var(--r-pill);border:0;background:var(--c-surface-5);color:var(--c-text-1);
+  font:inherit;font-size:12px;cursor:pointer;display:flex;align-items:center;
+  transition:background-color var(--m-fast) var(--m-ease-standard);
+}
+.chipBtn:hover{background:var(--c-surface-6);color:var(--c-text-1)}
+.select{
+  height:28px;padding:0 8px;border-radius:var(--r-pill);border:0;background:var(--c-surface-5);color:var(--c-text-1);
+  font:inherit;font-size:12px;
+}
+
+/* Advanced settings */
+.advRule{
+  display:flex;align-items:center;gap:8px;padding:6px 6px 0;
+  font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--c-text-4);
+}
+.advRule::after{content:'';flex:1;height:1px;background:var(--c-surface-4)}
+.advEnter{animation:advIn var(--m-slow) var(--m-ease-standard) both;animation-delay:calc(var(--i,0) * var(--m-stagger))}
+.advExit{animation:advOut var(--m-fast) var(--m-ease-exit) both}
+@keyframes advIn{from{opacity:0;transform:translateY(var(--m-move-md))}to{opacity:1;transform:none}}
+@keyframes advOut{from{opacity:1}to{opacity:0;transform:translateY(var(--m-move-sm))}}
+/* Reduced motion: --m-move-* and --m-stagger collapse to 0 in tokens.css, leaving opacity only. */
+
+/* History */
+.section{flex:1;min-width:0;position:relative;border-radius:24px 0 0 0;background:var(--c-surface-1)}
+.scroll{position:absolute;inset:0;overflow:auto;padding:20px 24px 240px}
+.inner{max-width:1120px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+.head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.title{font-variant-numeric:normal;margin:0;font-weight:700;font-size:20px;line-height:1.2;letter-spacing:-0.01em}
+.count{font-variant-numeric:normal;font-weight:500;font-size:12px;line-height:1;color:var(--c-text-4)}
+.tabs{display:flex;gap:2px;border-radius:var(--r-pill);background:var(--c-surface-2);padding:3px}
+.tab{
+  height:28px;padding:0 12px;border-radius:var(--r-pill);border:0;background:transparent;color:var(--c-text-2);
+  font:inherit;font-size:12px;font-weight:600;cursor:pointer;
+  transition:background-color var(--m-fast) var(--m-ease-standard),color var(--m-fast) var(--m-ease-standard);
+}
+.tab:hover{color:var(--c-text-1)}
+.tab[aria-selected="true"]{background:var(--c-text-1);color:var(--c-bg)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--feed-min,210px),1fr));gap:14px;align-items:start}
+
+/* Overlay anchor inside the history section: centered above the composer (QuickCreate.dc.html). */
+.anchor{position:absolute;left:50%;bottom:150px;transform:translateX(-50%);z-index:8}
+.anchor:empty{display:none}

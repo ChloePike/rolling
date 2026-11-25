@@ -1,0 +1,15 @@
+.trigger{
+  height:34px;padding:0 10px 0 12px;border-radius:8px;border:0;background:var(--c-surface-4);color:var(--c-text-1);
+  font:inherit;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;white-space:nowrap;
+  transition:background-color var(--m-fast) var(--m-ease-standard);
+}
+.trigger:hover,.trigger[aria-expanded="true"]{background:var(--c-surface-5)}
+.menu{min-width:180px;padding:6px;border-radius:14px;display:flex;flex-direction:column;gap:2px}
+.option{
+  height:34px;padding:0 10px;border-radius:8px;border:0;background:transparent;color:var(--c-text-2);
+  font:inherit;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;text-align:left;white-space:nowrap;
+  transition:background-color var(--m-fast) var(--m-ease-standard),color var(--m-fast) var(--m-ease-standard);
+}
+.option:hover,.option:focus-visible{background:var(--c-surface-5);color:var(--c-text-1)}
+.option[aria-selected="true"]{color:var(--c-text-1)}
+.optionLabel{flex:1}

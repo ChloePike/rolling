@@ -3,7 +3,8 @@
   border:0;cursor:pointer;white-space:nowrap;font-weight:600;
   transition:background-color var(--m-fast) var(--m-ease-standard),color var(--m-fast) var(--m-ease-standard),transform var(--m-instant) var(--m-ease-standard);
 }
-.button:active:not(:disabled){transform:scale(.98)}
+/* Press: primary buttons only (Motion.dc.html), 80ms, scale .97. */
+.primary:active:not(:disabled){transform:scale(var(--m-press-scale))}
 .button:disabled{cursor:not-allowed;background:var(--c-surface-5);color:var(--c-text-4)}
 .pill{border-radius:var(--r-pill)}
 .rounded{border-radius:var(--r-button)}

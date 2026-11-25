@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { PageStub } from '../../../pages/PageStub';
+import { QuickCreatePage } from '../../../features/tools';
 
 export const Route = createFileRoute('/_shell/create/quick')({
-  component: () => <PageStub titleId="page.quickCreate.title" />,
+  component: () => <QuickCreatePage />,
 });

@@ -57,6 +57,22 @@
   --m-move-lg:16px;
   --m-scale-min:.96;
   --m-stagger:30ms;
+  --m-stagger-max:6;
+  /* Popover entry offset (Motion.dc.html: "200ms · standard · y 6px"). */
+  --m-move-popover:6px;
+  /* Toast entry offset (Motion.dc.html toast demo: y 12px). */
+  --m-move-toast:12px;
+  /* Press: primary buttons only, 80ms, scale .97. */
+  --m-press-scale:.97;
+  /* Public motion API (handoff 7). Prefer these names in new code; --m-* stay as aliases. */
+  --dur-instant:var(--m-instant);
+  --dur-fast:var(--m-fast);
+  --dur-base:var(--m-base);
+  --dur-slow:var(--m-slow);
+  --dur-brand:var(--m-brand);
+  --ease-standard:var(--m-ease-standard);
+  --ease-exit:var(--m-ease-exit);
+  --ease-spring:var(--m-ease-spring);
   /* Extra surfaces used by the approved screens. */
   --c-surface-7:#333338;
   --c-control-off:#3A3A40;
@@ -65,24 +81,46 @@
   --c-upgrade:#FFC53D;
   --c-accent-soft:rgba(59,130,246,.16);
   --c-danger-strong:#FCA5A5;
+  /* Link and info text on dark (#93C5FD), state chips used by overlays. */
+  --c-link:#93C5FD;
+  --c-info-soft:rgba(59,130,246,.16);
+  --c-success-soft:rgba(34,197,94,.14);
+  --c-upgrade-soft:rgba(255,197,61,.14);
+  --c-warning-text:#FFD87A;
+  --c-warning-bg:rgba(255,197,61,.1);
+  --c-scrim:rgba(5,5,6,.7);
+  --shadow-picker:0 24px 64px rgba(0,0,0,.6);
+  --shadow-modal:0 30px 80px rgba(0,0,0,.65);
   /* Focus ring: accent, offset from the surface. */
   --focus-ring:0 0 0 2px var(--c-bg),0 0 0 4px var(--c-accent);
   --shadow-popover:0 20px 60px rgba(0,0,0,.6);
   --shadow-toast:0 12px 32px rgba(0,0,0,.6);
 }
 
-/* Reduced motion: opacity only. Movement and scale transitions collapse; fades stay. */
+/*
+ * Reduced motion: opacity only. Movement and scale tokens collapse to zero, so
+ * every keyframe built on them (all @rolling/ui primitives and the rl-* motion
+ * utilities in base.css) becomes a plain fade with the same timing.
+ * Safety net: any other animation that is not marked [data-motion] (meaning
+ * "built on the motion tokens") is cut to 1ms, and transitions only animate opacity.
+ */
 @media (prefers-reduced-motion:reduce){
   :root{
     --m-move-sm:0px;
     --m-move-md:0px;
     --m-move-lg:0px;
+    --m-move-popover:0px;
+    --m-move-toast:0px;
     --m-scale-min:1;
+    --m-press-scale:1;
     --m-stagger:0ms;
   }
-  *,*::before,*::after{
+  :where(*:not([data-motion])),:where(*:not([data-motion]))::before,:where(*:not([data-motion]))::after{
     animation-duration:1ms!important;
+    animation-delay:0ms!important;
     animation-iteration-count:1!important;
+  }
+  *,*::before,*::after{
     transition-property:opacity!important;
     scroll-behavior:auto!important;
   }

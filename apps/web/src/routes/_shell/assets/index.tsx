@@ -1,6 +1,17 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { PageStub } from '../../../pages/PageStub';
+import { AssetsPage } from '../../../features/library/AssetsPage';
+
+interface AssetsSearch {
+  folder?: string;
+}
 
 export const Route = createFileRoute('/_shell/assets/')({
-  component: () => <PageStub titleId="page.assets.title" />,
+  validateSearch: (search: Record<string, unknown>): AssetsSearch =>
+    typeof search.folder === 'string' && search.folder ? { folder: search.folder } : {},
+  component: AssetsRoute,
 });
+
+function AssetsRoute() {
+  const { folder } = Route.useSearch();
+  return <AssetsPage key={folder ?? 'all'} folder={folder ?? 'all'} />;
+}

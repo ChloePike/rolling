@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { PageStub } from '../../pages/PageStub';
+import { UpgradePage } from '../../features/account/UpgradePage';
 
 export const Route = createFileRoute('/_shell/upgrade')({
-  component: () => <PageStub titleId="page.upgrade.title" />,
+  component: () => <UpgradePage />,
 });

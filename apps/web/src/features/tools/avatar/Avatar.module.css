@@ -1,0 +1,29 @@
+/* Avatar left panel cards (DigitalHuman.dc.html). */
+.custom{
+  height:30px;padding:0 10px;border-radius:var(--r-pill);border:0;background:none;color:#93C5FD;font:inherit;font-size:12px;font-weight:600;cursor:pointer;
+  transition:background-color var(--m-fast) var(--m-ease-standard);
+}
+.custom:hover{background:var(--c-accent-soft)}
+.example{border-radius:12px;background:var(--c-surface-4);padding:8px 10px;font-size:12px;line-height:1.5;color:var(--c-text-3)}
+.voice{
+  display:flex;align-items:center;gap:10px;border-radius:14px;padding:8px;background:transparent;
+  transition:background-color var(--m-fast) var(--m-ease-standard),box-shadow var(--m-fast) var(--m-ease-standard);
+}
+.voice:hover{background:#18181B}
+.voiceOn,.voiceOn:hover{background:var(--c-surface-4);box-shadow:inset 0 0 0 1.5px var(--c-accent)}
+.preview{
+  flex:none;width:30px;height:30px;border-radius:var(--r-pill);border:0;background:var(--c-surface-5);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;
+  transition:background-color var(--m-fast) var(--m-ease-standard);
+}
+.preview:hover{background:var(--c-surface-6)}
+.voicePick{flex:1;border:0;background:none;color:var(--c-text-1);font:inherit;text-align:left;display:flex;flex-direction:column;gap:2px;cursor:pointer;padding:0}
+.voicePick:focus-visible{box-shadow:none;outline:none}
+.voice:has(.voicePick:focus-visible){box-shadow:inset 0 0 0 2px var(--c-accent)}
+.voiceName{font-size:13px;font-weight:600}
+.voiceDesc{font-size:11px;color:var(--c-text-3)}
+.clone{border-radius:14px;background:var(--c-surface-4);padding:10px;display:flex;flex-direction:column;gap:6px}
+.cloneHead{display:flex;align-items:center;gap:8px;font-size:13px}
+.cloneName{font-weight:600;flex:1}
+.clonePct{font-size:11px;color:#93C5FD}
+.track{height:4px;border-radius:var(--r-pill);background:var(--c-surface-5)}
+.fill{height:4px;border-radius:var(--r-pill);background:var(--c-accent);transition:width var(--m-slow) linear}

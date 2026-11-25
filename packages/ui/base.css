@@ -19,3 +19,55 @@ button,input,textarea,select{font:inherit;color:inherit}
 ::-webkit-scrollbar-track{background:transparent}
 :lang(ko){word-break:keep-all}
 .rl-visually-hidden{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+
+/*
+ * Motion utilities (docs/design/screens/Motion.dc.html, handoff 7).
+ * Every rule here is built on the motion tokens, so under reduced motion it
+ * turns into an opacity-only fade. Pair with the React helpers in
+ * src/motion (usePresence, presenceProps, staggerStyle, Progress).
+ *
+ * Presence: an element with one of the presence classes plays its enter
+ * keyframes while [data-state="open"] and its exit keyframes while
+ * [data-state="closed"]; usePresence() keeps it mounted for the exit.
+ */
+.rl-pop[data-state="open"]{animation:rl-pop-in var(--dur-base) var(--ease-standard) both}
+.rl-pop[data-state="closed"]{animation:rl-pop-out var(--dur-fast) var(--ease-exit) both;pointer-events:none}
+.rl-modal[data-state="open"]{animation:rl-modal-in var(--dur-slow) var(--ease-standard) both}
+.rl-modal[data-state="closed"]{animation:rl-modal-out var(--dur-fast) var(--ease-exit) both;pointer-events:none}
+.rl-fade[data-state="open"]{animation:rl-fade-in var(--dur-base) var(--ease-standard) both}
+.rl-fade[data-state="closed"]{animation:rl-fade-out var(--dur-fast) var(--ease-exit) both;pointer-events:none}
+.rl-panel[data-state="open"]{animation:rl-panel-in var(--dur-slow) var(--ease-standard) both}
+.rl-panel[data-state="closed"]{animation:rl-panel-out var(--dur-fast) var(--ease-exit) both;pointer-events:none}
+.rl-toast[data-state="open"]{animation:rl-toast-in var(--dur-base) var(--ease-standard) both}
+.rl-toast[data-state="closed"]{animation:rl-fade-out var(--dur-fast) var(--ease-exit) both;pointer-events:none}
+
+/* List stagger: 200ms, 30ms apart, rows after the sixth enter together. Set --rl-i with staggerStyle(i). */
+.rl-stagger{animation:rl-row-in var(--dur-base) var(--ease-standard) both;animation-delay:calc(min(var(--rl-i,0),5) * var(--m-stagger))}
+/* Node build: fade and settle from 96%, 320ms; --rl-i spaces siblings 150ms apart. */
+.rl-build{animation:rl-build-in var(--dur-slow) var(--ease-standard) both;animation-delay:calc(var(--rl-i,0) * 150ms)}
+/* Result reveal: the result replaces the placeholder in place, 200ms fade. */
+.rl-reveal{animation:rl-fade-in var(--dur-base) var(--ease-standard) both}
+/* Brand moment (splash, first-run success only): 400ms spring scale-in. */
+.rl-brand-pop{animation:rl-brand-pop var(--dur-brand) var(--ease-spring) both}
+
+/* Press: primary buttons only, 80ms, scale .97. Hover is a 140ms color change, never movement. */
+.rl-press{transition:transform var(--dur-instant) var(--ease-standard),background-color var(--dur-fast) var(--ease-standard),color var(--dur-fast) var(--ease-standard)}
+.rl-press:active:not(:disabled){transform:scale(var(--m-press-scale))}
+
+/* Progress: real values only, linear, no shimmer. */
+.rl-progress{position:relative;height:4px;border-radius:999px;background:var(--c-surface-5);overflow:hidden}
+.rl-progress-fill{position:absolute;inset:0 auto 0 0;border-radius:inherit;background:var(--c-accent);transition:width var(--dur-slow) linear}
+
+@keyframes rl-pop-in{from{opacity:0;transform:translateY(calc(var(--rl-pop-dir,-1) * var(--m-move-popover)))}to{opacity:1;transform:none}}
+@keyframes rl-pop-out{from{opacity:1;transform:none}to{opacity:0;transform:translateY(calc(var(--rl-pop-dir,-1) * var(--m-move-sm)))}}
+@keyframes rl-modal-in{from{opacity:0;transform:translateY(var(--m-move-md)) scale(var(--m-scale-min))}to{opacity:1;transform:none}}
+@keyframes rl-modal-out{from{opacity:1;transform:none}to{opacity:0;transform:translateY(var(--m-move-sm))}}
+@keyframes rl-fade-in{from{opacity:0}to{opacity:1}}
+@keyframes rl-fade-out{from{opacity:1}to{opacity:0}}
+@keyframes rl-panel-in{from{opacity:0;transform:translateX(calc(var(--rl-panel-dir,1) * var(--m-move-lg)))}to{opacity:1;transform:none}}
+@keyframes rl-panel-out{from{opacity:1;transform:none}to{opacity:0;transform:translateX(calc(var(--rl-panel-dir,1) * var(--m-move-md)))}}
+@keyframes rl-toast-in{from{opacity:0;transform:translateY(var(--m-move-toast))}to{opacity:1;transform:none}}
+@keyframes rl-row-in{from{opacity:0;transform:translateY(var(--m-move-sm))}to{opacity:1;transform:none}}
+@keyframes rl-build-in{from{opacity:0;transform:scale(var(--m-scale-min))}to{opacity:1;transform:none}}
+@keyframes rl-brand-pop{from{transform:scale(0)}to{transform:none}}
+@media (prefers-reduced-motion:reduce){.rl-brand-pop{animation-name:rl-fade-in}}

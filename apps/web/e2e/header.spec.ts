@@ -131,7 +131,13 @@ test.describe('shared header', () => {
 
     expect(app.header.background).toBe(design.header.background);
     expect(app.nav.background).toBe(design.nav.background);
-    expect(app.navItems[0]!.background).toBe(design.navItems[0]!.background);
+    // The active background is the sliding pill behind the active item.
+    const pill = await page.getByTestId('nav-pill').evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return { background: getComputedStyle(el).backgroundColor, box: { x: r.x, y: r.y, width: r.width, height: r.height } };
+    });
+    expect(pill.background).toBe(design.navItems[0]!.background);
+    expectBoxClose(pill.box, design.navItems[0]!.box, 'active nav pill');
     expect(app.navItems[0]!.color).toBe(design.navItems[0]!.color);
     expect(app.navItems[1]!.background).toBe(design.navItems[1]!.background);
     expect(app.navItems[1]!.color).toBe(design.navItems[1]!.color);
@@ -201,5 +207,155 @@ test.describe('shared header', () => {
     await page.keyboard.press('Escape');
     await expect(dialog).toHaveCount(0);
     await expect(gear).toBeFocused();
+  });
+});
+
+/** Opens a header popover in the rendered Main.dc.html by clicking its trigger. */
+async function openDesignPopover(page: Page, trigger: string) {
+  await openDesign(page, 1440);
+  await page.locator(trigger).click();
+}
+
+const POPOVERS = [
+  { name: 'credits', trigger: 'button[aria-label^="Credit balance"]', design: '[role="dialog"][aria-label="credits"]', app: (p: Page) => p.getByRole('dialog', { name: 'Credits' }) },
+  { name: 'account', trigger: 'button[aria-label="Account"]', design: '[role="menu"][aria-label="Account"]', app: (p: Page) => p.getByRole('menu', { name: 'Account' }) },
+  { name: 'settings', trigger: 'button[aria-label="Settings"]', design: '[role="dialog"][aria-label="Settings"]', app: (p: Page) => p.getByRole('dialog', { name: 'Settings' }) },
+] as const;
+
+test.describe('header popovers', () => {
+  for (const pop of POPOVERS) {
+    test(`${pop.name} popover matches Main.dc.html: box within 2px, pixel diff under 1%`, async ({ page }) => {
+      await openDesignPopover(page, pop.trigger);
+      const d = (await page.locator(pop.design).boundingBox())!;
+      const clip = { x: Math.round(d.x), y: Math.round(d.y), width: Math.round(d.width), height: Math.round(d.height) };
+      const design = await page.screenshot({ clip });
+      mkdirSync(`${SCREENS_OUT}shell/`, { recursive: true });
+      await page.screenshot({ clip, path: `${SCREENS_OUT}shell/${pop.name}-design.png` });
+
+      await openApp(page, 1440);
+      await page.locator(pop.trigger).click();
+      const layer = pop.app(page);
+      await expect(layer).toBeVisible();
+      await page.mouse.move(10, 600);
+      await page.waitForTimeout(400);
+      const a = (await layer.boundingBox())!;
+      const app = await page.screenshot({ clip });
+      await page.screenshot({ clip, path: `${SCREENS_OUT}shell/${pop.name}.png` });
+      expectBoxClose(a, d, `${pop.name} popover`);
+      const ratio = await pixelDiffRatio(page, app, design);
+      console.log(`pixel-diff header-${pop.name}: ${(ratio * 100).toFixed(3)}%`);
+      expect(ratio).toBeLessThan(0.01);
+    });
+  }
+
+  test('credits popover: packs select, top-up label follows; only one popover open at a time', async ({ page }) => {
+    await openApp(page, 1440);
+    await page.getByRole('button', { name: /Credit balance/ }).click();
+    const credits = page.getByRole('dialog', { name: 'Credits' });
+    await expect(credits.getByRole('button', { name: 'Top up 3,000 credits' })).toBeVisible();
+    await credits.getByRole('button', { name: /10,000/ }).click();
+    await expect(credits.getByRole('button', { name: 'Top up 10,000 credits' })).toBeVisible();
+    await expect(credits.getByText('Expires Nov 30')).toBeVisible();
+    await page.getByRole('button', { name: 'Account' }).click();
+    await expect(page.getByRole('menu', { name: 'Account' })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: 'Credits' })).toHaveCount(0);
+  });
+
+  test('account menu: arrow keys move focus, workspace switch, Escape returns focus', async ({ page }) => {
+    await openApp(page, 1440);
+    const avatar = page.getByRole('button', { name: 'Account' });
+    await avatar.click();
+    const menu = page.getByRole('menu', { name: 'Account' });
+    await expect(menu.getByRole('menuitemradio', { name: /Personal/ })).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+    await expect(menu.getByRole('menuitemradio', { name: /Ridgeline/ })).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(menu.getByRole('menuitemradio', { name: /Ridgeline/ })).toHaveAttribute('aria-checked', 'true');
+    for (const name of ['Profile', 'Settings', 'Plans and billing', 'Billing and invoices', 'Members', 'Help and feedback', 'Log out']) {
+      await expect(menu.getByRole('menuitem', { name: new RegExp(`^${name}`) })).toBeVisible();
+    }
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('menu')).toHaveCount(0);
+    await expect(avatar).toBeFocused();
+  });
+});
+
+test.describe('header motion', () => {
+  test('popover enters 200ms standard and leaves 140ms exit', async ({ page }) => {
+    await openApp(page, 1440);
+    await page.getByRole('button', { name: 'Settings' }).click();
+    const layer = page.getByRole('dialog', { name: 'Settings' });
+    const enter = await layer.evaluate((el) => [getComputedStyle(el).animationName, getComputedStyle(el).animationDuration, getComputedStyle(el).animationTimingFunction]);
+    expect(enter).toEqual(['rl-pop-in', '0.2s', 'cubic-bezier(0.2, 0, 0, 1)']);
+    await page.keyboard.press('Escape');
+    const exit = await page.locator('[data-state="closed"]').evaluate((el) => [getComputedStyle(el).animationName, getComputedStyle(el).animationDuration]);
+    expect(exit).toEqual(['rl-pop-out', '0.14s']);
+    await expect(page.locator('[data-state="closed"]')).toHaveCount(0);
+  });
+
+  test('active nav pill slides to the new item over 200ms on navigation', async ({ page }) => {
+    await openApp(page, 1440);
+    const pill = page.getByTestId('nav-pill');
+    await page.waitForTimeout(100);
+    await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Assets' }).click();
+    const target = (await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Assets' }).boundingBox())!;
+    const transition = await pill.evaluate((el) => getComputedStyle(el).transition);
+    expect(transition).toContain('transform 0.2s cubic-bezier(0.2, 0, 0, 1)');
+    await page.waitForTimeout(400);
+    const end = (await pill.boundingBox())!;
+    expectBoxClose(end, target, 'pill after slide');
+  });
+
+  test('reduced motion: popover fades without moving, pill jumps', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await openApp(page, 1440);
+    await page.getByRole('button', { name: /Credit balance/ }).click();
+    const layer = page.getByRole('dialog', { name: 'Credits' });
+    const t = await layer.evaluate((el) => [getComputedStyle(el).transform, getComputedStyle(el).animationDuration]);
+    expect(['none', 'matrix(1, 0, 0, 1, 0, 0)']).toContain(t[0]);
+    expect(t[1]).toBe('0.2s');
+    const pillTransition = await page.getByTestId('nav-pill').evaluate((el) => getComputedStyle(el).transitionProperty);
+    expect(pillTransition).toBe('opacity');
+  });
+});
+
+test.describe('splash', () => {
+  test('final frame matches Splash.dc.html (reduced motion) within 1% and stays under 1.2s when playing', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.setContent(buildDesignPage('Splash.dc.html'));
+    await page.waitForFunction(() => (window as unknown as { __DC_READY__?: boolean }).__DC_READY__ === true);
+    await page.evaluate(() => document.fonts.ready);
+    // The REC dot blinks in both; hide it so the frame is deterministic.
+    await page.addStyleTag({ content: '.tc i{visibility:hidden}' });
+    const clip = { x: 0, y: 0, width: 1440, height: 900 };
+    const design = await page.screenshot({ clip });
+    mkdirSync(`${SCREENS_OUT}splash/`, { recursive: true });
+    await page.screenshot({ clip, path: `${SCREENS_OUT}splash/splash-design.png` });
+
+    await page.goto('/?splash=hold');
+    await page.getByTestId('splash').waitFor();
+    await page.evaluate(() => document.fonts.ready);
+    await page.addStyleTag({ content: '[data-testid="splash"] i{visibility:hidden}' });
+    await page.waitForTimeout(400);
+    const app = await page.screenshot({ clip });
+    await page.screenshot({ clip, path: `${SCREENS_OUT}splash/splash.png` });
+    const ratio = await pixelDiffRatio(page, app, design);
+    console.log(`pixel-diff splash: ${(ratio * 100).toFixed(3)}%`);
+    expect(ratio).toBeLessThan(0.01);
+
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    const start = Date.now();
+    await page.goto('/?splash=1');
+    await page.getByTestId('splash').waitFor();
+    const mark = page.getByTestId('splash').locator('span').nth(1);
+    expect(await mark.evaluate((el) => getComputedStyle(el).animationTimingFunction)).toBe('cubic-bezier(0.3, 1.4, 0.4, 1)');
+    await expect(page.getByTestId('splash')).toHaveCount(0, { timeout: 2000 });
+    expect(Date.now() - start).toBeLessThan(2500);
+  });
+
+  test('does not play in a normal browser tab', async ({ page }) => {
+    await openApp(page, 1440);
+    await expect(page.getByTestId('splash')).toHaveCount(0);
   });
 });

@@ -1,0 +1,31 @@
+/*
+ * Motion helpers shared by the auth, account, library, activity and profile
+ * screens. Values follow docs/design/screens/Motion.dc.html and handoff 7.
+ * Reduced motion: the token file zeroes --m-move-* and collapses durations,
+ * so only opacity remains.
+ */
+
+/* Content that replaces other content (tab, section or step switch): 200ms, standard, y 4px. */
+.enter{animation:rl-acc-enter var(--m-base) var(--m-ease-standard) both}
+
+/* List and grid items: 200ms each, 30ms apart, max 6 (rows after the sixth appear together). */
+.stagger{
+  animation:rl-acc-enter var(--m-base) var(--m-ease-standard) both;
+  animation-delay:calc(min(var(--i, 0), 6) * var(--m-stagger));
+}
+
+@keyframes rl-acc-enter{
+  from{opacity:0;transform:translateY(var(--m-move-sm))}
+  to{opacity:1;transform:none}
+}
+
+/* Hover is a 140ms color change, never movement. */
+.hover{transition:background-color var(--m-fast) var(--m-ease-standard),color var(--m-fast) var(--m-ease-standard),box-shadow var(--m-fast) var(--m-ease-standard)}
+
+/* Press: primary buttons only, 80ms, scale .97. */
+.press{transition:background-color var(--m-fast) var(--m-ease-standard),color var(--m-fast) var(--m-ease-standard),transform var(--m-instant) var(--m-ease-standard)}
+.press:active:not(:disabled){transform:scale(.97)}
+@media (prefers-reduced-motion:reduce){.press:active:not(:disabled){transform:none}}
+
+/* Real progress: the bar width follows the value linearly. */
+.progress{transition:width var(--m-slow) linear}

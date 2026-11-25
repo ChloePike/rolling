@@ -1,0 +1,39 @@
+/* Header credits popover. Source: Main.dc.html (credits button open). Design width is 340px content-box plus 16px padding. */
+.panel{width:340px;display:flex;flex-direction:column;gap:14px}
+.top{display:flex;align-items:flex-end;gap:8px}
+.balance{flex:1;display:flex;flex-direction:column;gap:6px}
+.label{font-size:12px;color:var(--c-text-3)}
+.big{font-size:30px;font-weight:700;letter-spacing:-0.02em;line-height:1}
+.usage{font-size:12px;color:var(--c-text-2);text-decoration:none;padding-bottom:3px}
+.usage:hover{color:var(--c-text-1)}
+.bar{display:flex;height:6px;border-radius:999px;overflow:hidden;gap:2px}
+.barPlan{background:var(--c-text-1)}
+.barPurchased{background:#55555E}
+.split{display:flex;flex-direction:column;gap:6px;font-size:12px}
+.splitRow{display:flex;align-items:center;gap:8px}
+.swatch{width:8px;height:8px;border-radius:2px}
+.swatchPlan{background:var(--c-text-1)}
+.swatchPurchased{background:#55555E}
+.splitName{flex:1;color:var(--c-text-2)}
+.splitValue{font-weight:600}
+.splitNote{width:86px;text-align:right;color:var(--c-text-4)}
+.divider{height:1px;background:var(--c-surface-5)}
+.stats{display:flex;flex-direction:column;gap:4px}
+.stat{display:flex;align-items:center;font-size:13px;padding:2px 0}
+.statName{flex:1;color:var(--c-text-3)}
+.statValue{font-weight:600}
+.topUp{display:flex;flex-direction:column;gap:8px}
+.packs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.pack{
+  border-radius:12px;border:0;background:var(--c-surface-2);padding:10px 8px;color:var(--c-text-1);font:inherit;cursor:pointer;
+  display:flex;flex-direction:column;align-items:flex-start;gap:4px;
+  transition:box-shadow var(--dur-fast) var(--ease-standard),background-color var(--dur-fast) var(--ease-standard);
+}
+.pack:hover:not([aria-pressed="true"]){background:var(--c-surface-3)}
+.pack[aria-pressed="true"]{box-shadow:inset 0 0 0 1.5px var(--c-text-1)}
+.pack:focus-visible{box-shadow:var(--focus-ring)}
+.packN{font-size:15px;font-weight:700}
+.packPrice{font-size:11px;color:var(--c-text-3)}
+.topUpButton{height:40px;border-radius:999px;border:0;background:var(--c-text-1);color:var(--c-bg);font:inherit;font-size:14px;font-weight:700;cursor:pointer}
+.topUpButton:hover{background:#FFFFFF}
+.note{font-size:11px;line-height:1.5;color:var(--c-text-4)}

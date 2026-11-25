@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Button, Dialog, Popover, SegmentedControl, Switch, Tabs, ToastProvider, useToast } from '../index';
+import { presenceProps, staggerStyle, usePresence } from '../motion';
 
 afterEach(cleanup);
 
@@ -145,5 +146,31 @@ describe('Popover', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(document.activeElement).toBe(trigger);
+  });
+});
+
+describe('motion helpers', () => {
+  it('usePresence keeps the element mounted for the exit, then unmounts', () => {
+    vi.useFakeTimers();
+    function Harness({ open }: { open: boolean }) {
+      const p = usePresence(open, 140);
+      return p.mounted ? <div data-testid="layer" {...presenceProps(p.state)} /> : null;
+    }
+    const { rerender } = render(<Harness open />);
+    expect(screen.getByTestId('layer').getAttribute('data-state')).toBe('open');
+    rerender(<Harness open={false} />);
+    const layer = screen.getByTestId('layer');
+    expect(layer.getAttribute('data-state')).toBe('closed');
+    expect(layer.getAttribute('aria-hidden')).toBe('true');
+    act(() => {
+      vi.advanceTimersByTime(141);
+    });
+    expect(screen.queryByTestId('layer')).toBeNull();
+    vi.useRealTimers();
+  });
+
+  it('staggerStyle caps the index at the sixth row', () => {
+    expect(staggerStyle(0)).toEqual({ '--rl-i': 0 });
+    expect(staggerStyle(9)).toEqual({ '--rl-i': 5 });
   });
 });

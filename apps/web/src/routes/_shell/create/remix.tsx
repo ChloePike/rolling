@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { PageStub } from '../../../pages/PageStub';
+import { RemixPage } from '../../../features/tools';
 
 export const Route = createFileRoute('/_shell/create/remix')({
-  component: () => <PageStub titleId="page.remix.title" />,
+  component: () => <RemixPage />,
 });
