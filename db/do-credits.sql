@@ -28,3 +28,9 @@ CREATE INDEX holds_quote ON holds (quote_id);
 ALTER TABLE quotes ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE quotes ADD COLUMN run_id TEXT;
 CREATE TABLE idempotency (key TEXT PRIMARY KEY, op TEXT NOT NULL, fingerprint TEXT NOT NULL, result TEXT NOT NULL, created_at INTEGER NOT NULL);
+
+-- v3 (D-012): agent allowance holds, one row per agent turn, micro-USD.
+CREATE TABLE agent_holds (turn_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, llm TEXT NOT NULL, period_start INTEGER NOT NULL, estimate_micros INTEGER NOT NULL, actual_micros INTEGER, overrun_micros INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'held' CHECK (status IN ('held','settled','released','expired')), created_at INTEGER NOT NULL, closed_at INTEGER);
+CREATE INDEX agent_holds_status ON agent_holds (status);
+CREATE INDEX agent_holds_period ON agent_holds (period_start, status);
+CREATE INDEX agent_holds_llm ON agent_holds (llm, status, closed_at);

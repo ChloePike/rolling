@@ -223,3 +223,15 @@ export const DEFAULT_CONFIRM_THRESHOLD_CREDITS = 300;
 
 /** Optional auto top-up: below `belowCredits`, buy `buyCredits` (PRD rule 6). */
 export const AUTO_TOP_UP = { belowCredits: 200, amountUsd: TOP_UP.minUsd } as const;
+
+/**
+ * Monthly agent allowance per plan, in USD of gateway cost (D-012). Every
+ * agent turn deducts its actual LLM cost; resets on the plan's billing period
+ * start (monthly slices for yearly plans). Sized so plan gross margin stays
+ * ≥ 50% in the worst case (all included credits used + card fees + 2% infra +
+ * the whole allowance), see config.test.ts.
+ */
+export const AGENT_ALLOWANCE_USD: Record<PlanId, number> = { starter: 1.2, plus: 3.5, pro: 12.5 };
+
+/** Default turn size for cost estimates before a model has history (D-012). */
+export const AGENT_TURN_TOKENS = { prompt: 10_000, completion: 1_200 } as const;

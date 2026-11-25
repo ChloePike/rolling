@@ -112,7 +112,27 @@ export const memberUsage = sqliteTable(
   (t) => [primaryKey({ columns: [t.userId, t.month] })],
 );
 
-export const creditsSchema = { balance, ledger, holds, quotes, memberUsage, idempotency };
+export const agentHoldStatuses = ["held", "settled", "released", "expired"] as const;
+
+/** Agent allowance holds, one row per turn (v3, D-012). Amounts in micro-USD. */
+export const agentHolds = sqliteTable(
+  "agent_holds",
+  {
+    turnId: text("turn_id").primaryKey(),
+    userId: text("user_id").notNull(),
+    llm: text("llm").notNull(),
+    periodStart: integer("period_start").notNull(),
+    estimateMicros: integer("estimate_micros").notNull(),
+    actualMicros: integer("actual_micros"),
+    overrunMicros: integer("overrun_micros").notNull().default(0),
+    status: text("status", { enum: agentHoldStatuses }).notNull().default("held"),
+    createdAt: integer("created_at").notNull(),
+    closedAt: integer("closed_at"),
+  },
+  (t) => [index("agent_holds_status").on(t.status), index("agent_holds_period").on(t.periodStart, t.status), index("agent_holds_llm").on(t.llm, t.status, t.closedAt)],
+);
+
+export const creditsSchema = { balance, ledger, holds, quotes, memberUsage, idempotency, agentHolds };
 
 export const creditsMigrations: readonly DoMigration[] = [
   {
@@ -153,6 +173,16 @@ CREATE INDEX holds_quote ON holds (quote_id);
 ALTER TABLE quotes ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE quotes ADD COLUMN run_id TEXT;
 CREATE TABLE idempotency (key TEXT PRIMARY KEY, op TEXT NOT NULL, fingerprint TEXT NOT NULL, result TEXT NOT NULL, created_at INTEGER NOT NULL);
+`,
+  },
+  {
+    version: 3,
+    name: "agent_allowance",
+    sql: `
+CREATE TABLE agent_holds (turn_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, llm TEXT NOT NULL, period_start INTEGER NOT NULL, estimate_micros INTEGER NOT NULL, actual_micros INTEGER, overrun_micros INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'held' CHECK (status IN ('held','settled','released','expired')), created_at INTEGER NOT NULL, closed_at INTEGER);
+CREATE INDEX agent_holds_status ON agent_holds (status);
+CREATE INDEX agent_holds_period ON agent_holds (period_start, status);
+CREATE INDEX agent_holds_llm ON agent_holds (llm, status, closed_at);
 `,
   },
 ];

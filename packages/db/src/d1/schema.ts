@@ -616,12 +616,26 @@ export const agentProposals = sqliteTable("agent_proposals", {
   createdAt: integer("created_at").notNull(),
 }, (t) => [index("agent_proposals_thread").on(t.threadId)]);
 
-/** M6: agent turns per workspace per UTC day (D-007 abuse limit, migration 0008). */
+/**
+ * D-012: one row per agent turn with its gateway cost (migration 0011; replaces
+ * 0008's daily turn counts). History mirror of the CreditAccount agent ledger.
+ */
 export const agentUsage = sqliteTable("agent_usage", {
+  turnId: text("turn_id").primaryKey(),
   workspaceId: text("workspace_id").notNull(),
-  day: text("day").notNull(),
-  turns: integer("turns").notNull().default(0),
-}, (t) => [primaryKey({ columns: [t.workspaceId, t.day] })]);
+  userId: text("user_id"),
+  threadId: text("thread_id"),
+  /** Public LLM id. */
+  llm: text("llm").notNull(),
+  periodStart: integer("period_start").notNull(),
+  costUsd: real("cost_usd").notNull().default(0),
+  overrunUsd: real("overrun_usd").notNull().default(0),
+  tokensIn: integer("tokens_in").notNull().default(0),
+  tokensOut: integer("tokens_out").notNull().default(0),
+  /** `settled` or `released`. */
+  status: text("status").notNull().default("settled"),
+  createdAt: integer("created_at").notNull(),
+}, (t) => [index("agent_usage_ws").on(t.workspaceId, t.periodStart), index("agent_usage_ws_llm").on(t.workspaceId, t.llm, sql`${t.createdAt} DESC`)]);
 
 /** D-002: model catalog synced from the gateway listing (migration 0002). */
 export const modelKinds = ["image", "video", "chat"] as const;

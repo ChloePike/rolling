@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { fixtureModel as m } from '../models/__fixtures__/catalog';
 import {
+  AGENT_ALLOWANCE_USD,
   creditsFor,
   creditsForAll,
   creditsForUsd,
@@ -87,6 +88,16 @@ describe('pricing model (D-006)', () => {
     for (const plan of Object.values(PLANS)) {
       expect(margin(plan.priceMonthlyUsd as number, plan.monthlyCredits)).toBeGreaterThanOrEqual(0.5);
       expect(margin(plan.priceYearlyUsd as number, plan.monthlyCredits * 12)).toBeGreaterThanOrEqual(0.5);
+    }
+  });
+
+  it('keeps plan gross margin >= 50% with the whole agent allowance used (D-012)', () => {
+    expect(AGENT_ALLOWANCE_USD).toEqual({ starter: 1.2, plus: 3.5, pro: 12.5 });
+    for (const plan of Object.values(PLANS)) {
+      const price = plan.priceMonthlyUsd as number;
+      const cost = costPerCredit * plan.monthlyCredits + price * cardFee(price) + price * INFRA + AGENT_ALLOWANCE_USD[plan.id];
+      expect(price * 0.5).toBeGreaterThanOrEqual(cost);
+      expect(margin(price, plan.monthlyCredits) - AGENT_ALLOWANCE_USD[plan.id] / price).toBeGreaterThanOrEqual(0.5);
     }
   });
 });

@@ -211,6 +211,7 @@ export type LedgerErrorCode =
   | 'NOT_FOUND'
   | 'JOB_CLOSED'
   | 'IDEMPOTENCY_CONFLICT'
+  | 'AGENT_ALLOWANCE_EXHAUSTED'
   | 'BAD_REQUEST';
 
 export class LedgerError extends Error {

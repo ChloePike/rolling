@@ -2,3 +2,4 @@
 export * from './ids';
 export * from './models';
 export * from './pricing/config';
+export * from './pricing/agent';
