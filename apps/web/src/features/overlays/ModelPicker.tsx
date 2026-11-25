@@ -2,7 +2,7 @@ import { cx, presenceProps, staggerStyle, usePresence } from '@rolling/ui';
 import { useId, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { Svg } from './icons';
-import { useModels } from '../../lib/models';
+import { useModels } from '@/lib/models';
 import { catalogToOptions } from './catalog';
 import styles from './ModelPicker.module.css';
 import { AUTO_MODEL, type ModelKind, type ModelOption } from './types';

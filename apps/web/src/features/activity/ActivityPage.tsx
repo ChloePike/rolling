@@ -1,7 +1,7 @@
 import { useToast } from '@rolling/ui';
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { FormattedMessage, FormattedNumber, useIntl } from 'react-intl';
-import { ChipGroup, motion, PathIcon, paths, SearchField } from '../account/shared';
+import { ChipGroup, motion, PathIcon, paths, SearchField } from '@/features/account/shared';
 import { useActivity } from './api';
 import type { RunAction, RunRow, RunStatus } from './types';
 import styles from './Activity.module.css';

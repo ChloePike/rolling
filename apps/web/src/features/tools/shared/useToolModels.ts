@@ -1,4 +1,4 @@
-import { useModels, type CatalogModel } from '../../../lib/models';
+import { useModels, type CatalogModel } from '@/lib/models';
 import { toolModels, type ToolModel } from './models';
 import type { PickerKind } from '../types';
 

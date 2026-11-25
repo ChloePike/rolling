@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { CatalogModel } from '../../lib/models';
+import type { CatalogModel } from '@/lib/models';
 import { catalogToOptions, unitCredits } from './catalog';
 
 const base: CatalogModel = {

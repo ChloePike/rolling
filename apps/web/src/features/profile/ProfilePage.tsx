@@ -2,8 +2,8 @@ import { useToast } from '@rolling/ui';
 import { Link } from '@tanstack/react-router';
 import { useState, type CSSProperties } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
-import { useMe } from '../account/api';
-import { motion, Segmented } from '../account/shared';
+import { useMe } from '@/features/account/api';
+import { motion, Segmented } from '@/features/account/shared';
 import { useProfile } from './api';
 import styles from './Profile.module.css';
 

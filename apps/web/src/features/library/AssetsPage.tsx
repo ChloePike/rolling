@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router';
 import { useState, type CSSProperties } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
-import { ChipGroup, motion, PathIcon, paths, SearchField } from '../account/shared';
+import { ChipGroup, motion, PathIcon, paths, SearchField } from '@/features/account/shared';
 import { useAssets, useCharacters, useFolders, useStorage, useUpload, useVoices } from './assetsApi';
 import type { AssetItem, AssetType, FolderItem, VoiceState } from './assetsMocks';
 import styles from './Assets.module.css';

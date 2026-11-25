@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { useIntl } from 'react-intl';
-import { useModels, type CatalogModel } from '../../lib/models';
+import { useModels, type CatalogModel } from '@/lib/models';
 import {
   AUTO_MODEL,
   ModelPicker,
@@ -8,8 +8,8 @@ import {
   type ImageParams,
   type ModelKind as PickerKind,
   type VideoParams,
-} from '../overlays';
-import type { PillPopoverState, PromptPill } from '../prompt';
+} from '@/features/overlays';
+import type { PillPopoverState, PromptPill } from '@/features/prompt';
 import { defaultModel, quoteCredits, toModelOption } from './catalog';
 import { formatSeconds } from './format';
 import { FRAME_MODES, PERSONAS, VOICES, type HomeModeId } from './modes';

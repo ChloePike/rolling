@@ -1,7 +1,7 @@
 import type { PlanId } from '@rolling/core/pricing/config';
 import { cx, presenceProps, usePresence, type PresenceState } from '@rolling/ui';
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
-import type { CatalogModel } from '../../../lib/models';
+import type { CatalogModel } from '@/lib/models';
 import { findModel, formatLabel, mediaKind, resolutionOptions } from '../pricing';
 import { runCost } from '../nodes/NodeCard';
 import { useIntl } from 'react-intl';

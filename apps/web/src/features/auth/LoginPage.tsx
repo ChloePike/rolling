@@ -1,7 +1,7 @@
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
-import { motion } from '../account/shared';
+import { motion } from '@/features/account/shared';
 import { CODE_LENGTH, sendEmailCode, startOAuth, verifyEmailCode, type SendCodeResult } from './api';
 import styles from './Login.module.css';
 

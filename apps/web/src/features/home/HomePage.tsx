@@ -13,9 +13,9 @@ import {
   type PromptIconName,
   type PromptMode,
   type RefItem,
-} from '../prompt';
-import { useTemplates } from '../templates/api';
-import type { TemplateSummary } from '../templates/types';
+} from '@/features/prompt';
+import { useTemplates } from '@/features/templates/api';
+import type { TemplateSummary } from '@/features/templates/types';
 import { createProject, useRecentProjects } from './api';
 import { formatSeconds, formatWhen } from './format';
 import { HOME_MODES, type HomeModeId } from './modes';

@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { AssetsPage } from '../../../features/library/AssetsPage';
+import { AssetsPage } from '@/features/library/AssetsPage';
 
 interface AssetsSearch {
   folder?: string;

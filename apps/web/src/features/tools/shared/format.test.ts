@@ -1,6 +1,6 @@
 import { createIntl } from 'react-intl';
 import { describe, expect, it } from 'vitest';
-import messages from '../../../../../../messages/en/tools.json';
+import messages from '@messages/en/tools.json';
 import { formatAgo, formatClock } from './format';
 
 const intl = createIntl({ locale: 'en', messages });

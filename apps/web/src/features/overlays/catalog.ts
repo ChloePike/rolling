@@ -1,4 +1,4 @@
-import type { CatalogModel } from '../../lib/models';
+import type { CatalogModel } from '@/lib/models';
 import type { ModelBadge, ModelKind, ModelOption } from './types';
 
 /** Tile tones from ModelPicker.dc.html, assigned in list order. */

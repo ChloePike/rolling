@@ -1,6 +1,6 @@
 import { DEFAULT_CONFIRM_THRESHOLD_CREDITS, lowestPlanFor, planAllowsResolution, PLANS, type PlanId } from '@rolling/core/pricing/config';
 import { useMemo } from 'react';
-import { useModels, type CatalogModel } from '../../lib/models';
+import { useModels, type CatalogModel } from '@/lib/models';
 import type { GraphNode } from '@rolling/core/graph';
 
 /**

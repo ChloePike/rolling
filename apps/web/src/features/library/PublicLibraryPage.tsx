@@ -2,7 +2,7 @@ import { useToast } from '@rolling/ui';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
-import { ChipGroup, motion, PathIcon, paths, SearchField } from '../account/shared';
+import { ChipGroup, motion, PathIcon, paths, SearchField } from '@/features/account/shared';
 import { CATEGORY_GROUPS, findCategory, LICENSE_CHIP, shortId, type CategoryView } from './catalog';
 import { usePublicItems, type PublicItem } from './publicApi';
 import styles from './PublicLibrary.module.css';

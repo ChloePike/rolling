@@ -1,6 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { createRootRouteWithContext, Outlet } from '@tanstack/react-router';
-import { NotFound } from '../pages/NotFound';
+import { NotFound } from '@/pages/NotFound';
 
 export interface RouterContext {
   queryClient: QueryClient;

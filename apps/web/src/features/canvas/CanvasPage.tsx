@@ -15,8 +15,8 @@ import {
 import '@xyflow/react/dist/base.css';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
-import { ReferencePicker, type RefItem } from '../prompt';
-import type { RunPlanRow, RunRowKind } from '../overlays';
+import { ReferencePicker, type RefItem } from '@/features/prompt';
+import type { RunPlanRow, RunRowKind } from '@/features/overlays';
 import { AgentPanel, type AgentPlan } from './agent/AgentPanel';
 import { getAccount, getProject, getShare, openProject, quoteRun, startRun, type ProjectSession } from './api';
 import canvas from './canvas.module.css';

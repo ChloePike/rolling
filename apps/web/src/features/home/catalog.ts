@@ -1,5 +1,5 @@
-import type { CatalogModel } from '../../lib/models';
-import type { ModelOption } from '../overlays';
+import type { CatalogModel } from '@/lib/models';
+import type { ModelOption } from '@/features/overlays';
 
 const TONES = ['#202330', '#26232A', '#28251F', '#1F2628', '#22262E', '#2A2420'];
 

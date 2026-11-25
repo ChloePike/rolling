@@ -1,6 +1,6 @@
 import { cx, presenceProps, type PresenceState } from '@rolling/ui';
 import { useState } from 'react';
-import { Paywall } from '../../overlays';
+import { Paywall } from '@/features/overlays';
 import { checkoutPlan } from '../api';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { CanvasIcon } from '../icons';

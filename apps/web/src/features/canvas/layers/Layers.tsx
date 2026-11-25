@@ -1,7 +1,7 @@
 import { cx, presenceProps, staggerStyle, type PresenceState } from '@rolling/ui';
 import { useMemo, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
-import { RunConfirmPanel, type RunPlanRow } from '../../overlays';
+import { RunConfirmPanel, type RunPlanRow } from '@/features/overlays';
 import canvas from '../canvas.module.css';
 import type { NodeKind } from '@rolling/core/graph';
 import { CanvasIcon, type CanvasIconName } from '../icons';

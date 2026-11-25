@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { Editor } from '../features/canvas/editor';
+import { Editor } from '@/features/canvas/editor';
 
 interface EditorSearch {
   /** `agent` opens with the “cut to 10s” proposal (CanvasEditAgent.dc.html). */

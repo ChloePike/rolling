@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { TemplatesPage } from '../../features/templates/TemplatesPage';
+import { TemplatesPage } from '@/features/templates/TemplatesPage';
 
 export const Route = createFileRoute('/_shell/templates')({
   component: TemplatesPage,

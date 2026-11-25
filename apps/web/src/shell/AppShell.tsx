@@ -1,7 +1,7 @@
 import { Outlet } from '@tanstack/react-router';
 import { useState } from 'react';
 import { FormattedMessage } from 'react-intl';
-import { shouldPlaySplash, Splash } from '../features/splash/Splash';
+import { shouldPlaySplash, Splash } from '@/features/splash/Splash';
 import { Header } from './Header';
 import styles from './AppShell.module.css';
 

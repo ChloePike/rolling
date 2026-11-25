@@ -21,7 +21,7 @@ import {
   type ImageParams,
   type ModelOption,
   type VideoParams,
-} from '../../overlays';
+} from '@/features/overlays';
 import type { ParamKind, PickerKind } from '../types';
 import type { ToolModel } from './models';
 import { lockedResolutions, mockPlan } from './plan';

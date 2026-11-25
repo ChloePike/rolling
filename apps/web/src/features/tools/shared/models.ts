@@ -1,4 +1,4 @@
-import type { CreditPoint } from '../../../lib/models';
+import type { CreditPoint } from '@/lib/models';
 import type { PickerKind } from '../types';
 
 /**

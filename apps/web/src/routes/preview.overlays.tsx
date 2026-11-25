@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { OverlayPreview, type OverlayPreviewSearch } from '../features/overlays/Preview';
+import { OverlayPreview, type OverlayPreviewSearch } from '@/features/overlays/Preview';
 
 /** Fidelity preview for the shared overlays (not linked from the app; used by e2e/overlays.spec.ts). */
 export const Route = createFileRoute('/preview/overlays')({

@@ -1,4 +1,4 @@
-import { Presence, type PillPopoverState, type PromptPill } from '../prompt';
+import { Presence, type PillPopoverState, type PromptPill } from '@/features/prompt';
 import styles from './HomePage.module.css';
 
 export interface PillOption {

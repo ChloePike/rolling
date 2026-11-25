@@ -1,5 +1,5 @@
 import { createFileRoute, notFound } from '@tanstack/react-router';
-import { isSettingsSection, SettingsPage } from '../../../features/account/SettingsPage';
+import { isSettingsSection, SettingsPage } from '@/features/account/SettingsPage';
 
 export const Route = createFileRoute('/_shell/settings/$section')({
   beforeLoad: ({ params }) => {

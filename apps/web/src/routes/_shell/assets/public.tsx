@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { PublicLibraryPage } from '../../../features/library/PublicLibraryPage';
+import { PublicLibraryPage } from '@/features/library/PublicLibraryPage';
 
 interface PublicSearch {
   cat?: string;

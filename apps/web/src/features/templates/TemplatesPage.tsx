@@ -2,7 +2,7 @@ import { cx, staggerStyle } from '@rolling/ui';
 import { Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { FormattedMessage, useIntl, type IntlShape } from 'react-intl';
-import { PromptIcon } from '../prompt';
+import { PromptIcon } from '@/features/prompt';
 import { useTemplates } from './api';
 import styles from './TemplatesPage.module.css';
 import type { TemplateCategory } from './types';

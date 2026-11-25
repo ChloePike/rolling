@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { CatalogModel } from '../../lib/models';
+import type { CatalogModel } from '@/lib/models';
 import { defaultModel, quoteCredits, toModelOption } from './catalog';
 
 const base = { tags: [], auto: false, mature: false, matureOnly: false, requiresIdentitySafety: false, operations: [], seconds: null, ratios: [], audio: false, lipSync: false };

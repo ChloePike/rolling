@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { CANVAS_OVERLAYS, CanvasPage, type CanvasOverlay } from '../../features/canvas';
-import { Editor } from '../../features/canvas/editor';
-import { NODE } from '../../features/canvas/mocks';
+import { CANVAS_OVERLAYS, CanvasPage, type CanvasOverlay } from '@/features/canvas';
+import { Editor } from '@/features/canvas/editor';
+import { NODE } from '@/features/canvas/mocks';
 
 interface CanvasSearch {
   /** Opens one layer on load, like the design's `initOverlay` (plan, addMenu, script, share, edit, editAgent, at). */

@@ -1,4 +1,4 @@
-import type { PromptIconName } from '../prompt';
+import type { PromptIconName } from '@/features/prompt';
 
 export type HomeModeId = 'agent' | 'image' | 'video' | 'avatar';
 
