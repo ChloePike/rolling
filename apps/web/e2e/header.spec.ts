@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { buildDesignPage } from './support/design';
 import { asPlan } from './support/session';
+import { routeModels } from './support/models';
 import { APP_PARTS, DESIGN_PARTS, measureHeader, pixelDiffRatio, type Box } from './support/measure';
 
 const SCREENS_OUT = fileURLToPath(new URL('./__screens__/', import.meta.url));
@@ -32,9 +33,15 @@ const D006_TOP_UPS: ReadonlyArray<readonly [string, string]> = [
   ["packs: ['1,000', '3,000', '10,000'].map((n) => ({ n, ", "packs: ['$10', '$25', '$50', '$100', '$250'].map((n) => ({ n, c: credits[n], "],
 ];
 
+/** D-010 adds a Theme row (System by default) under Notify when done in the settings popover. */
+const NOTIFY_ROW = '<div style="display:flex;align-items:center;font-size:13px"><span style="flex:1;color:#C8C8CC">Notify when done</span><span style="color:#9A9AA0">On ›</span></div>';
+const D010_THEME_ROW: ReadonlyArray<readonly [string, string]> = [
+  [NOTIFY_ROW, `${NOTIFY_ROW}\n        <div style="display:flex;align-items:center;font-size:13px"><span style="flex:1;color:#C8C8CC">Theme</span><span style="color:#9A9AA0">System ›</span></div>`],
+];
+
 async function openDesign(page: Page, width: number, props: Record<string, unknown> = {}) {
   await page.setViewportSize({ width, height: 900 });
-  await page.setContent(buildDesignPage('Main.dc.html', props, D006_TOP_UPS));
+  await page.setContent(buildDesignPage('Main.dc.html', props, [...D006_TOP_UPS, ...D010_THEME_ROW]));
   await page.waitForFunction(() => (window as unknown as { __DC_READY__?: boolean }).__DC_READY__ === true);
   await page.evaluate(() => document.fonts.ready);
 }
@@ -384,5 +391,163 @@ test.describe('splash', () => {
   test('does not play in a normal browser tab', async ({ page }) => {
     await openApp(page, 1440);
     await expect(page.getByTestId('splash')).toHaveCount(0);
+  });
+});
+
+/** Interaction pass: every header control does something observable (docs/interaction-pass.md). */
+test.describe('header interactions', () => {
+  const settings = (page: Page) => page.getByRole('dialog', { name: 'Settings' });
+  const openSettings = async (page: Page) => {
+    await page.getByRole('button', { name: 'Settings' }).click();
+    await expect(settings(page)).toBeVisible();
+  };
+  const row = (page: Page, label: string) => settings(page).getByRole('button', { name: new RegExp(`^${label}:`) });
+
+  test('settings: Language opens the language list; Deutsch formats numbers in German and survives reload', async ({ page }) => {
+    await openApp(page, 1440);
+    await openSettings(page);
+    await row(page, 'Language').click();
+    const list = settings(page).getByRole('menu', { name: 'Language' });
+    await expect(list.getByRole('menuitemradio')).toHaveCount(12);
+    await expect(list.getByRole('menuitemradio', { name: /^English/ })).toHaveAttribute('aria-checked', 'true');
+    for (const name of ['日本語', '繁體中文（台灣）', '繁體中文（香港）', '한국어', 'Deutsch']) {
+      await expect(list.getByRole('menuitemradio', { name: new RegExp(`^${name}`) })).toContainText('Not translated yet');
+    }
+    await list.getByRole('menuitemradio', { name: /^Deutsch/ }).click();
+    await expect(row(page, 'Language')).toContainText('Deutsch');
+    // English text, German number format.
+    await expect(page.getByRole('button', { name: /Credit balance/ })).toContainText('2.480');
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+    await page.reload();
+    await expect(page.getByRole('button', { name: /Credit balance/ })).toContainText('2.480');
+  });
+
+  test('settings: Currency, Default aspect ratio and Notify when done save to prefs, show in the row and persist', async ({ page }) => {
+    await routeModels(page);
+    await openApp(page, 1440);
+    await openSettings(page);
+    await row(page, 'Currency').click();
+    await settings(page).getByRole('menuitemradio', { name: /^JPY/ }).click();
+    await expect(row(page, 'Currency')).toContainText('JPY');
+    await row(page, 'Default aspect ratio').click();
+    await settings(page).getByRole('menuitemradio', { name: /^16:9/ }).click();
+    await expect(row(page, 'Default aspect ratio')).toContainText('16:9');
+    await row(page, 'Notify when done').click();
+    await settings(page).getByRole('menuitemradio', { name: /^Off/ }).click();
+    await expect(row(page, 'Notify when done')).toContainText('Off');
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('rolling.prefs') ?? '{}'));
+    expect(stored).toMatchObject({ currency: 'JPY', defaultAspectRatio: '16:9', notifyWhenDone: false });
+    // Prices follow the currency; the Home video settings start from the default ratio.
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: /Credit balance/ }).click();
+    await expect(page.getByRole('dialog', { name: 'Credits' }).getByRole('radio').first()).toContainText('¥1,500');
+    await page.keyboard.press('Escape');
+    await page.reload();
+    await page.getByRole('tab', { name: 'Video' }).click();
+    await expect(page.getByRole('button', { name: /^16:9 · 720p/ })).toBeVisible();
+    await openSettings(page);
+    await expect(row(page, 'Currency')).toContainText('JPY');
+    await expect(row(page, 'Notify when done')).toContainText('Off');
+  });
+
+  test('settings: Theme row sets data-theme light/dark and removes it for System (D-010)', async ({ page }) => {
+    await openApp(page, 1440);
+    await openSettings(page);
+    await expect(row(page, 'Theme')).toContainText('System');
+    await row(page, 'Theme').click();
+    const list = settings(page).getByRole('menu', { name: 'Theme' });
+    await expect(list.getByRole('menuitemradio')).toHaveText([/System \(default\)/, /Light/, /Dark/]);
+    await list.getByRole('menuitemradio', { name: 'Light' }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    await openSettings(page);
+    await row(page, 'Theme').click();
+    await settings(page).getByRole('menuitemradio', { name: 'Dark' }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await row(page, 'Theme').click();
+    await settings(page).getByRole('menuitemradio', { name: /System/ }).click();
+    await expect(page.locator('html')).not.toHaveAttribute('data-theme', /.+/);
+  });
+
+  test('settings keyboard: Enter opens a list on its current value, arrows move, Enter picks, Escape steps back then closes', async ({ page }) => {
+    await openApp(page, 1440);
+    await openSettings(page);
+    await row(page, 'Default aspect ratio').focus();
+    await page.keyboard.press('Enter');
+    await expect(settings(page).getByRole('menuitemradio', { name: /^9:16/ })).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+    await expect(settings(page).getByRole('menuitemradio', { name: /^1:1/ })).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(row(page, 'Default aspect ratio')).toContainText('1:1');
+    await expect(row(page, 'Default aspect ratio')).toBeFocused();
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Escape');
+    await expect(settings(page)).toBeVisible();
+    await expect(row(page, 'Default aspect ratio')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(settings(page)).toHaveCount(0);
+  });
+
+  test('credits: Top up runs the mock checkout, the balance increases and a toast confirms', async ({ page }) => {
+    await openApp(page, 1440);
+    await page.getByRole('button', { name: /Credit balance/ }).click();
+    const credits = page.getByRole('dialog', { name: 'Credits' });
+    await credits.getByRole('button', { name: 'Top up $25 · 2,850 credits' }).click();
+    await expect(credits.getByRole('button', { name: 'Processing payment…' })).toBeDisabled();
+    await expect(page.getByRole('status')).toContainText('Added 2,850 credits. Balance 5,330.');
+    await expect(page.getByRole('button', { name: /Credit balance/ })).toContainText('5,330');
+    await expect(credits.getByText('3,530')).toBeVisible(); // purchased 680 + 2,850
+  });
+
+  test('credits: a failed checkout says nothing was charged and offers Retry', async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as unknown as { __rollingMocks: Record<string, unknown> }).__rollingMocks = { checkout: 'fail', latencyMs: 50 };
+    });
+    await openApp(page, 1440);
+    await page.getByRole('button', { name: /Credit balance/ }).click();
+    await page.getByRole('dialog', { name: 'Credits' }).getByRole('button', { name: /^Top up \$25/ }).click();
+    await expect(page.getByRole('status')).toContainText('Payment didn’t go through. Nothing was charged.');
+    await expect(page.getByRole('status').getByRole('button', { name: 'Retry' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Credit balance/ })).toContainText('2,480');
+  });
+
+  test('account menu: workspace switch persists, Help opens a feedback dialog, Log out goes to /login', async ({ page }) => {
+    await openApp(page, 1440);
+    await page.getByRole('button', { name: 'Account' }).click();
+    await page.getByRole('menuitemradio', { name: /Ridgeline/ }).click();
+    await page.reload();
+    await page.getByRole('button', { name: 'Account' }).click();
+    await expect(page.getByRole('menuitemradio', { name: /Ridgeline/ })).toHaveAttribute('aria-checked', 'true');
+    await page.getByRole('menuitem', { name: 'Help and feedback' }).click();
+    const help = page.getByRole('dialog', { name: 'Help and feedback' });
+    await expect(help).toBeVisible();
+    await expect(help.getByRole('button', { name: 'Send feedback' })).toBeDisabled();
+    await help.getByRole('textbox', { name: 'Feedback' }).fill('The timeline needs snapping.');
+    await help.getByRole('button', { name: 'Send feedback' }).click();
+    await expect(page.getByRole('status')).toContainText('Feedback sent. Thank you.');
+    await expect(help).toHaveCount(0);
+    await page.getByRole('button', { name: 'Account' }).click();
+    await page.getByRole('menuitem', { name: 'Log out' }).click();
+    await expect(page).toHaveURL(/\/login$/);
+  });
+
+  test('account menu links and Upgrade navigate', async ({ page }) => {
+    await openApp(page, 1440);
+    for (const [name, url] of [
+      ['Profile', /\/u\/alex$/],
+      ['Settings', /\/settings\/account$/],
+      ['Plans and billing', /\/upgrade$/],
+      ['Billing and invoices', /\/settings\/billing$/],
+      ['Members', /\/settings\/team$/],
+    ] as const) {
+      await page.getByTestId('app-header').getByRole('button', { name: 'Account' }).click();
+      await page.getByRole('menuitem', { name: new RegExp(`^${name}`) }).click();
+      await expect(page).toHaveURL(url);
+    }
+    await page.getByTestId('app-header').getByRole('link', { name: 'Upgrade' }).click();
+    await expect(page).toHaveURL(/\/upgrade$/);
+    await page.getByRole('link', { name: 'Rolling home' }).click();
+    await expect(page).toHaveURL(/\/$/);
   });
 });

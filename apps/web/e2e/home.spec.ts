@@ -267,7 +267,7 @@ test.describe('home interactions', () => {
     await expect(ta).toHaveValue('A 15s ad for a sparkling water');
     await expect(page).toHaveURL(/\/$/);
     await paywall.getByRole('button', { name: /^Continue with/ }).click();
-    await expect(page).toHaveURL(/\/p\/prj_new$/);
+    await expect(page).toHaveURL(/\/p\/prj_[a-z0-9]+$/);
   });
 
   test('`@` picker: opens on @ at the end, filters by the query, multi-selects, Enter adds chips with source, Esc closes and strips the @', async ({ page }) => {
@@ -523,5 +523,181 @@ test.describe('home motion', () => {
     await card.click();
     const check = card.locator('span > span').last();
     expect(['none', 'matrix(1, 0, 0, 1, 0, 0)']).toContain(await check.evaluate((el) => getComputedStyle(el).transform));
+  });
+});
+
+/** Interaction pass (docs/interaction-pass.md): Home controls run their flows end to end. */
+test.describe('home flows', () => {
+  /** Fast mock checkout and runs; optional starting prefs and credits. */
+  async function seed(page: Page, opts: { prefs?: Record<string, unknown>; mocks?: Record<string, unknown> } = {}) {
+    await page.addInitScript((o) => {
+      const w = window as unknown as { __rollingMocks?: Record<string, unknown> };
+      w.__rollingMocks = { ...w.__rollingMocks, latencyMs: 80, ...o.mocks };
+      if (o.prefs && !sessionStorage.getItem('seeded')) {
+        localStorage.setItem('rolling.prefs', JSON.stringify(o.prefs));
+        sessionStorage.setItem('seeded', '1');
+      }
+    }, opts);
+  }
+  const mode = (page: Page, name: string) => page.getByRole('tablist', { name: 'Creation mode' }).getByRole('tab', { name }).click();
+  const balance = (page: Page) => page.getByRole('button', { name: /Credit balance/ });
+
+  test('empty send asks for a brief instead of doing nothing', async ({ page }) => {
+    await openApp(page);
+    await page.getByRole('button', { name: 'Start' }).click();
+    await expect(page.getByRole('status')).toContainText('Describe what you want first');
+    await expect(page.locator('textarea')).toBeFocused();
+  });
+
+  test('member agent send creates a project and opens its canvas; it shows in My projects', async ({ page }) => {
+    await openApp(page);
+    await page.locator('textarea').fill('Launch video for a desk lamp');
+    await page.getByRole('button', { name: 'Start' }).click();
+    await expect(page).toHaveURL(/\/p\/prj_[a-z0-9]+$/);
+    await page.goto('/');
+    await expect(page.locator('#projects').getByRole('link', { name: /Launch video for a desk lamp/ })).toBeVisible();
+  });
+
+  test('image send under the confirm threshold runs at once; View opens the result viewer', async ({ page }) => {
+    await seed(page);
+    await openApp(page);
+    await mode(page, 'Image');
+    await page.locator('textarea').fill('A glass bottle on wet stone');
+    await page.getByRole('button', { name: 'Start' }).click();
+    await expect(page.getByRole('dialog', { name: 'Confirm' })).toHaveCount(0);
+    await expect(page.getByRole('status')).toContainText('Generate images is ready');
+    await expect(balance(page)).toContainText('2,478');
+    await page.getByRole('status').getByRole('button', { name: 'View' }).click();
+    const viewer = page.getByRole('dialog', { name: 'Result' });
+    await expect(viewer).toBeVisible();
+    await expect(viewer.getByRole('button', { name: 'v1' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('video send at or over the threshold opens RunConfirm; confirm runs, closes and charges the quote', async ({ page }) => {
+    await seed(page, { prefs: { confirmThreshold: 0 } });
+    await openApp(page);
+    await mode(page, 'Video');
+    await page.locator('textarea').fill('Slow push-in on a sneaker');
+    await page.getByRole('button', { name: 'Start' }).click();
+    const confirm = page.getByRole('dialog', { name: 'Confirm' });
+    await expect(confirm).toBeVisible();
+    await expect(confirm).toContainText('Seedance 2.5 · 9:16 · 720p · 5s');
+    const skip = confirm.getByRole('checkbox', { name: /Skip this step for runs under 300 credits/ });
+    await expect(skip).not.toBeChecked();
+    await skip.check();
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('rolling.prefs') ?? '{}').confirmThreshold)).toBe(300);
+    await confirm.getByRole('button', { name: 'Generate video · 8 credits' }).click();
+    await expect(confirm).toHaveCount(0);
+    await expect(page.getByRole('status')).toContainText('Generate video is ready');
+    await expect(balance(page)).toContainText('2,472');
+  });
+
+  test('non-member generate: join paywall → checkout → the same run continues', async ({ page }) => {
+    await asPlan(page, null);
+    await seed(page);
+    await openApp(page);
+    await mode(page, 'Video');
+    await page.locator('textarea').fill('Product turntable');
+    await page.getByRole('button', { name: 'Start' }).click();
+    const paywall = page.getByRole('dialog', { name: 'Pick a plan to generate' });
+    await paywall.getByRole('button', { name: 'Continue with Plus' }).click();
+    await expect(paywall).toHaveCount(0);
+    await expect(page.getByRole('status')).toContainText('Generate video is ready');
+    // 2,480 + 800 (Plus) − 8.
+    await expect(balance(page)).toContainText('3,272');
+  });
+
+  test('not enough credits: top-up paywall → checkout → the run continues', async ({ page }) => {
+    await seed(page, { mocks: { credits: { available: 5, plan: 5, purchased: 0 } } });
+    await openApp(page);
+    await mode(page, 'Video');
+    await page.locator('textarea').fill('Product turntable');
+    await page.getByRole('button', { name: 'Start' }).click();
+    const paywall = page.getByRole('dialog', { name: 'Not enough credits' });
+    await expect(paywall).toBeVisible();
+    await paywall.getByRole('button', { name: /^Buy 1,100 credits for \$10 and run$/ }).click();
+    await expect(paywall).toHaveCount(0);
+    await expect(page.getByRole('status')).toContainText('Generate video is ready');
+    await expect(balance(page)).toContainText('1,097');
+  });
+
+  test('a failed run is refunded and offers Retry', async ({ page }) => {
+    await seed(page, { mocks: { run: 'fail' } });
+    await openApp(page);
+    await mode(page, 'Image');
+    await page.locator('textarea').fill('Bottle');
+    await page.getByRole('button', { name: 'Start' }).click();
+    await expect(page.getByRole('status')).toContainText('Generate images failed. Refunded 2 credits.');
+    await expect(page.getByRole('status').getByRole('button', { name: 'Retry' })).toBeVisible();
+    await expect(balance(page)).toContainText('2,480');
+  });
+
+  test('result viewer: favorite, regenerate adds a version, download saves a file, Send to canvas opens a project', async ({ page }) => {
+    await seed(page);
+    await openApp(page);
+    await mode(page, 'Image');
+    await page.locator('textarea').fill('A glass bottle');
+    await page.getByRole('button', { name: 'Start' }).click();
+    await page.getByRole('status').getByRole('button', { name: 'View' }).click();
+    const viewer = page.getByRole('dialog', { name: 'Result' });
+    const fav = viewer.getByRole('button', { name: 'Favorites' });
+    await fav.click();
+    await expect(fav).toHaveAttribute('aria-pressed', 'true');
+    await viewer.getByRole('button', { name: /^Regenerate/ }).click();
+    await expect(viewer.getByRole('button', { name: 'v2' })).toHaveAttribute('aria-pressed', 'true');
+    const download = page.waitForEvent('download');
+    await viewer.getByRole('button', { name: /^Download/ }).click();
+    expect((await download).suggestedFilename()).toMatch(/^A-glass-bottle-v2\.svg$/);
+    await viewer.getByRole('button', { name: /^Send to canvas/ }).click();
+    await expect(page).toHaveURL(/\/p\/prj_[a-z0-9]+$/);
+  });
+
+  test('+ Upload opens the file chooser and adds the file as a My assets reference', async ({ page }) => {
+    await openApp(page);
+    await page.getByRole('button', { name: 'Add assets or skills' }).click();
+    const chooser = page.waitForEvent('filechooser');
+    await page.getByRole('menuitem', { name: 'Upload images, video or audio' }).click();
+    await (await chooser).setFiles({ name: 'bottle.png', mimeType: 'image/png', buffer: PNG_2X2 });
+    await expect(page.getByRole('status')).toContainText('1 file added to My assets');
+    await expect(page.getByRole('button', { name: 'Remove reference' }).first()).toBeVisible();
+    await expect(page.locator('section[aria-label="Start creating"]')).toContainText('bottle');
+  });
+
+  test('palette: Voice opens Voices, settings commands appear only where the mode has that pill', async ({ page }) => {
+    await openApp(page);
+    await mode(page, 'Image');
+    const ta = page.locator('textarea');
+    await ta.fill('/dur');
+    await expect(page.getByRole('listbox', { name: 'Commands' })).toContainText('No matching commands');
+    await ta.fill('/voice');
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/\/assets\?folder=voices$/);
+  });
+
+  test('model pills and picker rows show provider marks; Lumina models keep the letter tile', async ({ page }) => {
+    await openApp(page);
+    await mode(page, 'Video');
+    const pill = page.getByRole('button', { name: 'Model: Seedance 2.5' });
+    await expect(pill.locator('[data-brand="bytedance"]')).toBeVisible();
+    await pill.click();
+    const picker = page.getByRole('dialog', { name: 'Choose model' });
+    await expect(picker.locator('[data-model-icon="minimax"]')).toBeVisible();
+    await expect(picker.locator('[data-model-icon="alibaba"]')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await mode(page, 'Avatar');
+    await page.getByRole('button', { name: /^Model:/ }).click();
+    await expect(page.getByRole('dialog', { name: 'Choose model' }).locator('[data-model-icon]')).toHaveCount(0);
+  });
+
+  test('recent project cards open their canvas; Inspiration tabs filter; a feed card opens Quick Create with its template', async ({ page }) => {
+    await openApp(page);
+    const feed = page.locator('section[aria-labelledby="h-insp"]');
+    await feed.getByRole('tab', { name: 'Short drama' }).click();
+    await expect(feed.getByRole('link')).toHaveText([/Period drama opener/]);
+    await feed.getByRole('link', { name: /Period drama opener/ }).click();
+    await expect(page).toHaveURL(/\/create\/quick\?template=tpl_09$/);
+    await page.goto('/');
+    await page.locator('#projects').getByRole('link', { name: /Desk organizer pitch/ }).click();
+    await expect(page).toHaveURL(/\/p\/prj_02$/);
   });
 });

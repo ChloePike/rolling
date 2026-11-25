@@ -29,10 +29,13 @@ export function nextVersion(versions: ResultVersion[], runId: string): ResultVer
 
 /** Saves the result's poster as a file (the mock has no media; the real download is a signed media URL, D-008). */
 function downloadPoster(name: string, tone: string, aspect: string) {
+  // Tones are CSS variables; a standalone file needs the resolved color.
+  const v = /^var\((--[\w-]+)\)$/.exec(tone)?.[1];
+  const fill = (v ? getComputedStyle(document.documentElement).getPropertyValue(v).trim() : tone) || 'currentColor';
   const [w, h] = aspect.split('/').map(Number);
   const W = 720;
   const H = Math.round((W * (h || 16)) / (w || 9));
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><rect width="100%" height="100%" fill="${tone}"/></svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><rect width="100%" height="100%" fill="${fill}"/></svg>`;
   const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
   const a = document.createElement('a');
   a.href = url;

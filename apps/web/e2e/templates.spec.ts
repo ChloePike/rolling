@@ -37,9 +37,10 @@ const PARTS = {
   search: 'input[placeholder^="Search templates"]',
   firstCat: 'button[aria-pressed="true"]',
   featured: 'section[aria-label="Featured"]',
-  featuredCard: 'section[aria-label="Featured"] > a',
+  // Design cards are links; app cards are buttons that open the preview.
+  featuredCard: 'section[aria-label="Featured"] > :is(a, button)',
   grid: 'section[aria-label="All templates"]',
-  firstCard: 'section[aria-label="All templates"] > a',
+  firstCard: 'section[aria-label="All templates"] > :is(a, button)',
 };
 
 async function measure(page: Page, top: number) {
@@ -82,12 +83,12 @@ test.describe('templates screen', () => {
     await openApp(page);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Templates');
     await expect(page.getByText('Pick a template, swap in your own characters and lines')).toBeVisible();
-    const featured = page.getByRole('region', { name: 'Featured' }).getByRole('link');
+    const featured = page.getByRole('region', { name: 'Featured' }).locator('[data-template]');
     await expect(featured).toHaveCount(2);
     await expect(featured.first()).toContainText('12K uses');
     await expect(featured.nth(1)).toContainText('8,640 uses');
     await expect(featured.first()).toContainText('This week’s picks');
-    const cards = page.getByRole('region', { name: 'All templates' }).getByRole('link');
+    const cards = page.getByRole('region', { name: 'All templates' }).locator('[data-template]');
     await expect(cards).toHaveCount(12);
     await expect(cards.first()).toContainText('2 roles');
     await expect(cards.first()).toContainText('2 characters · Dialogue · 600 uses');
@@ -100,10 +101,10 @@ test.describe('templates screen', () => {
     await page.getByRole('button', { name: 'Short drama' }).click();
     await expect(page.getByRole('button', { name: 'Short drama' })).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByRole('region', { name: 'Featured' })).toHaveCount(0);
-    await expect(page.getByRole('region', { name: 'All templates' }).getByRole('link')).toHaveText([/Period drama opener/]);
+    await expect(page.getByRole('region', { name: 'All templates' }).locator('[data-template]')).toHaveText([/Period drama opener/]);
     await page.getByRole('button', { name: 'All', exact: true }).click();
     await page.getByRole('searchbox', { name: 'Search templates' }).fill('unbox');
-    await expect(page.getByRole('region', { name: 'All templates' }).getByRole('link')).toHaveText([/Unboxing close-ups/]);
+    await expect(page.getByRole('region', { name: 'All templates' }).locator('[data-template]')).toHaveText([/Unboxing close-ups/]);
     await page.getByRole('searchbox', { name: 'Search templates' }).fill('zzz');
     await expect(page.getByText('No templates match “zzz”. Try another word or category.')).toBeVisible();
   });
@@ -112,16 +113,66 @@ test.describe('templates screen', () => {
     await openApp(page);
     const delays = await page
       .getByRole('region', { name: 'All templates' })
-      .getByRole('link')
+      .locator('[data-template]')
       .evaluateAll((els) => els.slice(0, 8).map((el) => getComputedStyle(el).animationDelay));
     expect(delays).toEqual(['0s', '0.03s', '0.06s', '0.09s', '0.12s', '0.15s', '0.15s', '0.15s']);
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.getByRole('button', { name: 'Outfits' }).click();
     const t = await page
       .getByRole('region', { name: 'All templates' })
-      .getByRole('link')
+      .locator('[data-template]')
       .first()
       .evaluate((el) => getComputedStyle(el).transform);
     expect(['none', 'matrix(1, 0, 0, 1, 0, 0)']).toContain(t);
+  });
+});
+
+/** Interaction pass: template cards, facets and Use template (docs/interaction-pass.md). */
+test.describe('templates interactions', () => {
+  test('a card opens the preview; Use template opens Quick Create with that template and the aspect ratio', async ({ page }) => {
+    await openApp(page);
+    await page.getByRole('region', { name: 'All templates' }).getByRole('button', { name: /Breakfast vlog/ }).click();
+    const preview = page.getByRole('dialog', { name: 'Breakfast vlog' });
+    await expect(preview).toBeVisible();
+    await expect(preview).toContainText('1 role');
+    await expect(preview).toContainText('Dialogue');
+    await preview.getByRole('button', { name: 'Use template' }).click();
+    await expect(page).toHaveURL(/\/create\/quick\?template=tpl_05&ratio=9%3A16$/);
+  });
+
+  test('preview closes with Close and Escape; the featured Use template goes straight to Quick Create', async ({ page }) => {
+    await openApp(page);
+    const first = page.getByRole('region', { name: 'Featured' }).locator('[data-template]').first();
+    await first.click();
+    const preview = page.getByTestId('template-preview');
+    await expect(preview).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(preview).toHaveCount(0);
+    await first.click();
+    await preview.getByRole('button', { name: 'Close' }).last().click();
+    await expect(preview).toHaveCount(0);
+    await first.locator('[data-use-template]').click();
+    await expect(page).toHaveURL(/\/create\/quick\?template=tpl_f1/);
+  });
+
+  test('facets: Character, Lines and Duration filter the grid; Aspect ratio follows the default preference and can change', async ({ page }) => {
+    await openApp(page);
+    const grid = page.getByRole('region', { name: 'All templates' }).locator('[data-template]');
+    await page.getByRole('button', { name: 'Character: Any' }).click();
+    await page.getByRole('menuitemradio', { name: '3 or more' }).click();
+    await expect(grid).toHaveText([/Period drama opener/]);
+    await expect(page.getByRole('region', { name: 'Featured' })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Character: 3 or more' }).click();
+    await page.getByRole('menuitemradio', { name: 'Any' }).click();
+    await page.getByRole('button', { name: 'Lines: Any' }).click();
+    await page.getByRole('menuitemradio', { name: 'No dialogue' }).click();
+    await expect(grid).toHaveCount(4);
+    await page.getByRole('button', { name: 'Duration: Any' }).click();
+    await page.getByRole('menuitemradio', { name: 'Up to 10s' }).click();
+    await expect(grid).toHaveCount(3);
+    await page.getByRole('button', { name: 'Aspect ratio: 9:16' }).click();
+    await page.getByRole('menuitemradio', { name: '1:1' }).click();
+    await expect(page.getByRole('button', { name: 'Aspect ratio: 1:1' })).toBeVisible();
+    await expect(grid).toHaveCount(3);
   });
 });

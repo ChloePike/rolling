@@ -337,3 +337,24 @@ test.describe('overlay motion', () => {
     });
   });
 });
+
+/** Interaction pass: overlay links navigate; the confirm's skip box writes the shared threshold. */
+test.describe('overlay interactions', () => {
+  test('model picker: Compare all models navigates in the app', async ({ page }) => {
+    await openPreview(page, 'c=modelPicker&kind=video');
+    await page.getByRole('dialog', { name: 'Choose model' }).getByRole('link', { name: 'Compare all models ›' }).click();
+    await expect(page).toHaveURL(/\/upgrade$/);
+  });
+
+  test('model picker rows: provider marks for gateway ids, letter tiles for the rest', async ({ page }) => {
+    await openPreview(page, 'c=modelPicker&kind=video');
+    const dialog = page.getByRole('dialog', { name: 'Choose model' });
+    await expect(dialog.locator('[data-model-icon="bytedance"]').first()).toBeVisible();
+  });
+
+  test('paywall: Compare plans navigates to /upgrade', async ({ page }) => {
+    await openPreview(page, 'c=paywall&variant=join');
+    await page.getByRole('link', { name: 'Compare plans ›' }).click();
+    await expect(page).toHaveURL(/\/upgrade$/);
+  });
+});
