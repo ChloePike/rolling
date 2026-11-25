@@ -1,6 +1,8 @@
 import { cx, presenceProps, staggerStyle, usePresence } from '@rolling/ui';
 import { useId, useMemo, useRef, useState, type CSSProperties, type RefObject, useLayoutEffect } from 'react';
+import { Link } from '@tanstack/react-router';
 import { FormattedMessage, useIntl } from 'react-intl';
+import { ModelIcon, modelIcon } from '@/lib/modelIcons';
 import { Svg } from './icons';
 import { useModels } from '@/lib/models';
 import { catalogToOptions } from './catalog';
@@ -176,9 +178,15 @@ export function ModelPicker({
             style={staggerStyle(i + 1)}
             onClick={() => !m.disabled && onValueChange(m.id)}
           >
-            <span className={styles.mark} style={{ background: m.tone }}>
-              {m.mark}
-            </span>
+            {modelIcon(m.id) ? (
+              <span className={cx(styles.mark, styles.markIcon)} data-model-icon={modelIcon(m.id)!.brand}>
+                <ModelIcon modelId={m.id} size={18} />
+              </span>
+            ) : (
+              <span className={styles.mark} style={{ background: m.tone }}>
+                {m.mark}
+              </span>
+            )}
             <span className={styles.body}>
               <span className={styles.nameRow}>
                 <span className={styles.name}>{m.name}</span>
@@ -219,9 +227,9 @@ export function ModelPicker({
         <span className={styles.footerText}>
           <FormattedMessage id="overlays.modelPicker.footer" />
         </span>
-        <a href={compareHref} className={styles.compare}>
+        <Link to={compareHref as never} className={styles.compare} onClick={() => onClose?.()}>
           <FormattedMessage id="overlays.modelPicker.compare" />
-        </a>
+        </Link>
       </div>
     </div>
   );

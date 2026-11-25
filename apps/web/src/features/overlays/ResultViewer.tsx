@@ -113,11 +113,15 @@ export function ResultViewerContent({
   assets,
   actions,
   onAction,
-  favorite = false,
-  onFavoriteChange,
+  favorite: favoriteProp = false,
+  onFavoriteChange: onFavoriteProp,
   onClose,
 }: ResultViewerContentProps) {
   const intl = useIntl();
+  // Uncontrolled when the host does not handle favorites.
+  const [favLocal, setFavLocal] = useState(favoriteProp);
+  const favorite = onFavoriteProp ? favoriteProp : favLocal;
+  const onFavoriteChange = onFavoriteProp ?? setFavLocal;
   const t = (id: string, v?: Record<string, string | number>) => intl.formatMessage({ id: `overlays.viewer.${id}` }, v);
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);

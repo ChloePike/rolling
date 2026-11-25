@@ -16,6 +16,7 @@ export { RunConfirm, RunConfirmPanel, type RunConfirmProps, type RunConfirmPanel
 export { Paywall, PaywallPanel, defaultPaywallOptions, type PaywallProps, type PaywallPanelProps } from './Paywall';
 export { PlanLock, planLockInfo, type PlanLockInfo } from './PlanLock';
 export { ResultViewer, ResultViewerContent, formatAgo, type ResultViewerProps, type ResultViewerContentProps } from './ResultViewer';
+export { useRunFlow, type RunRequest } from './useRunFlow';
 export * from './types';
 export { catalogToOptions, unitCredits } from './catalog';
 export {

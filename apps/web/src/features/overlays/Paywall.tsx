@@ -1,9 +1,11 @@
 import { PLAN_ORDER, PLANS, TOP_UP, type PlanId } from '@rolling/core/pricing/config';
 import { cx, Dialog, staggerStyle } from '@rolling/ui';
+import { Link } from '@tanstack/react-router';
 import { useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { FormattedMessage, FormattedNumber, useIntl, type IntlShape } from 'react-intl';
+import { formatPrice, getPrefs, usePref } from '@/lib/prefs';
 import { useSession } from '@/lib/session';
-import { formatUsd, parseTopUpAmount, topUpFor, topUpPresets, type TopUpOption } from '@/lib/topUp';
+import { parseTopUpAmount, topUpFor, topUpPresets, type TopUpOption } from '@/lib/topUp';
 import { Svg } from './icons';
 import styles from './Paywall.module.css';
 import type { PaywallOption } from './types';
@@ -30,8 +32,10 @@ export interface PaywallPanelProps {
   onContinue: (option: PaywallOption) => void;
   /** Close button. */
   onClose: () => void;
-  /** Footer link target ("Compare plans ›" / "All plans ›"). */
+  /** Footer link target ("Compare plans ›" / "All plans ›"). Following it closes the dialog. */
   plansHref?: string;
+  /** Checkout in progress: the CTA is disabled and says so. */
+  busy?: boolean;
   className?: string;
 }
 
@@ -40,7 +44,8 @@ export interface PaywallProps extends Omit<PaywallPanelProps, 'onClose'> {
   onOpenChange: (open: boolean) => void;
 }
 
-const money = (intl: IntlShape, usd: number) => formatUsd(usd, (v, o) => intl.formatNumber(v, o));
+/** Prices in the currency preference (lib/prefs); USD reads as before. */
+const money = (intl: IntlShape, usd: number) => formatPrice(intl, usd, getPrefs().currency);
 
 /** Plans from the pricing config (D-006): name, monthly credits and video cap, monthly price. */
 export function defaultPaywallOptions(intl: IntlShape): PaywallOption[] {
@@ -97,6 +102,7 @@ export function Paywall({ open, onOpenChange, ...panel }: PaywallProps) {
 export function PaywallPanel(props: PaywallPanelProps & { titleId?: string }) {
   const { variant, onClose, plansHref = '/upgrade', className, titleId } = props;
   const intl = useIntl();
+  usePref('currency'); // Re-render prices when the currency preference changes.
   const credits = variant === 'credits';
   const m = (id: string) => intl.formatMessage({ id: `overlays.paywall.${variant}.${id}` });
   return (
@@ -115,9 +121,9 @@ export function PaywallPanel(props: PaywallPanelProps & { titleId?: string }) {
       {credits ? <TopUpBody {...props} /> : <JoinBody {...props} />}
       <div className={styles.foot}>
         <span>{credits ? intl.formatMessage({ id: 'overlays.paywall.credits.foot' }, { card: props.paymentMethod ?? 'Visa ending 4242' }) : m('foot')}</span>
-        <a href={plansHref} className={styles.link}>
+        <Link to={plansHref as never} className={styles.link} onClick={onClose}>
           {m('link')}
-        </a>
+        </Link>
       </div>
     </div>
   );
@@ -143,7 +149,7 @@ function useRoving<T extends { id: string }>(items: T[], pick: (item: T) => void
   return { onKey, ref };
 }
 
-function JoinBody({ options: optionsProp, defaultOptionId, onContinue }: PaywallPanelProps) {
+function JoinBody({ options: optionsProp, defaultOptionId, onContinue, busy }: PaywallPanelProps) {
   const intl = useIntl();
   const options = useMemo(() => optionsProp ?? defaultPaywallOptions(intl), [optionsProp, intl]);
   const [picked, setPicked] = useState(defaultOptionId ?? options[1]?.id ?? options[0]?.id ?? '');
@@ -177,14 +183,24 @@ function JoinBody({ options: optionsProp, defaultOptionId, onContinue }: Paywall
           );
         })}
       </div>
-      <button type="button" className={cx('rl-press', styles.cta)} onClick={() => current && onContinue(current)}>
-        {current ? intl.formatMessage({ id: 'overlays.paywall.join.cta' }, { name: current.name }) : null}
+      <button
+        type="button"
+        className={cx('rl-press', styles.cta)}
+        disabled={busy}
+        aria-busy={busy || undefined}
+        onClick={() => current && onContinue(current)}
+      >
+        {busy
+          ? intl.formatMessage({ id: 'overlays.paywall.processing' })
+          : current
+            ? intl.formatMessage({ id: 'overlays.paywall.join.cta' }, { name: current.name })
+            : null}
       </button>
     </>
   );
 }
 
-function TopUpBody({ runCost = 347, balance = 120, plan: planProp, defaultOptionId, autoTopUp, onAutoTopUpChange, onContinue }: PaywallPanelProps) {
+function TopUpBody({ runCost = 347, balance = 120, plan: planProp, defaultOptionId, autoTopUp, onAutoTopUpChange, onContinue, busy }: PaywallPanelProps) {
   const intl = useIntl();
   const session = useSession();
   const plan = planProp === undefined ? session.planId : planProp;
@@ -288,8 +304,14 @@ function TopUpBody({ runCost = 347, balance = 120, plan: planProp, defaultOption
         <FormattedMessage id="overlays.paywall.credits.autoTopUp" />
       </label>
 
-      <button type="button" className={cx('rl-press', styles.cta)} disabled={!quote} onClick={() => quote && onContinue(topUpOption(intl, quote))}>
-        {quote ? intl.formatMessage({ id: 'overlays.paywall.credits.cta.buy' }, { credits: quote.credits, price: money(intl, quote.amountUsd) }) : intl.formatMessage({ id: 'overlays.paywall.credits.cta.invalid' })}
+      <button
+        type="button"
+        className={cx('rl-press', styles.cta)}
+        disabled={!quote || busy}
+        aria-busy={busy || undefined}
+        onClick={() => quote && onContinue(topUpOption(intl, quote))}
+      >
+        {busy ? intl.formatMessage({ id: 'overlays.paywall.processing' }) : quote ? intl.formatMessage({ id: 'overlays.paywall.credits.cta.buy' }, { credits: quote.credits, price: money(intl, quote.amountUsd) }) : intl.formatMessage({ id: 'overlays.paywall.credits.cta.invalid' })}
       </button>
     </>
   );

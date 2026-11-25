@@ -122,5 +122,18 @@
   "overlays.planLock.reason": "Available on {plan}",
   "overlays.planLock.label": "{option}, {reason}",
   "overlays.modelPicker.more": "More models ({count})",
-  "overlays.modelPicker.fewer": "Fewer models"
+  "overlays.modelPicker.fewer": "Fewer models",
+  "overlays.paywall.processing": "Processing payment…",
+  "overlays.run.started": "{label} started · {cost, plural, =0 {no charge} other {# credits held}}",
+  "overlays.run.done": "{label} is ready",
+  "overlays.run.view": "View",
+  "overlays.run.failed": "{label} failed. Refunded {cost, number} credits.",
+  "overlays.run.retry": "Retry",
+  "overlays.run.paymentFailed": "Payment didn’t go through. Nothing was charged.",
+  "overlays.run.planActive": "{plan} is active. {credits, number} credits added.",
+  "overlays.run.toppedUp": "Added {credits, number} credits.",
+  "overlays.run.row": "This run",
+  "overlays.viewer.favorited": "Added to favorites",
+  "overlays.viewer.unfavorited": "Removed from favorites",
+  "overlays.viewer.downloading": "Downloading {name}"
 }

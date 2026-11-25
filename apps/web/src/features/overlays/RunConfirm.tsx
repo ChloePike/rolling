@@ -1,6 +1,7 @@
 import { DEFAULT_CONFIRM_THRESHOLD_CREDITS } from '@rolling/core/pricing/config';
 import { cx, Dialog, staggerStyle } from '@rolling/ui';
 import { useId } from 'react';
+import { setPref, usePref } from '@/lib/prefs';
 import { FormattedMessage, FormattedNumber, useIntl } from 'react-intl';
 import { Svg, type OverlayIcon } from './icons';
 import styles from './RunConfirm.module.css';
@@ -23,10 +24,14 @@ export interface RunConfirmPanelProps {
   actionLabel?: string;
   /** Warning under the rows when something is blocked. */
   blockedNote?: string;
-  /** "Skip this step for runs under N credits" checkbox state. */
+  /**
+   * "Skip this step for runs under N credits" checkbox state. Omit both to use
+   * the shared preference (lib/prefs `confirmThreshold`): checked while the
+   * threshold is on; unchecking sets it to 0 (always confirm).
+   */
   skipUnderThreshold?: boolean;
   onSkipUnderThresholdChange?: (skip: boolean) => void;
-  /** The user's "Confirm before running" threshold (default `DEFAULT_CONFIRM_THRESHOLD_CREDITS`, 300; D-006). */
+  /** The user's "Confirm before running" threshold. Defaults to the preference (300, D-006). */
   threshold?: number;
   /** Quote validity shown in the summary (default 10). */
   quoteValidMinutes?: number;
@@ -78,9 +83,9 @@ export function RunConfirmPanel({
   subtitle,
   actionLabel,
   blockedNote,
-  skipUnderThreshold,
+  skipUnderThreshold: skipProp,
   onSkipUnderThresholdChange,
-  threshold = DEFAULT_CONFIRM_THRESHOLD_CREDITS,
+  threshold: thresholdProp,
   quoteValidMinutes = 10,
   onConfirm,
   onCancel,
@@ -89,6 +94,11 @@ export function RunConfirmPanel({
   titleId,
 }: RunConfirmPanelProps & { titleId?: string }) {
   const intl = useIntl();
+  const prefThreshold = usePref('confirmThreshold');
+  const threshold = thresholdProp ?? (prefThreshold > 0 ? prefThreshold : DEFAULT_CONFIRM_THRESHOLD_CREDITS);
+  const skipUnderThreshold = skipProp ?? (onSkipUnderThresholdChange ? false : prefThreshold > 0);
+  const onSkipChange =
+    onSkipUnderThresholdChange ?? ((skip: boolean) => setPref('confirmThreshold', skip ? threshold : 0));
   const graph = variant === 'graph';
   const total = totalProp ?? rows.filter((r) => r.state === 'run').reduce((s, r) => s + r.cost, 0);
   const count = (state: RunPlanRow['state']) => rows.filter((r) => r.state === state).length;
@@ -181,7 +191,7 @@ export function RunConfirmPanel({
           type="checkbox"
           className={styles.checkbox}
           checked={skipUnderThreshold ?? false}
-          onChange={(e) => onSkipUnderThresholdChange?.(e.target.checked)}
+          onChange={(e) => onSkipChange(e.target.checked)}
         />
         <FormattedMessage id="overlays.runConfirm.skip" values={{ threshold }} />
       </label>
