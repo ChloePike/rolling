@@ -1,13 +1,12 @@
 /**
  * Agent (M6) in the workers pool: AgentSession turns with a scripted LLM,
- * proposals, apply as the user through ProjectRoom, discard, stale, cancel,
- * NO_PLAN and the daily limit.
+ * proposals, apply as the user through ProjectRoom, discard, stale, cancel
+ * and NO_PLAN. The agent allowance (D-012) is in agent-allowance.test.ts.
  */
 import { env, SELF } from "cloudflare:test";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import listing from "../../../packages/core/src/models/__fixtures__/hyperouter-models.json";
 import { ScriptedLlm, type ScriptedReply } from "@rolling/agent/testkit";
-import { DAILY_TURN_LIMITS, dayKey } from "@rolling/agent";
 import { planCutTo, edlDuration, type Edl } from "@rolling/core/timeline";
 import { personalWorkspaceId } from "../src/auth/workspace";
 import { setAgentLlmForTests } from "../src/do/AgentSession";
@@ -86,16 +85,6 @@ describe("agent access", () => {
     const res = await api(user, "/api/agent/threads", { json: { surface: "home", skill: "tv-ad" } });
     expect(res.status).toBe(402);
     expect(((await res.json()) as any).error.code).toBe("NO_PLAN");
-  });
-
-  it("enforces the daily turn limit per workspace", async () => {
-    const { user, ws } = await member("limit", "starter");
-    const id = await thread(user, { surface: "home" });
-    await env.DB.prepare("INSERT INTO agent_usage (workspace_id, day, turns) VALUES (?, ?, ?)").bind(ws, dayKey(Date.now()), DAILY_TURN_LIMITS.starter).run();
-    useLlm([{ text: "hi" }]);
-    const res = await api(user, `/api/agent/threads/${id}/messages`, { json: { text: "hello" } });
-    const err = await body(res, 429);
-    expect(err.error).toMatchObject({ code: "RATE_LIMITED", data: { limit: DAILY_TURN_LIMITS.starter } });
   });
 
   it("rejects unknown agent LLMs and other workspaces' threads", async () => {

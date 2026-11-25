@@ -8,6 +8,8 @@ import {
   summaryDue,
   messagesToSummarize,
   resolveAgentLlm,
+  defaultTurnEstimate,
+  DEFAULT_AGENT_LLM,
   type AgentEvent,
   type AgentPorts,
   type FieldTool,
@@ -22,11 +24,14 @@ import {
   type TimelinePatchBody,
   type TurnEndReason,
 } from "@rolling/agent";
-import { hyperouter, type LlmProvider } from "@rolling/core";
+import { hyperouter, tokenPrice, type LlmProvider } from "@rolling/core";
+import type { AgentHoldResult, AgentPeriodInput, AgentReleaseResult, AgentSettleResult, LedgerOutcome } from "@rolling/core/credits";
 import type { ServerMessageType } from "@rolling/core/graph";
 import { newId } from "@rolling/core/ids";
 import { agentMigrations } from "@rolling/db/do/agent";
 import { migrateDurableObject } from "@rolling/db/do/migrate";
+import { allowanceView } from "../agent/allowance";
+import { creditAccount } from "../billing/credits";
 import { projectRoom } from "../lib/access";
 import { hyperouterClient } from "../runs/provider";
 import { agentPorts, roomCallerOf, type AgentCaller } from "./agentPorts";
@@ -82,6 +87,8 @@ export interface SendInput {
   /** Public LLM id (D-009); default DeepSeek V4.1 Flash. */
   llm?: string | null;
   turnId: string;
+  /** D-012: the workspace's allowance period; the turn holds its estimate against it before the first LLM call. */
+  allowance?: AgentPeriodInput;
 }
 
 export interface TurnSummary {
@@ -94,7 +101,14 @@ export interface TurnSummary {
   llm: string;
 }
 
-export type AgentError = { ok: false; code: "NOT_FOUND" | "FORBIDDEN" | "CONFLICT" | "VALIDATION_FAILED"; message: string; data?: Record<string, unknown> };
+export type AgentError = { ok: false; code: "NOT_FOUND" | "FORBIDDEN" | "CONFLICT" | "VALIDATION_FAILED" | "AGENT_ALLOWANCE_EXHAUSTED"; message: string; data?: Record<string, unknown> };
+
+/** CreditAccount agent-allowance RPCs (D-012), typed structurally. */
+interface AllowanceApi {
+  agentHold(input: unknown): Promise<LedgerOutcome<AgentHoldResult>>;
+  agentSettle(input: { turnId: string; actualUsd: number; idemKey: string }): Promise<LedgerOutcome<AgentSettleResult>>;
+  agentRelease(input: { turnId: string; idemKey: string }): Promise<LedgerOutcome<AgentReleaseResult>>;
+}
 
 export interface ApplyResult {
   ok: true;
@@ -209,16 +223,40 @@ export class AgentSession extends DurableObject<Env> {
     return { ok: true, canceled: true };
   }
 
-  private async runOne(input: SendInput, controller: AbortController): Promise<TurnSummary> {
+  private async runOne(input: SendInput, controller: AbortController): Promise<TurnSummary | AgentError> {
     const ports = portsOverride ? await portsOverride(input.caller) : await agentPorts(this.env, input.caller);
+    const llmId = input.llm ?? this.meta("llm");
+    // D-012: reserve the turn's estimate before the first LLM call.
+    const allowance = this.allowanceApi(input.caller.workspaceId);
+    let heldLlm: string | null = null;
+    if (input.allowance) {
+      const est = defaultTurnEstimate(llmId ?? DEFAULT_AGENT_LLM, ports.models.chatModels(), { mature: input.caller.matureAllowed });
+      const out = await allowance.agentHold({
+        ...input.allowance,
+        turnId: input.turnId,
+        userId: input.caller.userId,
+        llm: est.publicId,
+        estimateUsd: est.fallbackUsd,
+        idemKey: `${input.turnId}:agent:hold`,
+      });
+      if (!out.ok) {
+        if (out.error.code === "AGENT_ALLOWANCE_EXHAUSTED") {
+          const { allowanceUsd, usedUsd, resetsAt, model } = out.error.data as Record<string, unknown>;
+          return { ok: false, code: "AGENT_ALLOWANCE_EXHAUSTED", message: "Agent allowance for this period is used up", data: { allowanceUsd, usedUsd, resetsAt, model } };
+        }
+        throw new Error(`agent hold failed: ${out.error.code} ${out.error.message}`);
+      }
+      heldLlm = est.publicId;
+    }
     await this.refreshProposals(ports);
     const thread = this.threadState();
     const llm = llmOverride ?? new hyperouter.HyperouterLlmProvider(hyperouterClient(this.env));
-    const llmId = input.llm ?? this.meta("llm");
     if (input.llm) this.setMeta("llm", input.llm);
     const sink = this.sink(thread);
     const telemetry = analyticsTelemetry((this.env as { AE?: AnalyticsEngineDataset }).AE);
-    const result = await runTurn({
+    let result: Awaited<ReturnType<typeof runTurn>>;
+    try {
+      result = await runTurn({
       llm,
       ports,
       thread,
@@ -231,6 +269,11 @@ export class AgentSession extends DurableObject<Env> {
       telemetry,
       workspaceId: input.caller.workspaceId,
     });
+    } catch (err) {
+      // No usage to settle: release the hold, then fail as before.
+      if (heldLlm) await allowance.agentRelease({ turnId: input.turnId, idemKey: `${input.turnId}:agent:release` }).catch(() => undefined);
+      throw err;
+    }
     await sink.flush();
 
     const turnCount = Number(this.meta("turn_count") ?? "0") + 1;
@@ -257,8 +300,15 @@ export class AgentSession extends DurableObject<Env> {
       this.setMeta("turn_count", String(turnCount));
     });
     await this.indexTurn(input.caller, result.proposal, input.text);
+    const charge = { turnCost: result.usage.chargedUsd, tokensIn: result.usage.promptTokens, tokensOut: result.usage.completionTokens };
+    const close = heldLlm && input.allowance ? { llm: heldLlm, period: input.allowance, chat: ports.models.chatModels() } : null;
     if (summaryDue(turnCount, this.messageCount())) {
-      this.ctx.waitUntil(this.updateSummary(llm, ports, input.caller.matureAllowed, input.turnId));
+      // The summary's cost is part of this turn (D-012): settle once it is done.
+      this.ctx.waitUntil(
+        this.updateSummary(llm, ports, input.caller.matureAllowed, input.turnId).then((summaryUsd) => (close ? this.closeAllowance(input, close, { ...charge, turnCost: charge.turnCost + summaryUsd }) : undefined)),
+      );
+    } else if (close) {
+      await this.closeAllowance(input, close, charge);
     }
     return {
       turnId: input.turnId,
@@ -271,16 +321,66 @@ export class AgentSession extends DurableObject<Env> {
     };
   }
 
-  private async updateSummary(llm: LlmProvider, ports: AgentPorts, mature: boolean, turnId: string): Promise<void> {
+  /** Refreshes the thread summary; returns its LLM cost in USD (charged to the turn, D-012). */
+  private async updateSummary(llm: LlmProvider, ports: AgentPorts, mature: boolean, turnId: string): Promise<number> {
     try {
       const all = this.loadMessages(10_000);
       const older = messagesToSummarize(all);
-      if (!older.length) return;
+      if (!older.length) return 0;
       const model = resolveAgentLlm(this.meta("llm"), ports.models.chatModels(), { mature }).gatewayId;
-      const { summary } = await summarizeThread({ llm, model, previous: "", older, idempotencyKey: `${turnId}:summary` });
+      const listing = ports.models.chatModels().find((m) => m.id === model);
+      const { summary, costUsd } = await summarizeThread({ llm, model, previous: "", older, idempotencyKey: `${turnId}:summary`, price: listing ? tokenPrice(listing) : null });
       this.setMeta("summary", summary);
+      return costUsd;
     } catch (err) {
       console.error(JSON.stringify({ msg: "agent: summary failed", thread: this.meta("thread_id"), error: String(err) }));
+      return 0;
+    }
+  }
+
+  // ---------------------------------------------------------------- allowance (D-012)
+
+  private allowanceApi(workspaceId: string): AllowanceApi {
+    return creditAccount(this.env, workspaceId) as unknown as AllowanceApi;
+  }
+
+  /**
+   * Settles the turn's actual cost (or releases the hold when nothing was
+   * charged), mirrors it to D1 `agent_usage`, and pushes `agent.allowance` to
+   * the user's socket. Never throws: the turn already happened.
+   */
+  private async closeAllowance(
+    input: SendInput,
+    close: { llm: string; period: AgentPeriodInput; chat: ReturnType<AgentPorts["models"]["chatModels"]> },
+    charge: { turnCost: number; tokensIn: number; tokensOut: number },
+  ): Promise<void> {
+    const { caller, turnId } = input;
+    const api = this.allowanceApi(caller.workspaceId);
+    try {
+      let cost = 0;
+      let overrun = 0;
+      let status = "released";
+      if (charge.turnCost > 0) {
+        const out = await api.agentSettle({ turnId, actualUsd: charge.turnCost, idemKey: `${turnId}:agent:settle` });
+        if (!out.ok) throw new Error(`${out.error.code}: ${out.error.message}`);
+        cost = out.value.actualUsd;
+        overrun = out.value.overrunUsd;
+        status = "settled";
+      } else {
+        const out = await api.agentRelease({ turnId, idemKey: `${turnId}:agent:release` });
+        if (!out.ok) throw new Error(`${out.error.code}: ${out.error.message}`);
+      }
+      await this.env.DB.prepare(
+        `INSERT OR REPLACE INTO agent_usage (turn_id, workspace_id, user_id, thread_id, llm, period_start, cost_usd, overrun_usd, tokens_in, tokens_out, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+        .bind(turnId, caller.workspaceId, caller.userId, this.meta("thread_id"), close.llm, close.period.periodStart, cost, overrun, charge.tokensIn, charge.tokensOut, status, Date.now())
+        .run();
+      const view = await allowanceView(this.env, { workspaceId: caller.workspaceId, plan: caller.plan, mature: caller.matureAllowed, chatModels: close.chat, period: close.period });
+      const hub = this.env.USER_HUB.get(this.env.USER_HUB.idFromName(caller.userId)) as unknown as { broadcast(t: ServerMessageType, p: unknown): Promise<number> };
+      await hub.broadcast("agent.allowance", view);
+    } catch (err) {
+      console.error(JSON.stringify({ msg: "agent: allowance close failed", turnId, error: String(err) }));
     }
   }
 

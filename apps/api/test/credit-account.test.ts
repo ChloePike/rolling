@@ -1,4 +1,5 @@
 import { createMessageBatch, createExecutionContext, env, getQueueResult, introspectWorkflow, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
+import { creditsMigrations } from "@rolling/db/do/credits";
 import { describe, expect, it } from "vitest";
 import type { LedgerLine, LedgerOutcome } from "@rolling/core/credits";
 import { fixtureCatalog } from "@rolling/core/models/__fixtures__/catalog";
@@ -42,9 +43,9 @@ async function ledgerLines(stub: DurableObjectStub<import("../src/do/CreditAccou
 }
 
 describe("CreditAccount DO", () => {
-  it("migrates to schema v2 and knows its workspace", async () => {
+  it("migrates to the latest schema and knows its workspace", async () => {
     const { name, stub } = account();
-    expect(await stub.ping()).toEqual({ ok: true, schemaVersion: 2 });
+    expect(await stub.ping()).toMatchObject({ ok: true, schemaVersion: creditsMigrations.length });
     const wsId = await runInDurableObject(stub, (_i, state) => state.storage.sql.exec("SELECT workspace_id FROM balance").one().workspace_id);
     expect(wsId).toBe(name);
     expect(await stub.balance()).toEqual({ plan: 0, purchased: 0, held: 0, planExpiresAt: null });

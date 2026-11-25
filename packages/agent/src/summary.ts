@@ -2,7 +2,7 @@
  * Thread summary (harness section 4): messages older than the verbatim window
  * are folded into the thread's `summary`, refreshed every 10 turns.
  */
-import type { LlmProvider } from '@rolling/core';
+import { responseCostUsd, type LlmProvider, type TokenPrice } from '@rolling/core';
 import { SUMMARY_EVERY_TURNS, VERBATIM_MESSAGES } from './context';
 import { truncateToTokens } from './tokens';
 import type { ThreadMessage } from './types';
@@ -32,11 +32,14 @@ export async function summarizeThread(args: {
   older: readonly ThreadMessage[];
   idempotencyKey: string;
   signal?: AbortSignal;
-}): Promise<{ summary: string; tokensIn: number; tokensOut: number }> {
+  /** Token price of `model`, for the cost fallback when the gateway reports none (D-012). */
+  price?: TokenPrice | null;
+}): Promise<{ summary: string; tokensIn: number; tokensOut: number; costUsd: number }> {
   const transcript = args.older.map((m) => `${m.role}: ${m.content}`).join('\n');
   let out = '';
   let tokensIn = 0;
   let tokensOut = 0;
+  let costUsd = 0;
   try {
     for await (const ev of args.llm.chat({
       model: args.model,
@@ -57,10 +60,11 @@ export async function summarizeThread(args: {
       else if (ev.type === 'usage') {
         tokensIn += ev.usage.promptTokens;
         tokensOut += ev.usage.completionTokens;
+        costUsd += responseCostUsd(ev.usage, args.price ?? null);
       } else if (ev.type === 'error') throw new Error(ev.error.message);
     }
   } catch {
-    return { summary: fallbackSummary(args.previous, args.older), tokensIn, tokensOut };
+    return { summary: fallbackSummary(args.previous, args.older), tokensIn, tokensOut, costUsd };
   }
-  return { summary: out.trim() ? truncateToTokens(out.trim(), SUMMARY_MAX_TOKENS) : fallbackSummary(args.previous, args.older), tokensIn, tokensOut };
+  return { summary: out.trim() ? truncateToTokens(out.trim(), SUMMARY_MAX_TOKENS) : fallbackSummary(args.previous, args.older), tokensIn, tokensOut, costUsd };
 }

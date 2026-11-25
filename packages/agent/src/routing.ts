@@ -36,11 +36,6 @@ export function resolveAgentLlm(
   }
 }
 
-/** Premium LLMs (not DeepSeek) count more toward the daily turn limit until D-009's open item is decided. */
-export function isPremiumLlm(publicId: string): boolean {
-  return !publicId.startsWith('deepseek-');
-}
-
 const WRITING = /\b(write|rewrite|script|story|dialogue|voice ?over|narration|lines?|copy|tagline|slogan|poem)\b|写|文案|台词|脚本|故事|セリフ|脚本|대본/i;
 const EDITING = /\b(cut|trim|swap|move|lower|louder|quieter|shorter|longer|remove|delete|connect|change|make|set|replace|apply)\b/i;
 

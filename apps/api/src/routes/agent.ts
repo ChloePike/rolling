@@ -1,16 +1,18 @@
 /**
  * Agent routes (M6, docs/api.md → Agent). Members only (D-007: NO_PLAN);
- * a per-workspace daily turn limit protects against abuse. Turns run in the
+ * each turn holds and settles its LLM cost against the plan's monthly agent
+ * allowance in the CreditAccount DO (D-012). Turns run in the
  * AgentSession DO (one per thread) and stream over WebSockets (D-003): the
  * project socket for canvas/editor threads, the user socket for Home/tool
  * threads, and the thread socket `GET /api/agent/threads/:id/ws`.
  */
 import { Hono, type Context } from "hono";
 import { z } from "zod";
-import { DAILY_TURN_LIMITS, dayKey, FIELD_TOOLS, nextDayStart, SKILL_IDS, turnWeight, DEFAULT_AGENT_LLM } from "@rolling/agent";
+import { FIELD_TOOLS, SKILL_IDS } from "@rolling/agent";
 import { PUBLIC_CHAT_MODELS } from "@rolling/core";
 import { newId } from "@rolling/core/ids";
 import type { AgentCaller, AgentError, ApplyResult, ThreadView, TurnSummary } from "../do/AgentSession";
+import { allowancePeriod, allowanceView } from "../agent/allowance";
 import type { AppEnv } from "../env";
 import { requireMember, requireUser, type AuthContext } from "../auth/context";
 import { projectAccess } from "../lib/access";
@@ -61,7 +63,7 @@ function session(env: Env, threadId: string): SessionApi {
   return env.AGENT.get(env.AGENT.idFromName(threadId)) as unknown as SessionApi;
 }
 
-const STATUS = { NOT_FOUND: 404, FORBIDDEN: 403, CONFLICT: 409, VALIDATION_FAILED: 422 } as const;
+const STATUS = { NOT_FOUND: 404, FORBIDDEN: 403, CONFLICT: 409, VALIDATION_FAILED: 422, AGENT_ALLOWANCE_EXHAUSTED: 429 } as const;
 
 function ok<T>(res: T | AgentError): T {
   if (typeof res === "object" && res !== null && (res as { ok?: unknown }).ok === false) {
@@ -90,22 +92,6 @@ async function threadRow(c: Context<AppEnv>, auth: AuthContext, id: string): Pro
   return row;
 }
 
-/** D-007 abuse limit: turns per workspace per UTC day; premium LLMs weigh more (D-009 open item). */
-async function takeTurn(env: Env, auth: AuthContext, llm: string): Promise<void> {
-  const now = Date.now();
-  const day = dayKey(now);
-  const limit = DAILY_TURN_LIMITS[auth.plan!];
-  const weight = turnWeight(llm);
-  const row = await env.DB.prepare("SELECT turns FROM agent_usage WHERE workspace_id = ? AND day = ?").bind(auth.workspaceId, day).first<{ turns: number }>();
-  const used = row?.turns ?? 0;
-  if (used + weight > limit) {
-    throw new ApiError(429, "RATE_LIMITED", "Daily agent limit reached for this workspace", { limit, used, resetsAt: nextDayStart(now) });
-  }
-  await env.DB.prepare("INSERT INTO agent_usage (workspace_id, day, turns) VALUES (?, ?, ?) ON CONFLICT (workspace_id, day) DO UPDATE SET turns = turns + excluded.turns")
-    .bind(auth.workspaceId, day, weight)
-    .run();
-}
-
 async function proposalThread(c: Context<AppEnv>, auth: AuthContext, proposalId: string): Promise<string> {
   const row = await c.env.DB.prepare("SELECT thread_id, workspace_id FROM agent_proposals WHERE id = ?").bind(proposalId).first<{ thread_id: string; workspace_id: string }>();
   if (!row || row.workspace_id !== auth.workspaceId) throw new ApiError(404, "NOT_FOUND", "Proposal not found", { proposalId });
@@ -113,6 +99,10 @@ async function proposalThread(c: Context<AppEnv>, auth: AuthContext, proposalId:
 }
 
 export const agent = new Hono<AppEnv>()
+  .get("/allowance", async (c) => {
+    const auth = requireMember(c);
+    return c.json(await allowanceView(c.env, { workspaceId: auth.workspaceId, plan: auth.plan, mature: auth.matureAllowed }));
+  })
   .post("/threads", validate("json", CreateThread), async (c) => {
     const auth = requireMember(c);
     const body = c.req.valid("json");
@@ -163,7 +153,7 @@ export const agent = new Hono<AppEnv>()
     const llm = body.llm && PUBLIC_CHAT_MODELS.some((m) => m.id === body.llm) ? body.llm : undefined;
     if (body.llm && !llm) throw new ApiError(400, "VALIDATION_FAILED", "Unknown agent model", { llm: body.llm });
     if (row.project_id) await projectAccess(c, auth, row.project_id);
-    await takeTurn(c.env, auth, llm ?? DEFAULT_AGENT_LLM);
+    const allowance = await allowancePeriod(c.env, auth.workspaceId, auth.plan);
     const turnId = newId("event");
     const result = ok(
       await session(c.env, row.id).send({
@@ -173,6 +163,7 @@ export const agent = new Hono<AppEnv>()
         selection: body.selection,
         ...(llm ? { llm } : {}),
         turnId,
+        allowance,
       }),
     );
     return c.json(result);

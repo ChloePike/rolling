@@ -21,6 +21,7 @@ const STATUS: Record<LedgerErrorCode, [ContentfulStatusCode, ErrorCode]> = {
   JOB_CLOSED: [409, "CONFLICT"],
   IDEMPOTENCY_CONFLICT: [409, "CONFLICT"],
   BAD_REQUEST: [400, "BAD_REQUEST"],
+  AGENT_ALLOWANCE_EXHAUSTED: [429, "AGENT_ALLOWANCE_EXHAUSTED"],
 };
 
 /** The value of a CreditAccount outcome, or the matching ApiError (error envelope codes from docs/api.md). */

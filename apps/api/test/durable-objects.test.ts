@@ -1,10 +1,11 @@
 import { env } from "cloudflare:test";
+import { creditsMigrations } from "@rolling/db/do/credits";
 import { describe, expect, it } from "vitest";
 
 describe("Durable Object stubs", () => {
   it("CreditAccount migrates and answers ping()", async () => {
     const stub = env.CREDITS.get(env.CREDITS.idFromName("ws_test"));
-    expect(await stub.ping()).toEqual({ ok: true, schemaVersion: 2 });
+    expect(await stub.ping()).toMatchObject({ ok: true, schemaVersion: creditsMigrations.length });
   });
 
   it("AgentSession migrates and answers ping()", async () => {

@@ -1,8 +1,15 @@
 import { DurableObject } from "cloudflare:workers";
 import {
+  AgentAllowanceLedger,
   CreditLedger,
   LedgerError,
   type AccountState,
+  type AgentHoldInput,
+  type AgentHoldResult,
+  type AgentPeriodInput,
+  type AgentReleaseResult,
+  type AgentSettleResult,
+  type AgentUsageResult,
   type AutoTopUpSettings,
   type Balance,
   type ExpireResult,
@@ -24,6 +31,7 @@ import { newId } from "@rolling/core/ids";
 import type { PlanId } from "@rolling/core/pricing/config";
 import { creditsMigrations } from "@rolling/db/do/credits";
 import { migrateDurableObject } from "@rolling/db/do/migrate";
+import { SqlAgentAllowanceStore } from "./agentAllowanceStore";
 import { SqlLedgerStore } from "./creditStore";
 
 /** Lines per `ledger-mirror` message (well under the 128 KB message limit). */
@@ -70,6 +78,8 @@ export class CreditAccount extends DurableObject<Env> {
   private schemaVersion = 0;
   private readonly store: SqlLedgerStore;
   private readonly ledger: CreditLedger;
+  /** Agent allowance holds (D-012), serialized with the credit ledger. */
+  private readonly agent: AgentAllowanceLedger;
   private lastAutoTopUpWindow: string | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
@@ -79,6 +89,7 @@ export class CreditAccount extends DurableObject<Env> {
       now: () => Date.now(),
       newId: (kind) => newId(kind),
     });
+    this.agent = new AgentAllowanceLedger(new SqlAgentAllowanceStore(ctx.storage), { now: () => Date.now() });
     ctx.blockConcurrencyWhile(async () => {
       this.schemaVersion = migrateDurableObject(ctx.storage, creditsMigrations);
       const name = ctx.id.name;
@@ -153,6 +164,27 @@ export class CreditAccount extends DurableObject<Env> {
     return this.op(() => this.ledger.setAutoTopUp(settings));
   }
 
+  // --- agent allowance (D-012) -----------------------------------------------
+
+  /** Reserves a turn's estimate; AGENT_ALLOWANCE_EXHAUSTED when used + held + estimate > allowance. */
+  async agentHold(input: AgentHoldInput): Promise<LedgerOutcome<AgentHoldResult>> {
+    return this.op(() => this.agent.hold(input));
+  }
+
+  /** Charges a turn's actual LLM cost (may exceed the hold; the overrun is recorded). */
+  async agentSettle(input: { turnId: string; actualUsd: number; idemKey: string }): Promise<LedgerOutcome<AgentSettleResult>> {
+    return this.op(() => this.agent.settle(input));
+  }
+
+  /** Drops a hold without cost (cancel or failure before any LLM cost). */
+  async agentRelease(input: { turnId: string; idemKey: string }): Promise<LedgerOutcome<AgentReleaseResult>> {
+    return this.op(() => this.agent.release(input));
+  }
+
+  async agentUsage(input: AgentPeriodInput & { models?: { id: string; fallbackUsd: number }[] }): Promise<AgentUsageResult> {
+    return this.agent.usage(input);
+  }
+
   // --- after-commit effects --------------------------------------------------
 
   private async op<T>(fn: () => T): Promise<LedgerOutcome<T>> {
@@ -223,6 +255,8 @@ export class CreditAccount extends DurableObject<Env> {
     const times: number[] = [];
     const exp = this.ledger.nextExpiry();
     if (exp !== null) times.push(exp);
+    const stale = this.agent.nextStaleAt();
+    if (stale !== null) times.push(stale);
     if (retryMirror || this.store.unmirroredLines(1).length > 0) times.push(Date.now() + MIRROR_RETRY_MS);
     if (times.length === 0) return;
     const at = Math.min(...times);
@@ -230,9 +264,10 @@ export class CreditAccount extends DurableObject<Env> {
     if (current === null || current > at || current < Date.now()) await this.ctx.storage.setAlarm(at);
   }
 
-  /** Period end (expire plan credits, next yearly slice), mirror retries, housekeeping. */
+  /** Period end (expire plan credits, next yearly slice), stale agent holds, mirror retries, housekeeping. */
   override async alarm(): Promise<void> {
     this.ledger.expire();
+    this.agent.expireStale();
     const sent = await this.flushMirror();
     await this.maybeAutoTopUp();
     this.store.purge(Date.now(), IDEM_KEEP_MS);

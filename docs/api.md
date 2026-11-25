@@ -387,10 +387,11 @@ Uploads are only visible to their uploader. They expire 7 days after creation (R
 
 ## Agent (M6)
 
-Members only: every route that runs or applies agent work returns `402 NO_PLAN` without an active plan (D-007). Agent turns are free; a per-workspace daily turn limit (placeholder: Starter 150, Plus 400, Pro 1,500 per UTC day; non-DeepSeek LLMs count 10 turns each until D-009's open item is decided) returns `429 RATE_LIMITED` with `data: { limit, used, resetsAt }`. Proposals never spend credits or change anything until Apply.
+Members only: every route that runs or applies agent work returns `402 NO_PLAN` without an active plan (D-007). Agent turns spend no credits; they draw on the plan's monthly **agent allowance** in USD of gateway cost (D-012: Starter $1.20, Plus $3.50, Pro $12.50; resets on the billing period start, else the UTC calendar month). Each turn holds its estimate in the CreditAccount DO before the first LLM call and settles its actual cost when it ends; when used + held + estimate > allowance the send returns `429 AGENT_ALLOWANCE_EXHAUSTED` with `data: { allowanceUsd, usedUsd, resetsAt, model }` (`resetsAt` epoch ms, `model` the public LLM id). Proposals never spend credits or change anything until Apply.
 
 | Method | Path | Notes |
 |---|---|---|
+| GET | `/api/agent/allowance` | → `{ plan, allowanceUsd, usedUsd, resetsAt, models: [{ id, name, estTurnUsd, turnsLeft }] }`. `usedUsd` includes turns in flight; `models` lists public LLM ids only (estimate: the workspace's rolling average for the model, else token prices × 10k in / 1.2k out). |
 | POST | `/api/agent/threads` | `{ projectId?, surface: home\|canvas\|editor\|tool, skill?: tv-ad\|product-showcase\|storyboard\|ai-comic\|brand-kit, tool?: quick\|remix\|avatar\|character }` → `201 { thread: Thread }`. canvas/editor need `projectId`; tool needs `tool`. |
 | GET | `/api/agent/threads` | `?projectId=&first=` → `{ items: [{ id, projectId, surface, skill, title, updatedAt }] }` (recent first) |
 | GET | `/api/agent/threads/:id` | `{ thread: Thread }` |
@@ -412,6 +413,7 @@ Members only: every route that runs or applies agent work returns `402 NO_PLAN` 
 | `proposal.updated` | `{ threadId, proposalId, status: applied\|discarded\|stale, reason? }` |
 | `agent.done` | `{ threadId, turnId, messageId, reason, proposalId }` |
 | `agent.error` | `{ threadId, turnId, code, message }` |
+| `agent.allowance` | Same body as `GET /api/agent/allowance`. Sent on the **user socket** of the user who sent the turn, after the turn's cost is settled (no `threadId`). |
 
 ```ts
 interface Thread {

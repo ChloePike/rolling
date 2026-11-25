@@ -48,6 +48,7 @@ export const ServerMessageType = z.enum([
   'agent.tool',
   'agent.done',
   'agent.error',
+  'agent.allowance',
   'activity.updated',
   'notification',
   'prefs.changed',

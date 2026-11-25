@@ -8,7 +8,7 @@
  *     └─ text: streamed
  *   ends when the model stops calling tools, after a proposal, after 8 tool calls, or on cancel.
  */
-import type { ChatMessage, ChatUsage, LlmProvider, ToolCall } from '@rolling/core';
+import { AgentCostMeter, tokenPrice, type ChatMessage, type ChatUsage, type LlmProvider, type ToolCall } from '@rolling/core';
 import { SAFETY_BLOCKED_MESSAGE, type ReferenceSource, type SafetyReference } from '@rolling/core/safety';
 import { buildContext, type ThreadState, type TurnInput } from './context';
 import type { AccountSnapshot, AgentPorts } from './ports';
@@ -59,7 +59,12 @@ export interface TurnResult {
   proposal: Proposal | null;
   reason: TurnEndReason;
   error: { code: string; message: string } | null;
-  usage: { promptTokens: number; completionTokens: number; costUsd: number | null };
+  /**
+   * `costUsd`: sum of the gateway's `usage.cost` (null when none reported).
+   * `chargedUsd`: what the turn costs the allowance (D-012): `usage.cost` per
+   * response, else tokens × the gateway model's token price.
+   */
+  usage: { promptTokens: number; completionTokens: number; costUsd: number | null; chargedUsd: number };
   contextTokens: number;
   toolCalls: number;
   llmCalls: number;
@@ -107,7 +112,10 @@ export async function runTurn(opts: RunTurnOptions): Promise<TurnResult> {
   const temperature = temperatureFor(thread.surface, input.text, thread.skill);
 
   const messages: ChatMessage[] = [...ctx.messages];
-  const usage = { promptTokens: 0, completionTokens: 0, costUsd: null as number | null };
+  const usage = { promptTokens: 0, completionTokens: 0, costUsd: null as number | null, chargedUsd: 0 };
+  const gatewayModel = opts.ports.models.chatModels().find((m) => m.id === llm.gatewayId);
+  const price = gatewayModel ? tokenPrice(gatewayModel) : null;
+  const meter = new AgentCostMeter();
   const trace: ToolTraceEntry[] = [];
   let text = '';
   let proposal: Proposal | null = null;
@@ -139,6 +147,8 @@ export async function runTurn(opts: RunTurnOptions): Promise<TurnResult> {
     usage.promptTokens += u.promptTokens;
     usage.completionTokens += u.completionTokens;
     if (u.costUsd !== null) usage.costUsd = (usage.costUsd ?? 0) + u.costUsd;
+    meter.add('turn', u, price);
+    usage.chargedUsd = meter.chargedUsd;
   };
 
   /** One streamed LLM call. Retries once when it fails before producing anything. */

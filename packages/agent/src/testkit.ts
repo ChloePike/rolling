@@ -78,7 +78,8 @@ export interface ScriptedStep {
   throws?: { code: string; message: string; retryable: boolean };
   /** Wait before finishing (cancel tests); honors the request signal. */
   delayMs?: number;
-  usage?: { promptTokens: number; completionTokens: number };
+  /** `costUsd` is the gateway's `usage.cost` (default null: not reported). */
+  usage?: { promptTokens: number; completionTokens: number; costUsd?: number | null };
 }
 
 export type ScriptedReply = ScriptedStep | ((req: ChatRequest, callIndex: number) => ScriptedStep);
@@ -118,7 +119,7 @@ export class ScriptedLlm implements LlmProvider {
         yield { type: 'tool_call', call: { id: c.id ?? `call_${index}_${i}`, name: c.name, arguments: typeof c.args === 'string' ? c.args : JSON.stringify(c.args) } };
       }
       const u = step.usage ?? { promptTokens: 1000, completionTokens: 100 };
-      yield { type: 'usage', usage: { ...u, totalTokens: u.promptTokens + u.completionTokens, cachedTokens: 0, costUsd: null } };
+      yield { type: 'usage', usage: { promptTokens: u.promptTokens, completionTokens: u.completionTokens, totalTokens: u.promptTokens + u.completionTokens, cachedTokens: 0, costUsd: u.costUsd ?? null } };
       yield { type: 'done', id: `cmpl_${index}`, finishReason: step.toolCalls?.length ? 'tool_calls' : 'stop' };
     })();
   }
