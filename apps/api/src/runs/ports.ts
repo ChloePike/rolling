@@ -26,7 +26,7 @@ export interface RoomPort {
   planRun(caller: RoomCaller, input: { scope: RunScope; nodeIds?: string[] }): Promise<{ ok: true; revision: number; items: StructuralItem[] } | RoomError>;
   getGraph(caller: RoomCaller): Promise<{ state: GraphState; assets: Record<string, string> } | RoomError>;
   inputDigest(caller: RoomCaller, nodeId: string): Promise<{ ok: true; digest: string } | RoomError>;
-  addVersion(input: { nodeId: string; assetId: string | null; inputDigest: string; model?: string | null; jobId?: string | null; output?: unknown }): Promise<
+  addVersion(input: { nodeId: string; assetId: string | null; inputDigest: string; model?: string | null; jobId?: string | null; output?: unknown; rating?: string | null }): Promise<
     { ok: true; version: VersionInfo; statuses: Record<string, NodeStatus> } | RoomError
   >;
   /** Node queued / generating with progress 0..1; broadcasts `job.progress`. */

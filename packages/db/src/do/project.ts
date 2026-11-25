@@ -73,6 +73,8 @@ export const nodeVersions = sqliteTable(
     model: text("model"),
     jobId: text("job_id"),
     createdAt: integer("created_at").notNull(),
+    /** D-005 content rating of the output (`safe | suggestive | explicit`) from the generation postCheck; null when unrated (DO migration 5). */
+    rating: text("rating"),
   },
   (t) => [unique().on(t.nodeId, t.n)],
 );
@@ -149,6 +151,14 @@ ALTER TABLE nodes ADD COLUMN collapsed INTEGER NOT NULL DEFAULT 0;
     name: "edge_reroutes",
     sql: `
 ALTER TABLE edges ADD COLUMN reroutes TEXT;
+`,
+  },
+  {
+    version: 5,
+    name: "version_rating",
+    sql: `
+ALTER TABLE node_versions ADD COLUMN rating TEXT;
+UPDATE node_versions SET rating = json_extract(output, '$.rating') WHERE output IS NOT NULL AND json_valid(output) AND json_type(output, '$.rating') = 'text';
 `,
   },
 ];

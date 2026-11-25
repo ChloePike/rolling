@@ -373,8 +373,16 @@ export async function commitJob(env: Env, ctx: JobContext, stored: Stored, prepa
   let version: number | null = null;
   if (ctx.projectId && ctx.nodeId) {
     const room = p.room(ctx.projectId);
-    // The rating travels in the version output until ProjectRoom stores it as a column (M3, docs/api.md → Safety).
-    const r = await room.addVersion({ nodeId: ctx.nodeId, assetId: stored.assetIds[0] ?? null, inputDigest: prepared.digest, model: modelId, jobId: ctx.jobId, output: { assetIds: stored.assetIds, rating: stored.rating?.rating ?? null } });
+    // The postCheck's rating is stored on the version (ProjectRoom `node_versions.rating`) and kept in `output.rating` for older readers.
+    const r = await room.addVersion({
+      nodeId: ctx.nodeId,
+      assetId: stored.assetIds[0] ?? null,
+      inputDigest: prepared.digest,
+      model: modelId,
+      jobId: ctx.jobId,
+      output: { assetIds: stored.assetIds, rating: stored.rating?.rating ?? null },
+      rating: stored.rating?.rating ?? null,
+    });
     if (!isRoomError(r)) {
       version = r.version.n;
       await quietly("job.done", () => room.broadcast("job.done", { jobId: ctx.jobId, nodeId: ctx.nodeId, version: { n: r.version.n, total: r.version.n }, assetId: stored.assetIds[0] ?? null }));

@@ -70,6 +70,8 @@ export interface VersionInfo {
   model: string | null;
   jobId: string | null;
   createdAt: number;
+  /** D-005 content rating of the output (`safe | suggestive | explicit`), null when unrated. */
+  rating: string | null;
   active: boolean;
   /** Made with inputs that differ from the node's current inputs ("Input changed"). */
   stale: boolean;
@@ -84,6 +86,8 @@ export interface TimelineState {
 /** Node row with the runtime fields ProjectRoom fills in (versions, active asset). */
 export interface RoomNodeRow extends NodeRow {
   asset_id?: string | null;
+  /** D-005 content rating of the active version (null when unrated). */
+  version_rating?: string | null;
 }
 
 export interface RoomSnapshot extends ProjectSnapshot {
@@ -106,7 +110,12 @@ interface ActiveVersion {
   total: number;
   assetId: string | null;
   createdAt: number;
+  rating: string | null;
 }
+
+const RATINGS = new Set(["safe", "suggestive", "explicit"]);
+/** `suggestive` and `explicit` never appear on shared surfaces (D-005). */
+export const isMatureVersionRating = (r: string | null | undefined): boolean => r === "suggestive" || r === "explicit";
 
 /** Debounce for the D1 projects index (title, updated_at, node_count, thumbnail). */
 export const INDEX_DEBOUNCE_MS = 2000;
@@ -193,13 +202,18 @@ export class ProjectRoom extends DurableObject<Env> {
   }
 
   /** Current graph (GraphState) with active version assets, for quotes, sharing and the agent. */
-  async getGraph(caller: RoomCaller): Promise<{ state: GraphState; assets: Record<string, string> } | RoomError> {
+  /** Graph plus the active version's asset and content rating per node (`ratings` only lists rated nodes). */
+  async getGraph(caller: RoomCaller): Promise<{ state: GraphState; assets: Record<string, string>; ratings: Record<string, string> } | RoomError> {
     const denied = this.check(caller, false);
     if (denied) return denied;
     const state = this.loadState();
     const assets: Record<string, string> = {};
-    for (const [nodeId, v] of this.activeVersions()) if (v.assetId) assets[nodeId] = v.assetId;
-    return { state, assets };
+    const ratings: Record<string, string> = {};
+    for (const [nodeId, v] of this.activeVersions()) {
+      if (v.assetId) assets[nodeId] = v.assetId;
+      if (v.rating) ratings[nodeId] = v.rating;
+    }
+    return { state, assets, ratings };
   }
 
   async applyPatch(caller: RoomCaller, patch: { baseRevision: number; ops: unknown[]; origin?: Origin }): Promise<PatchOk | RoomError> {
@@ -234,6 +248,8 @@ export class ProjectRoom extends DurableObject<Env> {
    * Records a generated output as the node's new active version (called by the
    * Generate workflow's `commit` step with the digest the run was quoted with).
    * Broadcasts `node.version`; downstream nodes become "Input changed".
+   * `rating` is the postCheck's content rating (D-005); without it,
+   * `output.rating` is used when it is a valid rating.
    */
   async addVersion(input: {
     nodeId: string;
@@ -242,6 +258,7 @@ export class ProjectRoom extends DurableObject<Env> {
     model?: string | null;
     jobId?: string | null;
     output?: unknown;
+    rating?: string | null;
   }): Promise<{ ok: true; version: VersionInfo; statuses: Record<string, NodeStatus> } | RoomError> {
     const sql = this.ctx.storage.sql;
     const result = this.ctx.storage.transactionSync(() => {
@@ -250,8 +267,11 @@ export class ProjectRoom extends DurableObject<Env> {
       const n = Number(sql.exec<{ n: number }>("SELECT COALESCE(MAX(n), 0) AS n FROM node_versions WHERE node_id = ?", input.nodeId).one().n) + 1;
       const id = newId("version");
       const now = Date.now();
+      const fromOutput = (input.output as { rating?: unknown } | null | undefined)?.rating;
+      const rawRating = input.rating ?? (typeof fromOutput === "string" ? fromOutput : null);
+      const rating = rawRating && RATINGS.has(rawRating) ? rawRating : null;
       sql.exec(
-        "INSERT INTO node_versions (id, node_id, n, asset_id, output, input_digest, model, job_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO node_versions (id, node_id, n, asset_id, output, input_digest, model, job_id, created_at, rating) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         id,
         input.nodeId,
         n,
@@ -261,6 +281,7 @@ export class ProjectRoom extends DurableObject<Env> {
         input.model ?? null,
         input.jobId ?? null,
         now,
+        rating,
       );
       // A finished run always leaves the runtime states; staleness decides done vs outdated.
       sql.exec("UPDATE nodes SET active_version_id = ?, status = 'idle', updated_at = ? WHERE id = ?", id, now, input.nodeId);
@@ -816,14 +837,17 @@ export class ProjectRoom extends DurableObject<Env> {
 
   private activeVersions(): Map<string, ActiveVersion> {
     const rows = this.ctx.storage.sql
-      .exec<{ node_id: string; id: string; input_digest: string; n: number; asset_id: string | null; created_at: number; total: number }>(
-        `SELECT v.node_id, v.id, v.input_digest, v.n, v.asset_id, v.created_at,
+      .exec<{ node_id: string; id: string; input_digest: string; n: number; asset_id: string | null; created_at: number; rating: string | null; total: number }>(
+        `SELECT v.node_id, v.id, v.input_digest, v.n, v.asset_id, v.created_at, v.rating,
                 (SELECT COUNT(*) FROM node_versions x WHERE x.node_id = v.node_id) AS total
          FROM nodes n JOIN node_versions v ON v.id = n.active_version_id`,
       )
       .toArray();
     return new Map(
-      rows.map((r) => [r.node_id, { versionId: r.id, digest: r.input_digest, n: Number(r.n), total: Number(r.total), assetId: r.asset_id, createdAt: Number(r.created_at) }]),
+      rows.map((r) => [
+        r.node_id,
+        { versionId: r.id, digest: r.input_digest, n: Number(r.n), total: Number(r.total), assetId: r.asset_id, createdAt: Number(r.created_at), rating: r.rating ?? null },
+      ]),
     );
   }
 
@@ -852,7 +876,7 @@ export class ProjectRoom extends DurableObject<Env> {
     const active = sql.exec<{ a: string | null }>("SELECT active_version_id AS a FROM nodes WHERE id = ?", nodeId).toArray()[0]?.a ?? null;
     const digest = this.currentDigests().get(nodeId) ?? null;
     return sql
-      .exec<{ id: string; node_id: string; n: number; asset_id: string | null; output: string | null; input_digest: string; model: string | null; job_id: string | null; created_at: number }>(
+      .exec<{ id: string; node_id: string; n: number; asset_id: string | null; output: string | null; input_digest: string; model: string | null; job_id: string | null; created_at: number; rating: string | null }>(
         "SELECT * FROM node_versions WHERE node_id = ? ORDER BY n DESC",
         nodeId,
       )
@@ -867,6 +891,7 @@ export class ProjectRoom extends DurableObject<Env> {
         model: v.model,
         jobId: v.job_id,
         createdAt: Number(v.created_at),
+        rating: v.rating ?? null,
         active: v.id === active,
         stale: digest !== null && v.input_digest !== digest,
       }));
@@ -874,7 +899,7 @@ export class ProjectRoom extends DurableObject<Env> {
 
   private versionPayload(v: VersionInfo) {
     const total = Number(this.ctx.storage.sql.exec<{ c: number }>("SELECT COUNT(*) AS c FROM node_versions WHERE node_id = ?", v.nodeId).one().c);
-    return { id: v.id, n: v.n, total, assetId: v.assetId, active: v.active, stale: v.stale, createdAt: v.createdAt };
+    return { id: v.id, n: v.n, total, assetId: v.assetId, rating: v.rating, active: v.active, stale: v.stale, createdAt: v.createdAt };
   }
 
   private snapshot(): RoomSnapshot {
@@ -882,7 +907,7 @@ export class ProjectRoom extends DurableObject<Env> {
     const active = this.activeVersions();
     const nodes = sql.exec<NodeRow & Record<string, SqlStorageValue>>("SELECT * FROM nodes ORDER BY rowid").toArray().map((r): RoomNodeRow => {
       const v = active.get(r.id);
-      return { ...r, ...(v ? { version_n: v.n, version_total: v.total, asset_id: v.assetId } : {}) };
+      return { ...r, ...(v ? { version_n: v.n, version_total: v.total, asset_id: v.assetId, version_rating: v.rating } : {}) };
     });
     const timelineRow = sql.exec<{ canvas_id: string; edl: string; revision: number }>("SELECT * FROM timelines LIMIT 1").toArray()[0];
     return {
@@ -921,8 +946,12 @@ export class ProjectRoom extends DurableObject<Env> {
 
   private async pickThumbnail(): Promise<string | null> {
     const sql = this.ctx.storage.sql;
+    // Mature-rated versions (D-005) never become the project thumbnail; D1 `assets.mature` is re-checked below.
     const candidates = [
-      ...[...this.activeVersions().values()].sort((a, b) => b.createdAt - a.createdAt).map((v) => v.assetId),
+      ...[...this.activeVersions().values()]
+        .filter((v) => !isMatureVersionRating(v.rating))
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .map((v) => v.assetId),
       ...sql
         .exec<{ params: string }>("SELECT params FROM nodes WHERE kind = 'asset' ORDER BY updated_at DESC LIMIT 20")
         .toArray()

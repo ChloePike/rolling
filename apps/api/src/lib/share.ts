@@ -3,6 +3,9 @@
  * (`shares/<shareId>.json`) plus a `share_links` row. Mature outputs are never
  * included (D-005): nodes whose output, referenced asset or model is mature
  * are dropped with their edges, and mature asset ids are scrubbed from params.
+ * The active version's content rating (ProjectRoom `node_versions.rating`)
+ * counts too: `suggestive` / `explicit` versions are dropped even when the
+ * D1 asset row is not (yet) marked mature.
  * The public route re-checks every asset at read time and signs fresh URLs.
  */
 import type { GraphState } from "@rolling/core/graph";
@@ -83,9 +86,10 @@ function referencedAssetIds(params: Record<string, unknown>): string[] {
 /** Builds the share document from a graph; pure apart from the D1 lookups. */
 export async function buildShareDoc(
   env: Env,
-  input: { shareId: string; project: ProjectRow; graph: { state: GraphState; assets: Record<string, string> } },
+  input: { shareId: string; project: ProjectRow; graph: { state: GraphState; assets: Record<string, string>; ratings?: Record<string, string> } },
 ): Promise<ShareDoc> {
   const { state, assets: activeAssets } = input.graph;
+  const ratings = input.graph.ratings ?? {};
   const referenced = new Set<string>(Object.values(activeAssets));
   for (const n of state.nodes) for (const id of referencedAssetIds(n.params)) referenced.add(id);
   const rows = await loadAssets(env, [...referenced]);
@@ -107,6 +111,8 @@ export async function buildShareDoc(
     const own = activeAssets[n.id];
     const isMature =
       n.params.mature === true ||
+      ratings[n.id] === "suggestive" ||
+      ratings[n.id] === "explicit" ||
       (typeof n.params.model === "string" && matureModels.has(n.params.model)) ||
       (own !== undefined && matureAssets.has(own)) ||
       (n.kind === "asset" && referencedAssetIds(n.params).some((id) => matureAssets.has(id)));
@@ -163,7 +169,7 @@ function shareInfo(env: Env, id: string, allowDownload: boolean, createdAt: numb
 /** Creates the share link, or refreshes the snapshot of the project's active link (same id). */
 export async function createShare(
   env: Env,
-  input: { project: ProjectRow; userId: string; allowDownload: boolean; graph: { state: GraphState; assets: Record<string, string> } },
+  input: { project: ProjectRow; userId: string; allowDownload: boolean; graph: { state: GraphState; assets: Record<string, string>; ratings?: Record<string, string> } },
 ): Promise<ShareInfo> {
   const existing = await env.DB.prepare("SELECT id FROM share_links WHERE project_id = ? AND revoked_at IS NULL ORDER BY created_at DESC LIMIT 1")
     .bind(input.project.id)

@@ -14,6 +14,7 @@ import { projectRoom } from "../src/lib/access";
 import { syncModels } from "../src/models/sync";
 import { setGatewayFetchForTests } from "../src/runs/provider";
 import { agentSafetyGate, rateAsset, setSafetyLlmForTests } from "../src/safety/service";
+import { processAsset } from "../src/queues/mediaProcess";
 
 const BASE = "https://example.com";
 const DAY = 86_400_000;
@@ -379,6 +380,16 @@ describe("safety: upload rating hook (media.process)", () => {
     expect((await rateAsset(env, id)).blocked).toBe(true);
     expect((await env.DB.prepare("SELECT status FROM assets WHERE id = ?").bind(id).first<any>()).status).toBe("failed");
     expect((await events(ws)).map((e) => [e.stage, e.verdict])).toEqual([["upload", "block"]]);
+  });
+
+  it("rates an upload from the media-process consumer once it is ready (M3 hook)", async () => {
+    const { user, ws } = await member("sq");
+    const id = await uploaded(ws, user);
+    const row = await env.DB.prepare("SELECT r2_key FROM assets WHERE id = ?").bind(id).first<{ r2_key: string }>();
+    await env.DB.prepare("UPDATE assets SET status = 'processing' WHERE id = ?").bind(id).run();
+    safety.image = { rating: "suggestive", confidence: 0.8 };
+    expect(await processAsset(env, { assetId: id, r2Key: row!.r2_key, kind: "image" })).toBe("done");
+    expect(await env.DB.prepare("SELECT rating, mature, status FROM assets WHERE id = ?").bind(id).first()).toEqual({ rating: "suggestive", mature: 1, status: "ready" });
   });
 
   it("leaves the rating empty when the classifier is down", async () => {

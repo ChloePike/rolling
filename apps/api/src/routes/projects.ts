@@ -195,7 +195,7 @@ export const nodes = new Hono<AppEnv>()
     return c.json({ version, statuses: result.statuses });
   });
 
-async function versionViews<V extends { assetId: string | null }>(env: Env, _auth: AuthContext, mayViewMature: boolean, versions: V[]) {
+async function versionViews<V extends { assetId: string | null; rating?: string | null }>(env: Env, _auth: AuthContext, mayViewMature: boolean, versions: V[]) {
   const ids = [...new Set(versions.map((v) => v.assetId).filter((x): x is string => !!x))];
   const rows = ids.length
     ? (
@@ -215,11 +215,13 @@ async function versionViews<V extends { assetId: string | null }>(env: Env, _aut
       } catch {
         // No meta.
       }
+      // D-005: the version's own rating counts even before the asset row is marked mature.
+      const mature = a?.mature === 1 || v.rating === "suggestive" || v.rating === "explicit";
       const ref = (key: string | undefined) =>
-        a && key ? mediaUrlFor(env, { key, workspaceId: a.workspace_id, mature: a.mature === 1 }, { mayViewMature }) : Promise.resolve(null);
+        a && key ? mediaUrlFor(env, { key, workspaceId: a.workspace_id, mature }, { mayViewMature }) : Promise.resolve(null);
       return {
         ...v,
-        mature: a?.mature === 1,
+        mature,
         url: await ref(a?.r2_key),
         thumbUrl: await ref(thumb ?? (a?.kind === "image" ? a.r2_key : undefined)),
       };

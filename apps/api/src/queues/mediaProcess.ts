@@ -9,9 +9,14 @@
  *   `meta.processing = "pending"` so it is usable; a later re-queue fills in
  *   thumbnails. `MEDIA_CONTAINER=off` skips the container (tests, local dev
  *   without Docker). Other failures retry (max_retries in wrangler) and then go to the DLQ.
+ * - Safety (D-005): once an image is ready, or a video is ready with its poster,
+ *   `rateAsset` stores its content rating (`assets.rating`, `mature`) and fails
+ *   the asset on a hard-limit violation. Pending videos are rated when the
+ *   re-queue (cron, `requeuePendingMedia`) fills in the poster.
  */
 import { z } from "zod";
 import { assetMeta, signMediaUrl, type AssetRow } from "../lib/mediaUrls";
+import { rateAsset } from "../safety/service";
 
 export const MediaProcessMessage = z.object({ assetId: z.string(), r2Key: z.string(), kind: z.string() });
 export type MediaProcessMessage = z.infer<typeof MediaProcessMessage>;
@@ -84,17 +89,29 @@ async function processAv(env: Env, row: AssetRow, meta: Record<string, unknown>)
   return next;
 }
 
+/** Rates a ready upload (D-005). A classifier outage leaves it unrated (logged); it never fails processing. */
+async function rateReady(env: Env, assetId: string): Promise<void> {
+  try {
+    const out = await rateAsset(env, assetId);
+    if (out.blocked) console.warn(JSON.stringify({ msg: "media-process: upload blocked by safety", assetId }));
+  } catch (err) {
+    console.error(JSON.stringify({ msg: "media-process: rating failed, asset left unrated", assetId, error: String(err) }));
+  }
+}
+
 export async function processAsset(env: Env, msg: MediaProcessMessage): Promise<"done" | "pending" | "skipped"> {
   const row = await env.DB.prepare("SELECT * FROM assets WHERE id = ?").bind(msg.assetId).first<AssetRow>();
   if (!row || row.r2_key !== msg.r2Key || row.status === "uploading") return "skipped";
   const meta = assetMeta(row);
   if (row.kind === "image") {
     await updateAsset(env, row.id, "ready", await processImage(env, row, meta));
+    await rateReady(env, row.id);
     return "done";
   }
   if (row.kind === "video" || row.kind === "audio") {
     try {
       await updateAsset(env, row.id, "ready", await processAv(env, row, meta));
+      if (row.kind === "video") await rateReady(env, row.id);
       return "done";
     } catch (err) {
       if (!(err instanceof ContainerUnavailable)) throw err;

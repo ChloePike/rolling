@@ -282,7 +282,27 @@ describe("node versions and staleness", () => {
     expect((await a.next("node.version")).payload).toMatchObject({ nodeId: ids.key, version: { n: 1, active: true } });
 
     const snap = (await room.getSnapshot(caller)) as any;
-    expect(snap.nodes.find((n: any) => n.id === ids.key)).toMatchObject({ status: "outdated", version_n: 1, version_total: 2, asset_id: "ast_K1" });
+    expect(snap.nodes.find((n: any) => n.id === ids.key)).toMatchObject({ status: "outdated", version_n: 1, version_total: 2, asset_id: "ast_K1", version_rating: null });
+
+    // D-005 rating column: from the postCheck, else output.rating; in versions, node.version and snapshots.
+    const rated = await room.addVersion({ nodeId: ids.shot, assetId: "ast_S2", inputDigest: "dg_r", rating: "explicit" });
+    expect(rated).toMatchObject({ ok: true, version: { rating: "explicit" } });
+    expect((await a.next("node.version")).payload.version).toMatchObject({ n: 2, rating: "explicit" });
+    const fromOutput = await room.addVersion({ nodeId: ids.shot, assetId: "ast_S3", inputDigest: "dg_r2", output: { rating: "safe" } });
+    expect(fromOutput).toMatchObject({ ok: true, version: { rating: "safe" } });
+    await a.next("node.version");
+    const bogus = await room.addVersion({ nodeId: ids.shot, assetId: "ast_S4", inputDigest: "dg_r3", rating: "spicy" });
+    expect(bogus).toMatchObject({ ok: true, version: { rating: null } });
+    await a.next("node.version");
+    const shotVersions = (await (await api(alice, `/api/nodes/${ids.shot}/versions?projectId=${projectId}`)).json()) as any;
+    expect(shotVersions.versions.map((v: any) => v.rating)).toEqual([null, "safe", "explicit", null]);
+    const snap2 = (await room.getSnapshot(caller)) as any;
+    expect(snap2.nodes.find((n: any) => n.id === ids.shot)).toMatchObject({ version_n: 4, version_rating: null });
+    const back = shotVersions.versions.find((v: any) => v.n === 2).id;
+    await api(alice, `/api/nodes/${ids.shot}/active`, { method: "POST", json: { projectId, versionId: back } });
+    await a.next("node.version");
+    const snap3 = (await room.getSnapshot(caller)) as any;
+    expect(snap3.nodes.find((n: any) => n.id === ids.shot)).toMatchObject({ version_n: 2, version_rating: "explicit" });
 
     // Run plans for the generation pipeline.
     const planned = await room.planRun(caller, { scope: "upTo", nodeIds: [ids.shot] });

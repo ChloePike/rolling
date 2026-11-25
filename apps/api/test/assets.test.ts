@@ -294,6 +294,49 @@ describe("share links", () => {
   });
 });
 
+describe("share links and version ratings (D-005)", () => {
+  it("drops nodes whose active version is rated suggestive or explicit, even if the asset row is not mature yet", async () => {
+    const alice = user("alice");
+    await ensureWorkspace(alice);
+    const created = await api(alice, "/api/projects", { method: "POST", json: { title: "Rated" } });
+    const projectId = ((await created.json()) as any).project.id as string;
+    const patch = await api(alice, `/api/projects/${projectId}/patch`, {
+      method: "POST",
+      json: {
+        baseRevision: 0,
+        ops: [
+          { op: "addNode", tempId: "ok", kind: "image", title: "Fine", params: { prompt: "a bottle" } },
+          { op: "addNode", tempId: "hot", kind: "image", title: "Rated", params: { prompt: "x" } },
+        ],
+      },
+    });
+    const { idMap } = (await patch.json()) as any;
+    const ok = await upload(alice, pngBytes(), "image/png", "ok.png");
+    const hot = await upload(alice, pngBytes(), "image/png", "hot.png");
+    const room = projectRoom(env, projectId);
+    await room.addVersion({ nodeId: idMap.ok, assetId: ok.assetId, inputDigest: "dg_a", rating: "safe" });
+    const v = await room.addVersion({ nodeId: idMap.hot, assetId: hot.assetId, inputDigest: "dg_b", output: { rating: "suggestive" } });
+    expect(v).toMatchObject({ ok: true, version: { rating: "suggestive" } });
+    const graph = (await room.getGraph({ userId: alice, workspaceId: `ws_dev_${alice}`, canEdit: true })) as any;
+    expect(graph.ratings).toEqual({ [idMap.ok]: "safe", [idMap.hot]: "suggestive" });
+
+    const info = (await (await api(alice, `/api/projects/${projectId}/share`, { method: "POST", json: {} })).json()) as any;
+    const doc = (await (await api(null, `/api/share/${info.shareId}`)).json()) as any;
+    expect(doc.nodes.map((n: any) => n.title)).toEqual(["Fine"]);
+    expect(JSON.stringify(doc)).not.toContain(hot.assetId);
+
+    // The project thumbnail never comes from a mature-rated version.
+    await room.flushIndex();
+    const row = await env.DB.prepare("SELECT thumb_key FROM projects WHERE id = ?").bind(projectId).first<{ thumb_key: string | null }>();
+    const keyOf = async (id: string) => {
+      const a = await env.DB.prepare("SELECT r2_key, meta FROM assets WHERE id = ?").bind(id).first<{ r2_key: string; meta: string }>();
+      return (JSON.parse(a!.meta).thumbKey as string | undefined) ?? a!.r2_key;
+    };
+    expect(row?.thumb_key).toBe(await keyOf(ok.assetId));
+    expect(row?.thumb_key).not.toBe(await keyOf(hot.assetId));
+  });
+});
+
 describe("resumable uploads (D-011)", () => {
   it("resumes by fingerprint after partial parts, re-sends parts idempotently, completes once", async () => {
     const alice = user("alice");
