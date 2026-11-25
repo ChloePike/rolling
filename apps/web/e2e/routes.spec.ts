@@ -1,22 +1,22 @@
 import { expect, test } from '@playwright/test';
 
-/** Every route in handoff section 1 renders its page title from messages/en.json. */
+/** Every route in handoff section 1 renders its page title. The canvas draws its own top bar (no shared header). */
 const ROUTES: Array<{ path: string; title: string; header: boolean; activeNav?: string }> = [
   { path: '/', title: 'Turn an idea into a video', header: true, activeNav: 'Home' },
   { path: '/login', title: 'Welcome back', header: false },
   { path: '/signup', title: 'Create your account', header: false },
-  { path: '/p/prj_demo', title: 'Canvas', header: true, activeNav: 'Canvas' },
-  { path: '/create/quick', title: 'Quick Create', header: true, activeNav: 'Quick Create' },
+  { path: '/p/prj_demo', title: 'Canvas', header: false },
+  { path: '/create/quick', title: 'Quick Create · Two-person product demo', header: true, activeNav: 'Quick Create' },
   { path: '/create/remix', title: 'Remix', header: true, activeNav: 'Remix' },
   { path: '/create/avatar', title: 'Avatar', header: true, activeNav: 'Avatar' },
   { path: '/create/character', title: 'Characters', header: true, activeNav: 'Characters' },
   { path: '/templates', title: 'Templates', header: true },
-  { path: '/assets', title: 'Assets', header: true, activeNav: 'Assets' },
+  { path: '/assets', title: 'All assets', header: true, activeNav: 'Assets' },
   { path: '/assets/public', title: 'Public library', header: true, activeNav: 'Assets' },
   { path: '/activity', title: 'Activity', header: true, activeNav: 'Activity' },
   { path: '/upgrade', title: 'Pick a plan to start creating', header: true },
   { path: '/settings/account', title: 'Settings', header: true },
-  { path: '/u/alex', title: '@alex', header: true },
+  { path: '/u/alex', title: 'Alex Chen', header: true },
 ];
 
 for (const r of ROUTES) {
@@ -33,7 +33,7 @@ for (const r of ROUTES) {
 test('/settings redirects to the default billing section', async ({ page }) => {
   await page.goto('/settings');
   await expect(page).toHaveURL(/\/settings\/billing$/);
-  await expect(page.getByRole('heading', { level: 2 })).toHaveText('Plans and billing');
+  await expect(page.getByRole('heading', { level: 2 })).toHaveText('Plan and billing');
 });
 
 test('unknown settings section and unknown path render "Page not found"', async ({ page }) => {
