@@ -39,6 +39,8 @@ interface CreateRule {
   /** Matches the gateway model id. */
   model?: string;
   fail?: { code: string; message: string };
+  /** With `fail`: fail only this many jobs, then succeed. */
+  failTimes?: number;
   /** Answer the create with this HTTP status once (then succeed). */
   httpError?: { status: number; code: string; shouldRetry?: boolean };
   hold?: boolean;
@@ -114,7 +116,12 @@ const fakeFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       body,
       polls: 0,
       runningPolls: rule?.runningPolls ?? 0,
-      fail: rule?.fail ?? null,
+      fail: (() => {
+        if (!rule?.fail) return null;
+        const f = rule.fail;
+        if (rule.failTimes !== undefined && --rule.failTimes <= 0) delete rule.fail;
+        return f;
+      })(),
       hold: rule?.hold ?? false,
       done: false,
       costUsd: rule?.costUsd ?? (kind === "video" ? 0.1 : 0.01),
@@ -450,7 +457,35 @@ describe("runs: failures and refunds", () => {
     expect(await available(ws)).toBe(before);
   });
 
-  it("retries an Auto run once on the next fallback model under the same hold", async () => {
+  it("retries a transient provider failure on the same model, charging only the attempt that worked", async () => {
+    const { user, ws } = await member("transient");
+    const { id, ids } = await project(user, ws, [{ kind: "image", title: "Key", params: KEYFRAME }], []);
+    fake.rules.push({ model: "bytedance/seedream-5.0-lite", fail: { code: "upstream_error", message: "context deadline exceeded" }, failTimes: 1 });
+    const q = await quote(user, { projectId: id, scope: "node", nodeIds: [ids.Key] });
+    const before = await available(ws);
+    const { runId } = (await (await start(user, q.quoteId)).json()) as { runId: string };
+    const run = await finalRun(runId);
+    expect(run.status).toBe("succeeded");
+    const [job] = await jobsOf(runId);
+    expect(fake.jobs.map((j) => [j.model, j.key])).toEqual([
+      ["bytedance/seedream-5.0-lite", job.id],
+      ["bytedance/seedream-5.0-lite", `${job.id}.r2`],
+    ]);
+    expect(job).toMatchObject({ status: "succeeded", attempt: 2 });
+    expect(await available(ws)).toBe(before - job.cost_actual);
+  });
+
+  it("does not resubmit a non-retryable failure (content rejected)", async () => {
+    const { user, ws } = await member("noretry");
+    const { id, ids } = await project(user, ws, [{ kind: "image", title: "Key", params: KEYFRAME }], []);
+    fake.rules.push({ model: "bytedance/seedream-5.0-lite", fail: { code: "content_rejected", message: "Rejected." } });
+    const q = await quote(user, { projectId: id, scope: "node", nodeIds: [ids.Key] });
+    const { runId } = (await (await start(user, q.quoteId)).json()) as { runId: string };
+    expect((await finalRun(runId)).status).toBe("failed");
+    expect(fake.jobs).toHaveLength(1);
+  });
+
+  it("after the same-model retries, an Auto run tries the next fallback model once under the same hold", async () => {
     const { user, ws } = await member("autoretry");
     const { id, ids } = await project(user, ws, [{ kind: "image", title: "Key", params: { model: "Auto", prompt: "A red apple" } }], []);
     fake.chatAnswer = JSON.stringify({ modelId: "bytedance/seedream-5.0-lite" });
@@ -462,14 +497,15 @@ describe("runs: failures and refunds", () => {
     const run = await finalRun(runId);
     expect(run.status).toBe("succeeded");
     const [job] = await jobsOf(runId);
-    expect(fake.jobs).toHaveLength(2);
-    expect(fake.jobs[0]!.key).toBe(job.id);
-    expect(fake.jobs[1]!.key).toBe(`${job.id}.r2`);
-    expect(fake.jobs[1]!.model).not.toBe("bytedance/seedream-5.0-lite");
-    expect(job).toMatchObject({ status: "succeeded", attempt: 2, model: fake.jobs[1]!.model });
+    // Three attempts on the chosen model (1 + 2 retries), then one fallback.
+    expect(fake.jobs).toHaveLength(4);
+    expect(fake.jobs.slice(0, 3).every((j) => j.model === "bytedance/seedream-5.0-lite")).toBe(true);
+    expect(fake.jobs.map((j) => j.key)).toEqual([job.id, `${job.id}.r2`, `${job.id}.r3`, `${job.id}.r4`]);
+    expect(fake.jobs[3]!.model).not.toBe("bytedance/seedream-5.0-lite");
+    expect(job).toMatchObject({ status: "succeeded", attempt: 4, model: fake.jobs[3]!.model });
     expect(job.cost_actual).toBeLessThanOrEqual(job.cost_quote);
     expect(await available(ws)).toBe(before - job.cost_actual);
-  });
+  }, 30_000);
 
   it("re-submits with the same idempotency key after a retryable gateway error", async () => {
     const { user, ws } = await member("idem");

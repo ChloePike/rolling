@@ -42,6 +42,8 @@ interface RollingSecrets {
   PRIVATE_MEDIA_BASE_URL?: string;
   /** `off` skips the FFmpeg container in media processing (tests, local dev without Docker). Not a secret. */
   MEDIA_CONTAINER?: string;
+  /** Seconds between same-model resubmissions after a transient provider failure, e.g. "5,15" (tests: "0,0"). */
+  GENERATE_RETRY_BACKOFF?: string;
   // Direct browser uploads to R2 (D-011): S3 API credentials (an R2 API token scoped to the media bucket).
   R2_ACCESS_KEY_ID?: string;
   R2_SECRET_ACCESS_KEY?: string;

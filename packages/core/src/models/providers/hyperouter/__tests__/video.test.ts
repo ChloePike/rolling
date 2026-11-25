@@ -2,9 +2,24 @@ import { describe, expect, it } from 'vitest';
 import { fixtureModel } from '../../../__fixtures__/catalog';
 import { pollUntilDone } from '../../../poll';
 import { createHyperouterGenerationProvider } from '../provider';
+import { buildVideoBody } from '../video';
 import { errorJson, json, mockFetch, redirect } from './mock-fetch';
 
 const base = { id: 'vid_1', object: 'video', model: 'bytedance/seedance-2.0-mini', seconds: '5', size: '', error: null };
+
+describe('buildVideoBody', () => {
+  const model = fixtureModel('bytedance/seedance-2.5');
+  it('sends ratio for text-to-video', () => {
+    expect(buildVideoBody(model, { kind: 'video', mode: 't2v', prompt: 'p', seconds: 5, ratio: '9:16' }, 'auto').ratio).toBe('9:16');
+  });
+  it('never sends ratio with a first or last frame: the output follows the frame (Seedance refuses both)', () => {
+    const i2v = buildVideoBody(model, { kind: 'video', mode: 'i2v', prompt: 'p', seconds: 5, ratio: '9:16', firstFrameUrl: 'https://x/f.png' }, 'auto');
+    expect(i2v.ratio).toBeUndefined();
+    expect(i2v.first_frame).toBe('https://x/f.png');
+    const flf = buildVideoBody(model, { kind: 'video', mode: 'first_last_frame', prompt: 'p', seconds: 5, ratio: '9:16', firstFrameUrl: 'https://x/a.png', lastFrameUrl: 'https://x/b.png' }, 'auto');
+    expect(flf.ratio).toBeUndefined();
+  });
+});
 
 describe('Hyperouter video provider', () => {
   it('goes queued → in_progress → completed and returns signed content URLs', async () => {

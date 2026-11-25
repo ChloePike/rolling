@@ -71,9 +71,22 @@ const FORCED: JobError = { code: "forced_failure", message: "Forced failure for 
  * idempotency key). Steps: load → prepare (signed input URLs) → submit → wait
  * (`provider-done` event from the webhook, else poll with backoff) → store (R2,
  * thumbnails) → commit (addVersion + settle). Any failure releases the hold and
- * marks the node failed with the refund; Auto runs retry once on the next
- * fallback model under the same hold (D-009). Dependents start afterwards.
+ * marks the node failed with the refund. Transient provider failures (retryable
+ * codes such as upstream_error) are resubmitted to the same model up to
+ * SAME_MODEL_RETRIES times with backoff (each attempt has its own idempotency
+ * key); after that, Auto runs try the next fallback model once under the same
+ * hold (D-009). Failures after the provider succeeded (storing) are not
+ * resubmitted. Dependents start afterwards.
  */
+/** Resubmissions of the same model after a transient provider failure, and their backoff. */
+const SAME_MODEL_RETRIES = 2;
+const DEFAULT_RETRY_BACKOFF_SECONDS = [5, 15];
+
+function retryBackoff(env: Env): number[] {
+  const parsed = (env.GENERATE_RETRY_BACKOFF ?? "").split(",").map((v) => Number(v.trim())).filter((n) => Number.isFinite(n) && n >= 0);
+  return parsed.length ? parsed : DEFAULT_RETRY_BACKOFF_SECONDS;
+}
+
 export class GenerateWorkflow extends WorkflowEntrypoint<Env, GenerateWorkflowParams> {
   override async run(event: WorkflowEvent<GenerateWorkflowParams>, step: WorkflowStep) {
     const env = this.env;
@@ -83,9 +96,13 @@ export class GenerateWorkflow extends WorkflowEntrypoint<Env, GenerateWorkflowPa
 
     const tried: string[] = [];
     let modelId = ctx.modelId;
+    let sameModelRetries = 0;
+    let fellBack = false;
     for (let attempt = 1; ; attempt++) {
-      tried.push(modelId);
+      if (!tried.includes(modelId)) tried.push(modelId);
       let status: JobStatus;
+      // True when the provider itself reported the failure (safe to resubmit).
+      let providerFailure = true;
       let digest = "";
       let request: GenerateRequest | null = null;
       let forced = false;
@@ -116,13 +133,22 @@ export class GenerateWorkflow extends WorkflowEntrypoint<Env, GenerateWorkflowPa
           return { status: "succeeded" as const, model: usedModel, attempt, ...committed };
         } catch (err) {
           status = failedStatus(status.externalId, jobErrorOf(err));
+          providerFailure = false;
         }
       }
 
       const error = status.error ?? { code: "unknown_error", message: "The job failed.", retryable: false, refundable: true };
-      if (!forced && error.retryable && attempt === 1 && ctx.spec.auto) {
+      if (!forced && error.retryable && providerFailure && sameModelRetries < SAME_MODEL_RETRIES) {
+        const wait = retryBackoff(env)[sameModelRetries] ?? 15;
+        if (wait > 0) await step.sleep(`backoff-${attempt}`, `${wait} seconds` as const);
+        sameModelRetries++;
+        continue;
+      }
+      if (!forced && error.retryable && providerFailure && !fellBack && ctx.spec.auto) {
         const next = await step.do("fallback", RETRY, async () => nextFallback(env, ctx, tried));
         if (next) {
+          fellBack = true;
+          sameModelRetries = 0;
           modelId = next;
           continue;
         }

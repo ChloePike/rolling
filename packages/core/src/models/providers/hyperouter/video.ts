@@ -46,7 +46,10 @@ export function buildVideoBody(cap: CatalogModel, req: GenerateRequest, moderati
   if (cap.acceptedParams.includes('prompt')) body.prompt = req.prompt;
   if (req.seconds !== undefined) body.seconds = req.seconds;
   if (req.resolution !== undefined) body.resolution = req.resolution;
-  if (req.ratio !== undefined) body.ratio = req.ratio;
+  // Frame-driven generation takes its aspect ratio from the frame: Seedance (and others) refuse
+  // `ratio` together with first/last frames. Our keyframes are generated at the shot's ratio.
+  const frameDriven = req.firstFrameUrl !== undefined || req.lastFrameUrl !== undefined;
+  if (req.ratio !== undefined && !frameDriven) body.ratio = req.ratio;
   // Several models make sound by default at the vendor; the gateway sends it only when asked.
   if (req.audio !== undefined && cap.audio) body.audio = req.audio;
   if (req.seed !== undefined) body.seed = req.seed;
