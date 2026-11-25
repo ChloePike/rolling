@@ -16,6 +16,7 @@
     "@rolling/agent": "workspace:*",
     "@rolling/core": "workspace:*",
     "@rolling/db": "workspace:*",
+    "better-auth": "1.7.28",
     "drizzle-orm": "^0.44.7",
     "graphql": "^16.11.0",
     "graphql-yoga": "^5.16.0",

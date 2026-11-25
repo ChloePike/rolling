@@ -3,15 +3,18 @@ import { HTTPException } from "hono/http-exception";
 import type { AppEnv } from "./env";
 import { yoga } from "./graphql";
 import { ApiError, errorResponse } from "./lib/errors";
-import { getSessionUser } from "./lib/session";
+import { authMiddleware } from "./auth/context";
 import { serveSpaFromR2 } from "./lib/r2Static";
 import { handleQueue } from "./queues";
 import { handleScheduled } from "./scheduled";
+import { authRoutes } from "./routes/auth";
 import { health } from "./routes/health";
 import { me } from "./routes/me";
 import { media } from "./routes/media";
 import { models } from "./routes/models";
 import { realtime } from "./routes/realtime";
+import { workspace } from "./routes/workspace";
+import { testInbox } from "./routes/testInbox";
 
 export { ProjectRoom } from "./do/ProjectRoom";
 export { UserHub } from "./do/UserHub";
@@ -25,13 +28,18 @@ export { BillingWorkflow } from "./workflows/Billing";
 export const app = new Hono<AppEnv>();
 
 const api = new Hono<AppEnv>()
+  // One auth context per request (M1): c.get("auth"), requireUser / requireMember / requireRole.
+  .use("*", authMiddleware)
   .route("/health", health)
+  .route("/auth", authRoutes)
   .route("/me", me)
+  .route("/workspace", workspace)
+  .route("/test", testInbox)
   .route("/media", media)
   .route("/models", models)
   .route("/", realtime)
   .on(["GET", "POST"], "/graphql", async (c) =>
-    yoga.fetch(c.req.raw, { env: c.env, user: await getSessionUser(c) }),
+    yoga.fetch(c.req.raw, { env: c.env, user: c.get("user"), auth: c.get("auth") }),
   );
 
 app.route("/api", api);

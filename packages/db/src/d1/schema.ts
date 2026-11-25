@@ -45,26 +45,146 @@ export const workspaceMembers = sqliteTable(
   },
   (t) => [
     primaryKey({ columns: [t.workspaceId, t.userId] }),
+    index("workspace_members_user").on(t.userId),
     check("workspace_members_role_check", sql`${t.role} IN ('owner','editor','viewer')`),
   ],
 );
 
-export const userPrefs = sqliteTable("user_prefs", {
-  userId: text("user_id").primaryKey(),
-  language: text("language").notNull().default("en"),
-  currency: text("currency").notNull().default("USD"),
-  creationMode: text("creation_mode").notNull().default("simple"),
-  defaultRatio: text("default_ratio").notNull().default("9:16"),
-  defaultModel: text("default_model").notNull().default("auto"),
-  confirmThreshold: integer("confirm_threshold").notNull().default(20),
-  notifications: text("notifications")
-    .notNull()
-    .default('{"done":true,"low":true,"renewal":true,"product":false}'),
-  handle: text("handle").unique(),
-  bio: text("bio"),
-  /** D-005: per-user 18+ opt-in. Off by default; only effective for workspaces with an active paid plan. */
-  matureContent: integer("mature_content", { mode: "boolean" }).notNull().default(false),
+export const userPrefs = sqliteTable(
+  "user_prefs",
+  {
+    userId: text("user_id").primaryKey(),
+    language: text("language").notNull().default("en"),
+    currency: text("currency").notNull().default("USD"),
+    creationMode: text("creation_mode").notNull().default("simple"),
+    defaultRatio: text("default_ratio").notNull().default("9:16"),
+    defaultModel: text("default_model").notNull().default("auto"),
+    /** D-006: default 300 credits (migration 0004). */
+    confirmThreshold: integer("confirm_threshold").notNull().default(300),
+    notifications: text("notifications")
+      .notNull()
+      .default('{"done":true,"low":true,"renewal":true,"product":false}'),
+    handle: text("handle").unique(),
+    bio: text("bio"),
+    /** D-005: per-user 18+ opt-in. Off by default; only effective for workspaces with an active paid plan. */
+    matureContent: integer("mature_content", { mode: "boolean" }).notNull().default(false),
+    /** D-010: system (default), light or dark. */
+    theme: text("theme", { enum: ["system", "light", "dark"] }).notNull().default("system"),
+    updatedAt: integer("updated_at").notNull().default(0),
+  },
+  (t) => [check("user_prefs_theme_check", sql`${t.theme} IN ('system','light','dark')`)],
+);
+
+/*
+ * Better Auth tables (migration 0004). Better Auth reads and writes them through its
+ * own D1 adapter; dates are ISO 8601 text here (not epoch ms like the rest of D1).
+ */
+export const users = sqliteTable("users", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  emailVerified: integer("email_verified", { mode: "boolean" }).notNull(),
+  image: text("image"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
 });
+
+export const sessions = sqliteTable(
+  "sessions",
+  {
+    id: text("id").primaryKey(),
+    expiresAt: text("expires_at").notNull(),
+    token: text("token").notNull().unique(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+  },
+  (t) => [index("sessions_user_id_idx").on(t.userId)],
+);
+
+export const accounts = sqliteTable(
+  "accounts",
+  {
+    id: text("id").primaryKey(),
+    accountId: text("account_id").notNull(),
+    providerId: text("provider_id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    accessToken: text("access_token"),
+    refreshToken: text("refresh_token"),
+    idToken: text("id_token"),
+    accessTokenExpiresAt: text("access_token_expires_at"),
+    refreshTokenExpiresAt: text("refresh_token_expires_at"),
+    scope: text("scope"),
+    password: text("password"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [index("accounts_user_id_idx").on(t.userId)],
+);
+
+export const verifications = sqliteTable(
+  "verifications",
+  {
+    id: text("id").primaryKey(),
+    identifier: text("identifier").notNull(),
+    value: text("value").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [index("verifications_identifier_idx").on(t.identifier)],
+);
+
+/** Email sign-in code resend cooldown (one row per address). */
+export const authEmailSends = sqliteTable("auth_email_sends", {
+  email: text("email").primaryKey(),
+  lastSentAt: integer("last_sent_at").notNull(),
+});
+
+/** `test-inbox` email provider store (staging e2e only; 24 h TTL, refused in production). */
+export const testInbox = sqliteTable(
+  "test_inbox",
+  {
+    id: text("id").primaryKey(),
+    toEmail: text("to_email").notNull(),
+    subject: text("subject").notNull(),
+    text: text("text").notNull(),
+    code: text("code"),
+    template: text("template"),
+    sentAt: integer("sent_at").notNull(),
+  },
+  (t) => [index("test_inbox_to").on(t.toEmail, sql`${t.sentAt} DESC`)],
+);
+
+/** Workspace invites; the emailed link carries the raw token, only its SHA-256 is stored. */
+export const workspaceInvites = sqliteTable(
+  "workspace_invites",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    role: text("role", { enum: ["editor", "viewer"] }).notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    invitedBy: text("invited_by").notNull(),
+    createdAt: integer("created_at").notNull(),
+    expiresAt: integer("expires_at").notNull(),
+    acceptedAt: integer("accepted_at"),
+    acceptedBy: text("accepted_by"),
+    revokedAt: integer("revoked_at"),
+  },
+  (t) => [
+    index("workspace_invites_ws").on(t.workspaceId, sql`${t.createdAt} DESC`),
+    check("workspace_invites_role_check", sql`${t.role} IN ('editor','viewer')`),
+  ],
+);
 
 export const subscriptions = sqliteTable(
   "subscriptions",
@@ -349,6 +469,9 @@ export const models = sqliteTable(
 
 export type Workspace = typeof workspaces.$inferSelect;
 export type UserPrefs = typeof userPrefs.$inferSelect;
+export type User = typeof users.$inferSelect;
+export type WorkspaceMember = typeof workspaceMembers.$inferSelect;
+export type WorkspaceInvite = typeof workspaceInvites.$inferSelect;
 export type Project = typeof projects.$inferSelect;
 export type Run = typeof runs.$inferSelect;
 export type Job = typeof jobs.$inferSelect;

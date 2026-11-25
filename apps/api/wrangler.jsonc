@@ -48,7 +48,12 @@
     "APP_NAME": "Rolling",
     "PUBLIC_APP_URL": "http://localhost:8787",
     "HYPEROUTER_BASE_URL": "https://api.hyperouter.app/v1",
-        "PUBLIC_MEDIA_BASE_URL": ""
+        "PUBLIC_MEDIA_BASE_URL": "",
+        // Email sender for Resend, e.g. "Rolling <hello@<product-domain>>" (open: product domain, D-001).
+        "EMAIL_FROM": "",
+        // Email provider: "" (Resend when RESEND_API_KEY is set; development records), "resend", or
+        // "test-inbox" (staging e2e: GET /api/test/inbox; refused in production).
+        "EMAIL_PROVIDER": ""
   },
   "d1_databases": [
     {
@@ -163,6 +168,15 @@
         "limit": 100,
         "period": 60
       }
+    },
+    {
+      // Email sign-in codes: 5 per minute per email + IP (routes/auth.ts).
+      "name": "AUTH_RATE_LIMIT",
+      "namespace_id": "1002",
+      "simple": {
+        "limit": 5,
+        "period": 60
+      }
     }
   ],
   "analytics_engine_datasets": [
@@ -196,7 +210,12 @@
         "APP_NAME": "Rolling",
         "PUBLIC_APP_URL": "https://rolling-api-staging.swiftpayx.workers.dev",
         "HYPEROUTER_BASE_URL": "https://api.hyperouter.app/v1",
-        "PUBLIC_MEDIA_BASE_URL": ""
+        "PUBLIC_MEDIA_BASE_URL": "",
+        // Email sender for Resend, e.g. "Rolling <hello@<product-domain>>" (open: product domain, D-001).
+        "EMAIL_FROM": "",
+        // Email provider: "" (Resend when RESEND_API_KEY is set; development records), "resend", or
+        // "test-inbox" (staging e2e: GET /api/test/inbox; refused in production).
+        "EMAIL_PROVIDER": ""
       },
       "d1_databases": [
         {
@@ -311,7 +330,16 @@
             "limit": 100,
             "period": 60
           }
-        }
+        },
+    {
+      // Email sign-in codes: 5 per minute per email + IP (routes/auth.ts).
+      "name": "AUTH_RATE_LIMIT",
+      "namespace_id": "2002",
+      "simple": {
+        "limit": 5,
+        "period": 60
+      }
+    }
       ],
       "analytics_engine_datasets": [
         {
@@ -332,7 +360,12 @@
         "APP_NAME": "Rolling",
         "PUBLIC_APP_URL": "https://rolling-api.swiftpayx.workers.dev",
         "HYPEROUTER_BASE_URL": "https://api.hyperouter.app/v1",
-        "PUBLIC_MEDIA_BASE_URL": ""
+        "PUBLIC_MEDIA_BASE_URL": "",
+        // Email sender for Resend, e.g. "Rolling <hello@<product-domain>>" (open: product domain, D-001).
+        "EMAIL_FROM": "",
+        // Email provider: "" (Resend when RESEND_API_KEY is set; development records), "resend", or
+        // "test-inbox" (staging e2e: GET /api/test/inbox; refused in production).
+        "EMAIL_PROVIDER": ""
       },
       "d1_databases": [
         {
@@ -447,7 +480,16 @@
             "limit": 100,
             "period": 60
           }
-        }
+        },
+    {
+      // Email sign-in codes: 5 per minute per email + IP (routes/auth.ts).
+      "name": "AUTH_RATE_LIMIT",
+      "namespace_id": "3002",
+      "simple": {
+        "limit": 5,
+        "period": 60
+      }
+    }
       ],
       "analytics_engine_datasets": [
         {

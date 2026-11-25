@@ -8,11 +8,14 @@ import type { PublicItem } from "@rolling/db/d1";
 import { encodeCursor, listPublicCategoryCounts, listPublicItems, listPublicSubs } from "@rolling/db/queries/publicItems";
 import { publicMediaUrl } from "../routes/media";
 import type { SessionUser } from "../lib/session";
+import type { AuthContext } from "../auth/context";
 import { listPublicModels } from "../models/catalog";
 
 export interface GraphQLContext {
   env: Env;
   user: SessionUser | null;
+  /** Same auth context as REST (null when signed out). */
+  auth: AuthContext | null;
 }
 
 const typeDefs = /* GraphQL */ `

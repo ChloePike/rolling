@@ -1,19 +1,21 @@
 import type { Context } from "hono";
 import type { AppEnv } from "../env";
+import { resolveAuth } from "../auth/context";
 
 export interface SessionUser {
   id: string;
 }
 
 /**
- * Resolves the signed-in user. Better Auth lands in M1; until then there is
- * never a session, except the dev-only `x-dev-user` header / `devUser` query
- * (honoured only when `ENVIRONMENT === "development"`) so sockets can be tried locally.
+ * The signed-in user, from the auth context resolved once per request by
+ * `authMiddleware` (`apps/api/src/auth/context.ts`). Prefer `c.get("auth")` or
+ * `requireUser` / `requireMember` / `requireRole` in new code; this stays for
+ * callers that only need the id. The dev header (`x-dev-user`) is honoured only
+ * in `ENVIRONMENT=development` (local dev and tests), inside the middleware.
  */
 export async function getSessionUser(c: Context<AppEnv>): Promise<SessionUser | null> {
-  if (c.env.ENVIRONMENT === "development") {
-    const dev = c.req.header("x-dev-user") ?? c.req.query("devUser");
-    if (dev && /^[A-Za-z0-9_-]{1,64}$/.test(dev)) return { id: dev };
-  }
-  return null;
+  const auth = c.get("auth");
+  if (auth !== undefined) return auth ? { id: auth.userId } : null;
+  const resolved = await resolveAuth(c);
+  return resolved ? { id: resolved.userId } : null;
 }

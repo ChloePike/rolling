@@ -3,10 +3,12 @@
  * `rolling-staging-media-process`), so dispatch is by base name. M0 stubs: validate, log, ack.
  */
 import { z } from "zod";
+import { handleNotifyEmail, NotifyEmailMessage } from "../auth/email";
+
+export { NotifyEmailMessage };
 
 export const MediaProcessMessage = z.object({ assetId: z.string(), r2Key: z.string(), kind: z.string() });
 export const LedgerMirrorMessage = z.object({ workspaceId: z.string(), lineIds: z.array(z.string()) });
-export const NotifyEmailMessage = z.object({ userId: z.string(), template: z.string(), data: z.record(z.unknown()).default({}) });
 
 type Handler = (batch: MessageBatch<unknown>, env: Env) => Promise<void>;
 
@@ -29,7 +31,7 @@ function stubConsumer(name: string, schema: z.ZodTypeAny): Handler {
 export const queueHandlers: Record<string, Handler> = {
   "media-process": stubConsumer("media-process", MediaProcessMessage),
   "ledger-mirror": stubConsumer("ledger-mirror", LedgerMirrorMessage),
-  "notify-email": stubConsumer("notify-email", NotifyEmailMessage),
+  "notify-email": handleNotifyEmail,
 };
 
 export function baseQueueName(queue: string): string {
