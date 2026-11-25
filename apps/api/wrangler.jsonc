@@ -1,0 +1,441 @@
+// Rolling Worker: API (Hono), static SPA assets, Durable Objects, Workflows, Queues, Container.
+//
+// The Cloudflare account is shared with unrelated projects: every resource name starts with `rolling-`
+// (AE datasets: `rolling_<env>`). Top level = local development only (`wrangler dev`, tests); always
+// deploy with `--env staging` or `--env production`.
+// Placeholders: D1 `database_id` values (REPLACE_ME_*) and the rate-limit `namespace_id`s.
+// Bindings are not inherited by named environments, so each env repeats them.
+// Local dev: containers are disabled (`dev.enable_containers: false`); use `wrangler dev --enable-containers`
+// with Docker running to exercise FfmpegRenderer. `assets.directory` must exist: build apps/web first
+// (root `pnpm dev` does this).
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "rolling-api",
+  "account_id": "e2ed20c61e6c1ce394300a753734eff9",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "workers_dev": true,
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true
+    }
+  },
+  "assets": {
+    "directory": "../web/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": [
+      "/api/*"
+    ]
+  },
+  "dev": {
+    "port": 8787,
+    "enable_containers": false
+  },
+  "vars": {
+    "ENVIRONMENT": "development",
+    "APP_NAME": "Rolling",
+    "PUBLIC_APP_URL": "http://localhost:8787",
+    "HYPEROUTER_BASE_URL": "https://api.hyperouter.app/v1"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "rolling-dev",
+      "database_id": "REPLACE_ME_D1_DEV",
+      "migrations_dir": "../../packages/db/migrations/d1"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "MEDIA",
+      "bucket_name": "rolling-media-dev"
+    }
+  ],
+  "images": {
+    "binding": "IMAGES"
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "PROJECT",
+        "class_name": "ProjectRoom"
+      },
+      {
+        "name": "USER_HUB",
+        "class_name": "UserHub"
+      },
+      {
+        "name": "CREDITS",
+        "class_name": "CreditAccount"
+      },
+      {
+        "name": "AGENT",
+        "class_name": "AgentSession"
+      },
+      {
+        "name": "FFMPEG",
+        "class_name": "FfmpegRenderer"
+      }
+    ]
+  },
+  "workflows": [
+    {
+      "binding": "GENERATE",
+      "name": "rolling-dev-generate",
+      "class_name": "GenerateWorkflow"
+    },
+    {
+      "binding": "EXPORT",
+      "name": "rolling-dev-export",
+      "class_name": "ExportWorkflow"
+    },
+    {
+      "binding": "BILLING",
+      "name": "rolling-dev-billing",
+      "class_name": "BillingWorkflow"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "MEDIA_PROCESS_QUEUE",
+        "queue": "rolling-dev-media-process"
+      },
+      {
+        "binding": "LEDGER_MIRROR_QUEUE",
+        "queue": "rolling-dev-ledger-mirror"
+      },
+      {
+        "binding": "NOTIFY_EMAIL_QUEUE",
+        "queue": "rolling-dev-notify-email"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "rolling-dev-media-process",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5,
+        "max_retries": 3,
+        "dead_letter_queue": "rolling-dev-media-process-dlq"
+      },
+      {
+        "queue": "rolling-dev-ledger-mirror",
+        "max_batch_size": 50,
+        "max_batch_timeout": 2,
+        "max_retries": 10,
+        "dead_letter_queue": "rolling-dev-ledger-mirror-dlq"
+      },
+      {
+        "queue": "rolling-dev-notify-email",
+        "max_batch_size": 20,
+        "max_batch_timeout": 10,
+        "max_retries": 5,
+        "dead_letter_queue": "rolling-dev-notify-email-dlq"
+      }
+    ]
+  },
+  "containers": [
+    {
+      "class_name": "FfmpegRenderer",
+      "image": "../../containers/ffmpeg/Dockerfile",
+      "max_instances": 2,
+      "instance_type": "standard-1"
+    }
+  ],
+  "ratelimits": [
+    {
+      "name": "RATE_LIMIT",
+      "namespace_id": "1001",
+      "simple": {
+        "limit": 100,
+        "period": 60
+      }
+    }
+  ],
+  "analytics_engine_datasets": [
+    {
+      "binding": "AE",
+      "dataset": "rolling_dev"
+    }
+  ],
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "ProjectRoom",
+        "UserHub",
+        "CreditAccount",
+        "AgentSession",
+        "FfmpegRenderer"
+      ]
+    }
+  ],
+  "env": {
+    "staging": {
+      "name": "rolling-api-staging",
+      "vars": {
+        "ENVIRONMENT": "staging",
+        "APP_NAME": "Rolling",
+        "PUBLIC_APP_URL": "https://rolling-api-staging.swiftpayx.workers.dev",
+        "HYPEROUTER_BASE_URL": "https://api.hyperouter.app/v1"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "rolling-staging",
+          "database_id": "REPLACE_ME_D1_STAGING",
+          "migrations_dir": "../../packages/db/migrations/d1"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "MEDIA",
+          "bucket_name": "rolling-media-staging"
+        }
+      ],
+      "images": {
+        "binding": "IMAGES"
+      },
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "PROJECT",
+            "class_name": "ProjectRoom"
+          },
+          {
+            "name": "USER_HUB",
+            "class_name": "UserHub"
+          },
+          {
+            "name": "CREDITS",
+            "class_name": "CreditAccount"
+          },
+          {
+            "name": "AGENT",
+            "class_name": "AgentSession"
+          },
+          {
+            "name": "FFMPEG",
+            "class_name": "FfmpegRenderer"
+          }
+        ]
+      },
+      "workflows": [
+        {
+          "binding": "GENERATE",
+          "name": "rolling-staging-generate",
+          "class_name": "GenerateWorkflow"
+        },
+        {
+          "binding": "EXPORT",
+          "name": "rolling-staging-export",
+          "class_name": "ExportWorkflow"
+        },
+        {
+          "binding": "BILLING",
+          "name": "rolling-staging-billing",
+          "class_name": "BillingWorkflow"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "MEDIA_PROCESS_QUEUE",
+            "queue": "rolling-staging-media-process"
+          },
+          {
+            "binding": "LEDGER_MIRROR_QUEUE",
+            "queue": "rolling-staging-ledger-mirror"
+          },
+          {
+            "binding": "NOTIFY_EMAIL_QUEUE",
+            "queue": "rolling-staging-notify-email"
+          }
+        ],
+        "consumers": [
+          {
+            "queue": "rolling-staging-media-process",
+            "max_batch_size": 10,
+            "max_batch_timeout": 5,
+            "max_retries": 3,
+            "dead_letter_queue": "rolling-staging-media-process-dlq"
+          },
+          {
+            "queue": "rolling-staging-ledger-mirror",
+            "max_batch_size": 50,
+            "max_batch_timeout": 2,
+            "max_retries": 10,
+            "dead_letter_queue": "rolling-staging-ledger-mirror-dlq"
+          },
+          {
+            "queue": "rolling-staging-notify-email",
+            "max_batch_size": 20,
+            "max_batch_timeout": 10,
+            "max_retries": 5,
+            "dead_letter_queue": "rolling-staging-notify-email-dlq"
+          }
+        ]
+      },
+      "containers": [
+        {
+          "class_name": "FfmpegRenderer",
+          "image": "../../containers/ffmpeg/Dockerfile",
+          "max_instances": 3,
+          "instance_type": "standard-1"
+        }
+      ],
+      "ratelimits": [
+        {
+          "name": "RATE_LIMIT",
+          "namespace_id": "2001",
+          "simple": {
+            "limit": 100,
+            "period": 60
+          }
+        }
+      ],
+      "analytics_engine_datasets": [
+        {
+          "binding": "AE",
+          "dataset": "rolling_staging"
+        }
+      ]
+    },
+    "production": {
+      "name": "rolling-api",
+      "vars": {
+        "ENVIRONMENT": "production",
+        "APP_NAME": "Rolling",
+        "PUBLIC_APP_URL": "https://rolling-api.swiftpayx.workers.dev",
+        "HYPEROUTER_BASE_URL": "https://api.hyperouter.app/v1"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "rolling-production",
+          "database_id": "REPLACE_ME_D1_PRODUCTION",
+          "migrations_dir": "../../packages/db/migrations/d1"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "MEDIA",
+          "bucket_name": "rolling-media-production"
+        }
+      ],
+      "images": {
+        "binding": "IMAGES"
+      },
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "PROJECT",
+            "class_name": "ProjectRoom"
+          },
+          {
+            "name": "USER_HUB",
+            "class_name": "UserHub"
+          },
+          {
+            "name": "CREDITS",
+            "class_name": "CreditAccount"
+          },
+          {
+            "name": "AGENT",
+            "class_name": "AgentSession"
+          },
+          {
+            "name": "FFMPEG",
+            "class_name": "FfmpegRenderer"
+          }
+        ]
+      },
+      "workflows": [
+        {
+          "binding": "GENERATE",
+          "name": "rolling-production-generate",
+          "class_name": "GenerateWorkflow"
+        },
+        {
+          "binding": "EXPORT",
+          "name": "rolling-production-export",
+          "class_name": "ExportWorkflow"
+        },
+        {
+          "binding": "BILLING",
+          "name": "rolling-production-billing",
+          "class_name": "BillingWorkflow"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "MEDIA_PROCESS_QUEUE",
+            "queue": "rolling-production-media-process"
+          },
+          {
+            "binding": "LEDGER_MIRROR_QUEUE",
+            "queue": "rolling-production-ledger-mirror"
+          },
+          {
+            "binding": "NOTIFY_EMAIL_QUEUE",
+            "queue": "rolling-production-notify-email"
+          }
+        ],
+        "consumers": [
+          {
+            "queue": "rolling-production-media-process",
+            "max_batch_size": 10,
+            "max_batch_timeout": 5,
+            "max_retries": 3,
+            "dead_letter_queue": "rolling-production-media-process-dlq"
+          },
+          {
+            "queue": "rolling-production-ledger-mirror",
+            "max_batch_size": 50,
+            "max_batch_timeout": 2,
+            "max_retries": 10,
+            "dead_letter_queue": "rolling-production-ledger-mirror-dlq"
+          },
+          {
+            "queue": "rolling-production-notify-email",
+            "max_batch_size": 20,
+            "max_batch_timeout": 10,
+            "max_retries": 5,
+            "dead_letter_queue": "rolling-production-notify-email-dlq"
+          }
+        ]
+      },
+      "containers": [
+        {
+          "class_name": "FfmpegRenderer",
+          "image": "../../containers/ffmpeg/Dockerfile",
+          "max_instances": 20,
+          "instance_type": "standard-1"
+        }
+      ],
+      "ratelimits": [
+        {
+          "name": "RATE_LIMIT",
+          "namespace_id": "3001",
+          "simple": {
+            "limit": 100,
+            "period": 60
+          }
+        }
+      ],
+      "analytics_engine_datasets": [
+        {
+          "binding": "AE",
+          "dataset": "rolling_production"
+        }
+      ]
+    }
+  }
+}

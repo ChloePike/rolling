@@ -1,0 +1,63 @@
+/* Shared header. Measurements match docs/design/screens/Main.dc.html. */
+.header{
+  position:sticky;top:0;z-index:30;
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:14px 24px;
+  background:var(--c-header-bg);
+  -webkit-backdrop-filter:blur(20px) saturate(1.4);
+  backdrop-filter:blur(20px) saturate(1.4);
+}
+.brand{flex:1 1 160px;display:flex;align-items:center;gap:10px}
+.brandLink{display:flex;align-items:center;gap:10px;border-radius:8px}
+.wordmark{font-weight:700;font-size:16px;line-height:1;letter-spacing:-0.02em}
+
+.nav{
+  flex:0 1 auto;max-width:100%;overflow-x:auto;
+  display:flex;gap:2px;padding:4px;border-radius:var(--r-pill);background:var(--c-surface-3);
+}
+.navItem{
+  height:36px;padding:0 14px;border-radius:var(--r-pill);
+  display:flex;align-items:center;gap:6px;white-space:nowrap;
+  font-size:var(--fs-control);font-weight:600;color:var(--c-text-3);background:transparent;
+  transition:background-color var(--m-fast) var(--m-ease-standard),color var(--m-fast) var(--m-ease-standard);
+}
+.navItem:hover{color:var(--c-text-1)}
+.navItem:focus-visible{box-shadow:inset 0 0 0 2px var(--c-accent)}
+.navItem[aria-current="page"]{background:var(--c-surface-6);color:var(--c-text-1)}
+.navItem svg{flex:none}
+
+/* Icons only below 1280px wide; the label stays for screen readers. */
+@media (max-width:1279.98px){
+  .navItem{width:36px;padding:0;justify-content:center;gap:0}
+  .navLabel{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+}
+
+.actions{flex:1 1 160px;display:flex;justify-content:flex-end;align-items:center;gap:8px}
+
+.credits{
+  height:34px;padding:0 4px 0 11px;border:0;border-radius:var(--r-pill);background:var(--c-surface-3);color:var(--c-text-1);
+  display:flex;align-items:center;gap:7px;cursor:pointer;
+  transition:background-color var(--m-fast) var(--m-ease-standard);
+}
+.credits:hover,.credits[aria-expanded="true"]{background:var(--c-surface-6)}
+.creditsValue{font-size:var(--fs-control);font-weight:600}
+.creditsCoin{color:var(--c-text-3)}
+.creditsPlus{width:26px;height:26px;border-radius:var(--r-pill);background:var(--c-surface-5);display:flex;align-items:center;justify-content:center}
+
+.upgrade{
+  height:34px;padding:0 14px;border-radius:var(--r-pill);background:var(--c-surface-3);
+  display:flex;align-items:center;font-size:var(--fs-control);font-weight:600;color:var(--c-upgrade);
+  transition:background-color var(--m-fast) var(--m-ease-standard);
+}
+.upgrade:hover{color:var(--c-upgrade);background:var(--c-surface-5)}
+
+.avatar{
+  position:relative;width:34px;height:34px;border:0;border-radius:var(--r-pill);
+  background:var(--c-surface-7);color:var(--c-text-1);font-size:var(--fs-control);font-weight:600;cursor:pointer;
+  box-shadow:0 0 0 2px var(--c-bg),0 0 0 3.5px var(--c-pro);
+}
+.avatar:focus-visible{box-shadow:0 0 0 2px var(--c-bg),0 0 0 4px var(--c-accent)}
+.proBadge{
+  position:absolute;right:-7px;bottom:-5px;height:14px;padding:0 4px;border-radius:4px;
+  background:var(--c-pro);color:var(--c-bg);font-size:9px;font-weight:800;line-height:14px;letter-spacing:.02em;
+}

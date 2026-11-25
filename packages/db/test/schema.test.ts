@@ -1,0 +1,83 @@
+import { readFileSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
+import { getTableConfig, type SQLiteTable } from "drizzle-orm/sqlite-core";
+import { describe, expect, it } from "vitest";
+import * as d1 from "../src/d1/schema";
+import * as projectDo from "../src/do/project";
+import * as creditsDo from "../src/do/credits";
+import * as agentDo from "../src/do/agent";
+import { migrateDurableObject, type MigratableStorage, type DoMigration } from "../src/do/migrate";
+
+function tablesOf(mod: Record<string, unknown>): SQLiteTable[] {
+  return Object.values(mod).filter(
+    (v): v is SQLiteTable => typeof v === "object" && v !== null && Symbol.for("drizzle:IsDrizzleTable") in v,
+  );
+}
+
+function columnsIn(db: DatabaseSync, table: string): string[] {
+  return db
+    .prepare(`PRAGMA table_info(${table})`)
+    .all()
+    .map((r) => String(r.name))
+    .sort();
+}
+
+function expectSchemaMatches(db: DatabaseSync, tables: SQLiteTable[]) {
+  expect(tables.length).toBeGreaterThan(0);
+  for (const t of tables) {
+    const cfg = getTableConfig(t);
+    expect(columnsIn(db, cfg.name), `table ${cfg.name}`).toEqual(cfg.columns.map((c) => c.name).sort());
+  }
+}
+
+/** Adapts node:sqlite to the structural DO storage used by the migration helper. */
+function fakeStorage(db: DatabaseSync): MigratableStorage {
+  return {
+    sql: {
+      exec(query: string, ...bindings: unknown[]) {
+        if (bindings.length === 0 && !/^\s*select/i.test(query)) {
+          db.exec(query);
+          return { toArray: () => [] };
+        }
+        if (/^\s*select/i.test(query)) return { toArray: () => db.prepare(query).all(...bindings) };
+        db.prepare(query).all(...bindings);
+        return { toArray: () => [] };
+      },
+    },
+    transactionSync<T>(fn: () => T): T {
+      db.exec("BEGIN");
+      try {
+        const r = fn();
+        db.exec("COMMIT");
+        return r;
+      } catch (e) {
+        db.exec("ROLLBACK");
+        throw e;
+      }
+    },
+  };
+}
+
+describe("D1 migration", () => {
+  it("matches the Drizzle schema", () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec(readFileSync(new URL("../migrations/d1/0001_init.sql", import.meta.url), "utf8"));
+    expectSchemaMatches(db, tablesOf(d1));
+    expect(columnsIn(db, "user_prefs")).toContain("mature_content");
+    expect(columnsIn(db, "workspaces")).toContain("mature_allowed");
+  });
+});
+
+describe.each<[string, readonly DoMigration[], Record<string, unknown>]>([
+  ["project", projectDo.projectMigrations, projectDo],
+  ["credits", creditsDo.creditsMigrations, creditsDo],
+  ["agent", agentDo.agentMigrations, agentDo],
+])("DO %s migrations", (_name, migrations, mod) => {
+  it("apply once, are idempotent, and match the Drizzle schema", () => {
+    const db = new DatabaseSync(":memory:");
+    const storage = fakeStorage(db);
+    expect(migrateDurableObject(storage, migrations)).toBe(migrations.length);
+    expect(migrateDurableObject(storage, migrations)).toBe(migrations.length);
+    expectSchemaMatches(db, tablesOf(mod));
+  });
+});

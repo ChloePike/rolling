@@ -1,0 +1,11 @@
+.pill{
+  display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;
+  border:0;border-radius:var(--r-pill);background:var(--c-surface-5);color:var(--c-text-2);
+  font-size:var(--fs-control);font-weight:400;white-space:nowrap;
+  transition:background-color var(--m-fast) var(--m-ease-standard),color var(--m-fast) var(--m-ease-standard);
+}
+button.pill{cursor:pointer}
+button.pill:hover:not(:disabled){background:var(--c-surface-6);color:var(--c-text-1)}
+.selected{background:var(--c-surface-6);color:var(--c-text-1);font-weight:600}
+.sm{height:28px;padding:0 10px;font-size:var(--fs-meta)}
+.icon{display:inline-flex;flex:none}

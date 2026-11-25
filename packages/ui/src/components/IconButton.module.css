@@ -1,0 +1,17 @@
+.iconButton{
+  display:inline-flex;align-items:center;justify-content:center;flex:none;
+  border:0;border-radius:var(--r-pill);cursor:pointer;padding:0;color:var(--c-text-1);
+  transition:background-color var(--m-fast) var(--m-ease-standard),color var(--m-fast) var(--m-ease-standard);
+}
+.iconButton:disabled{cursor:not-allowed;color:var(--c-text-4)}
+.iconButton > svg{display:block}
+.s28{width:28px;height:28px}
+.s32{width:32px;height:32px}
+.s34{width:34px;height:34px}
+.s40{width:40px;height:40px}
+.filled{background:var(--c-surface-3)}
+.filled:hover:not(:disabled),.filled[aria-expanded="true"],.filled[aria-pressed="true"]{background:var(--c-surface-6)}
+.secondary{background:var(--c-surface-5)}
+.secondary:hover:not(:disabled){background:var(--c-surface-6)}
+.ghost{background:transparent;color:var(--c-text-3)}
+.ghost:hover:not(:disabled){background:var(--c-surface-5);color:var(--c-text-1)}

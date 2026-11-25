@@ -1,0 +1,25 @@
+.region{
+  position:fixed;left:50%;bottom:24px;z-index:80;translate:-50% 0;
+  display:flex;justify-content:center;pointer-events:none;
+}
+.toast{
+  pointer-events:auto;display:flex;align-items:center;gap:10px;min-height:40px;max-width:min(560px,calc(100vw - 32px));
+  padding:0 6px 0 14px;border-radius:var(--r-button);background:var(--c-surface-4);color:var(--c-text-1);
+  box-shadow:var(--shadow-toast);font-size:var(--fs-meta);line-height:1.4;
+  animation:enter var(--m-base) var(--m-ease-standard);
+}
+.message{flex:1;padding:10px 0}
+.action{
+  flex:none;height:28px;padding:0 10px;border:0;border-radius:8px;background:var(--c-surface-5);color:var(--c-text-1);
+  font-size:var(--fs-meta);font-weight:600;cursor:pointer;
+}
+.action:hover{background:var(--c-surface-6)}
+.dismiss{
+  flex:none;width:28px;height:28px;display:flex;align-items:center;justify-content:center;
+  border:0;border-radius:8px;background:none;color:var(--c-text-3);cursor:pointer;
+}
+.dismiss:hover{color:var(--c-text-1);background:var(--c-surface-5)}
+@keyframes enter{
+  from{opacity:0;transform:translateY(var(--m-move-md))}
+  to{opacity:1;transform:none}
+}

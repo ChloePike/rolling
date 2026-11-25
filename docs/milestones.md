@@ -15,13 +15,13 @@ Runs in parallel with M0. Goal: prove the generation path before building billin
 - `packages/core/models`: `GenerationProvider` / `LlmProvider` interfaces, Hyperouter adapter (fetch only): image create (`Prefer: respond-async`), video create, status polling, content download, Standard Webhooks verification, error mapping (`insufficient_credits`, `content_rejected`, `rate_limited`, `x-should-retry`), `Idempotency-Key` on every create.
 - Capabilities table for the mapped launch models (D-002), confirmed against `GET /v1/models`.
 - `scripts/spike.ts`: one image (Seedream Lite) and one 5s video (Seedance 2.0 mini), poll to completion, print cost and latency; one DeepSeek chat call with a tool call (streamed). No credit ledger yet.
-- PoseWear: map the data index (`/assets/poses.*.json`) to the `public_library` schema and write the import script (dry run, no R2 writes yet).
+- PoseWear: map the data index (`/assets/poses.*.json`) to the `public_items` schema and write the import script (dry run, no R2 writes yet).
 
 Accept: unit tests with mocked fetch for every status path and webhook signature (valid, bad signature, stale timestamp, duplicate id); a real spike run on a test key produces an image and a video URL; tool-call streaming confirmed or JSON-mode fallback chosen.
 
 ## M1 — Auth, workspaces, prefs
 - Better Auth on D1 (Google, Apple, email code); `Login` screens and states.
-- Date of birth at sign-up, mature-content opt-in (D-005).
+- Mature-content preference (D-005; gated on active plan, no DOB).
 - Personal workspace on sign-up; `/api/me`; `UserHub` socket; GraphQL endpoint skeleton; prefs (Settings → Account, Preferences) and the header settings popover.
 
 Accept: sign up with email code, log out/in, change language/creation mode and see it persist.

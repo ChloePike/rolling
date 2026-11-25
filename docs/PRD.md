@@ -84,7 +84,7 @@ Out of scope: native apps, phone-specific layouts, compliance/moderation work be
 6. **Not enough credits.** Show needed / balance / short-by, offer packs or an upgrade, then continue the same run. Optional auto top-up: below 200, buy 1,000 with the saved card.
 7. **Teams (Studio).** One shared pool. Owner sets per-member monthly limits and roles (Owner, Editor, Viewer).
 8. **Refunds are automatic** for failed or canceled provider jobs, shown in Activity and as a toast.
-9. **Public library.** Items carry a license label. Poses and outfits from PoseWear are “Rights reserved” (original authors’ copyright); portraits, hairstyles, historical outfits, scenes, lighting, props and furniture are CC0; expressions are MIT. Surface the label; replace “Rights reserved” items with our own generated assets before paid launch.
+9. **Public library.** (Superseded in part by `docs/decisions.md` D-004: PoseWear is first-party, so its poses and outfits are not “Rights reserved”.) Items carry a license label. Poses and outfits from PoseWear are “Rights reserved” (original authors’ copyright); portraits, hairstyles, historical outfits, scenes, lighting, props and furniture are CC0; expressions are MIT. Surface the label; replace “Rights reserved” items with our own generated assets before paid launch.
 
 ## Open decisions
 

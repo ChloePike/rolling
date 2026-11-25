@@ -4,9 +4,10 @@ Decisions made after the original spec. Where this file disagrees with `PRD.md`,
 
 ## D-005 — Adult (18+) content is allowed (2026-11-25)
 
-The platform allows 18+ creation for verified adults. This replaces the PRD line “compliance/moderation work beyond what providers enforce” being out of scope.
+The platform allows 18+ creation for paying members. This replaces the PRD line “compliance/moderation work beyond what providers enforce” being out of scope.
 
-- **Age gate.** Users confirm date of birth at sign-up; 18+ content is off by default and enabled per user in Settings → Preferences (`prefs.matureContent`, requires age ≥ 18). Workspaces can disable it for all members (`workspaces.matureAllowed`).
+- **Access = paid membership.** No date-of-birth or separate age verification. Paying (an active plan via Stripe) is treated as the age gate: 18+ generation is available only to workspaces with an active subscription. Non-members and lapsed members get `moderation: "auto"` routing only. A per-user preference `prefs.matureContent` (default off) controls whether mature models and outputs are shown — it is a visibility preference, not verification. Workspaces can disable it for all members (`workspaces.matureAllowed`).
+- **Regional risk (open).** Some jurisdictions (e.g. UK Online Safety Act, several US states) require “highly effective” age assurance for adult content; card payment may not satisfy it everywhere (debit/prepaid cards). Revisit per launch region; keep a `AgeAssurance` hook point in the run path so a region-specific check can be added without redesign.
 - **Hard limits, never configurable:** no sexual content involving minors or anyone who appears to be a minor; no sexual or intimate content depicting a real, identifiable person (uploaded face photos, celebrity names) — real-person references are allowed only for non-sexual content. These run as a pre-submit check on prompts and references (`packages/core/safety`) and as a post-generation check on outputs; violations block the run, release the hold, and are logged for review.
 - **Provider routing.** Mature runs go only to models flagged `mature: true` in `packages/core/models/capabilities`, with Hyperouter `moderation: "low"`; everything else uses `moderation: "auto"`. Provider rejections (`content_rejected`, `vendor_rejected`) release the hold like any failure.
 - **Visibility.** Mature outputs are blurred in lists until clicked, never shown on public share links, profiles, templates or the public library, and never used as thumbnails in shared surfaces.
@@ -18,21 +19,21 @@ Source: https://posewear.pages.dev/ (data index at `/assets/poses.<hash>.json`, 
 
 | Group | Category (zh) | Key | Count | License |
 |---|---|---|---|---|
-| Pose | 姿势 | `pose` | 288 | Rights reserved |
-| Pose | 深度姿势 | `pose_depth` | 288 | Rights reserved |
+| Pose | 姿势 | `pose` | 288 | First-party |
+| Pose | 深度姿势 | `pose_depth` | 288 | First-party |
 | Character look | 人像 | `portrait` | 1499 | CC0 |
 | Character look | 表情 | `expression` | 95 | MIT |
 | Character look | 发型 | `hairstyle` | 122 | CC0 |
-| Wardrobe | 服装 | `outfit` | 1407 | Rights reserved |
-| Wardrobe | 动画服装 | `outfit_anime` | 1760 | Rights reserved |
+| Wardrobe | 服装 | `outfit` | 1407 | First-party |
+| Wardrobe | 动画服装 | `outfit_anime` | 1760 | First-party |
 | Wardrobe | 历代服饰 | `outfit_historical` | 57 | CC0 |
 | Scene & props | 场景 | `scene` | 64 | CC0 |
 | Scene & props | 光影 | `lighting` | 50 | CC0 |
 | Scene & props | 道具 | `prop` | 32 | CC0 |
 | Scene & props | 家具 | `furniture` | 41 | CC0 |
 
-- An import script (`packages/db/scripts/import-posewear.ts`) reads the JSON index, copies images into R2 (`public/<category>/<id>/…`), and upserts `public_library` rows in D1 with category, sub-category, tags, prompt text, license and source URL. It is idempotent and re-runnable.
-- Licenses per PRD rule 9 (verify per item where the source says otherwise). “Rights reserved” items get the yellow label and must be replaced with our own assets before paid launch.
+- An import script (`packages/db/scripts/import-posewear.ts`) reads the JSON index, copies images into R2 (`public/<category>/<id>/…`), and upserts `public_items` rows (+ `assets` with source `public`, + `asset_search` FTS) in D1 with category, sub-category, tags, prompt text, license and source URL. It is idempotent and re-runnable.
+- **PoseWear is our own property** (confirmed by the owner, 2026-11-25). Items the PRD marked “Rights reserved” (poses, depth poses, outfits, anime outfits) are first-party: license value `first-party`, no warning label, no replacement needed before launch. This supersedes PRD rule 9’s “replace before paid launch”. CC0 and MIT items keep their labels.
 - Items are referenceable through `@` (Public library tab) and usable as references in generation: poses and depth poses as pose/control references, outfits/hairstyles/expressions/portraits as image references plus their prompt text.
 
 ## D-003 — API style: REST commands, WebSocket-first realtime, GraphQL reads (2026-11-25)

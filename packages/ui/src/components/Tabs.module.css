@@ -1,0 +1,10 @@
+.list{display:flex;gap:4px}
+.tab{
+  display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border:0;border-radius:8px;
+  background:transparent;color:var(--c-text-3);font-size:var(--fs-control);font-weight:600;cursor:pointer;white-space:nowrap;
+  transition:background-color var(--m-fast) var(--m-ease-standard),color var(--m-fast) var(--m-ease-standard);
+}
+.tab:hover:not([aria-selected="true"]){color:var(--c-text-1)}
+.tab[aria-selected="true"]{background:var(--c-surface-6);color:var(--c-text-1)}
+.pill .tab{height:28px;padding:0 12px;border-radius:var(--r-pill);font-size:var(--fs-meta)}
+.count{font-weight:500;color:var(--c-text-4)}

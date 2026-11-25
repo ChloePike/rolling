@@ -1,0 +1,21 @@
+/* Global base styles shared by every Rolling surface. Import after tokens.css. */
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;background:var(--c-bg);color:var(--c-text-1)}
+body{
+  font-family:var(--font-sans);
+  font-size:var(--fs-body);
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  font-variant-numeric:tabular-nums;
+}
+a{color:var(--c-text-1);text-decoration:none}
+a:hover{color:#FFFFFF}
+button,input,textarea,select{font:inherit;color:inherit}
+:focus{outline:none}
+:focus-visible{outline:none;box-shadow:var(--focus-ring)}
+*{scrollbar-width:thin;scrollbar-color:var(--c-control-off) transparent}
+::-webkit-scrollbar{width:6px;height:6px;background:transparent}
+::-webkit-scrollbar-thumb{background:var(--c-control-off);border-radius:999px}
+::-webkit-scrollbar-track{background:transparent}
+:lang(ko){word-break:keep-all}
+.rl-visually-hidden{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}

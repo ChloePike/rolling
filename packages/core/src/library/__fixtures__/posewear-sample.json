@@ -1,0 +1,579 @@
+{
+"labels": {
+"乐器": "Instruments",
+"刘海": "Bangs",
+"发型": "Hairstyle",
+"坐具": "Seating",
+"坐姿": "Sitting",
+"室内": "Indoor",
+"时段": "Time of day",
+"正脸": "Front",
+"短发": "Short hair",
+"站姿": "Standing",
+"背面坐位": "Couple, seated, facing away"
+},
+"datasets": {
+"pose": [
+{
+"id": "full_single_P001",
+"no": "P001",
+"line": "全身·标准",
+"cat": "坐姿",
+"ja": "仰け反り座り・片膝立て",
+"zh": "后仰坐·单膝立起",
+"en": "sitting leaning back, one knee raised",
+"lineEn": "full body, solo",
+"angles": [
+{
+"zh": "正面",
+"en": "front view",
+"t": "p/t/full_single_P001_front.webp",
+"i": "p/i/full_single_P001_front.webp",
+"o": "o/p/full_single_P001_front.png"
+},
+{
+"zh": "俯拍",
+"en": "high angle, from above",
+"t": "p/t/full_single_P001_high.webp",
+"i": "p/i/full_single_P001_high.webp",
+"o": "o/p/full_single_P001_high.png"
+}
+]
+},
+{
+"id": "full_sexy_P001",
+"no": "P001",
+"line": "全身·性感",
+"cat": "站姿",
+"ja": "S字立ち・腰を横に突き出す",
+"zh": "S形站姿·胯部侧顶",
+"en": "S-curve standing pose, hip pushed out to the side",
+"lineEn": "full body, solo, sexy",
+"angles": [
+{
+"zh": "正面",
+"en": "front view",
+"t": "p/t/full_sexy_P001_front.webp",
+"i": "p/i/full_sexy_P001_front.webp",
+"o": "o/p/full_sexy_P001_front.png"
+},
+{
+"zh": "俯拍",
+"en": "high angle, from above",
+"t": "p/t/full_sexy_P001_high.webp",
+"i": "p/i/full_sexy_P001_high.webp",
+"o": "o/p/full_sexy_P001_high.png"
+}
+],
+"a": 1
+},
+{
+"id": "pair60_P063",
+"no": "P063",
+"line": "双人互动",
+"cat": "背面坐位",
+"ja": "背中を預けて大きく膝を開く",
+"zh": "背靠对方大开双膝",
+"en": "leaning back on partner, knees spread wide",
+"lineEn": "two people, couple",
+"angles": [
+{
+"zh": "正面",
+"en": "front view",
+"t": "p/t/pair60_P063_front.webp",
+"i": "p/i/pair60_P063_front.webp",
+"o": "o/p/pair60_P063_front.png"
+},
+{
+"zh": "俯拍",
+"en": "high angle, from above",
+"t": "p/t/pair60_P063_high.webp",
+"i": "p/i/pair60_P063_high.webp",
+"o": "o/p/pair60_P063_high.png"
+}
+],
+"a": 1
+}
+],
+"pose_depth": {
+"pack": {
+"id": "gia-depth",
+"site": "https://ai-pose-depth-gallery.pages.dev/",
+"siteName": "ai-pose-depth-gallery",
+"author": "ギア",
+"authorUrl": "https://x.com/giaaibusi",
+"credit": "素材来自 ai-pose-depth-gallery，作者ギア（https://x.com/giaaibusi）",
+"unofficial": "非官方汉化",
+"note": "双人互动默认隐藏，需打开右上角「18+」并确认已满 18 岁。",
+"referrerPolicy": "no-referrer",
+"source": "hotlink"
+},
+"items": [
+{
+"id": "full_single_P001",
+"no": "P001",
+"line": "全身·标准",
+"lineEn": "full body, solo",
+"lineJa": "全身1人・標準系",
+"cat": "坐姿",
+"catJa": "座り",
+"ja": "仰け反り座り・片膝立て",
+"zh": "后仰坐·单膝立起",
+"en": "sitting leaning back, one knee raised",
+"pack": "gia-depth",
+"site": "https://ai-pose-depth-gallery.pages.dev/",
+"credit": "素材来自 ai-pose-depth-gallery，作者ギア（https://x.com/giaaibusi）",
+"unofficial": "非官方汉化",
+"angles": [
+{
+"zh": "正面",
+"en": "front view",
+"ja": "正面",
+"t": "https://pwimg.0vo.pro/d/thumbs/full_single_P001_front.jpg",
+"i": "https://pwimg.0vo.pro/d/img/full_single_P001_front.png"
+},
+{
+"zh": "斜侧",
+"en": "three-quarter view",
+"ja": "斜め",
+"t": "https://pwimg.0vo.pro/d/thumbs/full_single_P001_diag.jpg",
+"i": "https://pwimg.0vo.pro/d/img/full_single_P001_diag.png"
+}
+],
+"ext": 1,
+"ref": "no-referrer"
+},
+{
+"id": "full_sexy_P001",
+"no": "P001",
+"line": "全身·性感",
+"lineEn": "full body, solo, sexy",
+"lineJa": "全身1人・セクシー系",
+"cat": "站姿",
+"catJa": "立ち",
+"ja": "S字立ち・腰を横に突き出す",
+"zh": "S形站姿·胯部侧顶",
+"en": "S-curve standing pose, hip pushed out to the side",
+"pack": "gia-depth",
+"site": "https://ai-pose-depth-gallery.pages.dev/",
+"credit": "素材来自 ai-pose-depth-gallery，作者ギア（https://x.com/giaaibusi）",
+"unofficial": "非官方汉化",
+"angles": [
+{
+"zh": "正面",
+"en": "front view",
+"ja": "正面",
+"t": "https://pwimg.0vo.pro/d/thumbs/full_sexy_P001_front.jpg",
+"i": "https://pwimg.0vo.pro/d/img/full_sexy_P001_front.png"
+},
+{
+"zh": "斜侧",
+"en": "three-quarter view",
+"ja": "斜め",
+"t": "https://pwimg.0vo.pro/d/thumbs/full_sexy_P001_diag.jpg",
+"i": "https://pwimg.0vo.pro/d/img/full_sexy_P001_diag.png"
+}
+],
+"ext": 1,
+"ref": "no-referrer"
+},
+{
+"id": "pair60_P063",
+"no": "P063",
+"line": "双人互动",
+"lineEn": "two people, couple",
+"lineJa": "2人絡み",
+"cat": "背面坐位",
+"catJa": "背面座位",
+"ja": "背中を預けて大きく膝を開く",
+"zh": "背靠对方大开双膝",
+"en": "leaning back on partner, knees spread wide",
+"pack": "gia-depth",
+"site": "https://ai-pose-depth-gallery.pages.dev/",
+"credit": "素材来自 ai-pose-depth-gallery，作者ギア（https://x.com/giaaibusi）",
+"unofficial": "非官方汉化",
+"angles": [
+{
+"zh": "正面",
+"en": "front view",
+"ja": "正面",
+"t": "https://pwimg.0vo.pro/d/thumbs/pair60_P063_front.jpg",
+"i": "https://pwimg.0vo.pro/d/img/pair60_P063_front.png"
+},
+{
+"zh": "斜侧",
+"en": "three-quarter view",
+"ja": "斜め",
+"t": "https://pwimg.0vo.pro/d/thumbs/pair60_P063_diag.jpg",
+"i": "https://pwimg.0vo.pro/d/img/pair60_P063_diag.png"
+}
+],
+"ext": 1,
+"ref": "no-referrer",
+"a": 1
+}
+]
+},
+"outfit": [
+{
+"id": "SPR-0001",
+"cat": "春季",
+"catEn": "spring",
+"kw": "ivory frill knit denim mini skirt coat socks white sneakers",
+"zh": "外穿大衣，下身配象牙白荷叶边针织牛仔短裙，配袜子，脚踩白色运动鞋。",
+"en": "spring outfit, ivory frill knit denim mini skirt, coat, socks, white sneakers",
+"ti": "大衣 + 荷叶边针织牛仔短裙",
+"t": "c/t/SPR-0001.webp",
+"m": "c/m/SPR-0001.webp",
+"i": "c/i/SPR-0001.webp",
+"o": "o/c/SPR-0001.png"
+},
+{
+"id": "AUT-0162",
+"cat": "秋季",
+"catEn": "autumn",
+"kw": "white bra blue black bag",
+"zh": "上身是白色文胸，蓝色拼黑色手提包作点缀。",
+"en": "autumn outfit, white bra, blue black bag",
+"ti": "白色文胸",
+"t": "c/t/AUT-0162.webp",
+"m": "c/m/AUT-0162.webp",
+"i": "c/i/AUT-0162.webp",
+"o": "o/c/AUT-0162.png"
+},
+{
+"id": "LNG-0105",
+"cat": "内衣",
+"catEn": "lingerie",
+"kw": "navy bra briefs tulle stockings satin heels necklace",
+"zh": "上衣选藏青色文胸，下身配内裤，搭配薄纱长筒袜，鞋子选缎面高跟鞋，项链作点缀。",
+"en": "lingerie outfit, navy bra, briefs, tulle stockings, satin high heels, necklace",
+"ti": "藏青色文胸 + 内裤",
+"t": "c/t/LNG-0105.webp",
+"m": "c/m/LNG-0105.webp",
+"i": "c/i/LNG-0105.webp",
+"o": "o/c/LNG-0105.png",
+"a": 1
+}
+],
+"outfit_anime": [
+{
+"id": "SPR-0001",
+"cat": "春季",
+"catEn": "spring",
+"kw": "ivory frill knit denim mini skirt coat socks white sneakers",
+"zh": "外穿大衣，下身配象牙白荷叶边针织牛仔短裙，配袜子，脚踩白色运动鞋。",
+"en": "spring outfit, ivory frill knit denim mini skirt, coat, socks, white sneakers",
+"ti": "大衣 + 荷叶边针织牛仔短裙",
+"t": "a/t/SPR-0001.webp",
+"m": "a/m/SPR-0001.webp",
+"i": "a/i/SPR-0001.webp",
+"o": "o/a/SPR-0001.png"
+},
+{
+"id": "charadb-O001",
+"cat": "制服与校园风",
+"catEn": "school uniforms",
+"kw": "serafuku, sailor collar, blue sailor collar, red neckerchief, pleated skirt, blue skirt",
+"zh": "藏青水手服，水手服、蓝色、红色、百褶、半身裙。",
+"en": "serafuku, sailor collar, blue sailor collar, red neckerchief, pleated skirt, blue skirt",
+"ti": "藏青水手服",
+"t": "https://charadb-2fi.pages.dev/thumb/O001.webp",
+"m": "https://charadb-2fi.pages.dev/img/O001.jpg",
+"i": "https://charadb-2fi.pages.dev/img/O001.jpg",
+"o": "",
+"ext": 1
+},
+{
+"id": "charadb-O013",
+"cat": "制服与校园风",
+"catEn": "school uniforms",
+"kw": "school swimsuit, one-piece swimsuit, blue one-piece swimsuit, name tag",
+"zh": "校园风连体泳装，泳衣、蓝色。",
+"en": "school swimsuit, one-piece swimsuit, blue one-piece swimsuit, name tag",
+"ti": "校园风连体泳装",
+"t": "https://charadb-2fi.pages.dev/thumb/O013.webp",
+"m": "https://charadb-2fi.pages.dev/img/O013.jpg",
+"i": "https://charadb-2fi.pages.dev/img/O013.jpg",
+"o": "",
+"ext": 1,
+"a": 1
+}
+],
+"portrait": [
+{
+"id": "f71f980dde3",
+"no": "F001",
+"sec": "正脸",
+"len": "短发",
+"st": "",
+"ti": "短发 · 正脸",
+"zh": "一位亚洲年轻女性，短发，正面半身肖像，浅灰纯色背景，柔和均匀的光线。作为人物面部参考，保持五官和脸型一致。",
+"en": "young Asian woman, short hair, front-facing head-and-shoulders portrait, plain light grey background, soft even lighting, consistent facial features, face reference",
+"ja": "ショート",
+"t": "r/t/f71f980dde3.webp",
+"m": "r/m/f71f980dde3.webp",
+"i": "r/m/f71f980dde3.webp",
+"o": "o/r/f71f980dde3.png",
+"w": 1122,
+"h": 1402,
+"rk": 1,
+"rc": 1
+}
+],
+"expression": [
+{
+"id": "angry-024",
+"cat": "愤怒",
+"ti": "怒视",
+"zh": "从压低的眉毛下怒视，嘴唇紧抿",
+"en": "an angry glare from under lowered brows, the lips pressed tight",
+"ja": "Glare",
+"line": "愤怒",
+"lineEn": "angry",
+"no": "angry-024",
+"angles": [
+{
+"zh": "正面",
+"en": "front view",
+"t": "e/t/angry-024_front.webp",
+"i": "e/i/angry-024_front.webp",
+"o": "o/e/angry-024_front.webp",
+"_3": "angry-024_front.webp",
+"_9": "angry-024_front.webp"
+},
+{
+"zh": "3/4 侧",
+"en": "three-quarter view",
+"t": "e/t/angry-024_tq.webp",
+"i": "e/i/angry-024_tq.webp",
+"o": "o/e/angry-024_tq.webp",
+"_3": "angry-024_three-quarter.webp",
+"_9": "angry-024_three-quarter.webp"
+}
+],
+"emo": "愤怒",
+"emoEn": "angry",
+"int": "含蓄",
+"intEn": "subtle"
+}
+],
+"hairstyle": [
+{
+"id": "H001",
+"cat": "发型",
+"ti": "长发",
+"zh": "长发",
+"en": "long hair",
+"kw": "long hair",
+"ja": "ロングヘア",
+"line": "发型",
+"lineEn": "hairstyle",
+"no": "H001",
+"ext": 1,
+"angles": [
+{
+"zh": "棕发",
+"en": "brown hair",
+"t": "https://charadb-2fi.pages.dev/thumb/H001.webp",
+"i": "https://charadb-2fi.pages.dev/img/H001.jpg",
+"o": ""
+},
+{
+"zh": "黑发",
+"en": "black hair",
+"t": "https://charadb-2fi.pages.dev/thumb/H001-black.webp",
+"i": "https://charadb-2fi.pages.dev/img/H001-black.jpg",
+"o": ""
+}
+]
+},
+{
+"id": "H037",
+"cat": "刘海",
+"ti": "齐刘海",
+"zh": "齐刘海",
+"en": "blunt bangs",
+"kw": "blunt bangs",
+"ja": "ぱっつん前髪",
+"no": "H037",
+"ext": 1,
+"t": "https://charadb-2fi.pages.dev/thumb/H037.webp",
+"m": "https://charadb-2fi.pages.dev/img/H037.jpg",
+"i": "https://charadb-2fi.pages.dev/img/H037.jpg",
+"o": ""
+}
+],
+"outfit_historical": [
+{
+"id": "C001",
+"cat": "历代服饰",
+"ti": "上衣下裳·蔽膝（黄褐）",
+"zh": "上衣下裳·蔽膝（黄褐）",
+"en": "a Shang-dynasty Chinese men's yichang ensemble: a hip-length upper garment whose hem ends at the hip line, with slim straight tube sleeves and a cross collar, in yellow-brown silk with black woven borders at the collar a",
+"ja": "上衣下裳・蔽膝（黄褐）",
+"line": "商",
+"lineEn": "Shang dynasty",
+"no": "C001",
+"angles": [
+{
+"zh": "正面",
+"en": "front view",
+"t": "y/t/C001_front.webp",
+"i": "y/i/C001_front.webp",
+"o": "o/y/C001_front.webp",
+"_3": "costume_C001_front.webp",
+"_9": "costume_C001_front.webp"
+},
+{
+"zh": "斜侧",
+"en": "three-quarter view",
+"t": "y/t/C001_diag.webp",
+"i": "y/i/C001_diag.webp",
+"o": "o/y/C001_diag.webp",
+"_3": "costume_C001_diag.webp",
+"_9": "costume_C001_diag.webp"
+}
+],
+"era": "商",
+"eraEn": "Shang",
+"gender": "M"
+}
+],
+"scene": [
+{
+"id": "E001",
+"cat": "室内",
+"ti": "现代客厅（白天）",
+"zh": "现代客厅（白天）",
+"en": "a modern apartment living room with white walls and light oak floorboards, a low grey three-seat fabric sofa against the far wall under a large plain blank canvas, a round oak coffee table pushed close to the sofa, a tal",
+"ja": "モダンなリビング（昼）",
+"line": "居家",
+"lineEn": "Home",
+"no": "E001",
+"angles": [
+{
+"zh": "俯视",
+"en": "high angle, from above",
+"t": "s/t/E001_above.webp",
+"i": "s/i/E001_above.webp",
+"o": "o/s/E001_above.webp",
+"_3": "scene_E001_above.webp",
+"_9": "scene_E001_above.webp"
+},
+{
+"zh": "仰视",
+"en": "low angle, from below",
+"t": "s/t/E001_below.webp",
+"i": "s/i/E001_below.webp",
+"o": "o/s/E001_below.webp",
+"_3": "scene_E001_below.webp",
+"_9": "scene_E001_below.webp"
+}
+],
+"light": "Late-morning daylight coming through the left window, soft shadows falling to the right"
+}
+],
+"lighting": [
+{
+"id": "L001",
+"cat": "时段",
+"ti": "黎明前蓝调（标准）",
+"zh": "黎明前蓝调（标准）",
+"en": "before sunrise, no direct sun; soft shadowless cool blue light from the whole sky, slightly brighter toward the horizon behind image-right, very low contrast, about 9000 K",
+"ja": "夜明け前（標準）",
+"line": "日出日落",
+"lineEn": "Sunrise & Sunset",
+"no": "L001",
+"angles": [
+{
+"zh": "正面",
+"en": "front view",
+"t": "l/t/L001_front.webp",
+"i": "l/i/L001_front.webp",
+"o": "o/l/L001_front.webp",
+"_3": "light_L001_front.webp",
+"_9": "light_L001_front.webp"
+},
+{
+"zh": "斜侧",
+"en": "three-quarter view",
+"t": "l/t/L001_diag.webp",
+"i": "l/i/L001_diag.webp",
+"o": "o/l/L001_diag.webp",
+"_3": "light_L001_diag.webp",
+"_9": "light_L001_diag.webp"
+}
+],
+"setting": "standing on a large open pale concrete plaza with nothing around it for 30 metres, flat horizon and open sky behind"
+}
+],
+"prop": [
+{
+"id": "T001",
+"cat": "乐器",
+"ti": "木吉他（原木色）",
+"zh": "木吉他（原木色）",
+"en": "a generic steel-string acoustic guitar with a full rounded dreadnought body, a pale natural spruce top and warm brown mahogany back and sides, one round soundhole with a plain thin ring rosette, a plain teardrop pickguar",
+"ja": "アコースティックギター（ナチュラル）",
+"line": "吉他与提琴",
+"lineEn": "Guitars & Strings",
+"no": "T001",
+"angles": [
+{
+"zh": "正面",
+"en": "front view",
+"t": "t/t/T001_front.webp",
+"i": "t/i/T001_front.webp",
+"o": "o/t/T001_front.webp",
+"_3": "prop_T001_front.webp",
+"_9": "prop_T001_front.webp"
+},
+{
+"zh": "斜侧",
+"en": "three-quarter view",
+"t": "t/t/T001_diag.webp",
+"i": "t/i/T001_diag.webp",
+"o": "o/t/T001_diag.webp",
+"_3": "prop_T001_diag.webp",
+"_9": "prop_T001_diag.webp"
+}
+]
+}
+],
+"furniture": [
+{
+"id": "F001",
+"cat": "坐具",
+"ti": "实木餐椅（橡木）",
+"zh": "实木餐椅（橡木）",
+"en": "a simple solid light oak dining chair with four straight square legs, a flat seat 45 cm high, a backrest of five vertical spindles under a curved top rail, and low stretchers joining the legs, smooth oiled finish",
+"ja": "木製ダイニングチェア（オーク）",
+"line": "单椅",
+"lineEn": "Chairs",
+"no": "F001",
+"angles": [
+{
+"zh": "正面",
+"en": "front view",
+"t": "f/t/F001_front.webp",
+"i": "f/i/F001_front.webp",
+"o": "o/f/F001_front.webp",
+"_3": "furniture_F001_front.webp",
+"_9": "furniture_F001_front.webp"
+},
+{
+"zh": "斜侧",
+"en": "three-quarter view",
+"t": "f/t/F001_diag.webp",
+"i": "f/i/F001_diag.webp",
+"o": "o/f/F001_diag.webp",
+"_3": "furniture_F001_diag.webp",
+"_9": "furniture_F001_diag.webp"
+}
+],
+"dims": "45×50×85cm，座高 45cm"
+}
+]
+}
+}

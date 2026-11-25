@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // DOM lib provides the Web-standard globals Workers also expose
+    // (fetch, Request, Headers, ReadableStream, crypto.subtle, TextEncoder).
+    // No Node types: src must run on Workers.
+    "lib": ["ES2023", "DOM"],
+    "types": []
+  },
+  "include": ["src", "test", "vitest.config.ts"]
+}

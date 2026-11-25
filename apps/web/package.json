@@ -1,4 +1,33 @@
-{ "name": "@rolling/web", "private": true, "type": "module",
-  "scripts": { "dev": "vite", "build": "vite build", "typecheck": "tsc -p .", "test": "vitest run --passWithNoTests", "e2e": "playwright test --trace off" },
-  "dependencies": { "@rolling/ui": "workspace:*", "@rolling/core": "workspace:*", "react": "^19.2.0", "react-dom": "^19.2.0", "@tanstack/react-router": "^1.133.0", "@tanstack/react-query": "^5.90.5", "react-intl": "^7.1.14", "geist": "^1.5.1" },
-  "devDependencies": { "vite": "^7.1.12", "@vitejs/plugin-react": "^5.1.0", "@tanstack/router-plugin": "^1.133.0", "@types/react": "^19.2.2", "@types/react-dom": "^19.2.2", "@playwright/test": "1.56.1", "vitest": "^4.1.0", "typescript": "^5.9.3" } }
+{
+  "name": "@rolling/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc -p .",
+    "test": "vitest run --passWithNoTests",
+    "e2e": "playwright test --trace off"
+  },
+  "dependencies": {
+    "@rolling/core": "workspace:*",
+    "@rolling/ui": "workspace:*",
+    "@tanstack/react-query": "^5.90.5",
+    "@tanstack/react-router": "^1.133.0",
+    "geist": "^1.5.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-intl": "^7.1.14"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1",
+    "@tanstack/router-plugin": "^1.133.0",
+    "@types/node": "22.20.6",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@vitejs/plugin-react": "^5.1.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.12",
+    "vitest": "^4.1.0"
+  }
+}

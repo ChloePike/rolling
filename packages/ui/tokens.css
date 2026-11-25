@@ -1,0 +1,89 @@
+/* Design tokens. Source: docs/design/tokens.css (keep in sync), plus motion and focus tokens from docs/design/handoff.md section 7. */
+:root{
+  --c-bg:#0B0B0C;
+  --c-surface-1:#111113;
+  --c-surface-2:#141416;
+  --c-surface-3:#161618;
+  --c-surface-4:#1C1C1F;
+  --c-surface-5:#26262A;
+  --c-surface-6:#2E2E33;
+  --c-border:#1F1F23;
+  --c-text-1:#F5F5F5;
+  --c-text-2:#C8C8CC;
+  --c-text-3:#9A9AA0;
+  --c-text-4:#7C7C84;
+  --c-accent:#3B82F6;
+  --c-accent-text:#60A5FA;
+  --c-success:#4ADE80;
+  --c-warning:#FACC15;
+  --c-danger:#F87171;
+  --c-brand:#FFCB2B;
+  --c-pro:#B8955A;
+  --c-clip-video:#2B3550;
+  --c-clip-video-2:#243A40;
+  --c-clip-voice:#1F3A2C;
+  --c-wave-voice:#7FD1A4;
+  --c-clip-music:#3A3224;
+  --c-wave-music:#D9B26A;
+  --c-clip-caption:#3B3050;
+  --font-sans:'Geist','Noto Sans JP','Noto Sans TC','Noto Sans KR','Noto Sans SC',system-ui,sans-serif;
+  --fs-hero:40px;
+  --fs-page:32px;
+  --fs-section:28px;
+  --fs-dialog:20px;
+  --fs-prompt:16px;
+  --fs-body:14px;
+  --fs-control:13px;
+  --fs-meta:12px;
+  --fs-badge:11px;
+  --r-pill:999px;
+  --r-card:16px;
+  --r-popover:18px;
+  --r-button:10px;
+  --r-input:8px;
+  --r-clip:4px;
+  --shadow-float:0 18px 48px rgba(0,0,0,.6);
+  --m-instant:80ms;
+  --m-fast:140ms;
+  --m-base:200ms;
+  --m-slow:320ms;
+  --m-brand:400ms;
+  --m-ease-standard:cubic-bezier(.2,0,0,1);
+  --m-ease-exit:cubic-bezier(.4,0,1,1);
+  --m-ease-spring:cubic-bezier(.3,1.4,.4,1);
+  /* Motion: movement and scale limits (handoff 7). */
+  --m-move-sm:4px;
+  --m-move-md:8px;
+  --m-move-lg:16px;
+  --m-scale-min:.96;
+  --m-stagger:30ms;
+  /* Extra surfaces used by the approved screens. */
+  --c-surface-7:#333338;
+  --c-control-off:#3A3A40;
+  --c-disabled-text:#4A4A52;
+  --c-header-bg:rgba(11,11,12,.82);
+  --c-upgrade:#FFC53D;
+  --c-accent-soft:rgba(59,130,246,.16);
+  --c-danger-strong:#FCA5A5;
+  /* Focus ring: accent, offset from the surface. */
+  --focus-ring:0 0 0 2px var(--c-bg),0 0 0 4px var(--c-accent);
+  --shadow-popover:0 20px 60px rgba(0,0,0,.6);
+  --shadow-toast:0 12px 32px rgba(0,0,0,.6);
+}
+
+/* Reduced motion: opacity only. Movement and scale transitions collapse; fades stay. */
+@media (prefers-reduced-motion:reduce){
+  :root{
+    --m-move-sm:0px;
+    --m-move-md:0px;
+    --m-move-lg:0px;
+    --m-scale-min:1;
+    --m-stagger:0ms;
+  }
+  *,*::before,*::after{
+    animation-duration:1ms!important;
+    animation-iteration-count:1!important;
+    transition-property:opacity!important;
+    scroll-behavior:auto!important;
+  }
+}

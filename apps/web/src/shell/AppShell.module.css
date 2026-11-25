@@ -1,0 +1,8 @@
+.shell{min-height:100vh;background:var(--c-bg);color:var(--c-text-1)}
+.main{box-sizing:border-box;padding:0 32px 64px}
+.main:focus{outline:none}
+.skip{
+  position:absolute;left:16px;top:-60px;z-index:100;padding:8px 12px;border-radius:var(--r-button);
+  background:var(--c-text-1);color:var(--c-bg);font-weight:600;
+}
+.skip:focus{top:12px}

@@ -51,7 +51,7 @@ Repo: `apps/api` (Worker + DO classes + Workflows), `apps/web` (SPA), `container
 - Visual style: neutral dark, one blue accent (`#3B82F6`) for UI state, brand yellow (`#FFCB2B`) only for the logo, app icon and splash. No gradients, no glow, no emoji in UI, no decorative motion. Follow `docs/design/handoff.md` → Copy rules: short, specific, sentence case, no “AI magic” language.
 - Respect `prefers-reduced-motion`.
 - Keep provider-specific code inside `packages/core/models/providers/*`. The rest of the app talks to the model gateway only.
-- 18+ content (D-005) is allowed only for verified adults who opted in. Never generate or allow sexual content involving minors or anyone who appears to be one, or sexual/intimate content depicting a real, identifiable person. These checks live in `packages/core/safety` and cannot be disabled by any setting. Mature outputs never appear on public surfaces.
+- 18+ content (D-005) is allowed only for workspaces with an active paid plan (payment is the age gate; no DOB check) whose user turned on the mature-content preference. Never generate or allow sexual content involving minors or anyone who appears to be one, or sexual/intimate content depicting a real, identifiable person. These checks live in `packages/core/safety` and cannot be disabled by any setting. Mature outputs never appear on public surfaces.
 
 ## Conventions
 
