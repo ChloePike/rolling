@@ -24,7 +24,7 @@ import {
   type TimelinePatchBody,
   type TurnEndReason,
 } from "@rolling/agent";
-import { hyperouter, tokenPrice, type LlmProvider } from "@rolling/core";
+import { hyperouter, isUnmeteredAgentLlm, tokenPrice, type LlmProvider } from "@rolling/core";
 import type { AgentHoldResult, AgentPeriodInput, AgentReleaseResult, AgentSettleResult, LedgerOutcome } from "@rolling/core/credits";
 import type { ServerMessageType } from "@rolling/core/graph";
 import { newId } from "@rolling/core/ids";
@@ -101,7 +101,7 @@ export interface TurnSummary {
   llm: string;
 }
 
-export type AgentError = { ok: false; code: "NOT_FOUND" | "FORBIDDEN" | "CONFLICT" | "VALIDATION_FAILED" | "AGENT_ALLOWANCE_EXHAUSTED"; message: string; data?: Record<string, unknown> };
+export type AgentError = { ok: false; code: "NOT_FOUND" | "FORBIDDEN" | "CONFLICT" | "VALIDATION_FAILED" | "AGENT_ALLOWANCE_EXHAUSTED" | "RATE_LIMITED"; message: string; data?: Record<string, unknown> };
 
 /** CreditAccount agent-allowance RPCs (D-012), typed structurally. */
 interface AllowanceApi {
@@ -226,11 +226,19 @@ export class AgentSession extends DurableObject<Env> {
   private async runOne(input: SendInput, controller: AbortController): Promise<TurnSummary | AgentError> {
     const ports = portsOverride ? await portsOverride(input.caller) : await agentPorts(this.env, input.caller);
     const llmId = input.llm ?? this.meta("llm");
-    // D-012: reserve the turn's estimate before the first LLM call.
+    // D-012: reserve the turn's estimate before the first LLM call. DeepSeek
+    // (unmetered, D-012 amendment) takes a slot of the per-user abuse limit instead.
     const allowance = this.allowanceApi(input.caller.workspaceId);
+    const est = defaultTurnEstimate(llmId ?? DEFAULT_AGENT_LLM, ports.models.chatModels(), { mature: input.caller.matureAllowed });
+    const unmetered = isUnmeteredAgentLlm(est.publicId);
     let heldLlm: string | null = null;
-    if (input.allowance) {
-      const est = defaultTurnEstimate(llmId ?? DEFAULT_AGENT_LLM, ports.models.chatModels(), { mature: input.caller.matureAllowed });
+    if (unmetered) {
+      const hub = this.env.USER_HUB.get(this.env.USER_HUB.idFromName(input.caller.userId)) as unknown as {
+        takeAgentTurnSlot(): Promise<{ ok: true; remaining: number } | { ok: false; retryAfter: number }>;
+      };
+      const slot = await hub.takeAgentTurnSlot();
+      if (!slot.ok) return { ok: false, code: "RATE_LIMITED", message: "Too many agent turns this hour", data: { retryAfter: slot.retryAfter, model: est.publicId } };
+    } else if (input.allowance) {
       const out = await allowance.agentHold({
         ...input.allowance,
         turnId: input.turnId,
@@ -301,7 +309,10 @@ export class AgentSession extends DurableObject<Env> {
     });
     await this.indexTurn(input.caller, result.proposal, input.text);
     const charge = { turnCost: result.usage.chargedUsd, tokensIn: result.usage.promptTokens, tokensOut: result.usage.completionTokens };
-    const close = heldLlm && input.allowance ? { llm: heldLlm, period: input.allowance, chat: ports.models.chatModels() } : null;
+    const close =
+      input.allowance && (heldLlm || unmetered)
+        ? { llm: heldLlm ?? est.publicId, metered: !unmetered, period: input.allowance, chat: ports.models.chatModels() }
+        : null;
     if (summaryDue(turnCount, this.messageCount())) {
       // The summary's cost is part of this turn (D-012): settle once it is done.
       this.ctx.waitUntil(
@@ -347,11 +358,12 @@ export class AgentSession extends DurableObject<Env> {
   /**
    * Settles the turn's actual cost (or releases the hold when nothing was
    * charged), mirrors it to D1 `agent_usage`, and pushes `agent.allowance` to
-   * the user's socket. Never throws: the turn already happened.
+   * the user's socket. Unmetered turns (DeepSeek, D-012 amendment) only record
+   * their cost (`status = 'unmetered'`). Never throws: the turn already happened.
    */
   private async closeAllowance(
     input: SendInput,
-    close: { llm: string; period: AgentPeriodInput; chat: ReturnType<AgentPorts["models"]["chatModels"]> },
+    close: { llm: string; metered: boolean; period: AgentPeriodInput; chat: ReturnType<AgentPorts["models"]["chatModels"]> },
     charge: { turnCost: number; tokensIn: number; tokensOut: number },
   ): Promise<void> {
     const { caller, turnId } = input;
@@ -360,7 +372,10 @@ export class AgentSession extends DurableObject<Env> {
       let cost = 0;
       let overrun = 0;
       let status = "released";
-      if (charge.turnCost > 0) {
+      if (!close.metered) {
+        cost = charge.turnCost;
+        status = "unmetered";
+      } else if (charge.turnCost > 0) {
         const out = await api.agentSettle({ turnId, actualUsd: charge.turnCost, idemKey: `${turnId}:agent:settle` });
         if (!out.ok) throw new Error(`${out.error.code}: ${out.error.message}`);
         cost = out.value.actualUsd;

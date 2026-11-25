@@ -637,7 +637,7 @@ export const agentUsage = sqliteTable("agent_usage", {
   overrunUsd: real("overrun_usd").notNull().default(0),
   tokensIn: integer("tokens_in").notNull().default(0),
   tokensOut: integer("tokens_out").notNull().default(0),
-  /** `settled` or `released`. */
+  /** `settled`, `released` or `unmetered` (DeepSeek, D-012 amendment: cost recorded, no allowance hold). */
   status: text("status").notNull().default("settled"),
   createdAt: integer("created_at").notNull(),
 }, (t) => [index("agent_usage_ws").on(t.workspaceId, t.periodStart), index("agent_usage_ws_llm").on(t.workspaceId, t.llm, sql`${t.createdAt} DESC`)]);

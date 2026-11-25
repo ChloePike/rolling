@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import listing from '../models/__fixtures__/hyperouter-models.json';
 import { parseListing } from '../models/catalog';
 import { PUBLIC_CHAT_MODELS, resolveChatModel, tokenPrice } from '../models/chat';
-import { AgentCostMeter, agentAllowancePeriod, defaultTurnEstimateUsd, responseCostUsd, rollingAverage, turnsLeft } from './agent';
+import { AGENT_ABUSE_LIMIT, AgentCostMeter, UNMETERED_AGENT_LLMS, agentAllowancePeriod, defaultTurnEstimateUsd, isUnmeteredAgentLlm, responseCostUsd, rollingAverage, slidingWindowTake, turnsLeft } from './agent';
 import { AGENT_ALLOWANCE_USD } from './config';
 
 const models = parseListing(listing).models.filter((m) => m.kind === 'chat');
@@ -63,5 +63,34 @@ describe('agent allowance math (D-012)', () => {
     expect(agentAllowancePeriod(Date.UTC(2026, 10, 25, 8), null)).toEqual({ start: Date.UTC(2026, 10, 1), resetsAt: Date.UTC(2026, 11, 1) });
     // An anchor in the future (clock skew) falls back to the calendar month.
     expect(agentAllowancePeriod(Date.UTC(2026, 10, 25), Date.UTC(2026, 11, 1)).start).toBe(Date.UTC(2026, 10, 1));
+  });
+});
+
+describe('unmetered DeepSeek LLMs (D-012 amendment)', () => {
+  it('marks both public DeepSeek LLMs unmetered and nothing else', () => {
+    expect(isUnmeteredAgentLlm('deepseek-v4.1-flash')).toBe(true);
+    expect(isUnmeteredAgentLlm('deepseek-v4.1-flash-1017')).toBe(true);
+    expect(isUnmeteredAgentLlm('claude-opus-5.5')).toBe(false);
+    expect(isUnmeteredAgentLlm(null)).toBe(false);
+    for (const id of UNMETERED_AGENT_LLMS) expect(PUBLIC_CHAT_MODELS.some((m) => m.id === id)).toBe(true);
+  });
+
+  it('limits turns per rolling hour and reports when a slot frees up', () => {
+    const { turns, windowMs } = AGENT_ABUSE_LIMIT;
+    expect(turns).toBe(300);
+    const t0 = 1_000_000_000;
+    let ts: number[] = [];
+    for (let i = 0; i < turns; i++) {
+      const r = slidingWindowTake(ts, t0 + i * 1000, turns, windowMs);
+      expect(r.ok).toBe(true);
+      ts = r.timestamps;
+    }
+    const blocked = slidingWindowTake(ts, t0 + turns * 1000, turns, windowMs);
+    expect(blocked.ok).toBe(false);
+    // The first turn (t0) leaves the window at t0 + 1 h.
+    expect(blocked.retryAfter).toBe(Math.ceil((t0 + windowMs - (t0 + turns * 1000)) / 1000));
+    const later = slidingWindowTake(ts, t0 + windowMs + 1, turns, windowMs);
+    expect(later.ok).toBe(true);
+    expect(later.timestamps).toHaveLength(turns);
   });
 });

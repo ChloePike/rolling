@@ -2,20 +2,19 @@
  * Agent allowance (D-012) on the API side: the period from the subscription,
  * the CreditAccount agent ledger, and the client view
  * (`GET /api/agent/allowance`, WS `agent.allowance`). Public LLM ids only.
+ * DeepSeek public LLMs are unmetered (D-012 amendment) and listed as `{ unlimited: true }`.
  */
 import { defaultTurnEstimates } from "@rolling/agent";
-import { agentAllowancePeriod, planAgentAllowanceUsd, turnsLeft, type ListingModel, type PlanId } from "@rolling/core";
+import { agentAllowancePeriod, isUnmeteredAgentLlm, planAgentAllowanceUsd, turnsLeft, type ListingModel, type PlanId } from "@rolling/core";
 import type { AgentPeriodInput } from "@rolling/core/credits";
 import { creditAccount } from "../billing/credits";
 import { latestSubscription } from "../billing/stripe";
 import { loadCatalog } from "../models/catalog";
 
-export interface AllowanceModelView {
-  id: string;
-  name: string;
-  estTurnUsd: number;
-  turnsLeft: number;
-}
+export type AllowanceModelView =
+  | { id: string; name: string; unlimited: false; estTurnUsd: number; turnsLeft: number }
+  /** DeepSeek public LLMs do not draw on the allowance (D-012 amendment); a per-user abuse limit applies. */
+  | { id: string; name: string; unlimited: true };
 
 export interface AllowanceView {
   plan: PlanId | null;
@@ -40,7 +39,8 @@ export async function chatModelsOf(env: Env): Promise<ListingModel[]> {
 export async function allowanceView(env: Env, input: { workspaceId: string; plan: PlanId | null; mature: boolean; chatModels?: readonly Pick<ListingModel, "id" | "price">[]; period?: AgentPeriodInput }): Promise<AllowanceView> {
   const period = input.period ?? (await allowancePeriod(env, input.workspaceId, input.plan));
   const chat = input.chatModels ?? (await chatModelsOf(env));
-  const defaults = defaultTurnEstimates(chat, { mature: input.mature });
+  const all = defaultTurnEstimates(chat, { mature: input.mature });
+  const defaults = all.filter((d) => !isUnmeteredAgentLlm(d.id));
   const stub = creditAccount(env, input.workspaceId) as unknown as {
     agentUsage(i: AgentPeriodInput & { models: { id: string; fallbackUsd: number }[] }): Promise<{ usedUsd: number; heldUsd: number; estimates: Record<string, number> }>;
   };
@@ -51,9 +51,10 @@ export async function allowanceView(env: Env, input: { workspaceId: string; plan
     allowanceUsd: period.allowanceUsd,
     usedUsd: used,
     resetsAt: period.resetsAt,
-    models: defaults.map((d) => {
+    models: all.map((d): AllowanceModelView => {
+      if (isUnmeteredAgentLlm(d.id)) return { id: d.id, name: d.name, unlimited: true };
       const est = usage.estimates[d.id] ?? d.fallbackUsd;
-      return { id: d.id, name: d.name, estTurnUsd: round6(est), turnsLeft: turnsLeft(period.allowanceUsd, used, est) };
+      return { id: d.id, name: d.name, unlimited: false, estTurnUsd: round6(est), turnsLeft: turnsLeft(period.allowanceUsd, used, est) };
     }),
   };
 }

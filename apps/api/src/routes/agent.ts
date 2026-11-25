@@ -63,7 +63,7 @@ function session(env: Env, threadId: string): SessionApi {
   return env.AGENT.get(env.AGENT.idFromName(threadId)) as unknown as SessionApi;
 }
 
-const STATUS = { NOT_FOUND: 404, FORBIDDEN: 403, CONFLICT: 409, VALIDATION_FAILED: 422, AGENT_ALLOWANCE_EXHAUSTED: 429 } as const;
+const STATUS = { NOT_FOUND: 404, FORBIDDEN: 403, CONFLICT: 409, VALIDATION_FAILED: 422, AGENT_ALLOWANCE_EXHAUSTED: 429, RATE_LIMITED: 429 } as const;
 
 function ok<T>(res: T | AgentError): T {
   if (typeof res === "object" && res !== null && (res as { ok?: unknown }).ok === false) {

@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { AGENT_ABUSE_LIMIT, slidingWindowTake } from "@rolling/core";
 import { envelope, parseEnvelope, type ServerMessageType } from "../ws/envelope";
 
 /**
@@ -60,5 +61,17 @@ export class UserHub extends DurableObject<Env> {
       }
     }
     return sent;
+  }
+
+  /**
+   * RPC: takes one turn slot of the per-user abuse limit for unmetered agent
+   * LLMs (D-012 amendment: 300 turns per rolling hour). Serialized by the DO.
+   */
+  async takeAgentTurnSlot(now = Date.now()): Promise<{ ok: true; remaining: number } | { ok: false; retryAfter: number }> {
+    const prev = (await this.ctx.storage.get<number[]>("agent_turns")) ?? [];
+    const r = slidingWindowTake(prev, now, AGENT_ABUSE_LIMIT.turns, AGENT_ABUSE_LIMIT.windowMs);
+    if (!r.ok) return { ok: false, retryAfter: r.retryAfter };
+    await this.ctx.storage.put("agent_turns", r.timestamps);
+    return { ok: true, remaining: r.remaining };
   }
 }

@@ -104,3 +104,43 @@ export function rollingAverage(costs: readonly number[]): number | null {
 
 /** Recent settled turns used for the rolling estimate. */
 export const AGENT_ESTIMATE_WINDOW = 20;
+
+// ---------------------------------------------------------------- unmetered public LLMs (D-012 amendment)
+
+/**
+ * Public agent LLMs that do not draw on the allowance (D-012 amendment): no
+ * hold or settle, their cost is still recorded in D1 `agent_usage`. They are
+ * protected by a per-user abuse limit instead (`AGENT_ABUSE_LIMIT`).
+ */
+export const UNMETERED_AGENT_LLMS: readonly string[] = ['deepseek-v4.1-flash', 'deepseek-v4.1-flash-1017'];
+
+export function isUnmeteredAgentLlm(publicId: string | null | undefined): boolean {
+  return !!publicId && UNMETERED_AGENT_LLMS.includes(publicId);
+}
+
+/** Abuse limit for unmetered agent LLMs: turns per user per rolling hour. */
+export const AGENT_ABUSE_LIMIT = { turns: 300, windowMs: 60 * 60 * 1000 } as const;
+
+export interface SlidingWindowResult {
+  ok: boolean;
+  /** Timestamps to keep (inside the window), including `now` when taken. */
+  timestamps: number[];
+  /** Seconds until a slot frees up (0 when ok). */
+  retryAfter: number;
+  remaining: number;
+}
+
+/**
+ * Rolling-window limiter: takes a slot at `now` when fewer than `limit`
+ * timestamps fall inside `(now - windowMs, now]`; otherwise reports when the
+ * oldest one leaves the window.
+ */
+export function slidingWindowTake(timestamps: readonly number[], now: number, limit: number, windowMs: number): SlidingWindowResult {
+  const live = timestamps.filter((t) => Number.isFinite(t) && t > now - windowMs && t <= now).sort((a, b) => a - b);
+  if (live.length >= limit) {
+    const oldest = live[live.length - limit]!;
+    return { ok: false, timestamps: live, retryAfter: Math.max(1, Math.ceil((oldest + windowMs - now) / 1000)), remaining: 0 };
+  }
+  live.push(now);
+  return { ok: true, timestamps: live, retryAfter: 0, remaining: limit - live.length };
+}
