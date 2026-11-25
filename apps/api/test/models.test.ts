@@ -100,10 +100,19 @@ describe("model catalog reads", () => {
     return { res, body: (await res.json()) as { models: any[] } };
   }
 
+  it("returns an ETag and 304 when the client already has the catalog", async () => {
+    const first = await SELF.fetch("https://example.com/api/models?kind=image");
+    const etag = first.headers.get("etag");
+    expect(etag).toMatch(/^"[0-9a-f]{24}"$/);
+    await first.arrayBuffer();
+    const again = await SELF.fetch("https://example.com/api/models?kind=image", { headers: { "if-none-match": etag! } });
+    expect(again.status).toBe(304);
+  });
+
   it("GET /api/models?kind=video lists video models with credits, cached 5 minutes", async () => {
     const { res, body } = await getModels("?kind=video");
     expect(res.status).toBe(200);
-    expect(res.headers.get("cache-control")).toBe("public, max-age=300");
+    expect(res.headers.get("cache-control")).toBe("public, max-age=300, stale-while-revalidate=3600");
     expect(body.models.every((m) => m.kind === "video")).toBe(true);
     const s25 = body.models.find((m) => m.id === "bytedance/seedance-2.5");
     expect(s25).toMatchObject({ name: "Seedance 2.5", default: true, auto: true, mature: false, defaultResolution: "480p" });
@@ -130,7 +139,7 @@ describe("model catalog reads", () => {
     const nobody = await getModels("?kind=image", "usr_stranger");
     expect(nobody.body.models.some((m) => m.matureOnly)).toBe(false);
     const adult = await getModels("?kind=image", "usr_adult");
-    expect(adult.res.headers.get("cache-control")).toBe("private, max-age=300");
+    expect(adult.res.headers.get("cache-control")).toBe("private, max-age=60, stale-while-revalidate=600");
     expect(adult.body.models.map((m) => m.id)).toEqual(expect.arrayContaining(["lumina/z-image-spicy", "lumina/qwen-image-edit-spicy"]));
   });
 
