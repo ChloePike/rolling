@@ -1,6 +1,9 @@
 import { useIndicator } from '@rolling/ui';
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { useIntl } from 'react-intl';
+import { ModelIcon, modelIcon } from '@/lib/modelIcons';
+import { promptKeys, uploadKind, uploadReferences } from './api';
 import { CommandPalette, paletteOptionId } from './CommandPalette';
 import { filterCommands, isSlashQuery, stripTrailingAt, trailingAtQuery, COMMAND } from './commands';
 import { PromptIcon } from './icons';
@@ -56,8 +59,14 @@ export interface PromptBoxProps {
   onRefsChange: (refs: RefItem[]) => void;
   /** Items for the `@` picker. Defaults to the mock-backed `useReferences()`. */
   referenceItems?: RefItem[];
-  /** `+` → Upload, `+` → Choose from Assets, and the picker’s Upload button. */
+  /**
+   * `+` → Choose from Assets. (`+` → Upload and the picker’s Upload button
+   * open the file chooser here; the files become `mine` references, are added
+   * to `refs` and reported through `onUploaded`.)
+   */
   onAddAction?: (action: Exclude<PlusAction, 'reference'>) => void;
+  /** Files the user uploaded from the box, after they were added to `refs`. */
+  onUploaded?: (items: RefItem[]) => void;
 
   /** The quote next to send: a `<CostLine>`. */
   cost: ReactNode;
@@ -111,6 +120,7 @@ export function PromptBox(props: PromptBoxProps) {
     onRefsChange,
     referenceItems,
     onAddAction,
+    onUploaded,
     cost,
     onRefine,
     onSubmit,
@@ -127,6 +137,8 @@ export function PromptBox(props: PromptBoxProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
   const plusRef = useRef<HTMLButtonElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
   const pillRefs = useRef(new Map<string, HTMLButtonElement>());
   const [overlay, setOverlay] = useState<Overlay>({ kind: 'none' });
   const [active, setActive] = useState(0);
@@ -232,9 +244,29 @@ export function PromptBox(props: PromptBoxProps) {
   }
 
   const togglePlus = () => setOverlay(plusOpen ? { kind: 'none' } : { kind: 'plus' });
+  const chooseFiles = () => fileRef.current?.click();
+  const onFiles = async (list: FileList | null) => {
+    const files = Array.from(list ?? []);
+    if (fileRef.current) fileRef.current.value = '';
+    if (!files.length) return;
+    const items = await uploadReferences(files, (f) => {
+      const mb = f.size / 1_000_000;
+      const size =
+        mb >= 1
+          ? intl.formatNumber(mb, { style: 'unit', unit: 'megabyte', maximumFractionDigits: 1 })
+          : intl.formatNumber(Math.max(1, Math.round(f.size / 1000)), { style: 'unit', unit: 'kilobyte' });
+      return intl.formatMessage({ id: 'prompt.upload.meta' }, { kind: uploadKind(f), size });
+    });
+    queryClient.setQueryData<RefItem[]>(promptKeys.references, (old) => [...items, ...(old ?? [])]);
+    addRefs(items);
+    onUploaded?.(items);
+  };
   const onPlusAction = (a: PlusAction) => {
     if (a === 'reference') setOverlay({ kind: 'at' });
-    else {
+    else if (a === 'upload') {
+      close();
+      chooseFiles();
+    } else {
       close();
       onAddAction?.(a);
     }
@@ -265,6 +297,15 @@ export function PromptBox(props: PromptBoxProps) {
 
   return (
     <div ref={rootRef} className={`${dock ? styles.dock : styles.box} ${className ?? ''}`} data-variant={variant}>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*,video/*,audio/*"
+        multiple
+        hidden
+        data-testid="prompt-upload-input"
+        onChange={(e) => void onFiles(e.target.files)}
+      />
       {modes?.length ? (
         <div className={styles.head}>
           <div ref={modesRef} role="tablist" aria-label={t('prompt.modes.label')} className={styles.modes}>
@@ -347,7 +388,11 @@ export function PromptBox(props: PromptBoxProps) {
                   aria-expanded={renderPillPopover ? openPill === p.id : undefined}
                   onClick={() => setOverlay(openPill === p.id ? { kind: 'none' } : { kind: 'pill', id: p.id })}
                 >
-                  <PromptIcon name={p.icon} size={dock ? 14 : 15} />
+                  {p.modelId && modelIcon(p.modelId) ? (
+                    <ModelIcon modelId={p.modelId} size={dock ? 14 : 15} />
+                  ) : (
+                    <PromptIcon name={p.icon} size={dock ? 14 : 15} />
+                  )}
                   {p.label}
                   {i === 0 ? <PromptIcon name="caret" size={12} strokeWidth={2.4} className={styles.caret} /> : null}
                 </button>
@@ -390,7 +435,7 @@ export function PromptBox(props: PromptBoxProps) {
             items={referenceItems}
             onAdd={addRefs}
             onClose={() => closePicker()}
-            onUpload={() => onAddAction?.('upload')}
+            onUpload={chooseFiles}
             autoFocus={overlay.kind === 'at'}
           />
         </Presence>

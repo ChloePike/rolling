@@ -1,4 +1,4 @@
-import { cx, staggerStyle, useIndicator } from '@rolling/ui';
+import { cx, staggerStyle, useIndicator, useToast } from '@rolling/ui';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useRef, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
@@ -14,11 +14,12 @@ import {
   type PromptMode,
   type RefItem,
 } from '@/features/prompt';
-import { Paywall } from '@/features/overlays';
+import { Paywall, useRunFlow, type RunRequest } from '@/features/overlays';
 import { useTemplates } from '@/features/templates/api';
 import { checkoutPlan, useSession } from '@/lib/session';
 import type { TemplateSummary } from '@/features/templates/types';
-import { createProject, useRecentProjects } from './api';
+import { useCreateProject, useRecentProjects } from './api';
+import { HomeResult, nextVersion, type HomeResultState } from './HomeResult';
 import { formatSeconds, formatWhen } from './format';
 import { HOME_MODES, type HomeModeId } from './modes';
 import { FEED_TONES } from './mocks';
@@ -28,7 +29,7 @@ import type { ProjectSummary } from './types';
 
 const ENTRIES: Array<{ key: string; to: string; icon: PromptIconName }> = [
   { key: 'blank', to: '/p/prj_new', icon: 'frame' },
-  { key: 'template', to: '/create/quick', icon: 'bolt' },
+  { key: 'template', to: '/templates', icon: 'bolt' },
   { key: 'original', to: '/create/remix', icon: 'video' },
   { key: 'avatar', to: '/create/avatar', icon: 'person' },
   { key: 'character', to: '/create/character', icon: 'spark' },
@@ -46,25 +47,86 @@ export function HomePage() {
   const [skill, setSkill] = useState<PromptCommand | null>(null);
   const [refs, setRefs] = useState<RefItem[]>([]);
   const { data: skills } = useSkills();
-  const commandGroups = useDefaultCommandGroups(skills, { model: 'model', aspect: 'ratio', duration: 'duration' });
-  const { pills, renderPillPopover, credits } = useHomePills(mode);
+  const { pills, renderPillPopover, credits, run } = useHomePills(mode);
+  // Settings commands open the pill they name; a mode without that pill does not list them.
+  const pillIds = {
+    model: pills.some((p) => p.id === 'model') ? 'model' : undefined,
+    aspect: pills.some((p) => p.id === 'ratio') ? 'ratio' : undefined,
+    duration: pills.some((p) => p.id === 'duration') ? 'duration' : pills.some((p) => p.id === 'ratio') && mode === 'video' ? 'ratio' : undefined,
+  };
+  const allGroups = useDefaultCommandGroups(skills, pillIds);
+  const commandGroups = allGroups.map((g) =>
+    g.id === 'settings' ? { ...g, items: g.items.filter((c) => c.id === COMMAND.clear || c.pillId) } : g,
+  );
   const { isMember } = useSession();
+  const toast = useToast();
+  const createProject = useCreateProject();
   // D-007: sending to the agent (or generating) needs a plan. Non-members get
   // the join paywall; the brief, refs and skill stay in the prompt box and the
   // send resumes after checkout.
   const [paywall, setPaywall] = useState(false);
+  const [paying, setPaying] = useState(false);
+  // Image, video and avatar sends go through the shared run flow (paywalls, RunConfirm by threshold).
+  const flow = useRunFlow();
+  const [result, setResult] = useState<HomeResultState | null>(null);
+  const t = (id: string, v?: Record<string, string | number>) => intl.formatMessage({ id }, v);
 
   const modes: PromptMode[] = HOME_MODES.map((m) => ({ id: m.id, icon: m.icon, label: intl.formatMessage({ id: `home.mode.${m.id}` }) }));
 
+  const title = () => {
+    const line = text.trim().split('\n')[0]!.slice(0, 80);
+    return line || skill?.name || t('home.project.untitled');
+  };
   const start = async () => {
-    const { id } = await createProject({ title: text.slice(0, 80) });
+    const { id } = await createProject({ title: title(), kind: 'canvas' });
     void navigate({ to: '/p/$projectId', params: { projectId: id } });
   };
-  const submit = () => (isMember ? start() : setPaywall(true));
+
+  const runFlow = (req: Omit<RunRequest, 'onDone'>, done: (runId: string) => void) =>
+    flow.request({ ...req, viewLabel: t('overlays.run.view'), onDone: (r) => done(r.id) });
+
+  const generate = () => {
+    if (!run) return;
+    const cost = credits ?? 0;
+    const actionLabel = t(`home.send.${mode}`);
+    const brief = text.trim();
+    const snapshot = { run, refs, title: title(), cost };
+    runFlow({ cost, kind: run.kind, actionLabel, meta: run.meta, subtitle: run.modelName }, (runId) =>
+      setResult({
+        title: snapshot.title,
+        prompt: brief,
+        kind: snapshot.run.kind,
+        aspect: snapshot.run.aspect,
+        modelName: snapshot.run.modelName,
+        params: snapshot.run.params,
+        refs: snapshot.refs,
+        versions: [nextVersion([], runId)],
+        versionId: runId,
+        createdAt: new Date(),
+        cost: snapshot.cost,
+      }),
+    );
+  };
+
+  const submit = () => {
+    if (!text.trim() && !refs.length && !skill) {
+      document.getElementById('brief')?.focus();
+      toast.show({ message: t('home.send.empty') });
+      return;
+    }
+    if (mode !== 'agent') return generate();
+    return isMember ? void start() : setPaywall(true);
+  };
 
   const onCommand = (c: PromptCommand) => {
-    if (c.id === COMMAND.canvas) void navigate({ to: '/p/$projectId', params: { projectId: 'prj_new' } });
+    if (c.id === COMMAND.canvas) void createProject({ title: title(), kind: 'canvas' }).then(({ id }) => navigate({ to: '/p/$projectId', params: { projectId: id } }));
     else if (c.id === COMMAND.character) void navigate({ to: '/create/character' });
+    else if (c.id === COMMAND.voice) void navigate({ to: '/assets', search: { folder: 'voices' } as never });
+    else if (c.id === COMMAND.storyboard) {
+      // The storyboard is the agent's plan: switch to Agent so the next send plans the shots.
+      setMode('agent');
+      toast.show({ message: t('home.cmd.storyboard') });
+    }
   };
 
   return (
@@ -93,6 +155,7 @@ export function HomePage() {
           onAddAction={(a) => {
             if (a === 'assets') void navigate({ to: '/assets' });
           }}
+          onUploaded={(items) => toast.show({ message: t('home.upload.added', { n: items.length }) })}
           cost={
             mode === 'agent' ? (
               <CostLine label={intl.formatMessage({ id: 'home.cost.planningFree' })} />
@@ -115,15 +178,26 @@ export function HomePage() {
       </section>
       <Paywall
         open={paywall}
-        onOpenChange={setPaywall}
+        onOpenChange={(o) => !paying && setPaywall(o)}
         variant="join"
+        busy={paying}
         onContinue={(option) => {
-          void checkoutPlan(option.id).then(() => {
-            setPaywall(false);
-            void start();
-          });
+          setPaying(true);
+          checkoutPlan(option.id).then(
+            () => {
+              setPaying(false);
+              setPaywall(false);
+              void start();
+            },
+            () => {
+              setPaying(false);
+              toast.show({ message: t('overlays.run.paymentFailed') });
+            },
+          );
         }}
       />
+      {flow.element}
+      <HomeResult result={result} onChange={setResult} onRun={runFlow} />
       <RecentProjects />
       <Inspiration />
     </>
@@ -226,6 +300,8 @@ function Inspiration() {
           <Link
             key={t.id}
             to="/create/quick"
+            search={{ template: t.id } as never}
+            aria-label={intl.formatMessage({ id: 'home.inspiration.useLabel' }, { name: t.name })}
             className={cx(styles.feedCard, 'rl-stagger')}
             style={staggerStyle(i, { background: FEED_TONES[i % FEED_TONES.length], aspectRatio: t.coverAspect })}
             data-motion=""

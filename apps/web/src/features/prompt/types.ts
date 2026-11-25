@@ -47,6 +47,8 @@ export interface PromptPill {
   icon: PromptIconName;
   /** Accessible name when the label alone is unclear, e.g. "Model: Seedance 2.5". */
   ariaLabel?: string;
+  /** Model pills: the model id; its provider mark (lib/modelIcons) replaces `icon` when there is one. */
+  modelId?: string;
 }
 
 /** A row in the `/` command palette or the Skills list of the `+` menu. */

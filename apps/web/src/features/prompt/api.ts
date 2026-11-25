@@ -29,3 +29,34 @@ export function useReferences() {
 export function useSkills() {
   return useQuery({ queryKey: promptKeys.skills, queryFn: fetchSkills, initialData: MOCK_SKILLS });
 }
+
+let uploadSeq = 0;
+
+/** What an uploaded file becomes in the picker. */
+export function uploadKind(file: File): 'image' | 'video' | 'audio' | 'file' {
+  const t = file.type.split('/')[0];
+  return t === 'image' || t === 'video' || t === 'audio' ? t : 'file';
+}
+
+/**
+ * Upload (`POST /api/uploads` → R2, then `GET /api/assets/:id`). The mock keeps
+ * the files in memory: images preview through an object URL. `meta` formats the
+ * card's detail line (localized by the caller).
+ */
+export async function uploadReferences(files: File[], meta: (file: File) => string): Promise<RefItem[]> {
+  return files.map((file) => {
+    uploadSeq += 1;
+    const kind = uploadKind(file);
+    const thumbUrl = kind === 'image' && typeof URL.createObjectURL === 'function' ? URL.createObjectURL(file) : undefined;
+    return {
+      id: `ast_upload${String(uploadSeq).padStart(3, '0')}`,
+      group: 'mine' as const,
+      name: file.name.replace(/\.[^.]+$/, '') || file.name,
+      meta: meta(file),
+      source: 'mine' as const,
+      tone: 'var(--c-surface-5)',
+      glyph: kind === 'audio' ? ({ type: 'wave' } as const) : ({ type: 'icon', icon: kind === 'video' ? 'video' : 'img' } as const),
+      thumbUrl,
+    };
+  });
+}

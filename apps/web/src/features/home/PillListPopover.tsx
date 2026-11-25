@@ -1,9 +1,12 @@
 import { Presence, type PillPopoverState, type PromptPill } from '@/features/prompt';
+import { ModelIcon } from '@/lib/modelIcons';
 import styles from './HomePage.module.css';
 
 export interface PillOption {
   id: string;
   label: string;
+  /** Model rows: shows the provider mark (lib/modelIcons) before the label. */
+  modelId?: string;
 }
 
 /**
@@ -38,6 +41,7 @@ export function PillListPopover({
               state.close();
             }}
           >
+            {o.modelId ? <ModelIcon modelId={o.modelId} size={15} /> : null}
             {o.label}
           </button>
         ))}

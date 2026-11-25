@@ -1,6 +1,8 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { useIntl } from 'react-intl';
 import { pickerModels, useModels, type CatalogModel } from '@/lib/models';
+import { usePref } from '@/lib/prefs';
+import { useSession } from '@/lib/session';
 import {
   AUTO_MODEL,
   ModelPicker,
@@ -24,6 +26,19 @@ interface PillSpec {
 const AGENT_VIDEO: VideoParams = { aspectRatio: '9:16', resolution: '720p', duration: '15s', count: '1', audio: false };
 const VIDEO: VideoParams = { aspectRatio: '9:16', resolution: '720p', duration: '5s', count: '1', audio: false };
 const IMAGE: ImageParams = { aspectRatio: '16:9', quality: 'standard', size: '2K', count: '2' };
+/** Ratios the video settings offer; the default aspect ratio preference applies when it is one of them. */
+const VIDEO_RATIOS: ReadonlyArray<VideoParams['aspectRatio']> = ['9:16', '16:9', '1:1', '4:3', '3:4'];
+
+/** What the send button runs in a generation mode (the run flow's confirm row). */
+export interface HomeRunSpec {
+  kind: 'video' | 'image';
+  /** e.g. "Seedance 2.5 · 9:16 · 720p · 5s". */
+  meta: string;
+  modelName: string;
+  /** CSS aspect ratio of the result, e.g. "9/16". */
+  aspect: string;
+  params: Array<{ label: string; value: string }>;
+}
 
 /**
  * Pills, their popovers and the quote for the Home prompt box. Models and
@@ -34,8 +49,14 @@ export function useHomePills(mode: HomeModeId): {
   pills: PromptPill[];
   renderPillPopover: (pill: PromptPill, state: PillPopoverState) => ReactNode;
   credits: number | null;
+  run: HomeRunSpec | null;
 } {
   const intl = useIntl();
+  const { planId } = useSession();
+  const plan = planId ?? undefined;
+  // The default aspect ratio preference (header settings, Settings → Preferences) seeds the video settings.
+  const prefRatio = usePref('defaultAspectRatio') as VideoParams['aspectRatio'];
+  const seedRatio = <T extends VideoParams>(v: T): T => (VIDEO_RATIOS.includes(prefRatio) ? { ...v, aspectRatio: prefRatio } : v);
   const t = (id: string, v?: Record<string, string | number>) => intl.formatMessage({ id }, v);
   // Agent turns are free for members (D-007): only the curated low-cost LLMs are offered.
   const chatAll = useModels('chat').data;
@@ -48,11 +69,11 @@ export function useHomePills(mode: HomeModeId): {
 
   const [llmId, setLlmId] = useState<string | null>(null);
   const [agentModel, setAgentModel] = useState<string>(AUTO_MODEL);
-  const [agentVideo, setAgentVideo] = useState(AGENT_VIDEO);
+  const [agentVideo, setAgentVideo] = useState(() => seedRatio(AGENT_VIDEO));
   const [imageModel, setImageModel] = useState<string | null>(null);
   const [image, setImage] = useState(IMAGE);
   const [videoModel, setVideoModel] = useState<string | null>(null);
-  const [video, setVideo] = useState(VIDEO);
+  const [video, setVideo] = useState(() => seedRatio(VIDEO));
   const [frame, setFrame] = useState(0);
   const [avatarModel, setAvatarModel] = useState<string | null>(null);
   const [persona, setPersona] = useState(0);
@@ -62,13 +83,15 @@ export function useHomePills(mode: HomeModeId): {
   const nameOf = (list: CatalogModel[] | undefined, id: string | null) =>
     id === AUTO_MODEL ? t('home.pill.autoModel') : (pick(list, id)?.name ?? '');
 
-  const modelPill = (id: string, name: string): PromptPill => ({
+  const modelPill = (id: string, name: string, modelId?: string): PromptPill => ({
     id,
     kind: 'model',
     icon: 'cube',
     label: name,
     ariaLabel: t('home.pill.modelLabel', { name }),
+    modelId,
   });
+  const idOf = (list: CatalogModel[] | undefined, id: string | null) => (id === AUTO_MODEL ? undefined : pick(list, id)?.id);
 
   const modelPicker =
     (kind: PickerKind, list: CatalogModel[] | undefined, value: string | null, set: (id: string) => void) =>
@@ -97,16 +120,17 @@ export function useHomePills(mode: HomeModeId): {
       value={value}
       onValueChange={set}
       cost={cost ?? undefined}
+      plan={plan}
       onClose={s.close}
     />
   );
 
-  const list = (pill: PromptPill, options: string[], value: number, set: (i: number) => void) => (s: PillPopoverState) => (
+  const list = (pill: PromptPill, options: string[], value: number, set: (i: number) => void, modelIds?: string[]) => (s: PillPopoverState) => (
     <PillListPopover
       pill={pill}
       state={s}
       value={String(value)}
-      options={options.map((label, i) => ({ id: String(i), label }))}
+      options={options.map((label, i) => ({ id: String(i), label, modelId: modelIds?.[i] }))}
       onPick={(id) => set(Number(id))}
     />
   );
@@ -119,10 +143,12 @@ export function useHomePills(mode: HomeModeId): {
 
   let specs: PillSpec[] = [];
   let credits: number | null = null;
+  let run: HomeRunSpec | null = null;
+  const cssRatio = (r: string) => (r === 'Auto' ? '9/16' : r.replace(':', '/'));
 
   if (mode === 'agent') {
-    const llm = modelPill('model', nameOf(chat, llmId));
-    const videoModelPill: PromptPill = { id: 'videoModel', kind: 'param', icon: 'film', label: nameOf(videos, agentModel) };
+    const llm = modelPill('model', nameOf(chat, llmId), idOf(chat, llmId));
+    const videoModelPill: PromptPill = { id: 'videoModel', kind: 'param', icon: 'film', label: nameOf(videos, agentModel), modelId: idOf(videos, agentModel) };
     const ratio: PromptPill = { id: 'ratio', kind: 'param', icon: 'ratio', label: agentVideo.aspectRatio };
     const duration: PromptPill = { id: 'duration', kind: 'param', icon: 'clock', label: secs(agentVideo.duration) };
     const chatNames = (chat ?? []).map((m) => m.name);
@@ -130,8 +156,12 @@ export function useHomePills(mode: HomeModeId): {
     specs = [
       {
         pill: llm,
-        render: list(llm, chatNames, Math.max(0, (chat ?? []).findIndex((m) => m.id === pick(chat, llmId)?.id)), (i) =>
-          setLlmId(chat?.[i]?.id ?? null),
+        render: list(
+          llm,
+          chatNames,
+          Math.max(0, (chat ?? []).findIndex((m) => m.id === pick(chat, llmId)?.id)),
+          (i) => setLlmId(chat?.[i]?.id ?? null),
+          (chat ?? []).map((m) => m.id),
         ),
       },
       { pill: videoModelPill, render: modelPicker('video', videos, agentModel, setAgentModel) },
@@ -157,11 +187,24 @@ export function useHomePills(mode: HomeModeId): {
         value={image}
         onValueChange={setImage}
         cost={credits ?? undefined}
+        plan={plan}
         onClose={s.close}
       />
     );
+    run = {
+      kind: 'image',
+      modelName: m?.name ?? '',
+      meta: [m?.name, image.aspectRatio, size.label].filter(Boolean).join(' · '),
+      aspect: cssRatio(image.aspectRatio),
+      params: [
+        { label: t('home.result.model'), value: m?.name ?? '' },
+        { label: t('home.result.aspect'), value: image.aspectRatio },
+        { label: t('home.result.size'), value: image.size },
+        { label: t('home.result.count'), value: image.count },
+      ],
+    };
     specs = [
-      { pill: modelPill('model', nameOf(images, imageModel)), render: modelPicker('image', images, imageModel, setImageModel) },
+      { pill: modelPill('model', nameOf(images, imageModel), idOf(images, imageModel)), render: modelPicker('image', images, imageModel, setImageModel) },
       { pill: ratio, render: params },
       { pill: size, render: params },
     ];
@@ -175,8 +218,20 @@ export function useHomePills(mode: HomeModeId): {
       icon: 'ratio',
       label: t('home.pill.videoSize', { ratio: video.aspectRatio, res: video.resolution, seconds: secs(video.duration) }),
     };
+    run = {
+      kind: 'video',
+      modelName: m?.name ?? '',
+      meta: [m?.name, video.aspectRatio, video.resolution, secs(video.duration), t(`home.pill.${FRAME_MODES[frame]}`)].filter(Boolean).join(' · '),
+      aspect: cssRatio(video.aspectRatio),
+      params: [
+        { label: t('home.result.model'), value: m?.name ?? '' },
+        { label: t('home.result.aspect'), value: video.aspectRatio },
+        { label: t('home.result.duration'), value: secs(video.duration) },
+        { label: t('home.result.resolution'), value: video.resolution },
+      ],
+    };
     specs = [
-      { pill: modelPill('model', nameOf(videos, videoModel)), render: modelPicker('video', videos, videoModel, setVideoModel) },
+      { pill: modelPill('model', nameOf(videos, videoModel), idOf(videos, videoModel)), render: modelPicker('video', videos, videoModel, setVideoModel) },
       { pill: frames, render: list(frames, FRAME_MODES.map((f) => t(`home.pill.${f}`)), frame, setFrame) },
       { pill: ratio, render: videoParams(video, setVideo, credits) },
     ];
@@ -185,8 +240,19 @@ export function useHomePills(mode: HomeModeId): {
     credits = quoteCredits(m);
     const personaPill: PromptPill = { id: 'persona', kind: 'param', icon: 'person', label: PERSONAS[persona]! };
     const voicePill: PromptPill = { id: 'voice', kind: 'param', icon: 'wave', label: VOICES[voice]! };
+    run = {
+      kind: 'video',
+      modelName: m?.name ?? '',
+      meta: [m?.name, PERSONAS[persona], VOICES[voice]].filter(Boolean).join(' · '),
+      aspect: '9/16',
+      params: [
+        { label: t('home.result.model'), value: m?.name ?? '' },
+        { label: t('home.result.persona'), value: PERSONAS[persona]! },
+        { label: t('home.result.voice'), value: VOICES[voice]! },
+      ],
+    };
     specs = [
-      { pill: modelPill('model', nameOf(lipSync, avatarModel)), render: modelPicker('avatar', lipSync, avatarModel, setAvatarModel) },
+      { pill: modelPill('model', nameOf(lipSync, avatarModel), idOf(lipSync, avatarModel)), render: modelPicker('avatar', lipSync, avatarModel, setAvatarModel) },
       { pill: personaPill, render: list(personaPill, PERSONAS, persona, setPersona) },
       { pill: voicePill, render: list(voicePill, VOICES, voice, setVoice) },
     ];
@@ -196,5 +262,6 @@ export function useHomePills(mode: HomeModeId): {
     pills: specs.map((s) => s.pill),
     renderPillPopover: (pill, state) => specs.find((s) => s.pill.id === pill.id)?.render(state) ?? null,
     credits,
+    run,
   };
 }

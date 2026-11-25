@@ -86,5 +86,6 @@
   "prompt.picker.pub.loading": "Loading…",
   "prompt.picker.pub.error": "Couldn’t load the public library.",
   "prompt.picker.pub.retry": "Retry",
-  "prompt.picker.pub.more": "Load more"
+  "prompt.picker.pub.more": "Load more",
+  "prompt.upload.meta": "{kind, select, image {Image} video {Video} audio {Audio} other {File}} · {size}"
 }

@@ -39,5 +39,22 @@
   "home.inspiration.cat.holiday": "Holiday campaigns",
   "home.inspiration.use": "Use template",
   "home.pill.firstLastFrame": "First & last frame",
-  "home.pill.omniReference": "Omni reference"
+  "home.pill.omniReference": "Omni reference",
+  "home.project.untitled": "Untitled project",
+  "home.send.empty": "Describe what you want first",
+  "home.send.image": "Generate images",
+  "home.send.video": "Generate video",
+  "home.send.avatar": "Generate avatar video",
+  "home.cmd.storyboard": "Agent mode: send your brief and the agent plans the shots",
+  "home.upload.added": "{n, plural, one {# file added} other {# files added}} to My assets",
+  "home.inspiration.useLabel": "Use template: {name}",
+  "home.result.you": "You",
+  "home.result.model": "Model",
+  "home.result.aspect": "Aspect ratio",
+  "home.result.size": "Size",
+  "home.result.count": "Images",
+  "home.result.duration": "Duration",
+  "home.result.resolution": "Resolution",
+  "home.result.persona": "Persona",
+  "home.result.voice": "Voice"
 }

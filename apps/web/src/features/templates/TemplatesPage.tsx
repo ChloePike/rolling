@@ -1,20 +1,36 @@
-import { cx, staggerStyle } from '@rolling/ui';
-import { Link } from '@tanstack/react-router';
+import { cx, OptionList, Popover, staggerStyle } from '@rolling/ui';
+import { useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { FormattedMessage, useIntl, type IntlShape } from 'react-intl';
 import { PromptIcon } from '@/features/prompt';
+import { ASPECT_RATIO_OPTIONS, usePref } from '@/lib/prefs';
 import { useTemplates } from './api';
+import { TemplatePreview } from './TemplatePreview';
 import styles from './TemplatesPage.module.css';
-import type { TemplateCategory } from './types';
+import type { TemplateCategory, TemplateSummary } from './types';
 
 const CATS: Array<'all' | TemplateCategory> = ['all', 'product', 'explainer', 'drama', 'holiday', 'venue', 'outfit', 'comic'];
-const FACETS = [
-  { key: 'character', value: 'any' },
-  { key: 'lines', value: 'any' },
-  { key: 'aspect', value: '9:16' },
-  { key: 'duration', value: 'any' },
-] as const;
 const TONES = ['var(--c-tone-plum)', 'var(--c-tone-teal)', 'var(--c-tone-indigo)', 'var(--c-tone-sand)', 'var(--c-tone-neutral)', 'var(--c-tone-moss)', 'var(--c-tone-clay)', 'var(--c-tone-slate)'];
+
+/** Facets: Character, Lines and Duration filter the grid; Aspect ratio is the ratio the template is made in. */
+type FacetKey = 'character' | 'lines' | 'aspect' | 'duration';
+const FACET_OPTIONS: Record<Exclude<FacetKey, 'aspect'>, readonly string[]> = {
+  character: ['any', '1', '2', '3'],
+  lines: ['any', 'with', 'without'],
+  duration: ['any', 'short', 'medium', 'long'],
+};
+const FACET_TEST: Record<Exclude<FacetKey, 'aspect'>, (t: TemplateSummary, v: string) => boolean> = {
+  character: (t, v) => v === 'any' || (v === '3' ? t.roles >= 3 : t.roles === Number(v)),
+  lines: (t, v) => v === 'any' || (v === 'with') === t.hasLines,
+  duration: (t, v) => v === 'any' || (v === 'short' ? t.durationSec <= 10 : v === 'medium' ? t.durationSec > 10 && t.durationSec <= 20 : t.durationSec > 20),
+};
+
+/** Quick Create with a template (`/create/quick?template=<id>&ratio=<w:h>`). */
+export function useUseTemplate() {
+  const navigate = useNavigate();
+  return (t: TemplateSummary, ratio?: string) =>
+    void navigate({ to: '/create/quick', search: { template: t.id, ...(ratio ? { ratio } : {}) } as never });
+}
 
 /** “12K” from 10,000 up, otherwise “8,640” (handoff 5 number rules). */
 export function formatUses(intl: IntlShape, n: number): string {
@@ -29,9 +45,24 @@ export function TemplatesPage() {
   const { data } = useTemplates();
   const [cat, setCat] = useState<(typeof CATS)[number]>('all');
   const [q, setQ] = useState('');
+  const defaultRatio = usePref('defaultAspectRatio');
+  const [facets, setFacets] = useState<Record<FacetKey, string>>({ character: 'any', lines: 'any', aspect: '', duration: 'any' });
+  const ratio = facets.aspect || defaultRatio;
+  const [openFacet, setOpenFacet] = useState<FacetKey | null>(null);
+  const [preview, setPreview] = useState<TemplateSummary | null>(null);
+  const useTemplate = useUseTemplate();
   const query = q.trim().toLowerCase();
-  const items = data.items.filter((t) => (cat === 'all' || t.category === cat) && (!query || t.name.toLowerCase().includes(query)));
-  const showFeatured = cat === 'all' && !query;
+  const filtering = facets.character !== 'any' || facets.lines !== 'any' || facets.duration !== 'any';
+  const items = data.items.filter(
+    (t) =>
+      (cat === 'all' || t.category === cat) &&
+      (!query || t.name.toLowerCase().includes(query)) &&
+      (Object.keys(FACET_TEST) as Array<keyof typeof FACET_TEST>).every((k) => FACET_TEST[k](t, facets[k])),
+  );
+  const showFeatured = cat === 'all' && !query && !filtering;
+  const facetLabel = (k: FacetKey, v: string) =>
+    k === 'aspect' ? v : v === 'any' ? intl.formatMessage({ id: 'templates.facet.any' }) : intl.formatMessage({ id: `templates.facet.${k}.${v}` });
+  const facetValue: Record<FacetKey, string> = { ...facets, aspect: ratio };
 
   return (
     <div className={styles.page}>
@@ -64,21 +95,39 @@ export function TemplatesPage() {
         ))}
       </div>
       <div className={styles.facets}>
-        {FACETS.map((f) => {
-          const k = intl.formatMessage({ id: `templates.facet.${f.key}` });
-          const v = f.value === 'any' ? intl.formatMessage({ id: 'templates.facet.any' }) : f.value;
+        {(['character', 'lines', 'aspect', 'duration'] as const).map((key) => {
+          const k = intl.formatMessage({ id: `templates.facet.${key}` });
+          const v = facetLabel(key, facetValue[key]);
+          const options = key === 'aspect' ? ASPECT_RATIO_OPTIONS : FACET_OPTIONS[key];
           return (
-            <button
-              key={f.key}
-              type="button"
-              aria-haspopup="listbox"
-              aria-label={intl.formatMessage({ id: 'templates.facet.value' }, { facet: k, value: v })}
-              className={styles.facet}
+            <Popover
+              key={key}
+              open={openFacet === key}
+              onOpenChange={(o) => setOpenFacet(o ? key : null)}
+              label={k}
+              role="menu"
+              align="start"
+              offset={6}
+              autoFocus={false}
+              className={styles.facetLayer}
+              trigger={(p) => (
+                <button {...p} type="button" aria-label={intl.formatMessage({ id: 'templates.facet.value' }, { facet: k, value: v })} className={styles.facet}>
+                  <span className={styles.facetKey}>{k}</span>
+                  {v}
+                  <PromptIcon name="caret" size={12} strokeWidth={2.4} className={styles.caret} />
+                </button>
+              )}
             >
-              <span className={styles.facetKey}>{k}</span>
-              {v}
-              <PromptIcon name="caret" size={12} strokeWidth={2.4} className={styles.caret} />
-            </button>
+              <OptionList
+                label={k}
+                value={facetValue[key]}
+                options={options.map((o) => ({ value: o, label: facetLabel(key, o) }))}
+                onSelect={(o) => {
+                  setFacets((f) => ({ ...f, [key]: o }));
+                  setOpenFacet(null);
+                }}
+              />
+            </Popover>
           );
         })}
         <span className={styles.flex1} />
@@ -90,12 +139,15 @@ export function TemplatesPage() {
       {showFeatured ? (
         <section aria-label={intl.formatMessage({ id: 'templates.featured' })} className={styles.featured}>
           {data.featured.map((t, i) => (
-            <Link
+            <button
               key={t.id}
-              to="/create/quick"
-              className={cx(styles.feat, 'rl-stagger')}
+              type="button"
+              aria-haspopup="dialog"
+              data-template={t.id}
+              className={cx(styles.cardButton, styles.feat, 'rl-stagger')}
               style={staggerStyle(i)}
               data-motion=""
+              onClick={() => setPreview(t)}
             >
               <div className={styles.featCover} style={{ background: i === 0 ? TONES[0] : TONES[6] }}>
                 <span className={styles.featDur}>{seconds(intl, t.durationSec)}</span>
@@ -118,24 +170,35 @@ export function TemplatesPage() {
                   <span className={styles.uses}>
                     <FormattedMessage id="templates.uses" values={{ uses: formatUses(intl, t.uses) }} />
                   </span>
-                  <span className={cx(styles.useBtn, 'rl-press')}>
+                  {/* Pointer shortcut; keyboard users reach Use template in the preview. */}
+                  <span
+                    className={cx(styles.useBtn, 'rl-press')}
+                    data-use-template=""
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      useTemplate(t, ratio);
+                    }}
+                  >
                     <FormattedMessage id="templates.use" />
                   </span>
                 </span>
               </div>
-            </Link>
+            </button>
           ))}
         </section>
       ) : null}
 
       <section key={`${cat}:${query}`} aria-label={intl.formatMessage({ id: 'templates.all' })} className={styles.grid}>
         {items.map((t, i) => (
-          <Link
+          <button
             key={t.id}
-            to="/create/quick"
-            className={cx(styles.card, 'rl-stagger')}
+            type="button"
+            aria-haspopup="dialog"
+            data-template={t.id}
+            className={cx(styles.cardButton, styles.card, 'rl-stagger')}
             style={staggerStyle(i)}
             data-motion=""
+            onClick={() => setPreview(t)}
           >
             <div className={styles.cover} style={{ background: TONES[data.items.indexOf(t) % TONES.length] }}>
               <span className={styles.badges}>
@@ -157,7 +220,7 @@ export function TemplatesPage() {
                 values={{ roles: t.roles, lines: String(t.hasLines), uses: formatUses(intl, t.uses) }}
               />
             </span>
-          </Link>
+          </button>
         ))}
         {items.length === 0 ? (
           <p className={styles.empty}>
@@ -165,6 +228,16 @@ export function TemplatesPage() {
           </p>
         ) : null}
       </section>
+      <TemplatePreview
+        template={preview}
+        tone={preview ? TONES[Math.max(0, data.items.findIndex((x) => x.id === preview.id)) % TONES.length]! : TONES[0]!}
+        ratio={ratio}
+        onClose={() => setPreview(null)}
+        onUse={(t) => {
+          setPreview(null);
+          useTemplate(t, ratio);
+        }}
+      />
     </div>
   );
 }

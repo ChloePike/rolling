@@ -27,5 +27,18 @@
   "templates.meta": "{roles, plural, one {# character} other {# characters}} · {lines, select, true {Dialogue} other {No dialogue}} · {uses} uses",
   "templates.badge.roles": "{n, plural, one {# role} other {# roles}}",
   "templates.badge.lines": "Lines",
-  "templates.empty": "No templates match “{q}”. Try another word or category."
+  "templates.empty": "No templates match “{q}”. Try another word or category.",
+  "templates.facet.character.1": "1 character",
+  "templates.facet.character.2": "2 characters",
+  "templates.facet.character.3": "3 or more",
+  "templates.facet.lines.with": "Dialogue",
+  "templates.facet.lines.without": "No dialogue",
+  "templates.facet.duration.short": "Up to 10s",
+  "templates.facet.duration.medium": "11–20s",
+  "templates.facet.duration.long": "Over 20s",
+  "templates.preview.close": "Close",
+  "templates.preview.cancel": "Close",
+  "templates.preview.used": "Popularity",
+  "templates.preview.desc": "Shots, camera moves and pacing are set. Swap in your characters, lines and product.",
+  "templates.preview.note": "Opens in Quick Create with this template. Nothing runs until you confirm the cost."
 }
