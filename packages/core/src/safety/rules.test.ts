@@ -1,0 +1,115 @@
+import { describe, expect, it } from 'vitest';
+import { fixtureModel } from '../models/__fixtures__/catalog';
+import { explicitSignal, identityRule, minorTerms, normalizeText, runRules, sexualTerms } from './rules';
+
+// Test prompts describe categories; they are deliberately not explicit.
+const BLOCK_MINOR_SEXUAL: string[] = [
+  'sexy schoolgirl, nude',
+  'a naked child',
+  'erotic photo of a 15 year old',
+  'nsfw loli',
+  'teen girl in lingerie, seductive pose',
+  'little girl, topless',
+  'a 12-year-old posing seductively',
+  'aged 14, sexy',
+  'jailbait lewd pic',
+  'S3XY t33n',
+  'niña desnuda',
+  'adolescente en lencería erótica',
+  'enfant nue',
+  'Kinder nackt',
+  'голая школьница',
+  '萝莉 色情',
+  '裸体 儿童',
+  'ロリ エロ',
+  '女子高生 ヌード',
+  '미성년 누드',
+  '15歳 ヌード',
+  'criança pelada nua',
+];
+
+const BENIGN: string[] = [
+  'a child playing football in a park',
+  'portrait of a senior CEO in a glass office',
+  'kids building a sandcastle at the beach, golden hour',
+  'a teenager skateboarding through a city at night',
+  'family dinner with grandparents and toddlers',
+  'a mother breastfeeding her infant, soft light', // no sexual term in our list
+  'naked eye view of the moon',
+  'a schoolboy reading in a library',
+  'a child playing, no nudity, family friendly',
+  'kids playing; nothing sexual',
+  'niños jugando al fútbol en el parque',
+  'des enfants qui jouent dans un jardin',
+  'Kinder spielen im Park',
+  '公园里踢足球的儿童',
+  '子供たちが公園で遊んでいる',
+  '아이들이 공원에서 노는 모습',
+  'an adult woman in lingerie, boudoir photo', // mature content between adults is not a hard limit
+  'a 30 year old woman, sexy evening dress',
+  'minor chord progression played on a piano',
+  'a 5 year old birthday party with balloons',
+];
+
+describe('deterministic rules: MINOR_SEXUAL', () => {
+  it.each(BLOCK_MINOR_SEXUAL)('blocks %s', (prompt) => {
+    const r = runRules({ prompt, references: [], mature: false });
+    expect(r.reasons.map((x) => x.code)).toContain('MINOR_SEXUAL');
+  });
+
+  it.each(BENIGN)('does not block %s (non-mature)', (prompt) => {
+    expect(runRules({ prompt, references: [], mature: false }).reasons).toEqual([]);
+  });
+
+  it('blocks any minor-coded term on a mature run', () => {
+    expect(runRules({ prompt: 'a schoolgirl in a classroom', references: [], mature: true }).reasons[0]?.code).toBe('MINOR_SEXUAL');
+    expect(runRules({ prompt: 'two adults in a hotel room', references: [], mature: true }).reasons).toEqual([]);
+  });
+
+  it('scans reference captions, not the negative prompt', () => {
+    expect(runRules({ prompt: 'sexy pose', references: [{ kind: 'image', source: 'upload', caption: 'my kid' }], mature: false }).reasons[0]?.code).toBe('MINOR_SEXUAL');
+    expect(runRules({ prompt: 'a woman on a beach', negativePrompt: 'child, nude, nsfw', references: [], mature: false } as never).reasons).toEqual([]);
+  });
+
+  it('normalizes look-alike characters and widths', () => {
+    expect(normalizeText('Ｓｅｘｙ')).toBe('sexy');
+    expect(normalizeText('s3xy')).toBe('sexy');
+    expect(sexualTerms('n u d e')).toEqual([]);
+    expect(minorTerms('a 17yo')).not.toEqual([]);
+    expect(minorTerms('a 18yo')).toEqual([]);
+    expect(minorTerms('a 21-year-old')).toEqual([]);
+  });
+
+  it('ignores negated sexual terms', () => {
+    expect(sexualTerms('no nudity')).toEqual([]);
+    expect(sexualTerms('without any sexual content')).toEqual([]);
+    expect(sexualTerms('sin desnudos')).toEqual([]);
+    expect(sexualTerms('nude')).toEqual(['nude']);
+  });
+});
+
+describe('deterministic rules: explicit signal', () => {
+  it('finds strong explicit terms in several languages', () => {
+    for (const p of ['nsfw scene', 'porn style', 'hentai', 'having sex', 'セックス', '色情', '섹스', 'порно']) expect(explicitSignal(p), p).not.toEqual([]);
+  });
+  it('ignores suggestive or ordinary words', () => {
+    for (const p of ['sexy evening dress', 'nude color lipstick', 'a sensual perfume ad', 'Sex Pistols poster', 'no nsfw content']) expect(explicitSignal(p), p).toEqual([]);
+  });
+});
+
+describe('deterministic rules: identity (D-005)', () => {
+  const swap = fixtureModel('lumina/face-swap');
+  const i2vSpicy = fixtureModel('lumina/wan2.7-i2v-spicy');
+  const plain = fixtureModel('bytedance/seedream-5.0-lite');
+
+  it('never lets face/head swap take a mature run', () => {
+    expect(identityRule({ mature: true, model: swap, references: [{ kind: 'image', source: 'generated' }] })?.code).toBe('IDENTITY_SWAP_MATURE');
+    expect(identityRule({ mature: false, model: swap, references: [{ kind: 'image', source: 'upload' }] })).toBeNull();
+  });
+
+  it('blocks identity-driven models with an uploaded photo on mature runs only', () => {
+    expect(identityRule({ mature: true, model: i2vSpicy, references: [{ kind: 'image', source: 'upload' }] })?.code).toBe('IDENTITY_SWAP_MATURE');
+    expect(identityRule({ mature: true, model: i2vSpicy, references: [{ kind: 'image', source: 'character' }] })).toBeNull();
+    expect(identityRule({ mature: true, model: plain, references: [{ kind: 'image', source: 'upload' }] })).toBeNull();
+  });
+});

@@ -11,6 +11,7 @@
     "./project": "./src/project/index.ts",
     "./media": "./src/media/index.ts",
     "./generation": "./src/generation/index.ts",
+    "./safety": "./src/safety/index.ts",
     "./*": "./src/*.ts"
   },
   "scripts": {
