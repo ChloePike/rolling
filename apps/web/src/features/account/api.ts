@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PLAN_ORDER, PLANS, type PlanId } from '@rolling/core/pricing/config';
 import { topUpFor, topUpPresets, type TopUpOption } from '@/lib/topUp';
-import { getSession, mockOverrides } from '@/lib/session';
+import { checkoutTopUp, getSession, mockOverrides, MockFlowError } from '@/lib/session';
 import { invoicesMock, meMock, membersMock } from './mocks';
 import type { Invoice, Me, Member, Prefs, Role } from './types';
 
@@ -86,13 +86,16 @@ export async function patchProfile(patch: Partial<Pick<Me['user'], 'name' | 'han
 
 /** `POST /api/billing/topup` (members only, D-007): any amount, credits from `quoteTopUp`. */
 export async function buyTopUp(amountUsd: number): Promise<{ credits: number; me: Me }> {
-  await wait();
-  const base = current();
-  if (!base.plan || base.plan.status !== 'active') throw new ApiError('NO_PLAN');
-  const q = topUpFor(amountUsd, base.plan.id);
-  me = { ...base, balance: { ...base.balance, purchased: base.balance.purchased + q.credits } };
-  invoices = [{ id: `in_${Date.now()}`, kind: 'topUp', amountUsd, credits: q.credits }, ...invoices];
-  return { credits: q.credits, me: structuredClone(me) };
+  // The balance lives in lib/session (one source with the header credits).
+  let r;
+  try {
+    r = await checkoutTopUp(amountUsd);
+  } catch (e) {
+    if (e instanceof MockFlowError && e.code === 'NO_PLAN') throw new ApiError('NO_PLAN');
+    throw e;
+  }
+  invoices = [{ id: `in_${Date.now()}`, kind: 'topUp', amountUsd, credits: r.credits }, ...invoices];
+  return { credits: r.credits, me: structuredClone(current()) };
 }
 
 /** `POST /api/billing/cancel` or resume: the plan stays active until the period ends. */

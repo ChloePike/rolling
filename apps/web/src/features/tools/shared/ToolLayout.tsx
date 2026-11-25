@@ -4,7 +4,7 @@ import { useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import type { PlanId } from '@rolling/core/pricing/config';
 import { usePref } from '@/lib/prefs';
-import { useSession } from '@/lib/session';
+import { startMockRun, useSession } from '@/lib/session';
 import type { ToolModel } from './models';
 import type { ComposerPill, ComposerRef, FeedItem, MediaRun, ParamKind, PickerKind, ScriptDraft } from '../types';
 import { Composer, type ComposerProps } from './Composer';
@@ -109,6 +109,8 @@ export function ToolLayout(p: ToolLayoutProps) {
 
   const begin = (prompt: string, cost: number) => {
     runs.start({ ...p.run, prompt, cost, actions: p.actions });
+    // Hold and settle on the shared balance (header credits); the feed card shows the job itself.
+    if (!(window as unknown as { __rollingMocks?: { runFails?: boolean } }).__rollingMocks?.runFails) void startMockRun(cost).catch(() => undefined);
     setFilter((f) => (f === 'saved' ? 'all' : f));
   };
 

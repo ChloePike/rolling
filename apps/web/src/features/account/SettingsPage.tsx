@@ -19,7 +19,7 @@ import {
   type CurrencyCode,
   type ThemePref,
 } from '@/lib/prefs';
-import { useSession } from '@/lib/session';
+import { useCredits, useSession } from '@/lib/session';
 import { parseTopUpAmount } from '@/lib/topUp';
 import { motion, PathIcon, paths, Segmented } from './shared';
 import { SelectMenu } from './shared/SelectMenu';
@@ -497,8 +497,11 @@ function BillingSection({ me }: { me: Me }) {
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cardOpen, setCardOpen] = useState(false);
   const plan = me.plan ? PLANS[me.plan.id] : null;
-  const total = me.balance.plan + me.balance.purchased;
-  const rest = plan ? Math.max(0, plan.monthlyCredits - me.balance.plan) : 0;
+  // Live balance shared with the header (lib/session).
+  const credits = useCredits();
+  const balance = { plan: credits.plan, purchased: credits.purchased };
+  const total = credits.available;
+  const rest = plan ? Math.max(0, plan.monthlyCredits - balance.plan) : 0;
   const price = plan ? (me.plan!.period === 'yearly' ? Math.round((Number(plan.priceYearlyUsd) / 12) * 100) / 100 : Number(plan.priceMonthlyUsd)) : 0;
   const [custom, setCustom] = useState('');
   const parsed = parseTopUpAmount(custom);
@@ -585,16 +588,16 @@ function BillingSection({ me }: { me: Me }) {
             {intl.formatNumber(total)}
           </span>
           <div className={styles.split} aria-hidden="true">
-            <span className={cx(styles.splitPart, styles.splitPlan)} style={{ flexGrow: me.balance.plan }} />
-            <span className={cx(styles.splitPart, styles.splitBought)} style={{ flexGrow: me.balance.purchased }} />
+            <span className={cx(styles.splitPart, styles.splitPlan)} style={{ flexGrow: balance.plan }} />
+            <span className={cx(styles.splitPart, styles.splitBought)} style={{ flexGrow: balance.purchased }} />
             <span className={cx(styles.splitPart, styles.splitRest)} style={{ flexGrow: rest }} />
           </div>
           <div className={styles.legend}>
             <span>
-              <FormattedMessage id="account.settings.billing.planCredits" values={{ n: me.balance.plan, date: '[DATE]' }} />
+              <FormattedMessage id="account.settings.billing.planCredits" values={{ n: balance.plan, date: '[DATE]' }} />
             </span>
             <span>
-              <FormattedMessage id="account.settings.billing.purchasedCredits" values={{ n: me.balance.purchased }} />
+              <FormattedMessage id="account.settings.billing.purchasedCredits" values={{ n: balance.purchased }} />
             </span>
           </div>
         </div>

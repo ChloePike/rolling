@@ -17,7 +17,8 @@ import type { PlanId } from '@rolling/core/pricing/config';
 import type { ToolModel } from '../shared/models';
 import { resolutionOptions, useToolPlan } from '../shared/plan';
 import type { ComposerPill } from '../types';
-import { quickLines, quickPrompt, quickShots, quickSlots, quickTemplate } from './mocks';
+import { quickLines, quickPrompt, quickShots, quickSlots, quickTemplate as defaultTemplate } from './mocks';
+import { useTemplates } from '@/features/templates/api';
 import styles from './QuickCreate.module.css';
 
 const RES_COST: Record<string, number> = { '480p': 6, '720p': 10, '1080p': 18 };
@@ -32,9 +33,17 @@ interface Props {
   plan?: PlanId;
   /** Active plan (D-007); defaults to the session. */
   isMember?: boolean;
+  /** `?template=<id>` from Templates (“Use template”). */
+  templateId?: string;
+  /** `?ratio=<w:h>` chosen with the template. */
+  ratio?: string;
 }
 
-export function QuickCreatePage({ initialOverlay, models: modelsOverride, plan: planProp, isMember }: Props) {
+export function QuickCreatePage({ initialOverlay, models: modelsOverride, plan: planProp, isMember, templateId, ratio: ratioParam }: Props) {
+  const { data: templates } = useTemplates();
+  const picked = templateId ? [...templates.featured, ...templates.items].find((x) => x.id === templateId) : undefined;
+  const ratio = ratioParam && /^\d{1,2}:\d{1,2}$/.test(ratioParam) ? ratioParam : picked ? picked.coverAspect.replace('/', ':') : defaultTemplate.aspect;
+  const quickTemplate = picked ? { ...defaultTemplate, name: picked.name, durationSec: picked.durationSec, aspect: ratio } : { ...defaultTemplate, aspect: ratio };
   const plan = useToolPlan(planProp);
   const intl = useIntl();
   const t = (id: string, v?: Record<string, string | number>) => intl.formatMessage({ id }, v);
@@ -84,7 +93,7 @@ export function QuickCreatePage({ initialOverlay, models: modelsOverride, plan: 
     { kind: 'text', id: 'neg', title: t('tools.adv.neg'), icon: 'neg', value: p.neg, placeholder: t('tools.quick.neg.placeholder'), onChange: (v) => set('neg', v) },
   ];
 
-  const ratioPill = t('tools.quick.pill.ratio');
+  const ratioPill = ratio === defaultTemplate.aspect ? t('tools.quick.pill.ratio') : ratio;
   const dur = t('tools.seconds', { n: quickTemplate.durationSec });
   const pills: ComposerPill[] = adv
     ? [
@@ -231,9 +240,9 @@ export function QuickCreatePage({ initialOverlay, models: modelsOverride, plan: 
       onModel={(m) => set('model', m)}
       confirm={{ cost, label: go }}
       run={{
-        aspect: '9/16',
+        aspect: ratio.replace(':', '/'),
         video: true,
-        tags: ['9:16', dur, adv ? p.res : '720p'],
+        tags: [ratio, dur, adv ? p.res : '720p'],
         tiles: [],
         steps: [t('tools.run.step.prepare'), modelLabel(adv ? p.model : 'Auto')],
         generating: (pct) => t('tools.run.step.generating', { pct: pct / 100 }),
