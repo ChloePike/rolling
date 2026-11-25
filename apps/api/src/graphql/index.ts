@@ -144,7 +144,7 @@ function parseTags(raw: string): string[] {
 }
 
 /** `angles` JSON written by the PoseWear importer: [{ name, r2Key, depthR2Key? }]. */
-function parseAngles(raw: string | null): { name: string; url: string; depthUrl: string | null }[] {
+function parseAngles(raw: string | null, base?: string): { name: string; url: string; depthUrl: string | null }[] {
   if (!raw) return [];
   try {
     const v: unknown = JSON.parse(raw);
@@ -154,8 +154,8 @@ function parseAngles(raw: string | null): { name: string; url: string; depthUrl:
         ? [
             {
               name: a.name,
-              url: publicMediaUrl(a.r2Key),
-              depthUrl: typeof a.depthR2Key === "string" ? publicMediaUrl(a.depthR2Key) : null,
+              url: publicMediaUrl(a.r2Key, base),
+              depthUrl: typeof a.depthR2Key === "string" ? publicMediaUrl(a.depthR2Key, base) : null,
             },
           ]
         : [],
@@ -194,9 +194,11 @@ const resolvers = {
   PublicItem: {
     license: (item: PublicItem) => licenseEnum[item.license],
     tags: (item: PublicItem) => parseTags(item.tags),
-    angles: (item: PublicItem) => parseAngles(item.angles),
-    thumbUrl: (item: PublicItem) => parseAngles(item.angles)[0]?.url ?? null,
-    depthUrl: (item: PublicItem) => (item.depthKey ? publicMediaUrl(item.depthKey) : null),
+    angles: (item: PublicItem, _: unknown, ctx: GraphQLContext) => parseAngles(item.angles, ctx.env.PUBLIC_MEDIA_BASE_URL),
+    thumbUrl: (item: PublicItem, _: unknown, ctx: GraphQLContext) =>
+      parseAngles(item.angles, ctx.env.PUBLIC_MEDIA_BASE_URL)[0]?.url ?? null,
+    depthUrl: (item: PublicItem, _: unknown, ctx: GraphQLContext) =>
+      item.depthKey ? publicMediaUrl(item.depthKey, ctx.env.PUBLIC_MEDIA_BASE_URL) : null,
   },
 };
 

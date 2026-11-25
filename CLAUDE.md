@@ -37,6 +37,7 @@ Design source: `docs/design/screens/*.dc.html` are the approved screens (one fil
 - Motion: CSS transitions; `motion` (motion.dev) only where layout animation is needed.
 - Models (D-002): **Hyperouter** (`https://api.hyperouter.app/v1`) is the single gateway for the agent LLM (`deepseek/deepseek-v4.1-flash`), images and video, behind our own `LlmProvider` / `GenerationProvider` interfaces. Webhooks use Standard Webhooks signing. Key in the `HYPEROUTER_API_KEY` secret.
 - Public library (D-004): imported from PoseWear (https://posewear.pages.dev/) into R2 + D1 with per-item license labels.
+- Media (D-008): images and video are served from the media domain (public bucket via CDN, private media via signed URLs), never streamed through API routes in production.
 - Observability: Workers Logs + traces, `@sentry/cloudflare`, Analytics Engine for product metrics.
 - Tooling: pnpm workspaces, wrangler, Vitest with `@cloudflare/vitest-pool-workers`, Playwright for flows.
 

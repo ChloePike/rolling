@@ -2,6 +2,15 @@
 
 Decisions made after the original spec. Where this file disagrees with `PRD.md`, `architecture.md`, `api.md` or `harness.md`, this file wins. Newest first.
 
+## D-008 — Media is served from a media domain, not the API (2026-11-25)
+
+In production, images and video never stream through the API Worker.
+
+- **Public library** (non-mature PoseWear items): a separate R2 bucket `rolling-public-<env>` holding only non-mature public objects, attached to a custom domain (e.g. `media.<product-domain>`) and served directly by the Cloudflare CDN with long immutable caching. The importer writes there (`copy-to-r2.ts` without `--include-mature`, `R2_BUCKET=rolling-public-<env>`). Mature public items stay only in the private bucket.
+- **Private media** (uploads, generated results, exports, mature items): the private bucket `rolling-media-<env>` is never public. Clients get short-lived signed URLs on the media domain (a small media Worker on that hostname verifies an HMAC token: key, expiry, workspace), so the API only issues URLs and never carries bytes. Mature results are only signed for users allowed to see them (D-005).
+- **Config:** `PUBLIC_MEDIA_BASE_URL` (Worker var) is the public bucket's origin; API responses build image URLs from it. Empty means fallback to the Worker route `/api/media/...`, used only in local dev and staging until the product domain exists.
+- Open: the product domain (D-001 open decision) — the media hostname is created with it.
+
 ## D-007 — The agent is members-only; margin assumptions (2026-11-25)
 
 - **Non-members cannot use the agent.** This replaces PRD rule 1’s “plan with the agent for free”. Without an active plan a user can sign up, browse, open templates’ previews and the public library, and type a brief; sending it to the agent (Home Agent mode, canvas agent panel, editor “Ask for an edit”, Simple-mode field filling in tools) opens Paywall `variant=join` and keeps the brief so it resumes after checkout. The API enforces it: agent routes and the agent WebSocket messages return `NO_PLAN` for workspaces without an active subscription.

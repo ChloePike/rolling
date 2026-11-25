@@ -13,12 +13,20 @@ const CONTENT_TYPES: Record<string, string> = {
 /** `public/<category>/<itemId>/<file>` — the R2 layout written by scripts/posewear (D-004). */
 const PUBLIC_KEY = /^public\/([a-z_]+)\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+\.(webp|png|jpe?g))$/;
 
-export function publicMediaUrl(r2Key: string): string {
-  return `/api/media/${r2Key}`;
+/**
+ * URL of a public-library object. In production `PUBLIC_MEDIA_BASE_URL` points at
+ * the public media domain (an R2 bucket with a custom domain, served by the CDN
+ * without the Worker, D-008). When it is empty (local dev, staging before a
+ * domain exists) the Worker's `/api/media` route serves the object instead.
+ */
+export function publicMediaUrl(r2Key: string, baseUrl?: string): string {
+  const base = baseUrl?.replace(/\/+$/, "");
+  return base ? `${base}/${r2Key}` : `/api/media/${r2Key}`;
 }
 
 /**
- * `GET /api/media/public/...` — public-library images from R2.
+ * `GET /api/media/public/...` — public-library images from R2. Fallback only:
+ * production serves these from the public media domain (D-008).
  *
  * Only keys of existing, non-mature public items are served (mature items never
  * appear on public surfaces, D-005). Responses are immutable and edge-cached;

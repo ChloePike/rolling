@@ -47,7 +47,8 @@
     "ENVIRONMENT": "development",
     "APP_NAME": "Rolling",
     "PUBLIC_APP_URL": "http://localhost:8787",
-    "HYPEROUTER_BASE_URL": "https://api.hyperouter.app/v1"
+    "HYPEROUTER_BASE_URL": "https://api.hyperouter.app/v1",
+        "PUBLIC_MEDIA_BASE_URL": ""
   },
   "d1_databases": [
     {
@@ -194,7 +195,8 @@
         "ENVIRONMENT": "staging",
         "APP_NAME": "Rolling",
         "PUBLIC_APP_URL": "https://rolling-api-staging.swiftpayx.workers.dev",
-        "HYPEROUTER_BASE_URL": "https://api.hyperouter.app/v1"
+        "HYPEROUTER_BASE_URL": "https://api.hyperouter.app/v1",
+        "PUBLIC_MEDIA_BASE_URL": ""
       },
       "d1_databases": [
         {
@@ -329,7 +331,8 @@
         "ENVIRONMENT": "production",
         "APP_NAME": "Rolling",
         "PUBLIC_APP_URL": "https://rolling-api.swiftpayx.workers.dev",
-        "HYPEROUTER_BASE_URL": "https://api.hyperouter.app/v1"
+        "HYPEROUTER_BASE_URL": "https://api.hyperouter.app/v1",
+        "PUBLIC_MEDIA_BASE_URL": ""
       },
       "d1_databases": [
         {
