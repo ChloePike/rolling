@@ -29,7 +29,7 @@ Full feature table (128 rows with status, priority, competitor reference, in Chi
 
 ### P0 — launch
 - Auth: Google, Apple, email one-time code.
-- Membership gate and plans (Starter, Pro, Studio; monthly or yearly) via Stripe. Credit packs for members.
+- Membership gate and plans (Starter, Plus, Pro; monthly or yearly) via Stripe. Any-amount credit top-ups for members (see `docs/decisions.md` D-006).
 - Credit ledger: quote, hold, settle, release; plan credits first, purchased after; failed and canceled runs refunded.
 - Paywall dialogs: “Pick a plan to generate” (non-member), “Not enough credits” (member), with the run continuing after payment.
 - Home prompt box with modes, model picker, `/` command palette, `+` menu, `@` reference picker (my assets, characters, voices, team, public library).
@@ -82,7 +82,7 @@ Out of scope: native apps, phone-specific layouts, compliance/moderation work be
 4. **Quote → hold → settle.** Each run gets a quote valid 10 minutes. Starting it places a hold equal to the quote. Success settles the actual amount (≤ hold). Failure or cancel releases the hold. Partial graph runs settle per node.
 5. **Confirm threshold.** Runs at or above the user’s threshold (default 20 credits) show the confirm dialog; smaller ones start directly. Run-all always shows the plan.
 6. **Not enough credits.** Show needed / balance / short-by, offer packs or an upgrade, then continue the same run. Optional auto top-up: below 200, buy 1,000 with the saved card.
-7. **Teams (Studio).** One shared pool. Owner sets per-member monthly limits and roles (Owner, Editor, Viewer).
+7. **Teams (Pro).** One shared pool. Owner sets per-member monthly limits and roles (Owner, Editor, Viewer).
 8. **Refunds are automatic** for failed or canceled provider jobs, shown in Activity and as a toast.
 9. **Public library.** (Superseded in part by `docs/decisions.md` D-004: PoseWear is first-party, so its poses and outfits are not “Rights reserved”.) Items carry a license label. Poses and outfits from PoseWear are “Rights reserved” (original authors’ copyright); portraits, hairstyles, historical outfits, scenes, lighting, props and furniture are CC0; expressions are MIT. Surface the label; replace “Rights reserved” items with our own generated assets before paid launch.
 

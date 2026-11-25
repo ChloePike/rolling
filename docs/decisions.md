@@ -4,21 +4,22 @@ Decisions made after the original spec. Where this file disagrees with `PRD.md`,
 
 ## D-006 — Pricing: credits are the product, plans are the entry ticket (2026-11-25)
 
-Owner decisions: gross margin ≥ 50%; revenue comes mainly from credit purchases; plans exist to unlock membership (which is also the age gate, D-005). The Hyperouter 5.5% top-up fee is ignored. Values live in `packages/core/pricing/config.ts`; tests enforce the margin floor.
+Owner decisions: gross margin ≥ 50%; revenue comes mainly from top-ups; plans exist to unlock membership (which is also the age gate, D-005) and are tiered precisely by perks. The Hyperouter 5.5% top-up fee is ignored. Values live in `packages/core/pricing/config.ts`; tests enforce the margin floor and the caps.
 
 - **Credit unit:** 1 credit = $0.01 retail. `credits = ceil(gatewayUsd × 3.0 ÷ 0.01)` (3× markup on live list price, per resolution and length). Example: Seedance 2.5 720p 5 s = 347 credits.
-- **Plans (entry ticket, small grant, perks):**
+- **Plans — Starter, Plus, Pro** (ids `starter`, `plus`, `pro`; D1 migration 0003 renamed the old `pro`/`studio`):
 
-| Plan | Monthly | Yearly (−20%) | Credits/month | Pack discount | Jobs at once | Max res | Voice clone | Seats |
-|---|---|---|---|---|---|---|---|---|
-| Starter | $5 | $48 | 200 | 0% | 2 | 1080p | no | 1 |
-| Pro | $15 | $144 | 800 | 5% | 5 | 4K | yes | 1 |
-| Studio | $49 | $470 | 2,500 | 10% | 10 | 4K | yes | 10 |
+| Plan | Monthly | Yearly (−20%) | Credits/month | Top-up bonus | Jobs at once | Max video | Max image | Voice clone | Seats |
+|---|---|---|---|---|---|---|---|---|---|
+| Starter | $5 | $48 | 200 | +0% | 2 | 720p | 2K | no | 1 |
+| Plus | $15 | $144 | 800 | +5% | 5 | 1080p | 2K | yes | 1 |
+| Pro | $49 | $470 | 2,500 | +10% | 10 | 4K | 4K | yes | 10 |
 
-- **Packs (members only, never expire):** $10 → 1,000 · $25 → 2,600 · $50 → 5,500 · $100 → 11,500 · $250 → 28,500. The largest pack is capped so the largest member discount still clears 50%.
-- **Margin floor (all credits used, after card fees ~4.65% + $0.30 and 2% infra):** packs 50.4–57.5%, plans 70–76%. Real usage below 100% raises it.
-- **Confirm threshold** default becomes 300 credits (≈ $3), the PRD’s “20 credits” rescaled. **Auto top-up:** below 200 credits buy the $10 pack.
-- Supersedes the PRD placeholders for plan credits, plan prices, yearly discount, pack prices and per-model credit prices.
+- **Resolution caps** are enforced by `planAllowsResolution(plan, kind, resolution)` on every quote and run (video and avatar runs use the video cap). Ranks use the short side (768p > 720p, so MiniMax H3 at 768p needs Plus); unknown labels are refused. The UI shows locked resolutions with the lowest plan that unlocks them (`lowestPlanFor`).
+- **Top-ups (members only, never expire): any amount from $10 to $10,000** in whole cents. Base credits = amount ÷ $0.01, plus a bonus by amount tier — $10+ 0%, $25+ 4%, $50+ 10%, $100+ 15% — plus the plan bonus above (additive, max 25%). Suggested chips: $10, $25, $50, $100, $250.
+- **Margin floor (all credits used, after card fees ~4.65% + $0.30 and 2% infra):** top-ups ≥ 50.0% at every amount and plan (worst case: Pro member, ≥ $100); plans 70–76%. Real usage below 100% raises it.
+- **Confirm threshold** default 300 credits (≈ $3), the PRD's “20 credits” rescaled. **Auto top-up:** below 200 credits, top up the $10 minimum.
+- Supersedes the PRD's plan names (Starter/Pro/Studio), plan credits, prices, yearly discount, credit packs and per-model credit prices. The PRD's “Teams (Studio)” rule now applies to Pro.
 
 ## D-005 — Adult (18+) content is allowed (2026-11-25)
 

@@ -117,9 +117,9 @@ describe("model catalog reads", () => {
     const s25 = body.models.find((m) => m.id === "bytedance/seedance-2.5");
     expect(s25).toMatchObject({ name: "Seedance 2.5", default: true, auto: true, mature: false, defaultResolution: "480p" });
     expect(s25.credits).toEqual([
-      { resolution: "480p", seconds: 5, credits: 4 },
-      { resolution: "720p", seconds: 5, credits: 8 },
-      { resolution: "1080p", seconds: 5, credits: 19 },
+      { resolution: "480p", seconds: 5, credits: 162 },
+      { resolution: "720p", seconds: 5, credits: 347 },
+      { resolution: "1080p", seconds: 5, credits: 853 },
     ]);
     // No USD leaves the API.
     expect(JSON.stringify(body)).not.toContain("usd");
@@ -168,7 +168,7 @@ describe("model catalog reads", () => {
       matureOnly: false,
       seconds: null,
       limits: { inputImages: 10 },
-      credits: [{ resolution: null, credits: 1 }],
+      credits: [{ resolution: null, credits: 11 }],
     });
     expect(body.data.models.every((m) => m.kind === "IMAGE" && !m.matureOnly)).toBe(true);
   });

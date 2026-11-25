@@ -63,7 +63,7 @@ describe("D1 migration", () => {
     const db = new DatabaseSync(":memory:");
     const dir = new URL("../migrations/d1/", import.meta.url);
     const files = readdirSync(dir).filter((f) => f.endsWith(".sql")).sort();
-    expect(files).toEqual(["0001_init.sql", "0002_models.sql"]);
+    expect(files).toEqual(["0001_init.sql", "0002_models.sql", "0003_plan_names.sql"]);
     for (const f of files) db.exec(readFileSync(new URL(f, dir), "utf8"));
     expectSchemaMatches(db, tablesOf(d1));
     expect(columnsIn(db, "models")).toEqual(["data", "hidden", "id", "kind", "mature", "price", "synced_at"]);

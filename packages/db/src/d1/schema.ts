@@ -73,7 +73,7 @@ export const subscriptions = sqliteTable(
     workspaceId: text("workspace_id")
       .notNull()
       .references(() => workspaces.id),
-    plan: text("plan", { enum: ["starter", "pro", "studio"] }).notNull(),
+    plan: text("plan", { enum: ["starter", "plus", "pro"] }).notNull(),
     interval: text("interval", { enum: ["month", "year"] }).notNull(),
     status: text("status").notNull(),
     currentPeriodEnd: integer("current_period_end").notNull(),
@@ -81,7 +81,7 @@ export const subscriptions = sqliteTable(
     updatedAt: integer("updated_at").notNull(),
   },
   (t) => [
-    check("subscriptions_plan_check", sql`${t.plan} IN ('starter','pro','studio')`),
+    check("subscriptions_plan_check", sql`${t.plan} IN ('starter','plus','pro')`),
     check("subscriptions_interval_check", sql`${t.interval} IN ('month','year')`),
   ],
 );
