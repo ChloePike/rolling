@@ -247,11 +247,74 @@ Get the stub with `projectRoom(env, projectId)` (`apps/api/src/lib/access.ts`). 
 - `broadcast(type, payload)` → fan-out of any `ServerMessageType`
 - `listVersions`, `setActiveVersion`, `getTimeline`, `patchTimeline`, `reassembleTimeline`, `setTitle`, `destroy`, `init`, `flushIndex`
 
-## Runs
-| POST | `/api/runs/quote` | `{ projectId, scope: node|selection|all, nodeIds? }` or `{ promptSpec }` from a tool page → `{ quoteId, items: [{ nodeId, action: run|reuse|blocked|none, model, credits, reason? }], total, balanceAfter, expiresAt }` |
-| POST | `/api/runs` | `{ quoteId }` → `{ runId }` or `NO_PLAN` / `INSUFFICIENT_CREDITS` |
-| POST | `/api/runs/:id/cancel` | releases holds of unfinished items |
-| GET | `/api/runs` | Activity list: filters status, project, model, date |
+## Runs (M4)
+
+Auth: signed in (dev header in development), role editor+ in the workspace. Quotes are open to non-members (they see prices); starting a run needs an active plan (D-007). Implementation: `apps/api/src/routes/runs.ts`, `apps/api/src/runs/*`, planning in `@rolling/core/generation` on top of `ProjectRoom.planRun`.
+
+| Method | Path | Body → response |
+|---|---|---|
+| POST | `/api/runs/quote` | Canvas: `{ projectId, scope: 'node'\|'selection'\|'all'\|'upTo'\|'from', nodeIds? }` (`node`, `upTo`, `from` take exactly one id; `selection` one or more; `all` none). Tool page: `{ promptSpec, projectId? }`. → `QuoteResponse` |
+| POST | `/api/runs` | `{ quoteId, options?: { forceFailure?: true \| itemRefs[] } }` → `201 { runId, status }`. Same quote again → the same run. Errors: `NO_PLAN` (402), `INSUFFICIENT_CREDITS` (402, `{ needed, balance }`), `QUOTE_EXPIRED` (409), `MEMBER_LIMIT_REACHED` (403, `{ limit, used, needed }`), `NOT_FOUND`, `CONFLICT` (nothing to run). |
+| POST | `/api/runs/:id/cancel` | → `{ runId, refunded, canceled }`: pending items stop, running jobs are terminated and their holds released (refund). |
+| GET | `/api/runs` | Activity. Query: `status=queued\|running\|done\|partial\|failed\|canceled`, `projectId`, `model`, `from`, `to` (epoch ms), `first` (≤100, default 30), `after` (cursor). → `{ stats, runs: RunView[], nextCursor }` |
+
+```ts
+type QuoteResponse = {
+  quoteId: string | null          // null when no row runs (only reuse/blocked/none): nothing to confirm
+  items: Array<{
+    ref: string                   // node id, or 'spec' for a promptSpec
+    nodeId: string | null
+    title: string; kind: string
+    action: 'run' | 'reuse' | 'blocked' | 'none' | 'bypassed'
+    model: string | null          // gateway id (Auto is resolved here, D-009)
+    modelName: string | null      // display name ('Auto' only when Auto found no model)
+    credits: number               // > 0 only on run rows
+    code?: 'missing_input' | 'upstream_blocked' | 'bypassed_input' | 'unknown_model' | 'no_capable_model'
+         | 'unsupported' | 'unpriced' | 'resolution_locked' | 'mature_not_allowed'
+         | 'identity_requires_platform_assets' | 'empty_prompt'
+    reason?: string               // English; the UI maps `code` to copy ('Already running' on reuse rows of running nodes)
+    lowestPlan?: 'starter' | 'plus' | 'pro' | null   // resolution_locked: plan that unlocks it
+    autoVia?: 'classifier' | 'fallback' | 'single'
+    dependsOn: string[]           // run rows: refs that must finish first
+  }>
+  total: number; balance: number; balanceAfter: number
+  expiresAt: number | null        // epoch ms (10 minutes)
+}
+
+type PromptSpec = {
+  kind: 'image' | 'video'; model?: string /* id, display name or 'auto' (default) */; prompt?: string; title?: string
+  seconds?: number; resolution?: string; ratio?: string; audio?: boolean; n?: number
+  negativePrompt?: string; seed?: number; mature?: boolean; refsMode?: boolean
+  inputs?: { firstFrameAssetId?, lastFrameAssetId?, referenceAssetIds?: string[], inputAssetIds?: string[], audioAssetId? }
+}
+
+type RunView = {
+  id; ref /* 'T-xxxxx' */; name; source: 'canvas' | 'quickCreate'; projectId; projectTitle
+  params /* 'Seedance 2.0 Mini · 480p · 9:16 · 5s' */
+  status: 'queued' | 'running' | 'done' | 'partial' | 'failed' | 'canceled'
+  progress: number | null         // 0..1 while queued/running
+  credits: number                 // quoted while queued/running, charged after
+  quoted; spent; refunded; error: string | null; createdAt; finishedAt
+  items: Array<{ ref, nodeId, title, kind, model, modelName, status: 'pending'|'running'|'succeeded'|'failed'|'skipped'|'canceled',
+                 jobId, progress, credits, spent, refunded, assetId, error, errorCode }>
+}
+// stats: { usedThisMonth, usedLastMonth, running, successRate /* 0..1 | null, 7 days */, runsLast7Days, refundedThisMonth }
+```
+
+Rules:
+- Node params read by the planner: `model` / `modelId` (id, display name, PRD name it stands in for, or `Auto`), `prompt`, `length` (or `seconds`) for video, `resolution`, `ratio`, `count` (images), `audio` (or the `extra` label “Audio on/off”), `mature`, `mode` (“reference” → refs mode). Text and script inputs are prepended to the prompt; `@[Name]` mentions become plain names. Image models sized by `size` get `WxH` from `resolution` (1K/2K/4K) and `ratio`.
+- Plan caps (D-006) use the workspace plan; mature runs (D-005) need `matureAllowed` and route only to mature-capable models (identity-driven models only with platform assets). Auto (D-009) asks DeepSeek V4.1 Flash to pick among capable candidates (2 s timeout, members only) and falls back to the cheapest candidate.
+- Holds are per item: when a run starts, items whose inputs are ready are held (up to the plan's jobs at once); dependents are held and started when their inputs land. A dependent of a failed item is `skipped` (never charged). An item whose later hold fails (balance spent elsewhere) is `failed` with that code.
+- Charges: settle with the provider's reported cost through `creditsFor` (3× markup), never above the hold; no cost reported → the quoted credits. Failures release the hold (`refunded` = held credits). Auto items retry once on the next fallback model that fits under the same hold.
+- `options.forceFailure` (staging/development only, ignored in production): the listed items (or all with `true`) fail without calling the provider and are refunded — for testing the refund path end to end.
+
+GraphQL: `runs(filter: { status, projectId, model, from, to }, first, after) { nodes { …RunView } stats { … } pageInfo { hasNextPage endCursor } }`.
+
+Live events (D-003):
+- Project socket: `job.progress { jobId, nodeId, progress /* 0..1 */, status: 'queued'|'generating' }` (queued on start with `jobId: ''`), `node.version` (from `addVersion`), `job.done { jobId, nodeId, version: { n, total }, assetId }`, `job.failed { jobId, nodeId, refunded, reason }` (`reason` is English, e.g. “The provider rejected the content.”; the node shows “Refunded {refunded} credits”), `credits.changed { balance, held, plan, purchased }` after every hold, settle and release.
+- User socket (`/api/ws`): `credits.changed` (same payload) and `activity.updated { runId, jobId? }`.
+
+Provider webhooks: `POST /api/hooks/hyperouter` (no session). Standard Webhooks signature with `HYPEROUTER_WEBHOOK_SECRET` (`whsec_…`); bad signature → 401, stale timestamp → 401, malformed → 400; deduped on `webhook-id` (`{ ok: true, duplicate: true }`). The job's status is fetched from the gateway and sent to the job's GenerateWorkflow as `provider-done`; the workflow also polls (backoff from 3 s for images / 10 s for video up to 60 s), so a missed webhook only delays a job.
 
 ## Assets and libraries
 
