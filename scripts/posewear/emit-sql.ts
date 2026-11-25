@@ -5,7 +5,7 @@
 //
 // Usage: tsx scripts/posewear/emit-sql.ts [--include-mature] [--category pose,outfit] [--chunk 400]
 //
-// Mature items (D-005) are skipped by default: public_items has no `mature`
+// Mature items (D-005) are skipped by default; with --include-mature they are written with mature = 1
 // column yet, and the public library is a public surface.
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -64,7 +64,7 @@ function statementsFor(batch: LibraryD1Rows[]): string[] {
     ...insertStatements(
       'public_items',
       items,
-      upsert(['category', 'sub', 'title', 'prompt_en', 'prompt_zh', 'angles', 'asset_id', 'license', 'source']),
+      upsert(['category', 'sub', 'title', 'prompt_en', 'prompt_zh', 'angles', 'asset_id', 'license', 'source', 'tags', 'depth_key', 'mature']),
     ),
     // FTS5 tables have no unique key: delete then insert keeps re-runs idempotent.
     `DELETE FROM asset_search WHERE id IN (${search.map((s) => sqlLiteral(s.id)).join(', ')});`,

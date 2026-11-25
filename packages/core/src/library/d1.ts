@@ -32,6 +32,10 @@ export interface LibraryPublicItemRow {
   asset_id: string;
   license: string;
   source: string;
+  tags: string;
+  depth_key: string | null;
+  /** 0/1. Mature items are never served on public surfaces (D-005). */
+  mature: number;
 }
 
 export interface LibrarySearchRow {
@@ -110,6 +114,9 @@ export function toLibraryD1Rows(
       asset_id: assets[0]!.id,
       license: item.license,
       source: item.sourceUrl,
+      tags: JSON.stringify(item.tags),
+      depth_key: angles.find((a) => 'depthR2Key' in a)?.depthR2Key ?? null,
+      mature: item.mature ? 1 : 0,
     },
     search: {
       id: item.id,
