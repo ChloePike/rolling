@@ -74,13 +74,14 @@ const FORCED: JobError = { code: "forced_failure", message: "Forced failure for 
  * marks the node failed with the refund. Transient provider failures (retryable
  * codes such as upstream_error) are resubmitted to the same model up to
  * SAME_MODEL_RETRIES times with backoff (each attempt has its own idempotency
- * key); after that, Auto runs try the next fallback model once under the same
- * hold (D-009). Failures after the provider succeeded (storing) are not
+ * key); after that the job tries one fallback model under the same hold: Auto's
+ * next candidate (D-009), or a same-family sibling of an explicitly chosen model
+ * (never costing more than the hold). Failures after the provider succeeded (storing) are not
  * resubmitted. Dependents start afterwards.
  */
 /** Resubmissions of the same model after a transient provider failure, and their backoff. */
-const SAME_MODEL_RETRIES = 2;
-const DEFAULT_RETRY_BACKOFF_SECONDS = [5, 15];
+const SAME_MODEL_RETRIES = 3;
+const DEFAULT_RETRY_BACKOFF_SECONDS = [5, 20, 60];
 
 function retryBackoff(env: Env): number[] {
   const parsed = (env.GENERATE_RETRY_BACKOFF ?? "").split(",").map((v) => Number(v.trim())).filter((n) => Number.isFinite(n) && n >= 0);
@@ -139,12 +140,12 @@ export class GenerateWorkflow extends WorkflowEntrypoint<Env, GenerateWorkflowPa
 
       const error = status.error ?? { code: "unknown_error", message: "The job failed.", retryable: false, refundable: true };
       if (!forced && error.retryable && providerFailure && sameModelRetries < SAME_MODEL_RETRIES) {
-        const wait = retryBackoff(env)[sameModelRetries] ?? 15;
+        const wait = retryBackoff(env)[sameModelRetries] ?? 60;
         if (wait > 0) await step.sleep(`backoff-${attempt}`, `${wait} seconds` as const);
         sameModelRetries++;
         continue;
       }
-      if (!forced && error.retryable && providerFailure && !fellBack && ctx.spec.auto) {
+      if (!forced && error.retryable && providerFailure && !fellBack && ctx.spec.fallbacks.length > 0) {
         const next = await step.do("fallback", RETRY, async () => nextFallback(env, ctx, tried));
         if (next) {
           fellBack = true;

@@ -11,7 +11,7 @@ export default defineConfig({
       // (containers are not started; FfmpegRenderer is only bound).
       wrangler: { configPath: "./wrangler.jsonc" },
       miniflare: {
-        bindings: { TEST_MIGRATIONS: await readD1Migrations(migrationsDir), EMAIL_LOG: "off", MEDIA_CONTAINER: "off", GENERATE_RETRY_BACKOFF: "0,0" },
+        bindings: { TEST_MIGRATIONS: await readD1Migrations(migrationsDir), EMAIL_LOG: "off", MEDIA_CONTAINER: "off", GENERATE_RETRY_BACKOFF: "0,0,0" },
         // Deliver emails at once in tests (wrangler.jsonc batches for 10 s).
         queueConsumers: {
           "rolling-dev-notify-email": { maxBatchSize: 20, maxBatchTimeout: 0, maxRetries: 2 },

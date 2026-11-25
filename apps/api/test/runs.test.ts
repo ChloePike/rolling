@@ -499,12 +499,29 @@ describe("runs: failures and refunds", () => {
     const run = await finalRun(runId);
     expect(run.status).toBe("succeeded");
     const [job] = await jobsOf(runId);
-    // Three attempts on the chosen model (1 + 2 retries), then one fallback.
-    expect(fake.jobs).toHaveLength(4);
-    expect(fake.jobs.slice(0, 3).every((j) => j.model === "bytedance/seedream-5.0-lite")).toBe(true);
-    expect(fake.jobs.map((j) => j.key)).toEqual([job.id, `${job.id}.r2`, `${job.id}.r3`, `${job.id}.r4`]);
-    expect(fake.jobs[3]!.model).not.toBe("bytedance/seedream-5.0-lite");
-    expect(job).toMatchObject({ status: "succeeded", attempt: 4, model: fake.jobs[3]!.model });
+    // Four attempts on the chosen model (1 + 3 retries), then one fallback.
+    expect(fake.jobs).toHaveLength(5);
+    expect(fake.jobs.slice(0, 4).every((j) => j.model === "bytedance/seedream-5.0-lite")).toBe(true);
+    expect(fake.jobs.map((j) => j.key)).toEqual([job.id, `${job.id}.r2`, `${job.id}.r3`, `${job.id}.r4`, `${job.id}.r5`]);
+    expect(fake.jobs[4]!.model).not.toBe("bytedance/seedream-5.0-lite");
+    expect(job).toMatchObject({ status: "succeeded", attempt: 5, model: fake.jobs[4]!.model });
+    expect(job.cost_actual).toBeLessThanOrEqual(job.cost_quote);
+    expect(await available(ws)).toBe(before - job.cost_actual);
+  }, 30_000);
+
+  it("an explicitly chosen model that keeps failing falls back to a same-family sibling within the hold", async () => {
+    const { user, ws } = await member("family");
+    const { id, ids } = await project(user, ws, [{ kind: "image", title: "Key", params: KEYFRAME }], []);
+    fake.rules.push({ model: "bytedance/seedream-5.0-lite", fail: { code: "upstream_error", message: "context deadline exceeded" } });
+    const q = await quote(user, { projectId: id, scope: "node", nodeIds: [ids.Key] });
+    const before = await available(ws);
+    const { runId } = (await (await start(user, q.quoteId)).json()) as { runId: string };
+    expect((await finalRun(runId)).status).toBe("succeeded");
+    const [job] = await jobsOf(runId);
+    expect(fake.jobs).toHaveLength(5);
+    expect(fake.jobs[4]!.model).toMatch(/^bytedance\/seedream-/);
+    expect(fake.jobs[4]!.model).not.toBe("bytedance/seedream-5.0-lite");
+    expect(job).toMatchObject({ status: "succeeded", model: fake.jobs[4]!.model });
     expect(job.cost_actual).toBeLessThanOrEqual(job.cost_quote);
     expect(await available(ws)).toBe(before - job.cost_actual);
   }, 30_000);

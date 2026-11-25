@@ -58,7 +58,7 @@ export interface GenSpec {
   modelId: string;
   /** Chosen by Auto (D-009). */
   auto: boolean;
-  /** Next models for the one Auto retry under the same hold, cheapest first. */
+  /** Fallback models under the same hold, cheapest first: Auto's other candidates, or same-family siblings of an explicitly chosen model. */
   fallbacks: string[];
   prompt: string;
   negativePrompt?: string;

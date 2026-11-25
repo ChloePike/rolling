@@ -87,11 +87,15 @@ export function fitRequest<T extends AutoRequest>(model: CatalogModel, req: T): 
  * Auto candidates for a request, cheapest first: Auto-eligible, listed, not
  * identity-driven, capable, priceable and within the plan's resolution cap.
  */
-export function autoCandidates(catalog: Catalog | readonly CatalogModel[], req: AutoRequest, plan: PlanId | null): CatalogModel[] {
-  const models = 'models' in catalog ? catalog.models : catalog;
+function capableCandidates(
+  models: readonly CatalogModel[],
+  req: AutoRequest,
+  plan: PlanId | null,
+  include: (model: CatalogModel) => boolean,
+): CatalogModel[] {
   const out: { model: CatalogModel; usd: number }[] = [];
   for (const model of models) {
-    if (!model.auto || model.hidden || model.requiresIdentitySafety) continue;
+    if (!include(model)) continue;
     if (model.kind !== 'image' && model.kind !== 'video') continue;
     const fitted = fitRequest(model, req);
     if (unmetCapability(model, fitted) !== null) continue;
@@ -103,6 +107,34 @@ export function autoCandidates(catalog: Catalog | readonly CatalogModel[], req: 
   }
   out.sort((a, b) => a.usd - b.usd || (a.model.default === b.model.default ? (a.model.id < b.model.id ? -1 : 1) : a.model.default ? -1 : 1));
   return out.map((c) => c.model);
+}
+
+export function autoCandidates(catalog: Catalog | readonly CatalogModel[], req: AutoRequest, plan: PlanId | null): CatalogModel[] {
+  const models = 'models' in catalog ? catalog.models : catalog;
+  return capableCandidates(models, req, plan, (m) => m.auto && !m.hidden && !m.requiresIdentitySafety);
+}
+
+/** `bytedance/seedream-5.0-lite` → `bytedance/seedream`: the vendor and model family. */
+export function modelFamily(id: string): string {
+  const [vendor, name = ''] = id.split('/');
+  return `${vendor}/${name.split('-')[0]}`;
+}
+
+/**
+ * Fallbacks for an explicitly chosen model: capable siblings of the same family
+ * (e.g. Seedream 5.0 Lite → Seedream 5.0 Flash / 5.5), cheapest first. Used only
+ * after the chosen model keeps failing with transient errors, and only when the
+ * sibling costs no more than what was held (checked at run time).
+ */
+export function familyFallbacks(catalog: Catalog | readonly CatalogModel[], chosen: CatalogModel, req: AutoRequest, plan: PlanId | null): CatalogModel[] {
+  const models = 'models' in catalog ? catalog.models : catalog;
+  const family = modelFamily(chosen.id);
+  return capableCandidates(
+    models,
+    req,
+    plan,
+    (m) => m.id !== chosen.id && modelFamily(m.id) === family && m.kind === chosen.kind && !m.hidden && m.requiresIdentitySafety === chosen.requiresIdentitySafety,
+  );
 }
 
 const TIMEOUT = Symbol('timeout');

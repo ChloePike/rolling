@@ -510,7 +510,7 @@ export async function failJob(env: Env, ctx: JobContext, error: JobError): Promi
 
 /** The Auto retry (D-009): the next fallback model that fits under the same hold. */
 export async function nextFallback(env: Env, ctx: JobContext, tried: readonly string[]): Promise<string | null> {
-  if (!ctx.spec.auto) return null;
+  if (ctx.spec.fallbacks.length === 0) return null;
   const catalog = await loadCatalog(env);
   for (const id of ctx.spec.fallbacks) {
     if (tried.includes(id)) continue;

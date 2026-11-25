@@ -15,7 +15,7 @@ import { outputType } from '../graph/ports';
 import { hash64, stableStringify } from '../project/digest';
 import type { PlanItem as StructuralItem } from '../project/plan';
 import { lowestPlanFor, planAllowsResolution } from '../pricing/config';
-import { autoCandidates, chooseModel, fitRequest, type Classify } from './auto';
+import { autoCandidates, chooseModel, fitRequest, type Classify, familyFallbacks } from './auto';
 import { cleanPrompt, findModel, imageSizeFor, isAuto, modelRefOf, settingsOf, textOfNode, usesSize, type NodeSettings } from './spec';
 import type { BlockCode, GenInput, GenSpec, PlanContext, PlanItem, RunPlan } from './types';
 
@@ -159,6 +159,10 @@ export async function buildSpec(input: BuildSpecInput): Promise<BuiltSpec> {
     const found = findModel(input.catalog, input.modelRef);
     if (!found) return { ok: false, code: 'unknown_model', reason: `Model “${input.modelRef}” is not available.` };
     model = found;
+    // Same-family siblings, tried only after the chosen model keeps failing (transient errors).
+    fallbacks = familyFallbacks(input.catalog, model, autoRequestOf(base), ctx.plan)
+      .filter((m) => !base.mature || matureRunProblem(m, input.imageOrigins, input.imageOrigins.length) === null)
+      .map((m) => m.id);
   }
   const spec: GenSpec = { ...base, modelId: model.id, auto: isAuto(input.modelRef), fallbacks };
   const problem = modelProblem(model, spec, ctx, input.imageOrigins);
