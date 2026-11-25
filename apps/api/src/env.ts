@@ -42,6 +42,12 @@ interface RollingSecrets {
   PRIVATE_MEDIA_BASE_URL?: string;
   /** `off` skips the FFmpeg container in media processing (tests, local dev without Docker). Not a secret. */
   MEDIA_CONTAINER?: string;
+  // Direct browser uploads to R2 (D-011): S3 API credentials (an R2 API token scoped to the media bucket).
+  R2_ACCESS_KEY_ID?: string;
+  R2_SECRET_ACCESS_KEY?: string;
+  /** Vars (wrangler.jsonc): account id and the name of the bucket bound as MEDIA. */
+  R2_ACCOUNT_ID?: string;
+  R2_BUCKET_NAME?: string;
   // Billing (M2). Stripe secret key (sk_live_/sk_test_/rk_) and webhook signing secret (whsec_).
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;

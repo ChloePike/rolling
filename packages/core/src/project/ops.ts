@@ -12,6 +12,7 @@
  * - `updateNode` params set to `null` remove the key (needed for exact undo).
  */
 import { z } from 'zod';
+import { applyFlagOp, FlagOpSchemas, isFlagOp } from '../graph/ops';
 import { validateConnection } from '../graph/ports';
 import type { GraphGroup, GraphNode, GraphState, LocalOp, NodeKind, Refusal, RefusalCode } from '../graph/types';
 import { newId } from '../ids';
@@ -27,8 +28,8 @@ export interface NodeFlags {
   collapsed?: boolean;
 }
 
-/** Ops ProjectRoom applies: the canvas `LocalOp` plus the node-flag extensions. */
-export type RoomOp = LocalOp | { op: 'setBypass'; nodeId: string; bypass: boolean } | { op: 'setCollapsed'; nodeId: string; collapsed: boolean };
+/** Ops ProjectRoom applies: the canvas `LocalOp` (incl. setBypass, setCollapsed and reroute ops). */
+export type RoomOp = LocalOp;
 
 export function nodeFlags(node: GraphNode): NodeFlags {
   return node as GraphNode & NodeFlags;
@@ -65,8 +66,7 @@ export const LocalOpSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('group'), nodeIds: z.array(NodeId).max(500), title: Title, groupId: GroupId.optional() }),
   z.object({ op: z.literal('moveNode'), nodeId: NodeId, position: XY }),
   z.object({ op: z.literal('ungroup'), groupId: Ref }),
-  z.object({ op: z.literal('setBypass'), nodeId: NodeId, bypass: z.boolean() }),
-  z.object({ op: z.literal('setCollapsed'), nodeId: NodeId, collapsed: z.boolean() }),
+  ...FlagOpSchemas,
 ]);
 
 export interface GraphIds {
@@ -110,7 +110,7 @@ function clone(state: GraphState): GraphState {
   return {
     revision: state.revision,
     nodes: state.nodes.map((n) => ({ ...n, params: { ...n.params }, position: { ...n.position } })),
-    edges: state.edges.map((e) => ({ id: e.id, from: { ...e.from }, to: { ...e.to } })),
+    edges: state.edges.map((e) => ({ id: e.id, from: { ...e.from }, to: { ...e.to }, ...(e.reroutes?.length ? { reroutes: e.reroutes.map((p) => ({ ...p })) } : {}) })),
     groups: state.groups.map((g) => ({ ...g, nodeIds: [...g.nodeIds] })),
   };
 }
@@ -242,13 +242,14 @@ export function applyGraphOps(
         break;
       }
       case 'setBypass':
-      case 'setCollapsed': {
-        const node = findNode(op.nodeId);
-        if (!node) return notFound(i, op.nodeId);
-        const flags = node as GraphNode & NodeFlags;
-        if (op.op === 'setBypass') flags.bypass = op.bypass;
-        else flags.collapsed = op.collapsed;
-        out.push(op.op === 'setBypass' ? { op: 'setBypass', nodeId: node.id, bypass: op.bypass } : { op: 'setCollapsed', nodeId: node.id, collapsed: op.collapsed });
+      case 'setCollapsed':
+      case 'addReroute':
+      case 'removeReroute':
+      case 'moveReroute': {
+        if (!isFlagOp(op)) break;
+        const refusal = applyFlagOp(next, op, resolve);
+        if (refusal) return refuse(i, refusal);
+        out.push('nodeId' in op ? { ...op, nodeId: resolve(op.nodeId) } : { ...op, ...('position' in op ? { position: { ...op.position } } : {}) });
         break;
       }
       case 'ungroup': {
@@ -334,9 +335,12 @@ export function diffGraph(from: GraphState, to: GraphState): RoomOp[] {
     const t = toGroups.get(g.id);
     if (!t || !sameGroup(g, t)) ops.push({ op: 'ungroup', groupId: g.id });
   }
+  const sameEnds = (a: GraphState['edges'][number], b: GraphState['edges'][number]) =>
+    a.from.node === b.from.node && a.from.port === b.from.port && a.to.node === b.to.node && a.to.port === b.to.port;
+  const removedNodes = new Set(from.nodes.filter((n) => toNodes.get(n.id)?.kind !== n.kind).map((n) => n.id));
   for (const e of from.edges) {
     const t = toEdges.get(e.id);
-    if (!t || !sameJson(t, e)) ops.push({ op: 'disconnect', edgeId: e.id });
+    if (!t || !sameEnds(t, e) || removedNodes.has(e.from.node) || removedNodes.has(e.to.node)) ops.push({ op: 'disconnect', edgeId: e.id });
   }
   for (const n of from.nodes) if (!toNodes.has(n.id)) ops.push({ op: 'removeNode', nodeId: n.id });
   for (const n of to.nodes) {
@@ -365,7 +369,14 @@ export function diffGraph(from: GraphState, to: GraphState): RoomOp[] {
   }
   for (const e of to.edges) {
     const was = fromEdges.get(e.id);
-    if (!was || !sameJson(was, e)) ops.push({ op: 'connect', from: { ...e.from }, to: { ...e.to }, edgeId: e.id });
+    const reconnected = !was || !sameEnds(was, e) || removedNodes.has(e.from.node) || removedNodes.has(e.to.node);
+    if (reconnected) ops.push({ op: 'connect', from: { ...e.from }, to: { ...e.to }, edgeId: e.id });
+    const before = reconnected ? [] : (was.reroutes ?? []);
+    const after = e.reroutes ?? [];
+    if (!sameJson(before, after)) {
+      for (let i = 0; i < before.length; i++) ops.push({ op: 'removeReroute', edgeId: e.id, index: 0 });
+      after.forEach((p, i) => ops.push({ op: 'addReroute', edgeId: e.id, index: i, position: { ...p } }));
+    }
   }
   for (const g of to.groups) {
     const was = fromGroups.get(g.id);

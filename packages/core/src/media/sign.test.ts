@@ -33,7 +33,7 @@ describe('upload limits', () => {
   it('applies per-kind limits', () => {
     expect(checkUpload('image/png', 30 * 1024 * 1024)).toMatchObject({ ok: true, kind: 'image' });
     expect(checkUpload('image/png', 30 * 1024 * 1024 + 1)).toMatchObject({ ok: false, reason: 'TOO_LARGE' });
-    expect(checkUpload('video/mp4', 2048 * 1024 * 1024)).toMatchObject({ ok: true, parts: 205 });
+    expect(checkUpload('video/mp4', 2048 * 1024 * 1024)).toMatchObject({ ok: true, parts: 256 });
     expect(checkUpload('audio/mpeg', 201 * 1024 * 1024)).toMatchObject({ ok: false, reason: 'TOO_LARGE' });
     expect(checkUpload('application/pdf', 10)).toMatchObject({ ok: false, reason: 'UNSUPPORTED_TYPE' });
     expect(safeFilename('../../etc/pass wd.png')).toBe('pass-wd.png');

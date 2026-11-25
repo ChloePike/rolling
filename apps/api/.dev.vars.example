@@ -44,3 +44,7 @@ STRIPE_API_VERSION=
 MEDIA_SIGNING_KEY=
 # Skip the FFmpeg container in media processing when Docker/containers are not running locally.
 MEDIA_CONTAINER=off
+# Direct browser uploads to R2 (D-011): an R2 API token (Object Read & Write on the media bucket).
+# Without them, development falls back to a Worker part proxy; staging/production refuse uploads.
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=

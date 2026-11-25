@@ -57,6 +57,8 @@ export const edges = sqliteTable("edges", {
   toPort: text("to_port").notNull(),
   ord: integer("ord").notNull().default(0),
   pinnedVersionId: text("pinned_version_id"),
+  /** JSON `[{x,y}, …]` reroute points (DO migration 4), or null. */
+  reroutes: text("reroutes"),
 });
 
 export const nodeVersions = sqliteTable(
@@ -140,6 +142,13 @@ CREATE INDEX node_versions_node ON node_versions (node_id, n);
     sql: `
 ALTER TABLE nodes ADD COLUMN bypass INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE nodes ADD COLUMN collapsed INTEGER NOT NULL DEFAULT 0;
+`,
+  },
+  {
+    version: 4,
+    name: "edge_reroutes",
+    sql: `
+ALTER TABLE edges ADD COLUMN reroutes TEXT;
 `,
   },
 ];

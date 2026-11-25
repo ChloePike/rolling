@@ -115,6 +115,8 @@ export type ProjectRoomApi = Pick<
   | "planRun"
   | "markRunning"
   | "markFailed"
+  | "markQueued"
+  | "resetNode"
   | "broadcast"
   | "getTimeline"
   | "patchTimeline"

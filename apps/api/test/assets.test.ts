@@ -1,9 +1,12 @@
-import { env, SELF } from "cloudflare:test";
+import { createExecutionContext, env, SELF, waitOnExecutionContext } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { signMediaKey } from "@rolling/core/media";
 import { processAsset } from "../src/queues/mediaProcess";
 import { projectRoom } from "../src/lib/access";
 import { mediaSigningKey } from "../src/lib/mediaUrls";
+import { cleanupExpiredUploads, s3Fetch } from "../src/routes/uploads";
+import { parseListParts, presignUploadPart } from "../src/lib/r2s3";
+import { app } from "../src/index";
 
 const BASE = "https://example.com";
 const MiB = 1024 * 1024;
@@ -43,17 +46,25 @@ async function makeMatureMember(u: string): Promise<void> {
 async function upload(u: string, bytes: Uint8Array, contentType: string, filename: string) {
   const start = await api(u, "/api/assets/uploads", { method: "POST", json: { filename, contentType, size: bytes.byteLength } });
   expect(start.status, await start.clone().text()).toBe(201);
-  const { assetId, partSize, parts } = (await start.json()) as { assetId: string; partSize: number; parts: number };
-  const etags: { partNumber: number; etag: string }[] = [];
-  for (let n = 1; n <= parts; n++) {
-    const chunk = bytes.slice((n - 1) * partSize, n * partSize);
-    const res = await api(u, `/api/assets/uploads/${assetId}/parts/${n}`, { method: "PUT", body: chunk, headers: { "content-length": String(chunk.byteLength) } });
-    expect(res.status, await res.clone().text()).toBe(200);
-    etags.push((await res.json()) as { partNumber: number; etag: string });
-  }
-  const done = await api(u, `/api/assets/uploads/${assetId}/complete`, { method: "POST", json: { parts: etags } });
+  const { assetId, partSize, partCount } = (await start.json()) as { assetId: string; partSize: number; partCount: number };
+  await putParts(u, assetId, bytes, partSize, Array.from({ length: partCount }, (_, i) => i + 1));
+  const done = await api(u, `/api/assets/uploads/${assetId}/complete`, { method: "POST" });
   expect(done.status, await done.clone().text()).toBe(200);
   return { assetId, asset: ((await done.json()) as { asset: any }).asset };
+}
+
+/** Requests part URLs and PUTs the parts (development fallback: the Worker proxy). */
+async function putParts(u: string, assetId: string, bytes: Uint8Array, partSize: number, numbers: number[]) {
+  const urls = await api(u, `/api/assets/uploads/${assetId}/part-urls`, { method: "POST", json: { partNumbers: numbers } });
+  expect(urls.status, await urls.clone().text()).toBe(200);
+  const body = (await urls.json()) as { direct: boolean; urls: { n: number; url: string; size: number }[] };
+  expect(body.direct).toBe(false);
+  for (const { n, url, size } of body.urls) {
+    const chunk = bytes.slice((n - 1) * partSize, n * partSize);
+    expect(chunk.byteLength).toBe(size);
+    const res = await api(u, url, { method: "PUT", body: chunk, headers: { "content-length": String(chunk.byteLength) } });
+    expect(res.status, await res.clone().text()).toBe(200);
+  }
 }
 
 function pngBytes(size = 2048): Uint8Array {
@@ -132,11 +143,21 @@ describe("multipart uploads", () => {
     expect(await pdf.json()).toMatchObject({ error: { data: { reason: "UNSUPPORTED_TYPE" } } });
 
     const start = (await (await api(alice, "/api/assets/uploads", { method: "POST", json: { filename: "a.png", contentType: "image/png", size: 100 } })).json()) as any;
+    expect(start).toMatchObject({ partSize: 8 * MiB, partCount: 1, parts: [], status: "uploading", expiresAt: expect.any(Number) });
     const wrong = await api(alice, `/api/assets/uploads/${start.assetId}/parts/1`, { method: "PUT", body: new Uint8Array(50), headers: { "content-length": "50" } });
     expect(wrong.status).toBe(400);
     expect((await api(alice, `/api/assets/uploads/${start.assetId}/parts/2`, { method: "PUT", body: new Uint8Array(100), headers: { "content-length": "100" } })).status).toBe(400);
-    // Someone else cannot add parts.
-    expect((await api(user("bob"), `/api/assets/uploads/${start.assetId}/parts/1`, { method: "PUT", body: new Uint8Array(100), headers: { "content-length": "100" } })).status).toBe(404);
+    expect((await api(alice, `/api/assets/uploads/${start.assetId}/part-urls`, { method: "POST", json: { partNumbers: [2] } })).status).toBe(400);
+    // Someone else cannot see, sign or add parts.
+    const bob = user("bob");
+    expect((await api(bob, `/api/assets/uploads/${start.assetId}`)).status).toBe(404);
+    expect((await api(bob, `/api/assets/uploads/${start.assetId}/part-urls`, { method: "POST", json: { partNumbers: [1] } })).status).toBe(404);
+    expect((await api(bob, `/api/assets/uploads/${start.assetId}/parts/1`, { method: "PUT", body: new Uint8Array(100), headers: { "content-length": "100" } })).status).toBe(404);
+    expect((await api(bob, `/api/assets/uploads/${start.assetId}/complete`, { method: "POST" })).status).toBe(404);
+    // Completing with parts missing is refused with the list.
+    const early = await api(alice, `/api/assets/uploads/${start.assetId}/complete`, { method: "POST" });
+    expect(early.status).toBe(400);
+    expect(await early.json()).toMatchObject({ error: { data: { reason: "MISSING_PARTS", missing: [1] } } });
     // Uploading assets are not listed.
     const list = (await (await api(alice, "/api/assets?scope=mine")).json()) as any;
     expect(list.items.map((a: any) => a.id)).not.toContain(start.assetId);
@@ -270,5 +291,178 @@ describe("share links", () => {
 
     expect((await api(alice, `/api/projects/${projectId}/share`, { method: "DELETE" })).status).toBe(200);
     expect((await api(null, `/api/share/${info.shareId}`)).status).toBe(404);
+  });
+});
+
+describe("resumable uploads (D-011)", () => {
+  it("resumes by fingerprint after partial parts, re-sends parts idempotently, completes once", async () => {
+    const alice = user("alice");
+    await ensureWorkspace(alice);
+    const bytes = new Uint8Array(8 * MiB + 777);
+    for (let i = 0; i < bytes.length; i += 1024) bytes[i] = (i / 1024) % 256;
+    const req = { filename: "clip.mp4", contentType: "video/mp4", size: bytes.byteLength, fingerprint: "fp_abc123456" };
+    const first = (await (await api(alice, "/api/assets/uploads", { method: "POST", json: req })).json()) as any;
+    expect(first).toMatchObject({ partCount: 2, resumed: false });
+    await putParts(alice, first.assetId, bytes, first.partSize, [1]);
+    await putParts(alice, first.assetId, bytes, first.partSize, [1]); // re-send replaces
+
+    const again = await api(alice, "/api/assets/uploads", { method: "POST", json: req });
+    expect(again.status).toBe(200);
+    expect(await again.json()).toMatchObject({ assetId: first.assetId, resumed: true, parts: [{ n: 1, size: 8 * MiB }] });
+    expect(await (await api(alice, `/api/assets/uploads/${first.assetId}`)).json()).toMatchObject({ status: "uploading", size: bytes.byteLength, parts: [{ n: 1 }] });
+    // Another user with the same fingerprint gets a fresh upload.
+    const bob = user("bob");
+    await ensureWorkspace(bob);
+    const other = (await (await api(bob, "/api/assets/uploads", { method: "POST", json: req })).json()) as any;
+    expect(other.assetId).not.toBe(first.assetId);
+
+    await putParts(alice, first.assetId, bytes, first.partSize, [2]);
+    const done = await api(alice, `/api/assets/uploads/${first.assetId}/complete`, { method: "POST" });
+    expect(done.status).toBe(200);
+    const twice = await api(alice, `/api/assets/uploads/${first.assetId}/complete`, { method: "POST" });
+    expect(twice.status).toBe(200);
+    expect(await (await api(alice, `/api/assets/uploads/${first.assetId}`)).json()).toMatchObject({ status: "complete" });
+    const head = await env.MEDIA.head(`ws/${wsOf(alice)}/uploads/${first.assetId}/clip.mp4`);
+    expect(head?.size).toBe(bytes.byteLength);
+    // A new upload of the same file after completion starts fresh.
+    expect(((await (await api(alice, "/api/assets/uploads", { method: "POST", json: req })).json()) as any).resumed).toBe(false);
+  });
+
+  it("aborts, and expires uploads after 7 days", async () => {
+    const alice = user("alice");
+    await ensureWorkspace(alice);
+    const a = (await (await api(alice, "/api/assets/uploads", { method: "POST", json: { filename: "a.png", contentType: "image/png", size: 100 } })).json()) as any;
+    expect(await (await api(alice, `/api/assets/uploads/${a.assetId}`, { method: "DELETE" })).json()).toMatchObject({ ok: true, status: "aborted" });
+    expect(await (await api(alice, `/api/assets/uploads/${a.assetId}`)).json()).toMatchObject({ status: "aborted" });
+    expect(await env.DB.prepare("SELECT id FROM assets WHERE id = ?").bind(a.assetId).first()).toBeNull();
+
+    const b = (await (await api(alice, "/api/assets/uploads", { method: "POST", json: { filename: "b.png", contentType: "image/png", size: 100, fingerprint: "fp_expiring1" } })).json()) as any;
+    await env.DB.prepare("UPDATE uploads SET expires_at = ? WHERE asset_id = ?").bind(Date.now() - 1, b.assetId).run();
+    expect(await (await api(alice, `/api/assets/uploads/${b.assetId}`)).json()).toMatchObject({ status: "expired" });
+    expect((await api(alice, `/api/assets/uploads/${b.assetId}/part-urls`, { method: "POST", json: { partNumbers: [1] } })).status).toBe(409);
+
+    const c = (await (await api(alice, "/api/assets/uploads", { method: "POST", json: { filename: "c.png", contentType: "image/png", size: 100 } })).json()) as any;
+    await env.DB.prepare("UPDATE uploads SET expires_at = ? WHERE asset_id = ?").bind(Date.now() - 1, c.assetId).run();
+    expect(await cleanupExpiredUploads(env)).toBeGreaterThanOrEqual(1);
+    expect(await env.DB.prepare("SELECT status FROM uploads WHERE asset_id = ?").bind(c.assetId).first()).toEqual({ status: "expired" });
+  });
+
+  it("serves resumable downloads: 206, If-Range, 416", async () => {
+    const alice = user("alice");
+    const key = `ws/${wsOf(alice)}/uploads/ast_R/r.bin`;
+    await env.MEDIA.put(key, new Uint8Array(1000).map((_, i) => i % 256), { httpMetadata: { contentType: "application/octet-stream" } });
+    const url = await signMediaKey(key, { workspaceId: wsOf(alice), expiresIn: 60, secret: mediaSigningKey(env) });
+    const full = await SELF.fetch(`${BASE}${url}`);
+    expect(full.headers.get("accept-ranges")).toBe("bytes");
+    const etag = full.headers.get("etag")!;
+    await full.arrayBuffer();
+    const part = await SELF.fetch(`${BASE}${url}`, { headers: { range: "bytes=100-199", "if-range": etag } });
+    expect(part.status).toBe(206);
+    expect(part.headers.get("content-range")).toBe("bytes 100-199/1000");
+    expect(new Uint8Array(await part.arrayBuffer())[0]).toBe(100);
+    const tail = await SELF.fetch(`${BASE}${url}`, { headers: { range: "bytes=-10" } });
+    expect(tail.headers.get("content-range")).toBe("bytes 990-999/1000");
+    await tail.arrayBuffer();
+    const stale = await SELF.fetch(`${BASE}${url}`, { headers: { range: "bytes=100-199", "if-range": '"other"' } });
+    expect(stale.status).toBe(200);
+    await stale.arrayBuffer();
+    const bad = await SELF.fetch(`${BASE}${url}`, { headers: { range: "bytes=5000-" } });
+    expect(bad.status).toBe(416);
+    expect(bad.headers.get("content-range")).toBe("bytes */1000");
+  });
+});
+
+describe("direct-to-R2 uploads over the S3 API", () => {
+  const s3env = () => ({ ...env, R2_ACCESS_KEY_ID: "AKIDEXAMPLE", R2_SECRET_ACCESS_KEY: "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY", R2_ACCOUNT_ID: "acc123", R2_BUCKET_NAME: "rolling-media-test" }) as Env;
+
+  async function s3api(u: string, path: string, init: RequestInit & { json?: unknown } = {}) {
+    const headers = new Headers(init.headers);
+    headers.set("x-dev-user", u);
+    if (init.json !== undefined) headers.set("content-type", "application/json");
+    const ctx = createExecutionContext();
+    const res = await app.fetch(new Request(`${BASE}${path}`, { ...init, headers, body: init.json !== undefined ? JSON.stringify(init.json) : init.body }), s3env(), ctx);
+    await waitOnExecutionContext(ctx);
+    return res;
+  }
+
+  it("presigns UploadPart URLs with a valid SigV4 query signature", async () => {
+    const cfg = { accountId: "acc123", bucket: "rolling-media-test", accessKeyId: "AKIDEXAMPLE", secretAccessKey: "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY" };
+    const signed = new URL(await presignUploadPart(cfg, "ws/ws_A/uploads/ast_1/My clip.mp4", "up-1", 3, 3600, "20261125T120000Z"));
+    expect(`${signed.origin}${signed.pathname}`).toBe("https://acc123.r2.cloudflarestorage.com/rolling-media-test/ws/ws_A/uploads/ast_1/My%20clip.mp4");
+    const q = signed.searchParams;
+    expect(q.get("partNumber")).toBe("3");
+    expect(q.get("uploadId")).toBe("up-1");
+    expect(q.get("X-Amz-Algorithm")).toBe("AWS4-HMAC-SHA256");
+    expect(q.get("X-Amz-Credential")).toBe("AKIDEXAMPLE/20261125/auto/s3/aws4_request");
+    expect(q.get("X-Amz-Date")).toBe("20261125T120000Z");
+    expect(q.get("X-Amz-Expires")).toBe("3600");
+    expect(q.get("X-Amz-SignedHeaders")).toBe("host");
+    // Independent SigV4 check (canonical request → string to sign → HMAC chain).
+    const enc = new TextEncoder();
+    const hex = (b: ArrayBuffer) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("");
+    const hmac = async (key: ArrayBuffer | Uint8Array, msg: string) =>
+      crypto.subtle.sign("HMAC", await crypto.subtle.importKey("raw", key as BufferSource, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]), enc.encode(msg));
+    const sigless = [...q.entries()].filter(([k]) => k !== "X-Amz-Signature").map(([k, v]) => [encodeURIComponent(k), encodeURIComponent(v)]);
+    sigless.sort((a, b) => (a[0]! < b[0]! ? -1 : a[0]! > b[0]! ? 1 : a[1]! < b[1]! ? -1 : 1));
+    const canonical = ["PUT", signed.pathname, sigless.map(([k, v]) => `${k}=${v}`).join("&"), `host:${signed.host}`, "", "host", "UNSIGNED-PAYLOAD"].join("\n");
+    const sts = ["AWS4-HMAC-SHA256", "20261125T120000Z", "20261125/auto/s3/aws4_request", hex(await crypto.subtle.digest("SHA-256", enc.encode(canonical)))].join("\n");
+    let k = await hmac(enc.encode(`AWS4${cfg.secretAccessKey}`), "20261125");
+    k = await hmac(k, "auto");
+    k = await hmac(k, "s3");
+    k = await hmac(k, "aws4_request");
+    expect(q.get("X-Amz-Signature")).toBe(hex(await hmac(k, sts)));
+  });
+
+  it("parses ListParts XML, including pages", () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?><ListPartsResult><Bucket>b</Bucket><IsTruncated>true</IsTruncated><NextPartNumberMarker>2</NextPartNumberMarker>
+      <Part><PartNumber>1</PartNumber><LastModified>2026-11-25T00:00:00Z</LastModified><ETag>&quot;abc&quot;</ETag><Size>8388608</Size></Part>
+      <Part><PartNumber>2</PartNumber><ETag>"def"</ETag><Size>12</Size></Part></ListPartsResult>`;
+    expect(parseListParts(xml)).toEqual({ parts: [{ n: 1, size: 8388608, etag: "abc" }, { n: 2, size: 12, etag: "def" }], truncated: true, next: 2 });
+  });
+
+  it("hands out direct URLs, lists parts with ListParts, validates and completes", async () => {
+    const alice = user("alice");
+    await ensureWorkspace(alice);
+    const bytes = new Uint8Array(8 * MiB + 10).fill(7);
+    const start = await s3api(alice, "/api/assets/uploads", { method: "POST", json: { filename: "v.mp4", contentType: "video/mp4", size: bytes.byteLength } });
+    expect(start.status).toBe(201);
+    const up = (await start.json()) as any;
+    const urls = (await (await s3api(alice, `/api/assets/uploads/${up.assetId}/part-urls`, { method: "POST", json: { partNumbers: [1, 2] } })).json()) as any;
+    expect(urls.direct).toBe(true);
+    expect(urls.urls[0].url).toMatch(/^https:\/\/acc123\.r2\.cloudflarestorage\.com\/rolling-media-test\/ws\/.+\?partNumber=1&uploadId=.+X-Amz-Signature=/);
+    // The Worker proxy is off when S3 credentials exist.
+    expect((await s3api(alice, `/api/assets/uploads/${up.assetId}/parts/1`, { method: "PUT", body: new Uint8Array(1), headers: { "content-length": "1" } })).status).toBe(404);
+
+    // Simulate the browser's direct PUTs with the binding; R2 answers ListParts via the mock.
+    const mp = env.MEDIA.resumeMultipartUpload(up.key, up.uploadId);
+    const p1 = await mp.uploadPart(1, bytes.slice(0, 8 * MiB));
+    let listed = [{ n: 1, size: 8 * MiB, etag: p1.etag }];
+    const calls: string[] = [];
+    s3Fetch.fn = async (input) => {
+      const req = input as Request;
+      calls.push(req.url);
+      expect(req.headers.get("authorization")).toMatch(/^AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE\//);
+      const parts = listed.map((p) => `<Part><PartNumber>${p.n}</PartNumber><ETag>"${p.etag}"</ETag><Size>${p.size}</Size></Part>`).join("");
+      return new Response(`<ListPartsResult><IsTruncated>false</IsTruncated>${parts}</ListPartsResult>`, { status: 200 });
+    };
+    try {
+      expect(await (await s3api(alice, `/api/assets/uploads/${up.assetId}`)).json()).toMatchObject({ parts: [{ n: 1, size: 8 * MiB }] });
+      expect(calls[0]).toContain(`uploadId=${encodeURIComponent(up.uploadId)}`);
+      const missing = await s3api(alice, `/api/assets/uploads/${up.assetId}/complete`, { method: "POST" });
+      expect(await missing.json()).toMatchObject({ error: { data: { reason: "MISSING_PARTS", missing: [2] } } });
+
+      const p2 = await mp.uploadPart(2, bytes.slice(8 * MiB));
+      listed = [...listed, { n: 2, size: 9, etag: p2.etag }];
+      const wrongSize = await s3api(alice, `/api/assets/uploads/${up.assetId}/complete`, { method: "POST" });
+      expect(await wrongSize.json()).toMatchObject({ error: { data: { reason: "PART_SIZE", n: 2, expected: 10, got: 9 } } });
+
+      listed[1] = { n: 2, size: 10, etag: p2.etag };
+      const done = await s3api(alice, `/api/assets/uploads/${up.assetId}/complete`, { method: "POST" });
+      expect(done.status, await done.clone().text()).toBe(200);
+      expect(await done.json()).toMatchObject({ asset: { id: up.assetId, status: "processing" } });
+      expect((await env.MEDIA.head(up.key))?.size).toBe(bytes.byteLength);
+    } finally {
+      s3Fetch.fn = (i, init) => fetch(i, init);
+    }
   });
 });

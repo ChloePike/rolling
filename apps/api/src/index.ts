@@ -22,6 +22,7 @@ import { workspace } from "./routes/workspace";
 import { testInbox } from "./routes/testInbox";
 import { projects, nodes, canvases } from "./routes/projects";
 import { assets, characters, voices } from "./routes/assets";
+import { uploads } from "./routes/uploads";
 import { privateMedia, share, signedMedia } from "./routes/signedMedia";
 
 export { ProjectRoom } from "./do/ProjectRoom";
@@ -49,6 +50,7 @@ const api = new Hono<AppEnv>()
   .route("/nodes", nodes)
   .route("/canvases", canvases)
   .route("/share", share)
+  .route("/assets/uploads", uploads)
   .route("/assets", assets)
   .route("/characters", characters)
   .route("/voices", voices)

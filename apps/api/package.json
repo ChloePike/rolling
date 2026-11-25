@@ -17,6 +17,7 @@
     "@rolling/agent": "workspace:*",
     "@rolling/core": "workspace:*",
     "@rolling/db": "workspace:*",
+    "aws4fetch": "1.0.20",
     "better-auth": "1.7.28",
     "drizzle-orm": "^0.44.7",
     "graphql": "^16.11.0",

@@ -4,8 +4,9 @@
  * route prices the `run` items through CreditAccount.
  *
  * Scopes: `node` (one node), `selection` (the given nodes), `all` (every
- * node), `upTo` (the node plus its upstream that is stale or never ran),
- * `from` (the node plus everything downstream).
+ * node), `upTo` (the node plus its upstream that still needs a run) and
+ * `from` (the node plus everything downstream), the last two from
+ * `@rolling/core/graph` `runScopeNodes` so the canvas and the server agree.
  *
  * Actions per node:
  * - `run`: generates (explicitly targeted, never ran, inputs changed, or an upstream in this plan runs);
@@ -14,7 +15,8 @@
  * - `bypassed`: the node is bypassed; its input passes through when the types match;
  * - `none`: nothing to generate (text, script, asset, render).
  */
-import { inputPorts, outputType } from '../graph/ports';
+import { bypassSource, runScopeNodes } from '../graph/ops';
+import { inputPorts } from '../graph/ports';
 import type { GraphNode, GraphState, NodeKind } from '../graph/types';
 import { nodeFlags } from './ops';
 
@@ -84,20 +86,6 @@ function topo(state: GraphState): GraphNode[] {
   return out;
 }
 
-function closure(state: GraphState, start: string, dir: 'up' | 'down'): Set<string> {
-  const seen = new Set<string>();
-  const stack = [start];
-  while (stack.length) {
-    const id = stack.pop()!;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    for (const e of state.edges) {
-      if (dir === 'up' && e.to.node === id) stack.push(e.from.node);
-      if (dir === 'down' && e.from.node === id) stack.push(e.to.node);
-    }
-  }
-  return seen;
-}
 
 export function planRun(
   state: GraphState,
@@ -118,15 +106,11 @@ export function planRun(
       targets = new Set(nodeIds.filter((id) => byId.has(id)));
       for (const id of targets) explicit.add(id);
       break;
-    case 'upTo': {
-      const root = nodeIds[0];
-      targets = root && byId.has(root) ? closure(state, root, 'up') : new Set();
-      if (root) explicit.add(root);
-      break;
-    }
+    case 'upTo':
     case 'from': {
+      // Same node sets as the canvas ("Run up to here" / "Run from here"): core/graph runScopeNodes.
       const root = nodeIds[0];
-      targets = root && byId.has(root) ? closure(state, root, 'down') : new Set();
+      targets = root && byId.has(root) ? new Set(runScopeNodes(state, root, scope)) : new Set();
       if (root) explicit.add(root);
       break;
     }
@@ -138,20 +122,11 @@ export function planRun(
     return !!a && a.digest === digests.get(id);
   };
 
-  /**
-   * Where a node's output comes from: itself, or for a bypassed node the
-   * first input of the same type (recursively). Null when a bypass breaks the type.
-   */
-  const source = (id: string, seen = new Set<string>()): { nodeId: string } | { broken: string } => {
-    const node = byId.get(id)!;
-    if (!nodeFlags(node).bypass) return { nodeId: id };
-    if (seen.has(id)) return { broken: id };
-    seen.add(id);
-    const type = outputType(node);
-    const ports = inputPorts(node).filter((p) => p.type === type).map((p) => p.name);
-    const edge = state.edges.find((e) => e.to.node === id && ports.includes(e.to.port));
-    if (!edge) return { broken: id };
-    return source(edge.from.node, seen);
+  /** Where a node's output comes from: itself, or for a bypassed node its pass-through source (core/graph). */
+  const source = (id: string): { nodeId: string } | { broken: string; message: string } => {
+    if (!nodeFlags(byId.get(id)!).bypass) return { nodeId: id };
+    const r = bypassSource(state, id);
+    return r.ok ? { nodeId: r.source } : { broken: id, message: r.reason.message };
   };
 
   for (const node of topo(state)) {
@@ -185,7 +160,7 @@ export function planRun(
     for (const e of state.edges.filter((x) => x.to.node === node.id)) {
       const s = source(e.from.node);
       if (!('nodeId' in s)) {
-        blocked ??= { reason: 'BYPASS_TYPE_MISMATCH', message: `“${byId.get(s.broken)!.title}” is bypassed and can’t pass this input through.` };
+        blocked ??= { reason: 'BYPASS_TYPE_MISMATCH', message: s.message };
         continue;
       }
       const up = byId.get(s.nodeId)!;

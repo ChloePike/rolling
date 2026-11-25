@@ -296,6 +296,10 @@ describe("node versions and staleness", () => {
 
     expect(await room.markFailed({ nodeId: ids.shot, jobId: "job_2", refunded: 120, reason: "provider_error" })).toEqual({ ok: true });
     expect((await a.next("job.failed")).payload).toMatchObject({ nodeId: ids.shot, refunded: 120 });
+    expect(await room.resetNode({ nodeId: ids.shot, reason: "canceled" })).toEqual({ ok: true, status: "outdated" });
+    expect((await a.next("node.version")).payload).toMatchObject({ nodeId: ids.shot, status: "outdated", reason: "canceled" });
+    expect(await room.markQueued({ nodeId: ids.key, jobId: "job_3" })).toEqual({ ok: true });
+    expect((await a.next("job.queued")).payload).toMatchObject({ nodeId: ids.key, jobId: "job_3" });
     a.ws.close();
   });
 
@@ -320,6 +324,20 @@ describe("node versions and staleness", () => {
     expect((await api(alice, `/api/projects/${projectId}/undo`, { method: "POST" })).status).toBe(200);
     const after = (await room.getSnapshot(caller)) as any;
     expect(after.nodes.find((n: any) => n.id === ids.key).bypass).toBe(0);
+
+    // Reroute points persist on the edge and survive a reconnect.
+    const edgeId = after.edges[0].id;
+    const rr = await api(alice, `/api/projects/${projectId}/patch`, {
+      method: "POST",
+      json: { baseRevision: after.revision, ops: [{ op: "addReroute", edgeId, index: 0, position: { x: 40, y: 50 } }, { op: "addReroute", edgeId, index: 1, position: { x: 60, y: 70 } }] },
+    });
+    expect(rr.status, await rr.clone().text()).toBe(200);
+    const withReroutes = (await room.getSnapshot(caller)) as any;
+    expect(JSON.parse(withReroutes.edges.find((e: any) => e.id === edgeId).reroutes)).toEqual([{ x: 40, y: 50 }, { x: 60, y: 70 }]);
+    const tooFar = await api(alice, `/api/projects/${projectId}/patch`, { method: "POST", json: { baseRevision: withReroutes.revision, ops: [{ op: "removeReroute", edgeId, index: 5 }] } });
+    expect(await tooFar.json()).toMatchObject({ error: { data: { refusal: { code: "REROUTE_NOT_FOUND" } } } });
+    expect((await api(alice, `/api/projects/${projectId}/undo`, { method: "POST" })).status).toBe(200);
+    expect(((await room.getSnapshot(caller)) as any).edges.find((e: any) => e.id === edgeId).reroutes).toBeNull();
   });
 });
 

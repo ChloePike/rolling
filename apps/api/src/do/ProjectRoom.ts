@@ -348,6 +348,41 @@ export class ProjectRoom extends DurableObject<Env> {
     return { ok: true };
   }
 
+  /** A run item waits for inputs or a free slot: node shows queued; broadcasts `job.queued`. */
+  async markQueued(input: { nodeId: string; jobId: string; reason?: string }): Promise<{ ok: boolean }> {
+    const hit = this.ctx.storage.sql.exec("UPDATE nodes SET status = 'queued' WHERE id = ?", input.nodeId).rowsWritten > 0;
+    if (!hit) return { ok: false };
+    this.fanOut(envelope("job.queued", { jobId: input.jobId, nodeId: input.nodeId, ...(input.reason ? { reason: input.reason } : {}) }));
+    return { ok: true };
+  }
+
+  /**
+   * Clears a runtime state (failed, canceled, queued, generating) back to the
+   * derived one: done / outdated with a version, else idle. Use for canceled
+   * items instead of markFailed. Broadcasts `node.version { nodeId, version, status, statuses }`.
+   */
+  async resetNode(input: { nodeId: string; reason?: "canceled" | "retry" | "reset" }): Promise<{ ok: boolean; status?: NodeStatus }> {
+    const sql = this.ctx.storage.sql;
+    const result = this.ctx.storage.transactionSync(() => {
+      if (sql.exec("UPDATE nodes SET status = 'idle' WHERE id = ?", input.nodeId).rowsWritten === 0) return null;
+      const statuses = this.recomputeStatuses(this.loadState());
+      const status = (sql.exec<{ status: NodeStatus }>("SELECT status FROM nodes WHERE id = ?", input.nodeId).one().status) as NodeStatus;
+      return { statuses: { ...statuses, [input.nodeId]: status }, status };
+    });
+    if (!result) return { ok: false };
+    const active = this.activeVersions().get(input.nodeId);
+    this.fanOut(
+      envelope("node.version", {
+        nodeId: input.nodeId,
+        version: active ? { id: active.versionId, n: active.n, total: active.total, assetId: active.assetId } : null,
+        status: result.status,
+        statuses: result.statuses,
+        ...(input.reason ? { reason: input.reason } : {}),
+      }),
+    );
+    return { ok: true, status: result.status };
+  }
+
   /** A job failed: node shows failed with the refund; broadcasts `job.failed`. */
   async markFailed(input: { nodeId: string; jobId: string; refunded: number; reason: string }): Promise<{ ok: boolean }> {
     const hit = this.ctx.storage.sql.exec("UPDATE nodes SET status = 'failed', updated_at = ? WHERE id = ?", Date.now(), input.nodeId).rowsWritten > 0;
@@ -693,7 +728,10 @@ export class ProjectRoom extends DurableObject<Env> {
         ...(Number(r.bypass) ? { bypass: true } : {}),
         ...(Number(r.collapsed) ? { collapsed: true } : {}),
       })),
-      edges: edges.map((e) => ({ id: e.id, from: { node: e.from_node, port: e.from_port }, to: { node: e.to_node, port: e.to_port } })),
+      edges: edges.map((e) => {
+        const reroutes = parseReroutes(e.reroutes);
+        return { id: e.id, from: { node: e.from_node, port: e.from_port }, to: { node: e.to_node, port: e.to_port }, ...(reroutes.length ? { reroutes } : {}) };
+      }),
       groups: groups.map((g) => ({ id: g.id, title: g.title, nodeIds: rows.filter((n) => n.group_id === g.id).map((n) => n.id) })),
     };
   }
@@ -750,7 +788,7 @@ export class ProjectRoom extends DurableObject<Env> {
       const was = beforeEdges.get(e.id);
       if (!was || !sameEdge(was, e)) {
         sql.exec(
-          "INSERT INTO edges (id, canvas_id, from_node, from_port, to_node, to_port, ord, pinned_version_id) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)",
+          "INSERT INTO edges (id, canvas_id, from_node, from_port, to_node, to_port, ord, pinned_version_id, reroutes) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)",
           e.id,
           canvas,
           e.from.node,
@@ -758,9 +796,12 @@ export class ProjectRoom extends DurableObject<Env> {
           e.to.node,
           e.to.port,
           o,
+          e.reroutes?.length ? JSON.stringify(e.reroutes) : null,
         );
       } else {
         sql.exec("UPDATE edges SET ord = ? WHERE id = ? AND ord != ?", o, e.id, o);
+        const r = e.reroutes?.length ? JSON.stringify(e.reroutes) : null;
+        if (r !== (was.reroutes?.length ? JSON.stringify(was.reroutes) : null)) sql.exec("UPDATE edges SET reroutes = ? WHERE id = ?", r, e.id);
       }
     }
     const beforeGroups = new Map(before.groups.map((g) => [g.id, g]));
@@ -942,6 +983,16 @@ export class ProjectRoom extends DurableObject<Env> {
         // Socket is closing; the hibernation API delivers webSocketClose.
       }
     }
+  }
+}
+
+function parseReroutes(raw: unknown): { x: number; y: number }[] {
+  if (typeof raw !== "string" || !raw) return [];
+  try {
+    const v: unknown = JSON.parse(raw);
+    return Array.isArray(v) ? v.filter((p): p is { x: number; y: number } => typeof p?.x === "number" && typeof p?.y === "number") : [];
+  } catch {
+    return [];
   }
 }
 

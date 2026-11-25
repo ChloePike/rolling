@@ -50,6 +50,9 @@
     "PUBLIC_APP_URL": "http://localhost:8787",
     "HYPEROUTER_BASE_URL": "https://api.hyperouter.app/v1",
         "PUBLIC_MEDIA_BASE_URL": "",
+        // Direct browser uploads (D-011): S3 API endpoint of the MEDIA bucket. Secrets: R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY.
+        "R2_ACCOUNT_ID": "e2ed20c61e6c1ce394300a753734eff9",
+        "R2_BUCKET_NAME": "rolling-media-dev",
         // Email sender for Resend, e.g. "Rolling <hello@<product-domain>>" (open: product domain, D-001).
         "EMAIL_FROM": "",
         // Email provider: "" (Resend when RESEND_API_KEY is set; development records), "resend", or
@@ -212,6 +215,9 @@
         "PUBLIC_APP_URL": "https://rolling-api-staging.swiftpayx.workers.dev",
         "HYPEROUTER_BASE_URL": "https://api.hyperouter.app/v1",
         "PUBLIC_MEDIA_BASE_URL": "",
+        // Direct browser uploads (D-011): S3 API endpoint of the MEDIA bucket. Secrets: R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY.
+        "R2_ACCOUNT_ID": "e2ed20c61e6c1ce394300a753734eff9",
+        "R2_BUCKET_NAME": "rolling-media-staging",
         // Email sender for Resend, e.g. "Rolling <hello@<product-domain>>" (open: product domain, D-001).
         "EMAIL_FROM": "",
         // Email provider: "" (Resend when RESEND_API_KEY is set; development records), "resend", or
@@ -362,6 +368,9 @@
         "PUBLIC_APP_URL": "https://rolling-api.swiftpayx.workers.dev",
         "HYPEROUTER_BASE_URL": "https://api.hyperouter.app/v1",
         "PUBLIC_MEDIA_BASE_URL": "",
+        // Direct browser uploads (D-011): S3 API endpoint of the MEDIA bucket. Secrets: R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY.
+        "R2_ACCOUNT_ID": "e2ed20c61e6c1ce394300a753734eff9",
+        "R2_BUCKET_NAME": "rolling-media-production",
         // Email sender for Resend, e.g. "Rolling <hello@<product-domain>>" (open: product domain, D-001).
         "EMAIL_FROM": "",
         // Email provider: "" (Resend when RESEND_API_KEY is set; development records), "resend", or

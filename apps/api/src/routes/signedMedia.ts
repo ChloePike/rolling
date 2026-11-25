@@ -15,6 +15,7 @@ import { errorResponse } from "../lib/errors";
 import { mediaSigningKey, mediaUrlFor } from "../lib/mediaUrls";
 import { visibleAsset } from "./assets";
 import { readShare } from "../lib/share";
+import { serveR2 } from "../lib/serveR2";
 
 export const signedMedia = new Hono<AppEnv>().on(["GET", "HEAD"], "/media/*", async (c) => {
   const url = new URL(c.req.url);
@@ -32,26 +33,12 @@ export const signedMedia = new Hono<AppEnv>().on(["GET", "HEAD"], "/media/*", as
   if (!result.ok) {
     return result.reason === "expired" ? errorResponse(c, 410, "FORBIDDEN", "This link has expired", { reason: "expired" }) : errorResponse(c, 403, "FORBIDDEN", "Invalid signature", { reason: "invalid" });
   }
-  const object = await c.env.MEDIA.get(key, { range: c.req.raw.headers, onlyIf: c.req.raw.headers });
-  if (!object) return errorResponse(c, 404, "NOT_FOUND", "Not found");
-  const headers = new Headers();
-  object.writeHttpMetadata(headers);
-  headers.set("etag", object.httpEtag);
-  headers.set("accept-ranges", "bytes");
   const maxAge = Math.max(0, result.exp - Math.floor(Date.now() / 1000));
-  headers.set("cache-control", `private, max-age=${Math.min(maxAge, 3600)}`);
-  headers.set("x-content-type-options", "nosniff");
-  if (!("body" in object) || !object.body) return new Response(null, { status: 304, headers });
-  let status = 200;
-  const range = object.range as { offset?: number; length?: number; suffix?: number } | undefined;
-  if (range && c.req.header("range")) {
-    const offset = range.suffix !== undefined ? object.size - range.suffix : (range.offset ?? 0);
-    const length = range.suffix ?? range.length ?? object.size - offset;
-    headers.set("content-range", `bytes ${offset}-${offset + length - 1}/${object.size}`);
-    headers.set("content-length", String(length));
-    status = 206;
-  } else headers.set("content-length", String(object.size));
-  return new Response(c.req.method === "HEAD" ? null : object.body, { status, headers });
+  const res = await serveR2(c.env.MEDIA, key, c.req.raw, {
+    cacheControl: `private, max-age=${Math.min(maxAge, 3600)}`,
+    headers: { "x-content-type-options": "nosniff" },
+  });
+  return res ?? errorResponse(c, 404, "NOT_FOUND", "Not found");
 });
 
 export const privateMedia = new Hono<AppEnv>().get("/:assetId", async (c) => {

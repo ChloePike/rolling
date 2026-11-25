@@ -1,6 +1,6 @@
 /**
- * Assets (M3): multipart uploads through the Worker into R2 (no S3
- * presigning), the catalog behind the `@` picker, characters and voices.
+ * Assets (M3): the catalog behind the `@` picker, characters and voices.
+ * Uploads live in `./uploads.ts` (direct to R2, D-011).
  * Bytes are never served from here: responses carry signed media URLs (D-008).
  */
 import { Hono, type Context } from "hono";
@@ -124,41 +124,6 @@ export async function visibleAsset(env: Env, auth: AuthContext, id: string): Pro
   return row;
 }
 
-async function writeSearch(env: Env, row: Pick<AssetRow, "id" | "name" | "kind" | "source">, tags: string[] = []): Promise<void> {
-  await env.DB.batch([
-    env.DB.prepare("DELETE FROM asset_search WHERE id = ?").bind(row.id),
-    env.DB.prepare("INSERT INTO asset_search (id, name, tags) VALUES (?, ?, ?)").bind(row.id, row.name.replace(/\.[a-z0-9]+$/i, "").replace(/[-_.]+/g, " "), [row.kind, row.source, ...tags].join(" ")),
-  ]);
-}
-
-const CreateUpload = z.object({
-  filename: z.string().min(1).max(255),
-  contentType: z.string().min(1).max(100),
-  size: z.number().int().positive(),
-  projectId: Id.optional(),
-  name: z.string().trim().min(1).max(200).optional(),
-});
-
-const PartParam = z.object({ assetId: Id, n: z.coerce.number().int().min(1).max(10000) });
-
-const CompleteBody = z.object({
-  parts: z.array(z.object({ partNumber: z.number().int().min(1).max(10000), etag: z.string().min(1).max(200) })).min(1).max(10000),
-});
-
-interface UploadMeta {
-  uploadId?: string;
-  parts?: number;
-  filename?: string;
-}
-
-async function uploadingAsset(c: Context<AppEnv>, auth: AuthContext, assetId: string) {
-  const row = await ownAsset(c, auth, assetId);
-  if (row.status !== "uploading") throw new ApiError(409, "CONFLICT", "This upload is already complete", { status: row.status });
-  if (row.created_by !== auth.userId) throw new ApiError(403, "FORBIDDEN", "Only the uploader can add parts");
-  const meta = assetMeta(row) as UploadMeta;
-  if (!meta.uploadId) throw new ApiError(409, "CONFLICT", "Upload is not open");
-  return { row, meta: meta as Required<UploadMeta> };
-}
 
 export const assets = new Hono<AppEnv>()
   .get(
@@ -186,97 +151,16 @@ export const assets = new Hono<AppEnv>()
     const m = membershipFor(auth, row.workspace_id);
     return c.json({ asset: await assetView(c.env, row, { mayViewMature: m ? matureAllowedIn(auth, m) : auth.matureAllowed }) });
   })
-  /** Starts an upload: validates type and size, opens an R2 multipart upload. */
-  .post("/uploads", validate("json", CreateUpload), async (c) => {
-    const auth = await requireAuth(c);
-    requireEditor(auth);
-    const body = c.req.valid("json");
-    const check = checkUpload(body.contentType, body.size);
-    if (!check.ok) {
-      const limits = Object.fromEntries(Object.entries(UPLOAD_LIMITS).map(([k, v]) => [k, { maxBytes: v.maxBytes, types: v.types }]));
-      throw new ApiError(check.reason === "TOO_LARGE" ? 413 : 415, "VALIDATION_FAILED", check.reason === "TOO_LARGE" ? "File is too large" : "File type is not supported", {
-        reason: check.reason,
-        ...(check.maxBytes ? { maxBytes: check.maxBytes } : {}),
-        limits,
-      });
-    }
-    if (body.projectId) {
-      const p = await c.env.DB.prepare("SELECT workspace_id FROM projects WHERE id = ?").bind(body.projectId).first<{ workspace_id: string }>();
-      if (!p || p.workspace_id !== auth.workspaceId) throw new ApiError(404, "NOT_FOUND", "Project not found");
-    }
-    const assetId = newId("asset");
-    const filename = safeFilename(body.filename);
-    const key = `ws/${auth.workspaceId}/uploads/${assetId}/${filename}`;
-    const upload = await c.env.MEDIA.createMultipartUpload(key, { httpMetadata: { contentType: body.contentType }, customMetadata: { assetId, workspaceId: auth.workspaceId } });
-    const source = auth.workspace.kind === "team" ? "team" : "mine";
-    await c.env.DB.prepare(
-      `INSERT INTO assets (id, workspace_id, kind, source, name, r2_key, meta, license, project_id, created_by, created_at, status, mature, size, content_type)
-       VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, 'uploading', 0, ?, ?)`,
-    )
-      .bind(assetId, auth.workspaceId, check.kind, source, body.name ?? body.filename.slice(0, 200), key, JSON.stringify({ uploadId: upload.uploadId, parts: check.parts, filename }), body.projectId ?? null, auth.userId, Date.now(), body.size, body.contentType)
-      .run();
-    return c.json({ assetId, uploadId: upload.uploadId, partSize: UPLOAD_PART_SIZE, parts: check.parts, kind: check.kind }, 201);
-  })
-  /** Streams one part (1-based) to R2. Every part but the last must be exactly `partSize` bytes. */
-  .put("/uploads/:assetId/parts/:n", validate("param", PartParam), async (c) => {
-    const auth = await requireAuth(c);
-    const { assetId, n } = c.req.valid("param");
-    const { row, meta } = await uploadingAsset(c, auth, assetId);
-    if (n > meta.parts) throw new ApiError(400, "VALIDATION_FAILED", "Part number is out of range", { parts: meta.parts });
-    const length = Number(c.req.header("content-length") ?? NaN);
-    if (!Number.isFinite(length) || length <= 0) throw new ApiError(411, "BAD_REQUEST", "Content-Length is required");
-    const expected = n < meta.parts ? UPLOAD_PART_SIZE : (row.size ?? 0) - UPLOAD_PART_SIZE * (meta.parts - 1);
-    if (length !== expected) throw new ApiError(400, "VALIDATION_FAILED", "Part has the wrong size", { expected, got: length });
-    const body = c.req.raw.body;
-    if (!body) throw new ApiError(400, "BAD_REQUEST", "Part body is empty");
-    const part = await c.env.MEDIA.resumeMultipartUpload(row.r2_key, meta.uploadId).uploadPart(n, body);
-    return c.json({ partNumber: part.partNumber, etag: part.etag });
-  })
-  /** Completes the upload and queues `media.process` (probe, thumbnail, waveform). */
-  .post("/uploads/:assetId/complete", validate("param", z.object({ assetId: Id })), validate("json", CompleteBody), async (c) => {
-    const auth = await requireAuth(c);
-    const { assetId } = c.req.valid("param");
-    const { row, meta } = await uploadingAsset(c, auth, assetId);
-    const parts = [...c.req.valid("json").parts].sort((a, b) => a.partNumber - b.partNumber);
-    if (parts.length !== meta.parts || parts.some((p, i) => p.partNumber !== i + 1)) {
-      throw new ApiError(400, "VALIDATION_FAILED", "Every part must be uploaded once", { parts: meta.parts });
-    }
-    const upload = c.env.MEDIA.resumeMultipartUpload(row.r2_key, meta.uploadId);
-    let size: number;
-    try {
-      size = (await upload.complete(parts)).size;
-    } catch (err) {
-      throw new ApiError(400, "VALIDATION_FAILED", "Upload could not be completed", { reason: String(err instanceof Error ? err.message : err) });
-    }
-    const limit = UPLOAD_LIMITS[row.kind as keyof typeof UPLOAD_LIMITS]?.maxBytes ?? 0;
-    if (size > limit || size !== row.size) {
-      await c.env.MEDIA.delete(row.r2_key);
-      await c.env.DB.prepare("UPDATE assets SET status = 'failed' WHERE id = ?").bind(assetId).run();
-      throw new ApiError(400, "VALIDATION_FAILED", "Uploaded size does not match", { expected: row.size, got: size });
-    }
-    const { uploadId: _u, parts: _p, ...rest } = meta;
-    await c.env.DB.prepare("UPDATE assets SET status = 'processing', meta = ? WHERE id = ?").bind(JSON.stringify({ ...rest, processing: "queued" }), assetId).run();
-    await writeSearch(c.env, row);
-    await c.env.MEDIA_PROCESS_QUEUE.send({ assetId, r2Key: row.r2_key, kind: row.kind });
-    const fresh = await c.env.DB.prepare("SELECT * FROM assets WHERE id = ?").bind(assetId).first<AssetRow>();
-    return c.json({ asset: await assetView(c.env, fresh!, { mayViewMature: auth.matureAllowed }) });
-  })
-  /** Aborts an open upload. */
-  .delete("/uploads/:assetId", validate("param", z.object({ assetId: Id })), async (c) => {
-    const auth = await requireAuth(c);
-    const { row, meta } = await uploadingAsset(c, auth, c.req.valid("param").assetId);
-    await c.env.MEDIA.resumeMultipartUpload(row.r2_key, meta.uploadId).abort().catch(() => undefined);
-    await c.env.DB.prepare("DELETE FROM assets WHERE id = ?").bind(row.id).run();
-    return c.json({ ok: true });
-  })
   .delete("/:id", validate("param", z.object({ id: Id })), async (c) => {
     const auth = await requireAuth(c);
     const row = await ownAsset(c, auth, c.req.valid("param").id);
     const m = membershipFor(auth, row.workspace_id)!;
     if (!roleAtLeast(m.role, "editor")) throw new ApiError(403, "FORBIDDEN", "Your role does not allow this");
     const meta = assetMeta(row);
-    if (row.status === "uploading" && typeof meta.uploadId === "string") {
-      await c.env.MEDIA.resumeMultipartUpload(row.r2_key, meta.uploadId).abort().catch(() => undefined);
+    if (row.status === "uploading") {
+      const up = await c.env.DB.prepare("SELECT upload_id FROM uploads WHERE asset_id = ? AND status = 'uploading'").bind(row.id).first<{ upload_id: string }>();
+      if (up) await c.env.MEDIA.resumeMultipartUpload(row.r2_key, up.upload_id).abort().catch(() => undefined);
+      await c.env.DB.prepare("UPDATE uploads SET status = 'aborted' WHERE asset_id = ? AND status = 'uploading'").bind(row.id).run();
     }
     const keys = [row.r2_key, meta.thumbKey, meta.waveformKey].filter((k): k is string => typeof k === "string" && k.startsWith(`ws/${row.workspace_id}/`));
     await c.env.MEDIA.delete(keys);

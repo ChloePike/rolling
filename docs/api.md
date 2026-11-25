@@ -231,7 +231,7 @@ Server → client, on connect: `hello { actor, canEdit }`, then `snapshot`:
 | `snapshot` | `null` | `snapshot` |
 | `ping` | `null` | `pong` |
 
-Server → other sockets: `graph.patched { revision, ops, actor: 'user'|'agent', userId, kind?: 'undo'|'redo', statuses? }`, `node.version { nodeId, version: { id, n, total, assetId, active, stale, createdAt }, statuses }`, `timeline.patched { canvasId, revision, ops, actor, userId }` (after `reassemble`: `ops: null, edl`), `job.progress { jobId, nodeId, progress, status }`, `job.failed { jobId, nodeId, refunded, reason }`, plus anything trusted code sends through `ProjectRoom.broadcast` (`job.done`, `credits.changed`, `proposal.created`, `agent.delta`). Unknown types → `error { code: UNKNOWN_TYPE }`; bad JSON → `error { code: BAD_MESSAGE }`.
+Clients should apply `statuses` maps (on `ack`, `graph.patched`, `node.version`) to node statuses: the server derives staleness. Server → other sockets: `job.queued { jobId, nodeId, reason? }`, `graph.patched { revision, ops, actor: 'user'|'agent', userId, kind?: 'undo'|'redo', statuses? }`, `node.version { nodeId, version: { id, n, total, assetId, active, stale, createdAt }, statuses }`, `timeline.patched { canvasId, revision, ops, actor, userId }` (after `reassemble`: `ops: null, edl`), `job.progress { jobId, nodeId, progress, status }`, `job.failed { jobId, nodeId, refunded, reason }`, plus anything trusted code sends through `ProjectRoom.broadcast` (`job.done`, `credits.changed`, `proposal.created`, `agent.delta`). Unknown types → `error { code: UNKNOWN_TYPE }`; bad JSON → `error { code: BAD_MESSAGE }`.
 
 ### ProjectRoom RPC (server-side callers: runs, workflows, agent)
 
@@ -239,11 +239,13 @@ Get the stub with `projectRoom(env, projectId)` (`apps/api/src/lib/access.ts`). 
 - `applyPatch(caller, { baseRevision, ops, origin? })` → `{ ok, revision, ops, idMap, statuses }` (broadcasts `graph.patched`; `origin: 'agent'` marks created nodes as agent-made)
 - `undo(caller)`, `redo(caller)`
 - `getSnapshot(caller)`, `getGraph(caller)` → `{ state: GraphState, assets: { nodeId: assetId } }`
-- `planRun(caller, { scope: 'node'|'selection'|'all'|'upTo'|'from', nodeIds? })` → `{ ok, revision, items: [{ nodeId, kind, title, action: 'run'|'reuse'|'blocked'|'bypassed'|'none', reason?, message?, model, params, inputDigest, inputs: [{ port, nodeId, assetId, pending }], dependsOn }] }` in dependency order. Pricing is the quote route's job.
+- `planRun(caller, { scope: 'node'|'selection'|'all'|'upTo'|'from', nodeIds? })` (`upTo`/`from` node sets come from `@rolling/core/graph` `runScopeNodes`, bypass from `bypassSource`, like the canvas) → `{ ok, revision, items: [{ nodeId, kind, title, action: 'run'|'reuse'|'blocked'|'bypassed'|'none', reason?, message?, model, params, inputDigest, inputs: [{ port, nodeId, assetId, pending }], dependsOn }] }` in dependency order. Pricing is the quote route's job.
 - `inputDigest(caller, nodeId)` → `{ ok, digest }`
 - `addVersion({ nodeId, assetId, inputDigest, model?, jobId?, output? })` → new active version; broadcasts `node.version`
 - `markRunning({ nodeId, jobId, progress?, status?: 'queued'|'generating' })` → broadcasts `job.progress`
 - `markFailed({ nodeId, jobId, refunded, reason })` → status `failed`, broadcasts `job.failed`
+- `markQueued({ nodeId, jobId, reason? })` → status `queued`, broadcasts `job.queued`
+- `resetNode({ nodeId, reason?: 'canceled'|'retry'|'reset' })` → clears failed/canceled/queued/generating back to the derived status (done / outdated / idle); broadcasts `node.version { nodeId, version | null, status, statuses, reason? }`. Use for canceled items instead of `markFailed`
 - `broadcast(type, payload)` → fan-out of any `ServerMessageType`
 - `listVersions`, `setActiveVersion`, `getTimeline`, `patchTimeline`, `reassembleTimeline`, `setTitle`, `destroy`, `init`, `flushIndex`
 

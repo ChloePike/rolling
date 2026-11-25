@@ -137,3 +137,20 @@ describe('layout', () => {
     expect(add).toMatchObject({ position: pos('v') });
   });
 });
+
+describe('reroutes and flags', () => {
+  it('applies reroute ops and restores them on undo', () => {
+    const before = build([
+      { op: 'addNode', tempId: 'node_T', kind: 'text', title: 'T', params: {} },
+      { op: 'addNode', tempId: 'node_I', kind: 'image', title: 'I', params: {} },
+      { op: 'connect', from: { node: 'node_T', port: 'out' }, to: { node: 'node_I', port: 'prompt' }, edgeId: 'edge_X' },
+      { op: 'addReroute', edgeId: 'edge_X', index: 0, position: { x: 5, y: 5 } },
+    ]).state;
+    expect(before.edges[0]!.reroutes).toEqual([{ x: 5, y: 5 }]);
+    const after = build([{ op: 'moveReroute', edgeId: 'edge_X', index: 0, position: { x: 9, y: 9 } }, { op: 'removeNode', nodeId: 'node_T' }, { op: 'setBypass', nodeId: 'node_I', bypass: true }], before).state;
+    const undo = applyGraphOps(after, diffGraph(after, before));
+    expect(undo.ok && undo.state.edges[0]!.reroutes).toEqual([{ x: 5, y: 5 }]);
+    expect(undo.ok && undo.state.nodes.find((n) => n.id === 'node_I')!.bypass).toBeUndefined();
+    expect(applyGraphOps(before, [{ op: 'removeReroute', edgeId: 'edge_X', index: 3 }])).toMatchObject({ ok: false, refusal: { code: 'REROUTE_NOT_FOUND' } });
+  });
+});
