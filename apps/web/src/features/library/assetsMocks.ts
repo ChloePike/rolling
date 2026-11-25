@@ -15,6 +15,9 @@ export interface AssetItem {
   version: number;
   uploadedAt: string;
   usedIn: Array<{ label: string; to: string }>;
+  favorite?: boolean;
+  /** Project folder id, when the asset belongs to one. */
+  folder?: string;
 }
 
 export interface CharacterItem {
@@ -73,6 +76,8 @@ export const assetsMock: AssetItem[] = F.map(([name, type, meta, ar, refs], i) =
   version: (i % 3) + 1,
   uploadedAt: '2026-11-23T14:20:00',
   usedIn: USED_IN,
+  favorite: i % 4 === 0,
+  folder: i < 7 ? 'prj_ridgeline' : 'prj_desk',
 }));
 
 export const foldersMock: FolderItem[] = [

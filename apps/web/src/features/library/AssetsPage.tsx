@@ -1,8 +1,9 @@
-import { Link } from '@tanstack/react-router';
-import { useState, type CSSProperties } from 'react';
+import { Dialog, useToast } from '@rolling/ui';
+import { Link, useNavigate } from '@tanstack/react-router';
+import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { ChipGroup, motion, PathIcon, paths, SearchField } from '@/features/account/shared';
-import { useAssets, useCharacters, useFolders, useStorage, useUpload, useVoices } from './assetsApi';
+import { assetFromFile, useAssetMutations, useAssets, useCharacters, useFolders, useStorage, useUpload, useVoiceMutations, useVoices } from './assetsApi';
 import type { AssetItem, AssetType, FolderItem, VoiceState } from './assetsMocks';
 import styles from './Assets.module.css';
 
@@ -51,7 +52,50 @@ export function AssetsPage({ folder = 'all' }: { folder?: AssetFolder }) {
   const isChars = kind === 'characters';
   const isVoices = kind === 'voices';
   const [query, setQuery] = useState('');
-  const [sel, setSel] = useState(0);
+  const [sel, setSel] = useState<string | null>(null);
+  const toast = useToast();
+  const navigate = useNavigate();
+  const assetsMut = useAssetMutations();
+  const voicesMut = useVoiceMutations();
+  const [uploads, setUploads] = useState<Array<{ id: string; file: File; progress: number }>>([]);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const timers = useRef<number[]>([]);
+  useEffect(() => () => timers.current.forEach((t) => window.clearInterval(t)), []);
+
+  /** Mock of `POST /api/uploads` + media processing: real progress, then the asset appears. */
+  function upload(file: File) {
+    if (isVoices) {
+      const id = `v_new${Date.now()}`;
+      voicesMut.add({ id, name: file.name.replace(/\.[^.]+$/, ''), meta: intl.formatMessage({ id: 'library.assets.voice.clonedMeta' }), state: 'cloning', progress: 0 });
+      let pct = 0;
+      const t = window.setInterval(() => {
+        pct = Math.min(1, pct + 0.25);
+        voicesMut.update(id, pct >= 1 ? { state: 'ready', progress: undefined } : { progress: pct });
+        if (pct >= 1) {
+          window.clearInterval(t);
+          toast.show({ message: intl.formatMessage({ id: 'library.assets.voice.done' }, { name: file.name }) });
+        }
+      }, 400);
+      timers.current.push(t);
+      return;
+    }
+    const id = `up_${Date.now()}`;
+    setUploads((u) => [...u, { id, file, progress: 0 }]);
+    let pct = 0;
+    const t = window.setInterval(() => {
+      pct = Math.min(1, pct + 0.2);
+      setUploads((u) => u.map((x) => (x.id === id ? { ...x, progress: pct } : x)));
+      if (pct >= 1) {
+        window.clearInterval(t);
+        setUploads((u) => u.filter((x) => x.id !== id));
+        const a = assetFromFile(file, folder);
+        assetsMut.add(a);
+        setSel(a.id);
+        toast.show({ message: intl.formatMessage({ id: 'library.assets.uploaded' }, { name: file.name }) });
+      }
+    }, 300);
+    timers.current.push(t);
+  }
 
   return (
     <div className={styles.page}>
@@ -98,27 +142,53 @@ export function AssetsPage({ folder = 'all' }: { folder?: AssetFolder }) {
           </h1>
           <span className={styles.spacer} />
           <SearchField placeholder={intl.formatMessage({ id: 'library.assets.search' })} value={query} onChange={setQuery} />
-          <button type="button" className={cx(styles.cta, motion.press)}>
+          <input
+            ref={fileRef}
+            type="file"
+            hidden
+            accept={isVoices ? 'audio/*' : 'image/*,video/*,audio/*,text/plain'}
+            data-testid="assets-file"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) upload(f);
+              e.target.value = '';
+            }}
+          />
+          <button type="button" className={cx(styles.cta, motion.press)} onClick={() => (isChars ? void navigate({ to: '/create/character' }) : fileRef.current?.click())}>
             <PathIcon d={isChars ? paths.plus : paths.upload} size={15} strokeWidth={2.2} />
             <FormattedMessage id={isChars ? 'library.assets.cta.character' : isVoices ? 'library.assets.cta.voice' : 'library.assets.cta.upload'} />
           </button>
         </div>
-        {isChars ? <Characters key="chars" query={query} /> : isVoices ? <Voices key="voices" query={query} /> : <Files key={folder} query={query} sel={sel} setSel={setSel} />}
+        {isChars ? <Characters key="chars" query={query} /> : isVoices ? <Voices key="voices" query={query} /> : <Files key={folder} folder={kind === 'favorites' ? 'favorites' : kind === 'project' ? folder : 'all'} query={query} sel={sel} setSel={setSel} uploads={uploads} />}
       </section>
 
-      {!isChars && !isVoices && <FileDetailSlot sel={sel} />}
+      {!isChars && !isVoices && <FileDetailSlot sel={sel} onDeleted={() => setSel(null)} />}
     </div>
   );
 }
 
-function Files({ query, sel, setSel }: { query: string; sel: number; setSel: (i: number) => void }) {
+function Files({
+  folder,
+  query,
+  sel,
+  setSel,
+  uploads,
+}: {
+  folder: string;
+  query: string;
+  sel: string | null;
+  setSel: (id: string) => void;
+  uploads: Array<{ id: string; file: File; progress: number }>;
+}) {
   const intl = useIntl();
   const { data: assets = [] } = useAssets();
   const { data: upload } = useUpload();
   const [type, setType] = useState<TypeFilter>('all');
+  const inFolder = (a: (typeof assets)[number]) => (folder === 'all' ? true : folder === 'favorites' ? !!a.favorite : a.folder === folder);
   const visible = assets
     .map((a, i) => ({ a, i }))
-    .filter(({ a }) => (type === 'all' || a.type === type) && a.name.toLowerCase().includes(query.trim().toLowerCase()));
+    .filter(({ a }) => inFolder(a) && (type === 'all' || a.type === type) && a.name.toLowerCase().includes(query.trim().toLowerCase()));
+  const selId = sel ?? assets[0]?.id ?? null;
   return (
     <>
       <ChipGroup
@@ -148,9 +218,30 @@ function Files({ query, sel, setSel }: { query: string; sel: number; setSel: (i:
           </div>
         </div>
       )}
+      {uploads.map((u) => (
+        <div key={u.id} className={styles.upload} role="status" data-upload={u.file.name}>
+          <PathIcon d={paths.upload} size={16} />
+          <span className={styles.uploadName}>
+            <FormattedMessage id="library.assets.uploading" values={{ name: u.file.name }} />
+          </span>
+          <span className={styles.uploadMeta}>
+            <FormattedMessage id="library.assets.processing" values={{ mb: Math.max(0.1, Math.round(u.file.size / 1e5) / 10) }} />
+          </span>
+          <div
+            className={styles.uploadTrack}
+            role="progressbar"
+            aria-label={intl.formatMessage({ id: 'library.assets.uploading' }, { name: u.file.name })}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(u.progress * 100)}
+          >
+            <div className={cx(styles.fill, motion.progress)} style={{ width: `${u.progress * 100}%` }} />
+          </div>
+        </div>
+      ))}
       <div key={type} className={styles.files}>
         {visible.map(({ a, i }, n) => (
-          <FileCard key={a.id} asset={a} index={i} order={n} on={sel === i} onPick={() => setSel(i)} />
+          <FileCard key={a.id} asset={a} index={i} order={n} on={selId === a.id} onPick={() => setSel(a.id)} />
         ))}
         {visible.length === 0 && (
           <p className={styles.empty}>
@@ -193,16 +284,24 @@ function FileCard({ asset, index, order, on, onPick }: { asset: AssetItem; index
   );
 }
 
-function FileDetailSlot({ sel }: { sel: number }) {
+function FileDetailSlot({ sel, onDeleted }: { sel: string | null; onDeleted: () => void }) {
   const intl = useIntl();
+  const toast = useToast();
   const { data: assets = [] } = useAssets();
-  const a = assets[sel];
+  const mut = useAssetMutations();
+  const [renaming, setRenaming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [name, setName] = useState('');
+  const nameId = useId();
+  const idx = Math.max(0, sel ? assets.findIndex((x) => x.id === sel) : 0);
+  const a = assets[idx];
   if (!a) return null;
+  const t = (id: string, v?: Record<string, string | number>) => intl.formatMessage({ id }, v);
   const ext = a.name.split('.').pop()?.toUpperCase() ?? '';
   return (
     <aside aria-label={intl.formatMessage({ id: 'library.assets.details' })} className={styles.detail}>
       <div key={a.id} className={cx(styles.detailInner, motion.enter)}>
-        <div className={styles.preview} style={{ background: a.type === 'audio' ? 'var(--c-surface-4)' : TONES[sel % TONES.length] }} />
+        <div className={styles.preview} style={{ background: a.type === 'audio' ? 'var(--c-surface-4)' : TONES[idx % TONES.length] }} />
         <div className={styles.detailHead}>
           <span className={styles.detailName}>{a.name}</span>
           <span className={styles.detailMeta}>
@@ -229,19 +328,108 @@ function FileDetailSlot({ sel }: { sel: number }) {
             <FormattedMessage id="library.assets.usedIn" values={{ n: a.usedIn.length }} />
           </span>
           {a.usedIn.map((u) => (
-            <a key={u.label} href={u.to} className={cx(styles.usedLink, motion.hover)}>
+            <Link key={u.label} to={u.to as never} className={cx(styles.usedLink, motion.hover)}>
               <FormattedMessage id="library.assets.usedIn.item" values={{ label: u.label }} />
-            </a>
+            </Link>
           ))}
         </div>
         <div className={styles.detailActions}>
           <Link to="/p/$projectId" params={{ projectId: 'prj_demo' }} className={cx(styles.addCanvas, motion.press)}>
             <FormattedMessage id="library.assets.addToCanvas" />
           </Link>
-          <button type="button" className={cx(styles.iconBtn, motion.hover)} aria-label={intl.formatMessage({ id: 'library.assets.download' })}>
+          <button
+            type="button"
+            className={cx(styles.iconBtn, motion.hover)}
+            aria-label={t('library.assets.download')}
+            onClick={() => {
+              const url = URL.createObjectURL(new Blob([`${a.name}\n${a.meta}\n`], { type: 'text/plain' }));
+              const link = document.createElement('a');
+              link.href = url;
+              link.download = `${a.name}.txt`;
+              link.click();
+              setTimeout(() => URL.revokeObjectURL(url), 1000);
+              toast.show({ message: t('library.assets.downloaded', { name: a.name }) });
+            }}
+          >
             <PathIcon d={paths.download} size={15} />
           </button>
+          <button
+            type="button"
+            className={cx(styles.iconBtn, motion.hover)}
+            aria-label={t('library.assets.favorite')}
+            aria-pressed={!!a.favorite}
+            onClick={() => {
+              mut.toggleFavorite(a.id);
+              toast.show({ message: t(a.favorite ? 'library.assets.unfavorited' : 'library.assets.favorited', { name: a.name }) });
+            }}
+          >
+            <PathIcon d={paths.star} size={15} />
+          </button>
+          <button
+            type="button"
+            className={cx(styles.iconBtn, motion.hover)}
+            aria-label={t('library.assets.rename')}
+            onClick={() => {
+              setName(a.name);
+              setRenaming(true);
+            }}
+          >
+            <PathIcon d={paths.pencil} size={15} />
+          </button>
+          <button type="button" className={cx(styles.iconBtn, motion.hover)} aria-label={t('library.assets.delete')} onClick={() => setDeleting(true)}>
+            <PathIcon d={paths.trash} size={15} />
+          </button>
         </div>
+        <Dialog open={renaming} onOpenChange={setRenaming} title={t('library.assets.rename.title')} closeLabel={t('library.assets.close')}>
+          <form
+            className={styles.dlgForm}
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!name.trim()) return;
+              mut.rename.mutate({ id: a.id, name: name.trim() });
+              setRenaming(false);
+              toast.show({ message: t('library.assets.renamed', { name: name.trim() }) });
+            }}
+          >
+            <label htmlFor={nameId} className={styles.dlgLabel}>
+              <FormattedMessage id="library.assets.rename.label" />
+            </label>
+            <input id={nameId} className={styles.dlgInput} value={name} onChange={(e) => setName(e.target.value)} />
+            <div className={styles.dlgActions}>
+              <button type="button" className={cx(styles.dlgBtn, motion.hover)} onClick={() => setRenaming(false)}>
+                <FormattedMessage id="library.assets.cancel" />
+              </button>
+              <button type="submit" className={cx(styles.dlgBtn, styles.dlgPrimary, motion.press)} disabled={!name.trim()}>
+                <FormattedMessage id="library.assets.save" />
+              </button>
+            </div>
+          </form>
+        </Dialog>
+        <Dialog
+          open={deleting}
+          onOpenChange={setDeleting}
+          title={t('library.assets.delete.title', { name: a.name })}
+          description={t(a.refs ? 'library.assets.delete.used' : 'library.assets.delete.lead', { n: a.refs })}
+          closeLabel={t('library.assets.close')}
+        >
+          <div className={styles.dlgActions}>
+            <button type="button" className={cx(styles.dlgBtn, motion.hover)} onClick={() => setDeleting(false)}>
+              <FormattedMessage id="library.assets.cancel" />
+            </button>
+            <button
+              type="button"
+              className={cx(styles.dlgBtn, styles.dlgDanger, motion.press)}
+              onClick={() => {
+                mut.remove.mutate(a.id);
+                setDeleting(false);
+                onDeleted();
+                toast.show({ message: t('library.assets.deleted', { name: a.name }) });
+              }}
+            >
+              <FormattedMessage id="library.assets.delete" />
+            </button>
+          </div>
+        </Dialog>
       </div>
     </aside>
   );
@@ -292,6 +480,9 @@ function Characters({ query }: { query: string }) {
 
 function Voices({ query }: { query: string }) {
   const intl = useIntl();
+  const [playing, setPlaying] = useState<string | null>(null);
+  const timer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
   const { data: voices = [] } = useVoices();
   const visible = voices.filter((v) => v.name.toLowerCase().includes(query.trim().toLowerCase()));
   return (
@@ -300,7 +491,19 @@ function Voices({ query }: { query: string }) {
         const st = VOICE_STYLE[v.state];
         return (
           <div key={v.id} className={cx(styles.voice, motion.stagger)} style={{ '--i': i } as CSSProperties} data-voice={v.id}>
-            <button type="button" className={styles.play} aria-label={intl.formatMessage({ id: 'library.assets.voice.preview' }, { name: v.name })}>
+            <button
+              type="button"
+              className={styles.play}
+              aria-label={intl.formatMessage({ id: 'library.assets.voice.preview' }, { name: v.name })}
+              aria-pressed={playing === v.id}
+              disabled={v.state === 'cloning'}
+              onClick={() => {
+                window.clearTimeout(timer.current);
+                if (playing === v.id) return setPlaying(null);
+                setPlaying(v.id);
+                timer.current = window.setTimeout(() => setPlaying(null), 2500);
+              }}
+            >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                 <path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5z" />
               </svg>

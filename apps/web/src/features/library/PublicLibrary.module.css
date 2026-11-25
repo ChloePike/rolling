@@ -65,7 +65,7 @@
 .tag{height:22px;padding:0 8px;border-radius:6px;background:var(--c-surface-4);font-size:11px;color:var(--c-text-2);line-height:22px}
 .prompt{border-radius:14px;background:var(--c-surface-4);padding:10px 12px;display:flex;flex-direction:column;gap:8px}
 .promptBar{display:flex;align-items:center;gap:4px}
-.lang{height:26px;padding:0 10px;border-radius:999px;border:0;background:var(--c-surface-6);color:var(--c-text-1);font:inherit;font-size:12px;font-weight:600;cursor:pointer}
+.lang{height:26px;padding:0 10px;border-radius:999px;border:0;background:var(--c-surface-6);color:var(--c-text-1);font:inherit;font-size:12px;font-weight:600;display:inline-flex;align-items:center}
 .copy{
   height:26px;padding:0 10px;border-radius:999px;border:0;background:none;color:var(--c-text-2);font:inherit;font-size:12px;font-weight:600;cursor:pointer;
   display:flex;align-items:center;gap:5px;transition:background-color var(--m-fast) var(--m-ease-standard),color var(--m-fast) var(--m-ease-standard);

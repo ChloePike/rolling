@@ -160,4 +160,25 @@ test.describe('public library (PublicLibrary.dc.html)', () => {
     await page.locator('[data-item]').first().waitFor();
     expect(await page.evaluate(() => getComputedStyle(document.querySelector('[data-item]')!).animationDuration)).toBe('0.001s');
   });
+
+  test('detail actions: Use as pose opens the tool, board toggles with Undo, Add to canvas navigates, favorite toggles', async ({ page }) => {
+    await mockGraphql(page);
+    await openApp(page, '/assets/public');
+    const details = page.getByRole('complementary', { name: 'Asset details' });
+    await page.locator('[data-item]').nth(1).click();
+    const fav = details.getByRole('button', { name: 'Favorites' });
+    await fav.click();
+    await expect(fav).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByText('Added to favorites.')).toBeVisible();
+    const board = details.getByRole('button', { name: 'Add to board' });
+    await board.click();
+    await expect(details.getByRole('button', { name: 'On board' })).toHaveAttribute('aria-pressed', 'true');
+    await page.getByRole('status').getByRole('button', { name: 'Undo' }).click();
+    await expect(details.getByRole('button', { name: 'Add to board' })).toHaveAttribute('aria-pressed', 'false');
+    await details.getByRole('button', { name: 'Use as pose' }).click();
+    await expect(page).toHaveURL(/\/create\/quick$/);
+    await openApp(page, '/assets/public');
+    await page.getByRole('complementary', { name: 'Asset details' }).getByRole('button', { name: 'Add to canvas' }).click();
+    await expect(page).toHaveURL(/\/p\/prj_demo$/);
+  });
 });

@@ -80,4 +80,58 @@ test.describe('assets (Assets.dc.html)', () => {
     const r = await page.evaluate(() => getComputedStyle(document.querySelector('[data-asset]')!).animationDuration);
     expect(r).toBe('0.001s');
   });
+
+  test('upload uses a real file chooser: progress, then the asset appears selected', async ({ page }) => {
+    await openApp(page, '/assets');
+    const chooser = page.waitForEvent('filechooser');
+    await page.getByRole('button', { name: 'Upload' }).click();
+    await (await chooser).setFiles({ name: 'Beach.png', mimeType: 'image/png', buffer: Buffer.alloc(2048) });
+    await expect(page.locator('[data-upload="Beach.png"]').getByRole('progressbar')).toBeVisible();
+    await expect(page.getByText('Beach.png uploaded.')).toBeVisible();
+    await expect(page.locator('[data-asset]')).toHaveCount(13);
+    await expect(page.getByRole('complementary', { name: 'Asset details' })).toContainText('Beach.png');
+  });
+
+  test('detail actions: favorite (shows in Favorites), rename, download, delete with confirm', async ({ page }) => {
+    await openApp(page, '/assets');
+    const details = page.getByRole('complementary', { name: 'Asset details' });
+    await page.locator('[data-asset]').nth(1).click();
+    await details.getByRole('button', { name: 'Favorite' }).click();
+    await expect(details.getByRole('button', { name: 'Favorite' })).toHaveAttribute('aria-pressed', 'true');
+    await details.getByRole('button', { name: 'Rename' }).click();
+    const dlg = page.getByRole('dialog', { name: 'Rename asset' });
+    await dlg.getByLabel('Name').fill('Shot A final.mp4');
+    await dlg.getByRole('button', { name: 'Save' }).click();
+    await expect(page.locator('[data-asset]').nth(1)).toContainText('Shot A final.mp4');
+    const dl = page.waitForEvent('download');
+    await details.getByRole('button', { name: 'Download' }).click();
+    expect((await dl).suggestedFilename()).toBe('Shot A final.mp4.txt');
+    await details.getByRole('button', { name: 'Delete' }).click();
+    await page.getByRole('dialog', { name: 'Delete Shot A final.mp4?' }).getByRole('button', { name: 'Delete' }).click();
+    await expect(page.getByText('Shot A final.mp4 deleted.')).toBeVisible();
+    await expect(page.locator('[data-asset]')).toHaveCount(11);
+    await page.getByRole('navigation', { name: 'Folders' }).getByRole('link', { name: /Favorites/ }).click();
+    await expect(page.locator('[data-asset]')).toHaveCount(3);
+    await page.getByRole('navigation', { name: 'Folders' }).getByRole('link', { name: /Desk organizer pitch/ }).click();
+    await expect(page.locator('[data-asset]')).toHaveCount(5);
+  });
+
+  test('voices: preview toggles; Clone a voice takes an audio file and clones to Ready', async ({ page }) => {
+    await openApp(page, '/assets?folder=voices');
+    const play = page.getByRole('button', { name: 'Preview Clear female' });
+    await play.click();
+    await expect(play).toHaveAttribute('aria-pressed', 'true');
+    const chooser = page.waitForEvent('filechooser');
+    await page.getByRole('button', { name: 'Clone a voice' }).click();
+    await (await chooser).setFiles({ name: 'Narration take.wav', mimeType: 'audio/wav', buffer: Buffer.alloc(1024) });
+    const row = page.locator('[data-voice]').filter({ hasText: 'Narration take' });
+    await expect(row).toContainText('Cloning');
+    await expect(row).toContainText('Ready', { timeout: 5000 });
+  });
+
+  test('characters: New character opens the Characters tool', async ({ page }) => {
+    await openApp(page, '/assets?folder=characters');
+    await page.getByRole('button', { name: 'New character' }).click();
+    await expect(page).toHaveURL(/\/create\/character$/);
+  });
 });

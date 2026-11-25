@@ -1,5 +1,5 @@
 import { useToast } from '@rolling/ui';
-import { Link } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { ChipGroup, motion, PathIcon, paths, SearchField } from '@/features/account/shared';
@@ -231,9 +231,32 @@ function ItemCard({ item, cat, index, on, onPick }: { item: PublicItem; cat: Cat
   );
 }
 
+/** Where each “Use as …” action opens (the reference is carried by the tool once the shared reference store lands). */
+const USE_ROUTE: Record<string, '/create/quick' | '/create/character' | '/p/$projectId'> = {
+  pose: '/create/quick',
+  face: '/create/character',
+  expression: '/create/character',
+  hairstyle: '/create/character',
+  dress: '/create/character',
+  setting: '/create/quick',
+  lighting: '/create/quick',
+  canvas: '/p/$projectId',
+};
+
 function Details({ cat, item, tone, onCopy }: { cat: CategoryView; item: PublicItem | undefined; tone: string; onCopy: (text: string) => void }) {
   const intl = useIntl();
+  const toast = useToast();
+  const navigate = useNavigate();
   const [fav, setFav] = useState<Record<string, boolean>>({});
+  const [board, setBoard] = useState<Record<string, boolean>>({});
+  const ctaKey = cat.cta.split('.').pop() ?? 'canvas';
+  const use = () => {
+    if (!item) return;
+    const to = USE_ROUTE[ctaKey] ?? '/create/quick';
+    toast.show({ message: intl.formatMessage({ id: 'library.public.used' }, { title: item.title, use: intl.formatMessage({ id: cat.cta }) }) });
+    if (to === '/p/$projectId') void navigate({ to, params: { projectId: 'prj_demo' } });
+    else void navigate({ to });
+  };
   return (
     <aside aria-label={intl.formatMessage({ id: 'library.public.details' })} className={styles.detail}>
       <div key={item?.id ?? 'none'} className={cx(styles.detailInner, motion.enter)}>
@@ -261,9 +284,9 @@ function Details({ cat, item, tone, onCopy }: { cat: CategoryView; item: PublicI
             {item.promptEn && (
               <div className={styles.prompt}>
                 <div className={styles.promptBar}>
-                  <button type="button" className={styles.lang} aria-pressed="true">
+                  <span className={styles.lang}>
                     <FormattedMessage id="library.public.lang.en" />
-                  </button>
+                  </span>
                   <span className={styles.spacer} />
                   <button type="button" className={styles.copy} onClick={() => onCopy(item.promptEn ?? '')}>
                     <PathIcon d={paths.copy} size={13} />
@@ -294,14 +317,33 @@ function Details({ cat, item, tone, onCopy }: { cat: CategoryView; item: PublicI
               </div>
             </div>
             <div className={styles.actions}>
-              <button type="button" className={cx(styles.primary, motion.press)}>
+              <button type="button" className={cx(styles.primary, motion.press)} onClick={use}>
                 <FormattedMessage id={cat.cta} />
               </button>
               <div className={styles.row}>
-                <button type="button" className={cx(styles.secondary, motion.hover)}>
-                  <FormattedMessage id="library.public.addToBoard" />
+                <button
+                  type="button"
+                  className={cx(styles.secondary, motion.hover)}
+                  aria-pressed={!!board[item.id]}
+                  onClick={() => {
+                    const on = !board[item.id];
+                    setBoard((b) => ({ ...b, [item.id]: on }));
+                    toast.show({
+                      message: intl.formatMessage({ id: on ? 'library.public.boardAdded' : 'library.public.boardRemoved' }, { title: item.title }),
+                      action: on ? { label: intl.formatMessage({ id: 'library.public.undo' }), onAction: () => setBoard((b) => ({ ...b, [item.id]: false })) } : undefined,
+                    });
+                  }}
+                >
+                  <FormattedMessage id={board[item.id] ? 'library.public.onBoard' : 'library.public.addToBoard'} />
                 </button>
-                <button type="button" className={cx(styles.secondary, motion.hover)}>
+                <button
+                  type="button"
+                  className={cx(styles.secondary, motion.hover)}
+                  onClick={() => {
+                    toast.show({ message: intl.formatMessage({ id: 'library.public.toCanvas' }, { title: item.title }) });
+                    void navigate({ to: '/p/$projectId', params: { projectId: 'prj_demo' } });
+                  }}
+                >
                   <FormattedMessage id="library.public.addToCanvas" />
                 </button>
                 <button
@@ -309,7 +351,11 @@ function Details({ cat, item, tone, onCopy }: { cat: CategoryView; item: PublicI
                   className={styles.star}
                   aria-label={intl.formatMessage({ id: 'library.public.favorite' })}
                   aria-pressed={!!fav[item.id]}
-                  onClick={() => setFav((f) => ({ ...f, [item.id]: !f[item.id] }))}
+                  onClick={() => {
+                    const on = !fav[item.id];
+                    setFav((f) => ({ ...f, [item.id]: on }));
+                    toast.show({ message: intl.formatMessage({ id: on ? 'library.public.favAdded' : 'library.public.favRemoved' }) });
+                  }}
                 >
                   <PathIcon d={paths.star} size={15} />
                 </button>
