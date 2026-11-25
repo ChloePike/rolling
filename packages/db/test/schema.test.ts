@@ -63,13 +63,15 @@ describe("D1 migration", () => {
     const db = new DatabaseSync(":memory:");
     const dir = new URL("../migrations/d1/", import.meta.url);
     const files = readdirSync(dir).filter((f) => f.endsWith(".sql")).sort();
-    expect(files).toEqual(["0001_init.sql", "0002_models.sql", "0003_plan_names.sql", "0004_auth.sql", "0005_billing.sql", "0006_projects_assets.sql", "0007_runs.sql", "0008_agent.sql", "0009_safety.sql", "0010_uploads.sql", "0011_agent_allowance.sql", "0012_team.sql", "0013_account.sql", "0014_exports.sql", "0015_runs_templates.sql", "0016_seed_templates.sql"]);
+    expect(files).toEqual(["0001_init.sql", "0002_models.sql", "0003_plan_names.sql", "0004_auth.sql", "0005_billing.sql", "0006_projects_assets.sql", "0007_runs.sql", "0008_agent.sql", "0009_safety.sql", "0010_uploads.sql", "0011_agent_allowance.sql", "0012_team.sql", "0013_account.sql", "0014_exports.sql", "0015_runs_templates.sql", "0016_seed_templates.sql", "0017_template_covers.sql"]);
     for (const f of files) db.exec(readFileSync(new URL(f, dir), "utf8"));
     expectSchemaMatches(db, tablesOf(d1));
     // 0015: run requests and retries, template listing fields; 0016 seeds the built-in templates.
     expect(columnsIn(db, "runs")).toEqual(expect.arrayContaining(["request", "retry_of", "tool", "character_id"]));
     expect(columnsIn(db, "templates")).toEqual(expect.arrayContaining(["description", "meta", "created_at"]));
     expect(Number(db.prepare("SELECT COUNT(*) AS n FROM templates WHERE workspace_id IS NULL").all()[0]?.n)).toBeGreaterThanOrEqual(6);
+    // 0017: built-in template covers.
+    expect(db.prepare("SELECT json_extract(meta, '$.coverKey') AS k FROM templates WHERE id = 'tpl_tv_ad_15s'").all()[0]?.k).toBe("public/templates/tpl_tv_ad_15s/cover.png");
     // 0014: exports.
     expect(columnsIn(db, "exports")).toEqual(expect.arrayContaining(["preset", "status", "progress", "asset_id", "range_start", "range_end"]));
     // 0013: profiles, avatars, profile publishing, feedback, account deletion.

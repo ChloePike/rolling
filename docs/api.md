@@ -505,6 +505,8 @@ type TemplateSummary = {
 }
 ```
 
+Covers: built-ins have a preview cover rendered from their layout and shot titles (`@rolling/core/templates` `templateCoverSvg`, PNG by `apps/api/scripts/template-covers.ts`, uploaded to `public/templates/<id>/cover.png`); migration 0017 sets `meta.coverKey` and `coverUrl` is the public media URL (`PUBLIC_MEDIA_BASE_URL`, else the `/api/media/public/templates/<id>/cover.png` fallback, D-008). Workspace templates use `preview_asset_id` (signed, never mature).
+
 Built-ins: `tpl_tv_ad_15s` (TV ad, 15 s), `tpl_product_showcase`, `tpl_talking_head` (lip sync, `lumina/wan2.7-i2v-spicy`), `tpl_comic_page`, `tpl_character_sheet`, `tpl_storyboard`, `tpl_holiday_greeting`, `tpl_outfit_try_on`.
 
 ## Agent (M6)

@@ -33,6 +33,12 @@ export function publicMediaUrl(r2Key: string, baseUrl?: string): string {
  * appear on public surfaces, D-005). Responses are immutable and edge-cached;
  * object keys never change content.
  */
+/** Built-in template covers (`public/templates/<id>/cover.png`, migration 0017) are served for built-in templates only. */
+async function isServable(db: D1Database, category: string, itemId: string): Promise<boolean> {
+  if (category === "templates") return !!(await db.prepare("SELECT 1 AS ok FROM templates WHERE id = ? AND workspace_id IS NULL").bind(itemId).first());
+  return isPublicItemServable(db, itemId, category);
+}
+
 export const media = new Hono<AppEnv>().get("/public/*", async (c) => {
   const key = c.req.path.replace(/^\/api\/media\//, "");
   const match = PUBLIC_KEY.exec(key);
@@ -41,7 +47,7 @@ export const media = new Hono<AppEnv>().get("/public/*", async (c) => {
 
   // Resumable downloads (D-011): ranged requests are answered from R2 directly (206/416).
   if (c.req.header("range")) {
-    if (!(await isPublicItemServable(c.env.DB, itemId, category))) return errorResponse(c, 404, "NOT_FOUND", "Not found");
+    if (!(await isServable(c.env.DB, category, itemId))) return errorResponse(c, 404, "NOT_FOUND", "Not found");
     const ranged = await serveR2(c.env.MEDIA, key, c.req.raw, {
       cacheControl: "public, max-age=86400, immutable",
       contentType: CONTENT_TYPES[ext.toLowerCase()] ?? "application/octet-stream",
@@ -54,7 +60,7 @@ export const media = new Hono<AppEnv>().get("/public/*", async (c) => {
   const hit = cache ? await cache.match(cacheKey) : undefined;
   if (hit) return hit;
 
-  if (!(await isPublicItemServable(c.env.DB, itemId, category))) {
+  if (!(await isServable(c.env.DB, category, itemId))) {
     return errorResponse(c, 404, "NOT_FOUND", "Not found");
   }
   const object = await c.env.MEDIA.get(key);

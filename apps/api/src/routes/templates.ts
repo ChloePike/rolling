@@ -15,6 +15,7 @@ import { ApiError } from "../lib/errors";
 import { isRoomError, roomFailure } from "../lib/room";
 import { validate } from "../lib/validate";
 import { signMediaUrl } from "../lib/mediaUrls";
+import { publicMediaUrl } from "./media";
 
 export interface TemplateRow {
   id: string;
@@ -70,7 +71,11 @@ function parse<T>(raw: string | null, fallback: T): T {
   }
 }
 
-async function coverUrl(env: Env, row: TemplateRow): Promise<string | null> {
+async function coverUrl(env: Env, row: TemplateRow, meta: { coverKey?: unknown }): Promise<string | null> {
+  // Built-in covers live on the public bucket (migration 0017): public media URL (D-008).
+  if (!row.workspace_id && typeof meta.coverKey === "string" && meta.coverKey === `public/templates/${row.id}/cover.png`) {
+    return publicMediaUrl(meta.coverKey, env.PUBLIC_MEDIA_BASE_URL);
+  }
   if (!row.preview_asset_id) return null;
   const a = await env.DB.prepare("SELECT r2_key, workspace_id, mature, status FROM assets WHERE id = ?").bind(row.preview_asset_id).first<{
     r2_key: string;
@@ -85,7 +90,7 @@ async function coverUrl(env: Env, row: TemplateRow): Promise<string | null> {
 
 export async function templateSummary(env: Env, row: TemplateRow): Promise<TemplateSummary> {
   const graph = parse<TemplateGraph>(row.graph, { nodes: [], edges: [], groups: [] });
-  const meta: Partial<TemplateMeta> = { ...summarizeGraph(graph), ...parse<Partial<TemplateMeta>>(row.meta, {}) };
+  const meta: Partial<TemplateMeta> & { coverKey?: unknown } = { ...summarizeGraph(graph), ...parse<Partial<TemplateMeta>>(row.meta, {}) };
   const ratio = meta.ratio ?? "16:9";
   return {
     id: row.id,
@@ -103,7 +108,7 @@ export async function templateSummary(env: Env, row: TemplateRow): Promise<Templ
     uses: row.uses,
     nodeCount: meta.nodeCount ?? graph.nodes.length,
     skill: meta.skill ?? null,
-    coverUrl: await coverUrl(env, row),
+    coverUrl: await coverUrl(env, row, meta),
     slots: parse<TemplateSlot[]>(row.slots, inferSlots(graph)),
     createdAt: row.created_at,
   };

@@ -22,6 +22,7 @@ import { createProjectFromTemplate, useTemplate, useTemplates, type SlotFills } 
 import { isMockApi } from '@/features/overlays/backend';
 import { resolveAssetId } from '@/lib/transfers';
 import styles from './QuickCreate.module.css';
+import { coverStyle } from '@/features/templates/cover';
 
 const RES_COST: Record<string, number> = { '480p': 6, '720p': 10, '1080p': 18 };
 /** Short list for the Advanced "Model" control (design order), by catalog id. */
@@ -155,8 +156,8 @@ export function QuickCreatePage({ initialOverlay, models: modelsOverride, plan: 
   const aside = (
     <>
       <AsideCard row gap={12} testId="template">
-        <div className={styles.tplThumb} style={{ background: quickTemplate.tone }}>
-          <ToolIcon name="play" size={14} filled color="var(--c-text-1)" />
+        <div className={styles.tplThumb} style={coverStyle(picked?.coverUrl, quickTemplate.tone)} data-cover={picked?.coverUrl ? '' : undefined}>
+          {picked?.coverUrl ? null : <ToolIcon name="play" size={14} filled color="var(--c-text-1)" />}
         </div>
         <div className={styles.tplText}>
           <span className={styles.tplKicker}>

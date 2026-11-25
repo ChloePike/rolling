@@ -8,6 +8,7 @@ import { useTemplates } from './api';
 import { TemplatePreview } from './TemplatePreview';
 import styles from './TemplatesPage.module.css';
 import type { TemplateCategory, TemplateSummary } from './types';
+import { coverStyle } from './cover';
 
 const CATS: Array<'all' | TemplateCategory> = ['all', 'product', 'explainer', 'drama', 'holiday', 'venue', 'outfit', 'comic'];
 const TONES = ['var(--c-tone-plum)', 'var(--c-tone-teal)', 'var(--c-tone-indigo)', 'var(--c-tone-sand)', 'var(--c-tone-neutral)', 'var(--c-tone-moss)', 'var(--c-tone-clay)', 'var(--c-tone-slate)'];
@@ -149,7 +150,7 @@ export function TemplatesPage() {
               data-motion=""
               onClick={() => setPreview(t)}
             >
-              <div className={styles.featCover} style={{ background: i === 0 ? TONES[0] : TONES[6] }}>
+              <div className={styles.featCover} style={coverStyle(t.coverUrl, i === 0 ? TONES[0]! : TONES[6]!)}>
                 <span className={styles.featDur}>{seconds(intl, t.durationSec)}</span>
               </div>
               <div className={styles.featBody}>
@@ -200,7 +201,7 @@ export function TemplatesPage() {
             data-motion=""
             onClick={() => setPreview(t)}
           >
-            <div className={styles.cover} style={{ background: TONES[data.items.indexOf(t) % TONES.length] }}>
+            <div className={styles.cover} style={coverStyle(t.coverUrl, TONES[data.items.indexOf(t) % TONES.length]!)}>
               <span className={styles.badges}>
                 <span className={styles.badge}>
                   <FormattedMessage id="templates.badge.roles" values={{ n: t.roles }} />

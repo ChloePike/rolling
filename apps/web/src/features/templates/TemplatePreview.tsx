@@ -4,6 +4,7 @@ import { FormattedMessage, useIntl } from 'react-intl';
 import { formatUses } from './TemplatesPage';
 import styles from './TemplatePreview.module.css';
 import type { TemplateSummary } from './types';
+import { coverStyle } from './cover';
 
 /**
  * Template preview (Templates → a card): cover, what it makes, its cast and
@@ -30,7 +31,7 @@ export function TemplatePreview({
     <Dialog open={!!t} onOpenChange={(o) => !o && onClose()} bare labelledBy={titleId} label={t?.name ?? ''}>
       {t ? (
         <div className={styles.panel} data-testid="template-preview">
-          <div className={styles.cover} style={{ background: tone, aspectRatio: t.coverAspect }}>
+          <div className={styles.cover} style={coverStyle(t.coverUrl, tone, { aspectRatio: t.coverAspect })}>
             <span className={styles.dur}>{intl.formatNumber(t.durationSec, { style: 'unit', unit: 'second', unitDisplay: 'narrow' })}</span>
           </div>
           <div className={styles.body}>

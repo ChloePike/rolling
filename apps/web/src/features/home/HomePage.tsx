@@ -45,6 +45,7 @@ import { FEED_TONES } from './mocks';
 import { useHomePills } from './useHomePills';
 import styles from './HomePage.module.css';
 import type { ProjectSummary } from './types';
+import { coverStyle } from '@/features/templates/cover';
 
 const ENTRIES: Array<{ key: string; to: string; icon: PromptIconName }> = [
   { key: 'blank', to: '/p/prj_new', icon: 'frame' },
@@ -481,7 +482,7 @@ function Inspiration() {
             search={{ template: t.id } as never}
             aria-label={intl.formatMessage({ id: 'home.inspiration.useLabel' }, { name: t.name })}
             className={cx(styles.feedCard, 'rl-stagger')}
-            style={staggerStyle(i, { background: FEED_TONES[i % FEED_TONES.length], aspectRatio: t.coverAspect })}
+            style={staggerStyle(i, coverStyle(t.coverUrl, FEED_TONES[i % FEED_TONES.length]!, { aspectRatio: t.coverAspect }))}
             data-motion=""
           >
             <span className={styles.feedDur}>{formatSeconds(intl, t.durationSec)}</span>

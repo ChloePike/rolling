@@ -61,6 +61,16 @@ describe("templates: built-ins", () => {
       expect(JSON.parse(row!.graph)).toEqual(t.graph);
     }
 
+    // Covers (migration 0017): public media URLs for every built-in; the fallback route serves them.
+    for (const t of builtins) expect(t.coverUrl).toBe(`/api/media/public/templates/${t.id}/cover.png`);
+    await env.MEDIA.put("public/templates/tpl_tv_ad_15s/cover.png", new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]), { httpMetadata: { contentType: "image/png" } });
+    const cover = await SELF.fetch(`${BASE}${tv.coverUrl}`);
+    expect(cover.status).toBe(200);
+    expect(cover.headers.get("content-type")).toBe("image/png");
+    await cover.arrayBuffer();
+    await env.MEDIA.put("public/templates/tpl_nope/cover.png", new Uint8Array([1]));
+    expect((await SELF.fetch(`${BASE}/api/media/public/templates/tpl_nope/cover.png`)).status).toBe(404);
+
     const filtered = (await (await api(user, "/api/templates?category=talking")).json()) as any;
     expect(filtered.items.map((t: any) => t.id)).toEqual(["tpl_talking_head"]);
     const searched = (await (await api(user, "/api/templates?q=comic")).json()) as any;
