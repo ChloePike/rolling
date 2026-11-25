@@ -68,5 +68,16 @@
   "activity.export.refunded": "Refunded",
   "activity.toast.exported": "Exported {n, plural, one {# run} other {# runs}} as CSV.",
   "activity.toast.done": "{name} is done.",
-  "activity.toast.downloaded": "Download started."
+  "activity.toast.downloaded": "Download started.",
+  "activity.viewer.you": "You",
+  "activity.toast.refunded": "{n, plural, one {# credit refunded} other {# credits refunded}}.",
+  "activity.toast.retryInTool": "Open the tool to run it again with the same settings.",
+  "activity.retryError.NO_PLAN": "Join a plan to generate again.",
+  "activity.retryError.INSUFFICIENT_CREDITS": "Not enough credits. Top up to run it again.",
+  "activity.retryError.QUOTE_EXPIRED": "Prices changed. Retry again to see the new total.",
+  "activity.retryError.MEMBER_LIMIT_REACHED": "Your team limit for this month is used.",
+  "activity.retryError.CONCURRENCY_LIMIT": "Too many jobs running for your plan. Wait for one to finish.",
+  "activity.retryError.NOTHING_TO_RUN": "Nothing to run again: the nodes are up to date or gone.",
+  "activity.retryError.other": "Couldn’t run it again. Nothing was charged.",
+  "activity.retryEta": "~2 min"
 }

@@ -433,7 +433,8 @@ export interface QuoteItem {
   dependsOn?: string[];
 }
 
-export type QuoteScope = RunScope;
+/** `node`, `upTo`, `from`, `all` (`@rolling/core/graph` RunScope) plus `selection` (the given nodes). */
+export type QuoteScope = RunScope | 'selection';
 
 export interface QuoteRequest {
   scope: QuoteScope;
@@ -546,7 +547,7 @@ export function quoteRun(
   nodeIds?: string[],
   scope: QuoteScope = nodeIds ? 'node' : 'all',
 ): { quoteId: string; scope: QuoteScope; items: QuoteItem[]; total: number; balanceAfter: number } {
-  const ids = nodeIds && scope !== 'all' && scope !== 'node' ? [...new Set(nodeIds.flatMap((id) => runScopeNodes({ nodes, edges }, id, scope)))] : nodeIds;
+  const ids = nodeIds && scope !== 'all' && scope !== 'node' && scope !== 'selection' ? [...new Set(nodeIds.flatMap((id) => runScopeNodes({ nodes, edges }, id, scope)))] : nodeIds;
   const picked = dependencyOrder(ids ? nodes.filter((n) => ids.includes(n.id)) : nodes, edges);
   const items: QuoteItem[] = picked.map((n) => {
     const model = typeof n.params.model === 'string' ? n.params.model : '';
@@ -556,7 +557,7 @@ export function quoteRun(
     const blocked = blockedByBypass({ nodes, edges }, n.id);
     if (blocked) return { nodeId: n.id, action: 'blocked', model, credits: 0, reason: blocked.message };
     // The picked node always regenerates; elsewhere current versions are reused.
-    const anchor = scope === 'node' || scope === 'from' || (nodeIds?.includes(n.id) ?? false);
+    const anchor = scope === 'node' || scope === 'from' || scope === 'selection' || (nodeIds?.includes(n.id) ?? false);
     if (n.status === 'done' && !anchor) return { nodeId: n.id, action: 'reuse', model, credits: 0 };
     return { nodeId: n.id, action: 'run', model, credits: n.cost ?? (typeof n.params.runCost === 'number' ? n.params.runCost : 0) };
   });

@@ -4,6 +4,12 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { FormattedMessage, FormattedNumber, useIntl } from 'react-intl';
 import { ChipGroup, motion, PathIcon, paths, ResultModal, SearchField, type ResultModalItem } from '@/features/account/shared';
 import { useActivity } from './api';
+import { useQueryClient } from '@tanstack/react-query';
+import { ResultViewer, RunConfirm } from '@/features/overlays';
+import { assetMediaUrl, isApiError, isMockApi } from '@/features/overlays/backend';
+import { downloadAsset } from '@/features/overlays/media';
+import { cancelRun } from '@/features/overlays/runs';
+import { requestQuote, runError, startRun, type Quote } from '@/features/canvas/api';
 import type { RunAction, RunRow, RunStatus } from './types';
 import styles from './Activity.module.css';
 
@@ -91,7 +97,58 @@ export function ActivityPage({ initialFilter = 'all' }: { initialFilter?: Activi
     [runs, filter, query, range],
   );
 
+  const qc = useQueryClient();
+  const [retryQuote, setRetryQuote] = useState<{ run: RunRow; quote: Quote } | null>(null);
+  const refresh = () => void qc.invalidateQueries({ queryKey: ['activity'] });
+
+  const startRetry = (run: RunRow, quote: Quote) => {
+    setRetryQuote(null);
+    void startRun(quote).then((r) => {
+      if (r.ok) {
+        toast.show({ message: intl.formatMessage({ id: 'activity.toast.retried' }, { name: run.name }) });
+        refresh();
+      } else toast.show({ message: intl.formatMessage({ id: `activity.retryError.${r.code}`, defaultMessage: intl.formatMessage({ id: 'activity.retryError.other' }) }) });
+    });
+  };
+
+  /** Real mode: a new quote for the run's failed canvas nodes, confirmed per threshold; tool runs reopen their tool. */
+  function actReal(run: RunRow, action: RunAction) {
+    if (action === 'cancel') {
+      void cancelRun(run.id).then(
+        (r) => {
+          toast.show({ message: intl.formatMessage({ id: 'activity.toast.canceled' }, { name: run.name }) + (r.refunded ? ` ${intl.formatMessage({ id: 'activity.toast.refunded' }, { n: r.refunded })}` : '') });
+          refresh();
+        },
+        () => toast.show({ message: intl.formatMessage({ id: 'activity.retryError.other' }) }),
+      );
+    } else if (action === 'retry') {
+      if (run.source !== 'canvas' || !run.projectId || !run.failedNodeIds?.length) {
+        const to = SOURCE_ROUTE[run.source];
+        toast.show({ message: intl.formatMessage({ id: 'activity.toast.retryInTool' }) });
+        if (to) void navigate({ to });
+        return;
+      }
+      void requestQuote(run.projectId, { scope: 'selection', nodeIds: run.failedNodeIds }, { nodes: [], edges: [] }).then(
+        (q) => {
+          if (!q.quoteId) return void toast.show({ message: q.items.find((i) => i.reason)?.reason ?? intl.formatMessage({ id: 'activity.retryError.NOTHING_TO_RUN' }) });
+          if (q.needsConfirm) setRetryQuote({ run, quote: q });
+          else startRetry(run, q);
+        },
+        (e: unknown) => toast.show({ message: intl.formatMessage({ id: `activity.retryError.${runError(e).code}`, defaultMessage: intl.formatMessage({ id: 'activity.retryError.other' }) }) }),
+      );
+    } else if (action === 'view') {
+      setViewing(run);
+    } else if (action === 'locate') {
+      if (run.projectId) void navigate({ to: '/p/$projectId', params: { projectId: run.projectId } });
+      else {
+        const to = SOURCE_ROUTE[run.source];
+        if (to) void navigate({ to });
+      }
+    }
+  }
+
   function act(run: RunRow, action: RunAction) {
+    if (!isMockApi()) return actReal(run, action);
     if (action === 'cancel') {
       setRuns((all) => all.map((r) => (r.id === run.id ? { ...r, status: 'canceled', credits: 0, progress: undefined } : r)));
       toast.show({ message: intl.formatMessage({ id: 'activity.toast.canceled' }, { name: run.name }) });
@@ -288,8 +345,50 @@ export function ActivityPage({ initialFilter = 'all' }: { initialFilter?: Activi
           </div>
         </div>
       </div>
+      {!isMockApi() ? (
+        <>
+          <ResultViewer
+            open={!!viewing}
+            onOpenChange={(o) => !o && setViewing(null)}
+            title={viewing?.name ?? ''}
+            author={intl.formatMessage({ id: 'activity.viewer.you' })}
+            createdAt={new Date(Date.now() - (viewing?.minutesAgo ?? 0) * 60_000)}
+            aspectRatio="9/16"
+            mediaKind={viewing?.mediaKind ?? 'video'}
+            versions={viewing ? [{ id: viewing.id, label: 'v1' }] : []}
+            versionId={viewing?.id ?? ''}
+            onVersionChange={() => {}}
+            src={viewing?.assetId ? assetMediaUrl(viewing.assetId) : undefined}
+            prompt={viewing?.name ?? ''}
+            params={viewItem?.params ?? []}
+            assets={[]}
+            actions={[{ id: 'edit' }, { id: 'download' }]}
+            onAction={(id) => {
+              const v = viewing;
+              if (!v) return;
+              if (id === 'edit' && v.projectId) {
+                setViewing(null);
+                void navigate({ to: '/p/$projectId', params: { projectId: v.projectId } });
+              } else if (id === 'download' && v.assetId) {
+                toast.show({ message: intl.formatMessage({ id: 'activity.toast.downloaded' }) });
+                void downloadAsset(v.assetId, v.name).catch((e: unknown) => isApiError(e) && toast.show({ message: e.message }));
+              }
+            }}
+          />
+          <RunConfirm
+            open={!!retryQuote}
+            onOpenChange={(o) => !o && setRetryQuote(null)}
+            variant="single"
+            rows={retryQuote ? retryQuote.quote.items.filter((i) => i.action === 'run').map((i) => ({ id: i.nodeId, name: retryQuote.run.name, meta: i.modelName ?? i.model, kind: 'video' as const, state: 'run' as const, cost: i.credits })) : []}
+            balance={retryQuote?.quote.balance ?? 0}
+            actionLabel={intl.formatMessage({ id: 'activity.action.retry' })}
+            eta={intl.formatMessage({ id: 'activity.retryEta' })}
+            onConfirm={() => retryQuote && startRetry(retryQuote.run, retryQuote.quote)}
+          />
+        </>
+      ) : null}
       <ResultModal
-        item={viewItem}
+        item={isMockApi() ? viewItem : null}
         onClose={() => setViewing(null)}
         onAction={(id) => {
           setViewing(null);

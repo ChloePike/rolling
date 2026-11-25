@@ -1,12 +1,74 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { isMockApi, userEvents } from '@/features/overlays/backend';
+import { listRuns, type RunView } from '@/features/overlays/runs';
 import { activityMock } from './mocks';
-import type { ActivityData } from './types';
+import type { ActivityData, RunRow } from './types';
 
-/** Activity list (`GET /api/runs`). Runs on mock data until the Runs API lands. */
+/**
+ * Activity list. Real mode: `GET /api/runs` (newest first, up to 100 in the
+ * window), refreshed on `activity.updated` from the user channel and every
+ * few seconds while something runs. Mock mode: the design's rows.
+ */
+
+const KEY = ['activity'] as const;
+
+function rowFrom(r: RunView, now: number): RunRow {
+  const first = r.items.find((i) => i.assetId) ?? r.items[0];
+  return {
+    id: r.id,
+    ref: r.ref,
+    name: r.name,
+    source: r.source,
+    ...(r.projectTitle ? { projectTitle: r.projectTitle } : {}),
+    params: r.params,
+    status: r.status,
+    ...(r.progress !== null && (r.status === 'running' || r.status === 'queued') ? { progress: r.progress } : {}),
+    credits: r.credits,
+    refunded: r.refunded,
+    ...(r.error ? { error: r.error } : {}),
+    minutesAgo: Math.max(0, Math.round((now - r.createdAt) / 60_000)),
+    projectId: r.projectId,
+    assetId: first?.assetId ?? null,
+    mediaKind: first?.kind === 'image' ? 'image' : 'video',
+    failedNodeIds: r.items.filter((i) => (i.status === 'failed' || i.status === 'canceled' || i.status === 'skipped') && i.nodeId).map((i) => i.nodeId!),
+  };
+}
+
 export async function fetchActivity(): Promise<ActivityData> {
-  return structuredClone(activityMock);
+  if (isMockApi()) return structuredClone(activityMock);
+  const page = await listRuns({ first: 100, from: Date.now() - 90 * 24 * 3600_000 });
+  const now = Date.now();
+  const s = page.stats;
+  return {
+    stats: {
+      usedThisMonth: s.usedThisMonth,
+      usedChange: s.usedLastMonth ? Math.round(((s.usedThisMonth - s.usedLastMonth) / s.usedLastMonth) * 100) : 0,
+      running: s.running,
+      runningEtaMinutes: s.running ? 2 : 0,
+      successRate: s.successRate ?? 0,
+      runsLast7Days: s.runsLast7Days,
+      refunded: s.refundedThisMonth,
+    },
+    runs: page.runs.map((r) => rowFrom(r, now)),
+  };
 }
 
 export function useActivity() {
-  return useQuery({ queryKey: ['activity'], queryFn: fetchActivity, staleTime: Infinity });
+  const qc = useQueryClient();
+  const mock = isMockApi();
+  const q = useQuery({
+    queryKey: KEY,
+    queryFn: fetchActivity,
+    staleTime: mock ? Infinity : 5_000,
+    refetchInterval: (query) => (!mock && query.state.data?.runs.some((r) => r.status === 'running' || r.status === 'queued') ? 4_000 : false),
+  });
+  useEffect(
+    () =>
+      userEvents((msg) => {
+        if (msg.type === 'activity.updated') void qc.invalidateQueries({ queryKey: KEY });
+      }),
+    [qc],
+  );
+  return q;
 }

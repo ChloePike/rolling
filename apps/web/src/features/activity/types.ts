@@ -21,6 +21,11 @@ export interface RunRow {
   /** Failure reason shown under failed rows. */
   error?: string;
   minutesAgo: number;
+  /** Real mode: where the run belongs, its first result and the canvas nodes to retry. */
+  projectId?: string | null;
+  assetId?: string | null;
+  mediaKind?: 'video' | 'image';
+  failedNodeIds?: string[];
 }
 
 export interface ActivityStats {
