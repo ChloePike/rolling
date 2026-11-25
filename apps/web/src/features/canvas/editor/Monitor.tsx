@@ -10,8 +10,8 @@ import { clipEnd, edlDuration, type Clip, type Edl, type MediaClip } from '@roll
 
 /** Placeholder picture per shot (mock media): sky, ground and the product, tinted like the shot's clip. */
 const SCENES = [
-  { bg: '#1A2030', ground: '#22283A', product: '#2E3750' },
-  { bg: '#16262A', ground: '#1C3034', product: '#2C4850' },
+  { bg: 'var(--c-scene-1-bg)', ground: 'var(--c-scene-1-ground)', product: 'var(--c-scene-1-product)' },
+  { bg: 'var(--c-scene-2-bg)', ground: 'var(--c-scene-2-ground)', product: 'var(--c-scene-2-product)' },
 ] as const;
 
 /** Slow push-in on the placeholder so playback visibly advances. */

@@ -133,7 +133,7 @@ function Port({ type, node, active, refused, top }: { type: 'in' | 'out'; node: 
 /** Done image/video body: the result (tone stands in for the thumbnail). */
 function Result({ node, reveal }: { node: GraphNode; reveal: boolean }) {
   const intl = useIntl();
-  const tone = str(node.params.tone, '#202330');
+  const tone = str(node.params.tone, 'var(--c-tone-indigo)');
   if (node.kind === 'image') {
     return (
       <div className={cx(styles.reveal, reveal && 'rl-reveal')} style={{ background: tone }} {...motionSafe}>
@@ -148,7 +148,7 @@ function Result({ node, reveal }: { node: GraphNode; reveal: boolean }) {
   return (
     <div className={cx(styles.reveal, reveal && 'rl-reveal')} style={{ background: tone }} {...motionSafe}>
       <span className={styles.playDisc} role="img" aria-label={intl.formatMessage({ id: 'canvas.node.play' })}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="#F5F5F5" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="var(--c-text-1)" aria-hidden="true">
           <path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5z" />
         </svg>
       </span>
@@ -266,7 +266,7 @@ function CardContent({ node, selected, refused }: { node: GraphNode; selected: b
           <div className={styles.headBlock}>
             <Label node={node} />
           </div>
-          <div className={cx(styles.body, styles.assetBody)} style={{ height: 184, background: str(node.params.tone, '#1F2628') }} data-body="">
+          <div className={cx(styles.body, styles.assetBody)} style={{ height: 184, background: str(node.params.tone, 'var(--c-tone-teal)') }} data-body="">
             {str(node.params.label)}
           </div>
           <Port type="out" node={node} active={false} top={top.out} />

@@ -7,9 +7,9 @@
  * (packages/ui/src/__tests__/tokens.test.ts checks it). Token names are stable; components
  * use only tokens, never literal colors (apps/web/scripts/check-colors.mjs enforces it).
  *
- * Translucent colors are derived with color-mix() from an "ink" token, so a theme changes
- * the ink once and every alpha step follows. A semi-transparent ink scales those alphas
- * (light shadows use rgba(17,17,19,.22), so a 60% shadow becomes 13%).
+ * Translucent tokens are literal rgba() in both themes. For one-off alpha steps, components
+ * mix an "ink" token: color-mix(in srgb,var(--c-ink-shadow) 60%,transparent). A
+ * semi-transparent light ink scales those alphas (rgba(17,17,19,.22) at 60% is 13%).
  */
 :root{
   color-scheme:dark;
@@ -96,6 +96,8 @@
   --c-link:#93C5FD;
   --c-info-soft:rgba(59,130,246,.16);
   --c-success-soft:rgba(34,197,94,.14);
+  /* License chip (CC0) in the public library. */
+  --c-success-soft-2:rgba(34,197,94,.12);
   --c-upgrade-soft:rgba(255,197,61,.14);
   --c-warning-text:#FFD87A;
   --c-warning-bg:rgba(255,197,61,.1);
@@ -136,6 +138,8 @@
 
   /* Inks: the base colors that translucent tokens are mixed from. */
   --c-ink-shadow:#000000;
+  /* A few panels cast a shadow in the page color instead of black. */
+  --c-ink-shadow-bg:#0B0B0C;
   --c-ink-scrim:#050506;
   /* Frosted chips and play discs on media (dark on dark, white on light; text inherits text-1). */
   --c-ink-media:#0B0B0C;
@@ -159,7 +163,13 @@
   --c-tone-sage:#22292A;
   --c-tone-fern:#2B3A33;
   --c-tone-graphite:#333338;
-  --c-tone-scene:#1A2030;
+  /* Editor monitor placeholder picture per shot: sky, ground, product (tinted like the shot's clip). */
+  --c-scene-1-bg:#1A2030;
+  --c-scene-1-ground:#22283A;
+  --c-scene-1-product:#2E3750;
+  --c-scene-2-bg:#16262A;
+  --c-scene-2-ground:#1C3034;
+  --c-scene-2-product:#2C4850;
 
   /* Editor timeline (drawn on <canvas>; read with getComputedStyle, see TimelineCanvas.tsx). */
   --c-tl-bg:#111113;
@@ -192,22 +202,22 @@
   --c-tl-video-tile-2b:#31525A;
   --c-tl-video-tile-2c:#294248;
 
-  /* Derived (theme follows the inks above). */
-  --c-header-bg:color-mix(in srgb,var(--c-bg) 82%,transparent);
-  --c-scrim:color-mix(in srgb,var(--c-ink-scrim) 70%,transparent);
-  --c-media-chip:color-mix(in srgb,var(--c-ink-media) 60%,transparent);
-  --c-media-chip-strong:color-mix(in srgb,var(--c-ink-media) 66%,transparent);
-  --c-media-disc:color-mix(in srgb,var(--c-ink-media) 55%,transparent);
-  --c-media-disc-hover:color-mix(in srgb,var(--c-ink-media) 75%,transparent);
-  --c-glass-88:color-mix(in srgb,var(--c-glass) 88%,transparent);
-  --c-composer-94:color-mix(in srgb,var(--c-composer) 94%,transparent);
-  --c-shadow:color-mix(in srgb,var(--c-ink-shadow) 60%,transparent);
-  --shadow-float:0 18px 48px color-mix(in srgb,var(--c-ink-shadow) 60%,transparent);
-  --shadow-picker:0 24px 64px color-mix(in srgb,var(--c-ink-shadow) 60%,transparent);
-  --shadow-modal:0 30px 80px color-mix(in srgb,var(--c-ink-shadow) 65%,transparent);
-  --shadow-popover:0 20px 60px color-mix(in srgb,var(--c-ink-shadow) 60%,transparent);
-  --shadow-toast:0 12px 32px color-mix(in srgb,var(--c-ink-shadow) 60%,transparent);
-  --shadow-composer:0 20px 60px color-mix(in srgb,var(--c-ink-shadow) 55%,transparent),inset 0 0 0 1px color-mix(in srgb,var(--c-ink-hairline) 6%,transparent);
+  /* Translucent tokens (literal, so computed styles stay rgba()). */
+  --c-header-bg:rgba(11,11,12,.82);
+  --c-scrim:rgba(5,5,6,.7);
+  --c-media-chip:rgba(11,11,12,.6);
+  --c-media-chip-strong:rgba(11,11,12,.66);
+  --c-media-disc:rgba(11,11,12,.55);
+  --c-media-disc-hover:rgba(11,11,12,.75);
+  --c-glass-88:rgba(20,20,22,.88);
+  --c-composer-94:rgba(22,22,24,.94);
+  --c-shadow:rgba(0,0,0,.6);
+  --shadow-float:0 18px 48px rgba(0,0,0,.6);
+  --shadow-picker:0 24px 64px rgba(0,0,0,.6);
+  --shadow-modal:0 30px 80px rgba(0,0,0,.65);
+  --shadow-popover:0 20px 60px rgba(0,0,0,.6);
+  --shadow-toast:0 12px 32px rgba(0,0,0,.6);
+  --shadow-composer:0 20px 60px rgba(0,0,0,.55),inset 0 0 0 1px rgba(255,255,255,.06);
   /* Focus ring: accent, offset from the surface. */
   --focus-ring:0 0 0 2px var(--c-bg),0 0 0 4px var(--c-accent);
 }
@@ -236,6 +246,7 @@
     --c-info-soft:rgba(59,130,246,.14);
     --c-success:#166534;
     --c-success-soft:rgba(22,163,74,.12);
+    --c-success-soft-2:rgba(22,163,74,.1);
     --c-warning:#854D0E;
     --c-warning-text:#854D0E;
     --c-warning-bg:rgba(245,158,11,.12);
@@ -277,6 +288,7 @@
     --c-glass:#FFFFFF;
     --c-composer:#FFFFFF;
     --c-ink-shadow:rgba(17,17,19,.22);
+    --c-ink-shadow-bg:rgba(17,17,19,.22);
     --c-ink-scrim:rgba(17,17,19,.5);
     --c-ink-media:#FFFFFF;
     --c-ink-hairline:#111113;
@@ -296,7 +308,12 @@
     --c-tone-sage:#DDE6E5;
     --c-tone-fern:#D3E4DA;
     --c-tone-graphite:#D4D4D9;
-    --c-tone-scene:#D5DCEC;
+    --c-scene-1-bg:#D5DCEC;
+    --c-scene-1-ground:#C6CFE5;
+    --c-scene-1-product:#AEBBDC;
+    --c-scene-2-bg:#D3E4E7;
+    --c-scene-2-ground:#C2D9DD;
+    --c-scene-2-product:#A6C6CC;
     --c-tl-bg:#FAFAFA;
     --c-tl-rule:#E4E4E7;
     --c-tl-ruler-rule:#E7E7EA;
@@ -325,6 +342,21 @@
     --c-tl-video-tile-2a:#B3D4DA;
     --c-tl-video-tile-2b:#AACDD4;
     --c-tl-video-tile-2c:#BAD9DF;
+    --c-header-bg:rgba(255,255,255,.82);
+    --c-scrim:rgba(17,17,19,.35);
+    --c-media-chip:rgba(255,255,255,.6);
+    --c-media-chip-strong:rgba(255,255,255,.66);
+    --c-media-disc:rgba(255,255,255,.55);
+    --c-media-disc-hover:rgba(255,255,255,.75);
+    --c-glass-88:rgba(255,255,255,.88);
+    --c-composer-94:rgba(255,255,255,.94);
+    --c-shadow:rgba(17,17,19,.13);
+    --shadow-float:0 18px 48px rgba(17,17,19,.13);
+    --shadow-picker:0 24px 64px rgba(17,17,19,.13);
+    --shadow-modal:0 30px 80px rgba(17,17,19,.14);
+    --shadow-popover:0 20px 60px rgba(17,17,19,.13);
+    --shadow-toast:0 12px 32px rgba(17,17,19,.13);
+    --shadow-composer:0 20px 60px rgba(17,17,19,.12),inset 0 0 0 1px rgba(17,17,19,.08);
   }
 }
 
@@ -351,6 +383,7 @@
   --c-info-soft:rgba(59,130,246,.14);
   --c-success:#166534;
   --c-success-soft:rgba(22,163,74,.12);
+  --c-success-soft-2:rgba(22,163,74,.1);
   --c-warning:#854D0E;
   --c-warning-text:#854D0E;
   --c-warning-bg:rgba(245,158,11,.12);
@@ -392,6 +425,7 @@
   --c-glass:#FFFFFF;
   --c-composer:#FFFFFF;
   --c-ink-shadow:rgba(17,17,19,.22);
+  --c-ink-shadow-bg:rgba(17,17,19,.22);
   --c-ink-scrim:rgba(17,17,19,.5);
   --c-ink-media:#FFFFFF;
   --c-ink-hairline:#111113;
@@ -411,7 +445,12 @@
   --c-tone-sage:#DDE6E5;
   --c-tone-fern:#D3E4DA;
   --c-tone-graphite:#D4D4D9;
-  --c-tone-scene:#D5DCEC;
+  --c-scene-1-bg:#D5DCEC;
+  --c-scene-1-ground:#C6CFE5;
+  --c-scene-1-product:#AEBBDC;
+  --c-scene-2-bg:#D3E4E7;
+  --c-scene-2-ground:#C2D9DD;
+  --c-scene-2-product:#A6C6CC;
   --c-tl-bg:#FAFAFA;
   --c-tl-rule:#E4E4E7;
   --c-tl-ruler-rule:#E7E7EA;
@@ -440,6 +479,21 @@
   --c-tl-video-tile-2a:#B3D4DA;
   --c-tl-video-tile-2b:#AACDD4;
   --c-tl-video-tile-2c:#BAD9DF;
+  --c-header-bg:rgba(255,255,255,.82);
+  --c-scrim:rgba(17,17,19,.35);
+  --c-media-chip:rgba(255,255,255,.6);
+  --c-media-chip-strong:rgba(255,255,255,.66);
+  --c-media-disc:rgba(255,255,255,.55);
+  --c-media-disc-hover:rgba(255,255,255,.75);
+  --c-glass-88:rgba(255,255,255,.88);
+  --c-composer-94:rgba(255,255,255,.94);
+  --c-shadow:rgba(17,17,19,.13);
+  --shadow-float:0 18px 48px rgba(17,17,19,.13);
+  --shadow-picker:0 24px 64px rgba(17,17,19,.13);
+  --shadow-modal:0 30px 80px rgba(17,17,19,.14);
+  --shadow-popover:0 20px 60px rgba(17,17,19,.13);
+  --shadow-toast:0 12px 32px rgba(17,17,19,.13);
+  --shadow-composer:0 20px 60px rgba(17,17,19,.12),inset 0 0 0 1px rgba(17,17,19,.08);
 }
 
 /*

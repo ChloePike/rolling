@@ -27,8 +27,8 @@ export interface PromptRef {
 }
 
 export const MOCK_REFS: Record<string, PromptRef> = {
-  m1: { id: 'm1', name: 'Product photo', source: 'Mine', tone: '#26232A', letter: '' },
-  c1: { id: 'c1', name: 'Mia', source: 'Mine', tone: '#202330', letter: 'M' },
+  m1: { id: 'm1', name: 'Product photo', source: 'Mine', tone: 'var(--c-tone-plum)', letter: '' },
+  c1: { id: 'c1', name: 'Mia', source: 'Mine', tone: 'var(--c-tone-indigo)', letter: 'M' },
 };
 
 export const VOICE_WAVE = [8, 14, 20, 12, 24, 18, 10, 22, 26, 16, 12, 20, 26, 14, 10, 18, 24, 12, 8, 16, 22, 14, 20, 10, 18, 24, 12, 8];
@@ -75,7 +75,7 @@ export function mockGraph(): GraphState {
         id: NODE.photo,
         kind: 'asset',
         title: 'Product photo.png',
-        params: { media: 'image', label: 'Product reference', tone: '#1F2628' },
+        params: { media: 'image', label: 'Product reference', tone: 'var(--c-tone-teal)' },
         position: { x: 96, y: 360 },
         groupId: null,
         status: 'done',
@@ -96,7 +96,7 @@ export function mockGraph(): GraphState {
         kind: 'image',
         title: 'Product keyframe',
         params: {
-          tone: '#26232A',
+          tone: 'var(--c-tone-plum)',
           prompt: 'Place the @[Product photo] bottle on a riverside rock, early side light, soft-focus forest behind',
           model: 'Seedream 5.0 Pro',
           mode: 'Image to image',
@@ -118,7 +118,7 @@ export function mockGraph(): GraphState {
         kind: 'video',
         title: 'Shot A: Hero shot',
         params: {
-          tone: '#202330',
+          tone: 'var(--c-tone-indigo)',
           seconds: 4,
           prompt:
             'Start from @[Product keyframe], morning light from the left, slow push-in from a medium shot to a close-up of the bottle, small glints on the water',
@@ -142,7 +142,7 @@ export function mockGraph(): GraphState {
         id: NODE.shotB,
         kind: 'video',
         title: 'Shot B: Cap pop',
-        params: { tone: '#202330', seconds: 5, prompt: 'Hand twists the cap, close-up of bubbles rising', model: 'Seedance 2.5', mode: 'First frame', ratio: '9:16',
+        params: { tone: 'var(--c-tone-indigo)', seconds: 5, prompt: 'Hand twists the cap, close-up of bubbles rising', model: 'Seedance 2.5', mode: 'First frame', ratio: '9:16',
           resolution: '720p',
           length: 5, extra: '×1 · Audio on', quick: ['Style', 'Camera', 'Lighting', 'Pace'], refs: ['m1'], runCost: 8 },
         position: { x: 772, y: 616 },
@@ -178,9 +178,9 @@ export const MOCK_AGENT = {
     // Seedance 2.5 at 720p (4s + 5s + 3s) plus three Seedream keyframes, D-006 credits.
     estimate: 866,
     shots: [
-      { n: 1, title: 'Hero shot', seconds: 4, visual: 'Riverside rock, push-in at dawn', tone: '#3DF08C' },
-      { n: 2, title: 'Cap pop', seconds: 5, visual: 'Hand close-up, bubbles rising', tone: '#4D9CFF' },
-      { n: 3, title: 'Logo', seconds: 3, visual: 'Bottle centered, tagline comes in', tone: '#9A9AA0' },
+      { n: 1, title: 'Hero shot', seconds: 4, visual: 'Riverside rock, push-in at dawn', tone: 'var(--c-saved)' },
+      { n: 2, title: 'Cap pop', seconds: 5, visual: 'Hand close-up, bubbles rising', tone: 'var(--c-generating)' },
+      { n: 3, title: 'Logo', seconds: 3, visual: 'Bottle centered, tagline comes in', tone: 'var(--c-text-3)' },
     ],
   },
 };

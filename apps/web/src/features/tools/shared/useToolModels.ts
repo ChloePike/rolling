@@ -2,7 +2,7 @@ import { useModels, type CatalogModel } from '@/lib/models';
 import { toolModels, type ToolModel } from './models';
 import type { PickerKind } from '../types';
 
-const TONES = ['#202330', '#26232A', '#28251F', '#1F2628'];
+const TONES = ['var(--c-tone-indigo)', 'var(--c-tone-plum)', 'var(--c-tone-sand)', 'var(--c-tone-teal)'];
 
 function mark(name: string): string {
   const words = name.split(/[\s-]+/).filter(Boolean);

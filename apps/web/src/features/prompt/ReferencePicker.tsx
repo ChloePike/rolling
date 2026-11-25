@@ -11,7 +11,7 @@ import type { RefItem, RefTab } from './types';
 
 const TABS: RefTab[] = ['all', 'mine', 'char', 'voice', 'pub'];
 const WAVE = [10, 22, 14, 26, 12, 18];
-const PUB_TONES = ['#26232A', '#202330', '#28251F', '#1F2628', '#22262E', '#26262A', '#2A2420', '#1F2622'];
+const PUB_TONES = ['var(--c-tone-plum)', 'var(--c-tone-indigo)', 'var(--c-tone-sand)', 'var(--c-tone-teal)', 'var(--c-tone-slate)', 'var(--c-tone-neutral)', 'var(--c-tone-clay)', 'var(--c-tone-moss)'];
 const PUB_ICON: Record<LibraryCategoryKey, PromptIconName> = {
   pose: 'pose',
   pose_depth: 'pose',

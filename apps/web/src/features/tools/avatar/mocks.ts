@@ -2,8 +2,8 @@ import type { FeedItem } from '../types';
 
 /** Mock data for Avatar, matching DigitalHuman.dc.html. */
 export const avatarLooks = [
-  { id: 'character', value: 'Product advisor', tone: '#1F2628' },
-  { id: 'scene', value: 'Office · Uploaded', tone: '#202330' },
+  { id: 'character', value: 'Product advisor', tone: 'var(--c-tone-teal)' },
+  { id: 'scene', value: 'Office · Uploaded', tone: 'var(--c-tone-indigo)' },
 ] as const;
 
 export const avatarPersonas: Array<[string, string]> = [
@@ -43,7 +43,7 @@ export const avatarFeed: FeedItem[] = [
     ],
   },
   {
-    kind: 'media', id: 'run_a1', aspect: '9/16', tiles: [{ tone: '#1C1C1F' }], video: true, progress: 48,
+    kind: 'media', id: 'run_a1', aspect: '9/16', tiles: [{ tone: 'var(--c-tone-blank)' }], video: true, progress: 48,
     prompt: 'Explain the compartments, end with a smile and a nod', tags: ['9:16', '10s', 'Clear female'],
     steps: [
       { label: 'Script', state: 'done' },
@@ -52,6 +52,6 @@ export const avatarFeed: FeedItem[] = [
     ],
     actions: [...ACTS],
   },
-  { kind: 'media', id: 'run_a2', aspect: '9/16', tiles: [{ tone: '#1F2628' }], video: true, durationSec: 10, prompt: 'Desk organizer pitch · Expert presenter', tags: ['9:16', '10s', '720p'], finishedAgoMin: 24 * 60, actions: [...ACTS] },
-  { kind: 'media', id: 'run_a3', aspect: '9/16', tiles: [{ tone: '#28251F' }], video: true, durationSec: 15, prompt: 'New coffee maker highlights · Energetic host', tags: ['9:16', '15s', '720p'], finishedAgoMin: 3 * 24 * 60, actions: [...ACTS] },
+  { kind: 'media', id: 'run_a2', aspect: '9/16', tiles: [{ tone: 'var(--c-tone-teal)' }], video: true, durationSec: 10, prompt: 'Desk organizer pitch · Expert presenter', tags: ['9:16', '10s', '720p'], finishedAgoMin: 24 * 60, actions: [...ACTS] },
+  { kind: 'media', id: 'run_a3', aspect: '9/16', tiles: [{ tone: 'var(--c-tone-sand)' }], video: true, durationSec: 15, prompt: 'New coffee maker highlights · Energetic host', tags: ['9:16', '15s', '720p'], finishedAgoMin: 3 * 24 * 60, actions: [...ACTS] },
 ];

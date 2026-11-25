@@ -45,7 +45,7 @@ export function RemixPage({ initialOverlay, models: modelsOverride, plan: planPr
   const charName = (i: number) => t('tools.remix.character', { n: i + 1 });
   const slots = Array.from({ length: people }, (_, i) => ({
     name: charName(i),
-    tone: i < 2 ? remixSlotTones[i]! : '#161618',
+    tone: i < 2 ? remixSlotTones[i]! : 'var(--c-surface-3)',
     placeholder: i < 2 ? '' : t('tools.remix.slot.placeholder'),
     state: i === 0 ? t('tools.remix.slot.template') : i === 1 ? t('tools.remix.slot.uploaded') : t('tools.remix.slot.notSet'),
     set: i < 2,
@@ -99,7 +99,7 @@ export function RemixPage({ initialOverlay, models: modelsOverride, plan: planPr
         {remixPresets.map((x) => (
           <button key={x.id} type="button" className={controls.pickRow}>
             <span className={controls.pickThumb} style={{ background: x.tone }}>
-              <ToolIcon name={x.icon} size={18} color="#C8C8CC" />
+              <ToolIcon name={x.icon} size={18} color="var(--c-text-2)" />
             </span>
             <span className={controls.pickText}>
               <span className={controls.pickLabel}>{t(`tools.remix.preset.${x.id}`)}</span>

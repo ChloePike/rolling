@@ -8,7 +8,7 @@ import { categoryGroups, findCategory, LICENSE_CHIP, type CategoryView } from '.
 import styles from './PublicLibrary.module.css';
 
 const cx = (...c: Array<string | false | undefined>) => c.filter(Boolean).join(' ');
-const TONES = ['#26232A', '#1F2628', '#202330', '#28251F', '#26262A', '#1F2622', '#2A2420', '#22262E'];
+const TONES = ['var(--c-tone-plum)', 'var(--c-tone-teal)', 'var(--c-tone-indigo)', 'var(--c-tone-sand)', 'var(--c-tone-neutral)', 'var(--c-tone-moss)', 'var(--c-tone-clay)', 'var(--c-tone-slate)'];
 
 function useDebounced<T>(value: T, ms: number): T {
   const [v, setV] = useState(value);
@@ -176,7 +176,7 @@ function Thumb({ item, cat, tone, big }: { item: PublicItem | undefined; cat: Ca
         height={big ? '82%' : '78%'}
         viewBox="0 0 24 24"
         fill="none"
-        stroke={big ? 'rgba(245,245,245,.28)' : 'rgba(245,245,245,.22)'}
+        stroke={big ? 'color-mix(in srgb,var(--c-text-1) 28%,transparent)' : 'color-mix(in srgb,var(--c-text-1) 22%,transparent)'}
         strokeWidth={big ? 1.2 : 1.4}
         strokeLinecap="round"
         strokeLinejoin="round"

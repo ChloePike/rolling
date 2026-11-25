@@ -20,13 +20,13 @@ const FILTER_STATUSES: Record<Exclude<ActivityFilter, 'all'>, RunStatus[]> = {
 
 /** Badge colors from Tasks.dc.html. */
 const STATUS_STYLE: Record<RunStatus, { bg: string; fg: string }> = {
-  running: { bg: 'rgba(59,130,246,.16)', fg: '#93C5FD' },
-  queued: { bg: '#26262A', fg: '#C8C8CC' },
-  done: { bg: 'rgba(34,197,94,.14)', fg: '#4ADE80' },
-  partial: { bg: 'rgba(255,197,61,.14)', fg: '#FFC53D' },
-  failed: { bg: 'rgba(255,77,77,.12)', fg: '#FF7A7A' },
-  canceled: { bg: '#26262A', fg: '#9A9AA0' },
-  review: { bg: 'rgba(255,197,61,.14)', fg: '#FFC53D' },
+  running: { bg: 'var(--c-accent-soft)', fg: 'var(--c-link)' },
+  queued: { bg: 'var(--c-surface-5)', fg: 'var(--c-text-2)' },
+  done: { bg: 'var(--c-success-soft)', fg: 'var(--c-success)' },
+  partial: { bg: 'var(--c-upgrade-soft)', fg: 'var(--c-upgrade)' },
+  failed: { bg: 'var(--c-failed-soft)', fg: 'var(--c-failed)' },
+  canceled: { bg: 'var(--c-surface-5)', fg: 'var(--c-text-3)' },
+  review: { bg: 'var(--c-upgrade-soft)', fg: 'var(--c-upgrade)' },
 };
 
 const ACTIONS: Record<RunStatus, RunAction[]> = {
@@ -39,7 +39,7 @@ const ACTIONS: Record<RunStatus, RunAction[]> = {
   canceled: ['view'],
 };
 
-const TONES = ['#202330', '#26232A', '#1F2628', '#28251F', '#26262A', '#1F2622'];
+const TONES = ['var(--c-tone-indigo)', 'var(--c-tone-plum)', 'var(--c-tone-teal)', 'var(--c-tone-sand)', 'var(--c-tone-neutral)', 'var(--c-tone-moss)'];
 
 function matches(run: RunRow, q: string) {
   if (!q) return true;
@@ -93,7 +93,7 @@ export function ActivityPage({ initialFilter = 'all' }: { initialFilter?: Activi
           key: 'running',
           value: intl.formatNumber(s.running),
           note: intl.formatMessage({ id: 'activity.stat.running.note' }, { minutes: s.runningEtaMinutes }),
-          color: '#93C5FD',
+          color: 'var(--c-link)',
         },
         {
           key: 'success',

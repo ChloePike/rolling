@@ -128,7 +128,7 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
         {avatarVoices.map(([name, desc]) => (
           <div key={name} className={voice === name ? `${styles.voice} ${styles.voiceOn}` : styles.voice}>
             <button type="button" className={styles.preview} aria-label={t('tools.avatar.voice.preview', { name })}>
-              <ToolIcon name="play" size={11} filled color="#F5F5F5" />
+              <ToolIcon name="play" size={11} filled color="var(--c-text-1)" />
             </button>
             <button type="button" className={styles.voicePick} aria-pressed={voice === name} onClick={() => setVoice(name)}>
               <span className={styles.voiceName}>{name}</span>
@@ -138,7 +138,7 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
         ))}
         <div className={styles.clone}>
           <div className={styles.cloneHead}>
-            <ToolIcon name="mic" size={15} color="#3B82F6" />
+            <ToolIcon name="mic" size={15} color="var(--c-accent)" />
             <span className={styles.cloneName}>{avatarClone.name}</span>
             <span className={styles.clonePct}>
               <FormattedMessage id="tools.avatar.cloning" values={{ pct: avatarClone.progress / 100 }} />
@@ -172,7 +172,7 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
       composer={{
         noteLead: t('tools.avatar.note'),
         noteChips: [t('tools.avatar.note.exact', { n: 1 }), t('tools.avatar.note.gestures', { n: 3 })],
-        refs: [{ badge: '@Advisor', tone: '#1F2628' }],
+        refs: [{ badge: '@Advisor', tone: 'var(--c-tone-teal)' }],
         label: t('tools.avatar.composer.label'),
         text,
         onText: setText,

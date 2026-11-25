@@ -1,11 +1,11 @@
 import type { FeedItem } from '../types';
 
 /** Mock data for Quick Create, matching QuickCreate.dc.html. */
-export const quickTemplate = { name: 'Two-person product demo', aspect: '9:16', durationSec: 15, shots: 3, style: 'Dialogue', tone: '#202330' };
+export const quickTemplate = { name: 'Two-person product demo', aspect: '9:16', durationSec: 15, shots: 3, style: 'Dialogue', tone: 'var(--c-tone-indigo)' };
 
 export const quickSlots = [
-  { name: 'Lead', uploaded: true, shots: '1, 2, 3', tone: '#26232A' },
-  { name: 'Partner', uploaded: false, tone: '#26262A' },
+  { name: 'Lead', uploaded: true, shots: '1, 2, 3', tone: 'var(--c-tone-plum)' },
+  { name: 'Partner', uploaded: false, tone: 'var(--c-tone-neutral)' },
 ];
 
 export const quickLines = [
@@ -25,7 +25,7 @@ const ACTS = ['redo', 'sliders', 'frame', 'down', 'star'] as const;
 
 export const quickFeed: FeedItem[] = [
   {
-    kind: 'media', id: 'run_q1', aspect: '9/16', tiles: [{ tone: '#1C1C1F' }], video: true, progress: 62,
+    kind: 'media', id: 'run_q1', aspect: '9/16', tiles: [{ tone: 'var(--c-tone-blank)' }], video: true, progress: 62,
     prompt: 'Shot 2: golden-hour light outside the window. Everything else stays.', tags: ['9:16', '15s', '720p', '1 change'],
     steps: [
       { label: 'Find shot 2', state: 'done' },
@@ -35,7 +35,7 @@ export const quickFeed: FeedItem[] = [
     ],
     actions: [...ACTS],
   },
-  { kind: 'media', id: 'run_q2', aspect: '9/16', tiles: [{ tone: '#26232A' }], video: true, durationSec: 15, prompt: 'Swap the lead, switch lines to English', tags: ['9:16', '15s', '720p'], finishedAgoMin: 10, actions: [...ACTS] },
-  { kind: 'media', id: 'run_q3', aspect: '9/16', tiles: [{ tone: '#202330' }], video: true, durationSec: 10, prompt: 'Cut to 10s, keep both lines', tags: ['9:16', '10s', '720p'], finishedAgoMin: 60, actions: [...ACTS] },
-  { kind: 'media', id: 'run_q4', aspect: '9/16', tiles: [{ tone: '#1F2628' }], video: true, durationSec: 15, prompt: 'Same settings as the original', tags: ['9:16', '15s', '480p'], finishedAgoMin: 24 * 60, actions: [...ACTS] },
+  { kind: 'media', id: 'run_q2', aspect: '9/16', tiles: [{ tone: 'var(--c-tone-plum)' }], video: true, durationSec: 15, prompt: 'Swap the lead, switch lines to English', tags: ['9:16', '15s', '720p'], finishedAgoMin: 10, actions: [...ACTS] },
+  { kind: 'media', id: 'run_q3', aspect: '9/16', tiles: [{ tone: 'var(--c-tone-indigo)' }], video: true, durationSec: 10, prompt: 'Cut to 10s, keep both lines', tags: ['9:16', '10s', '720p'], finishedAgoMin: 60, actions: [...ACTS] },
+  { kind: 'media', id: 'run_q4', aspect: '9/16', tiles: [{ tone: 'var(--c-tone-teal)' }], video: true, durationSec: 15, prompt: 'Same settings as the original', tags: ['9:16', '15s', '480p'], finishedAgoMin: 24 * 60, actions: [...ACTS] },
 ];

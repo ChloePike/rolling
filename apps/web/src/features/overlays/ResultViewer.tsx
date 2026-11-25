@@ -177,7 +177,7 @@ export function ResultViewerContent({
           )}
           {mediaKind === 'video' ? (
             <button type="button" className={styles.play} aria-label={t(playing ? 'pause' : 'play')} onClick={() => setPlaying((p) => !p)}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="#F5F5F5" aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="var(--c-text-1)" aria-hidden="true">
                 <path d={playing ? 'M6 4h4v16H6z M14 4h4v16h-4z' : 'M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5z'} />
               </svg>
             </button>

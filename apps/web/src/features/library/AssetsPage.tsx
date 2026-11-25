@@ -7,7 +7,7 @@ import type { AssetItem, AssetType, FolderItem, VoiceState } from './assetsMocks
 import styles from './Assets.module.css';
 
 const cx = (...c: Array<string | false | undefined>) => c.filter(Boolean).join(' ');
-const TONES = ['#26232A', '#1F2628', '#202330', '#28251F', '#26262A', '#1F2622', '#2A2420', '#22262E'];
+const TONES = ['var(--c-tone-plum)', 'var(--c-tone-teal)', 'var(--c-tone-indigo)', 'var(--c-tone-sand)', 'var(--c-tone-neutral)', 'var(--c-tone-moss)', 'var(--c-tone-clay)', 'var(--c-tone-slate)'];
 
 export const ASSET_FOLDERS = ['all', 'characters', 'voices', 'favorites', 'prj_ridgeline', 'prj_desk'] as const;
 export type AssetFolder = string;
@@ -22,9 +22,9 @@ const FOLDER_ICONS: Record<FolderItem['kind'], string> = {
 };
 
 const VOICE_STYLE: Record<VoiceState, { bg: string; fg: string }> = {
-  ready: { bg: 'rgba(34,197,94,.14)', fg: '#4ADE80' },
-  cloning: { bg: 'rgba(59,130,246,.16)', fg: '#93C5FD' },
-  tooShort: { bg: 'rgba(255,197,61,.14)', fg: '#FFC53D' },
+  ready: { bg: 'var(--c-success-soft)', fg: 'var(--c-success)' },
+  cloning: { bg: 'var(--c-accent-soft)', fg: 'var(--c-link)' },
+  tooShort: { bg: 'var(--c-upgrade-soft)', fg: 'var(--c-upgrade)' },
 };
 
 const TYPES = ['all', 'image', 'video', 'audio', 'text'] as const;

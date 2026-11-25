@@ -1,7 +1,7 @@
 import type { CatalogModel } from '@/lib/models';
 import type { ModelOption } from '@/features/overlays';
 
-const TONES = ['#202330', '#26232A', '#28251F', '#1F2628', '#22262E', '#2A2420'];
+const TONES = ['var(--c-tone-indigo)', 'var(--c-tone-plum)', 'var(--c-tone-sand)', 'var(--c-tone-teal)', 'var(--c-tone-slate)', 'var(--c-tone-clay)'];
 
 /**
  * Credits for one run of `model` from its catalog price points (D-002: credits

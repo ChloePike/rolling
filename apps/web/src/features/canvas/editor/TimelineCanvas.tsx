@@ -35,41 +35,62 @@ import {
   type Track,
 } from '@rolling/core/timeline';
 
-/** Colors from CanvasEdit.dc.html and handoff section 2. */
-const C = {
-  bg: '#111113',
-  rule: '#1F1F23',
-  rulerRule: '#26262A',
-  tickMajor: '#55555E',
-  tickMinor: '#3A3A40',
-  tickLabel: '#7C7C84',
-  markRange: 'rgba(96,165,250,.35)',
-  playhead: '#60A5FA',
-  caption: '#3B3050',
-  voice: '#1F3A2C',
-  voiceWave: '#7FD1A4',
-  music: '#3A3224',
-  musicWave: '#D9B26A',
-  label: '#F5F5F5',
-  labelMuted: '#C8C8CC',
-  hatchA: '#1C1C1F',
-  hatchB: '#18181B',
-  hatchRing: '#3A3A40',
-  selected: '#F5F5F5',
-  envelope: '#F5F5F5',
-  dissolveFill: 'rgba(245,245,245,.18)',
-  dissolveRing: 'rgba(245,245,245,.3)',
-  removeFill: 'rgba(239,68,68,.18)',
-  removeRing: 'rgba(248,113,113,.7)',
-  changeFill: 'rgba(59,130,246,.18)',
-  changeRing: 'rgba(96,165,250,.7)',
+/**
+ * Colors from CanvasEdit.dc.html and handoff section 2, as CSS tokens (packages/ui/tokens.css).
+ * The canvas reads them with getComputedStyle and redraws when the theme changes (D-010).
+ */
+const TOKENS = {
+  bg: '--c-tl-bg',
+  rule: '--c-tl-rule',
+  rulerRule: '--c-tl-ruler-rule',
+  tickMajor: '--c-tl-tick-major',
+  tickMinor: '--c-tl-tick-minor',
+  tickLabel: '--c-tl-tick-label',
+  markRange: '--c-tl-mark-range',
+  playhead: '--c-tl-playhead',
+  caption: '--c-clip-caption',
+  voice: '--c-clip-voice',
+  voiceWave: '--c-wave-voice',
+  music: '--c-clip-music',
+  musicWave: '--c-wave-music',
+  label: '--c-tl-label',
+  labelMuted: '--c-tl-label-muted',
+  hatchA: '--c-tl-hatch-a',
+  hatchB: '--c-tl-hatch-b',
+  hatchRing: '--c-tl-hatch-ring',
+  selected: '--c-tl-selected',
+  envelope: '--c-tl-envelope',
+  dissolveFill: '--c-tl-dissolve-fill',
+  dissolveRing: '--c-tl-dissolve-ring',
+  removeFill: '--c-tl-remove-fill',
+  removeRing: '--c-tl-remove-ring',
+  changeFill: '--c-tl-change-fill',
+  changeRing: '--c-tl-change-ring',
+  /** RGB triplet; the clip hairline uses it at .08 to .25 alpha. */
+  hoverRgb: '--c-tl-hover-rgb',
+  video1: '--c-clip-video',
+  video1a: '--c-tl-video-tile-1a',
+  video1b: '--c-tl-video-tile-1b',
+  video1c: '--c-tl-video-tile-1c',
+  video2: '--c-clip-video-2',
+  video2a: '--c-tl-video-tile-2a',
+  video2b: '--c-tl-video-tile-2b',
+  video2c: '--c-tl-video-tile-2c',
 } as const;
 
+const C = {} as Record<keyof typeof TOKENS, string>;
 /** Video clip tint and thumbnail tile shades, by the shot's order in the project. */
-const VIDEO_TINTS = [
-  { bg: '#2B3550', tiles: ['#34405E', '#3A4766', '#323C58'] },
-  { bg: '#243A40', tiles: ['#2C4850', '#31525A', '#294248'] },
-] as const;
+let VIDEO_TINTS: ReadonlyArray<{ bg: string; tiles: readonly [string, string, string] }> = [];
+
+/** Reads the timeline colors from the root element's tokens (the active theme). */
+function readColors() {
+  const cs = getComputedStyle(document.documentElement);
+  for (const k of Object.keys(TOKENS) as Array<keyof typeof TOKENS>) C[k] = cs.getPropertyValue(TOKENS[k]).trim();
+  VIDEO_TINTS = [
+    { bg: C.video1, tiles: [C.video1a, C.video1b, C.video1c] },
+    { bg: C.video2, tiles: [C.video2a, C.video2b, C.video2c] },
+  ];
+}
 
 const FONT = "'Geist', system-ui, sans-serif";
 const DUR_SLOW = 320;
@@ -187,6 +208,7 @@ export function TimelineCanvas(props: TimelineCanvasProps) {
     }
     const ctx = canvas.getContext('2d');
     if (!ctx) return false;
+    if (!VIDEO_TINTS.length) readColors();
     if (!metrics.current) metrics.current = measureFonts(ctx);
     const m = metrics.current;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -374,7 +396,7 @@ export function TimelineCanvas(props: TimelineCanvasProps) {
     const ring = () => {
       if (selected) insetRing(ctx, x, y, w, h, 4, 1.5, C.selected);
       else if (notGenerated) insetRing(ctx, x, y, w, h, 4, 1, C.hatchRing);
-      else insetRing(ctx, x, y, w, h, 4, 1, `rgba(255,255,255,${(0.08 + 0.17 * hoverK).toFixed(3)})`);
+      else insetRing(ctx, x, y, w, h, 4, 1, `rgba(${C.hoverRgb},${(0.08 + 0.17 * hoverK).toFixed(3)})`);
     };
 
     if (notGenerated) {
@@ -760,6 +782,22 @@ export function TimelineCanvas(props: TimelineCanvasProps) {
       mq?.removeEventListener('change', onDpr);
       cancelAnimationFrame(raf.current);
       raf.current = 0;
+    };
+  }, [requestDraw]);
+
+  // Follow the theme (D-010): system changes and the data-theme override both re-read the tokens.
+  useEffect(() => {
+    const onTheme = () => {
+      readColors();
+      requestDraw();
+    };
+    const mq = window.matchMedia?.('(prefers-color-scheme: light)');
+    mq?.addEventListener?.('change', onTheme);
+    const mo = new MutationObserver(onTheme);
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => {
+      mq?.removeEventListener?.('change', onTheme);
+      mo.disconnect();
     };
   }, [requestDraw]);
 

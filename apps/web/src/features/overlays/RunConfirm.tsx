@@ -50,7 +50,7 @@ export interface RunConfirmProps extends Omit<RunConfirmPanelProps, 'onCancel'> 
 }
 
 const KIND_ICON: Record<RunRowKind, OverlayIcon> = { video: 'video', image: 'image', audio: 'audio', text: 'text' };
-const KIND_TONE: Record<RunRowKind, string> = { video: '#202330', image: '#1F2628', audio: '#28251F', text: '#26262A' };
+const KIND_TONE: Record<RunRowKind, string> = { video: 'var(--c-tone-indigo)', image: 'var(--c-tone-teal)', audio: 'var(--c-tone-sand)', text: 'var(--c-tone-neutral)' };
 
 /**
  * Run confirmation (RunConfirm.dc.html) as a modal: single run or run-all plan,
@@ -133,7 +133,7 @@ export function RunConfirmPanel({
         {rows.map((r, i) => (
           <div key={r.id} role="listitem" className={cx('rl-stagger', styles.row)} style={staggerStyle(i)} data-state-kind={r.state}>
             <span className={styles.tile} style={{ background: r.tone ?? KIND_TONE[r.kind] }}>
-              <Svg name={KIND_ICON[r.kind]} size={15} stroke="#C8C8CC" />
+              <Svg name={KIND_ICON[r.kind]} size={15} stroke="var(--c-text-2)" />
             </span>
             <span className={styles.rowText}>
               <span className={styles.rowName}>{r.name}</span>

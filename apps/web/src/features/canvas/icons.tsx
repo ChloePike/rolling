@@ -60,7 +60,7 @@ export function CanvasLogo() {
   return (
     <svg width="24" height="24" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
       <circle cx="50" cy="50" r="40" fill="var(--c-brand)" />
-      <circle cx="64.7" cy="35.3" r="11.6" fill="#161618" />
+      <circle cx="64.7" cy="35.3" r="11.6" fill="var(--c-surface-3)" />
     </svg>
   );
 }

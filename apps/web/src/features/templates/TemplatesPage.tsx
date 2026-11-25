@@ -14,7 +14,7 @@ const FACETS = [
   { key: 'aspect', value: '9:16' },
   { key: 'duration', value: 'any' },
 ] as const;
-const TONES = ['#26232A', '#1F2628', '#202330', '#28251F', '#26262A', '#1F2622', '#2A2420', '#22262E'];
+const TONES = ['var(--c-tone-plum)', 'var(--c-tone-teal)', 'var(--c-tone-indigo)', 'var(--c-tone-sand)', 'var(--c-tone-neutral)', 'var(--c-tone-moss)', 'var(--c-tone-clay)', 'var(--c-tone-slate)'];
 
 /** “12K” from 10,000 up, otherwise “8,640” (handoff 5 number rules). */
 export function formatUses(intl: IntlShape, n: number): string {

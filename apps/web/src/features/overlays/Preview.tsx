@@ -84,8 +84,8 @@ export function OverlayPreview({ c = 'modelPicker', kind, variant, as = 'panel',
           { label: 'Cost', value: '10 credits' },
         ]}
         assets={[
-          { id: 'ast_1', name: 'Product photo', tone: '#26232A' },
-          { id: 'ast_2', name: 'Character', tone: '#1F2628' },
+          { id: 'ast_1', name: 'Product photo', tone: 'var(--c-tone-plum)' },
+          { id: 'ast_2', name: 'Character', tone: 'var(--c-tone-teal)' },
         ]}
         actions={mockResultActions}
         onAction={() => undefined}

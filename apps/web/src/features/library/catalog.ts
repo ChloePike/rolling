@@ -75,8 +75,8 @@ export function findCategory(key: string | undefined, groups: CategoryGroupView[
 
 /** License chip colors from PublicLibrary.dc.html. First-party items carry no label (D-004). */
 export const LICENSE_CHIP: Record<'cc0' | 'mit', { bg: string; fg: string }> = {
-  cc0: { bg: 'rgba(34,197,94,.12)', fg: '#4ADE80' },
-  mit: { bg: 'rgba(59,130,246,.14)', fg: '#93C5FD' },
+  cc0: { bg: 'var(--c-success-soft-2)', fg: 'var(--c-success)' },
+  mit: { bg: 'color-mix(in srgb,var(--c-accent) 14%,transparent)', fg: 'var(--c-link)' },
 };
 
 export { shortId } from '@/lib/publicLibrary';

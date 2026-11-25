@@ -8,8 +8,8 @@ export const placeholderProjectId = 'prj_demo';
 
 /** Workspaces for the account menu switcher. */
 export const placeholderWorkspaces = [
-  { id: 'ws_personal', name: 'Personal', kind: 'personal' as const, mark: 'A', tone: '#333338', members: 1 },
-  { id: 'ws_ridgeline', name: 'Ridgeline brand team', kind: 'team' as const, mark: 'R', tone: '#2B3A33', members: 5 },
+  { id: 'ws_personal', name: 'Personal', kind: 'personal' as const, mark: 'A', tone: 'var(--c-tone-graphite)', members: 1 },
+  { id: 'ws_ridgeline', name: 'Ridgeline brand team', kind: 'team' as const, mark: 'R', tone: 'var(--c-tone-fern)', members: 5 },
 ];
 
 export const placeholderHandle = 'alex';

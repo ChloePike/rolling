@@ -2,7 +2,7 @@ import type { CatalogModel } from '@/lib/models';
 import type { ModelBadge, ModelKind, ModelOption } from './types';
 
 /** Tile tones from ModelPicker.dc.html, assigned in list order. */
-const TONES = ['#202330', '#26232A', '#28251F', '#1F2628'];
+const TONES = ['var(--c-tone-indigo)', 'var(--c-tone-plum)', 'var(--c-tone-sand)', 'var(--c-tone-teal)'];
 const BADGES: ReadonlySet<string> = new Set(['popular', 'new', 'budget', 'pro', 'comingSoon']);
 
 function mark(name: string): string {

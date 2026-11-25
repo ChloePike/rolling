@@ -91,8 +91,8 @@ export function ScriptDialog({ state, onClose, title, version }: LayerProps & { 
                 </span>
                 <span>{intl.formatMessage({ id: 'canvas.node.seconds' }, { n: r.seconds })}</span>
                 <span className={styles.thumbs}>
-                  <span className={styles.thumb} style={{ background: '#26232A' }} />
-                  <span className={styles.thumb} style={{ background: '#1F2628' }} />
+                  <span className={styles.thumb} style={{ background: 'var(--c-tone-plum)' }} />
+                  <span className={styles.thumb} style={{ background: 'var(--c-tone-teal)' }} />
                 </span>
                 <span className={styles.state} data-status={r.status}>
                   <FormattedMessage id={`canvas.script.status.${r.status}`} />

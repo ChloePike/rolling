@@ -100,7 +100,7 @@ export function QuickCreatePage({ initialOverlay, models: modelsOverride, plan: 
     <>
       <AsideCard row gap={12} testId="template">
         <div className={styles.tplThumb} style={{ background: quickTemplate.tone }}>
-          <ToolIcon name="play" size={14} filled color="#F5F5F5" />
+          <ToolIcon name="play" size={14} filled color="var(--c-text-1)" />
         </div>
         <div className={styles.tplText}>
           <span className={styles.tplKicker}>
@@ -187,7 +187,7 @@ export function QuickCreatePage({ initialOverlay, models: modelsOverride, plan: 
       composer={{
         noteLead: t('tools.quick.note'),
         noteChips: [adv ? t('tools.quick.note.chipAdv') : t('tools.quick.note.chip')],
-        refs: [{ badge: '@Lead', tone: '#26232A' }],
+        refs: [{ badge: '@Lead', tone: 'var(--c-tone-plum)' }],
         label: t('tools.quick.composer.label'),
         text,
         onText: setText,

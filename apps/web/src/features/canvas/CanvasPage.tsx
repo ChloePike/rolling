@@ -423,8 +423,8 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
         const shot = `v${s.n}`;
         ids.push(key, shot);
         ops.push(
-          { op: 'addNode', tempId: key, kind: 'image', title: `${s.title} keyframe`, params: { tone: '#26232A', prompt: s.visual, model: 'Seedream 5.0 Pro', mode: 'Image to image', ratio: '9:16', resolution: '2K', count: 1, quick: ['Style', 'Framing', 'Lighting', 'Camera'], refs: ['m1'], runCost: 2 }, position: { x: 448 + i * 600, y } },
-          { op: 'addNode', tempId: shot, kind: 'video', title: `Shot ${String.fromCharCode(65 + i)}: ${s.title}`, params: { tone: '#202330', seconds: s.seconds, prompt: s.visual, model: 'Seedance 2.5', mode: 'First frame', ratio: '9:16', resolution: '720p', length: s.seconds, extra: '×1 · Audio on', quick: ['Style', 'Camera', 'Lighting', 'Pace'], refs: [], runCost: 8 }, position: { x: 448 + i * 600 + 270, y } },
+          { op: 'addNode', tempId: key, kind: 'image', title: `${s.title} keyframe`, params: { tone: 'var(--c-tone-plum)', prompt: s.visual, model: 'Seedream 5.0 Pro', mode: 'Image to image', ratio: '9:16', resolution: '2K', count: 1, quick: ['Style', 'Framing', 'Lighting', 'Camera'], refs: ['m1'], runCost: 2 }, position: { x: 448 + i * 600, y } },
+          { op: 'addNode', tempId: shot, kind: 'video', title: `Shot ${String.fromCharCode(65 + i)}: ${s.title}`, params: { tone: 'var(--c-tone-indigo)', seconds: s.seconds, prompt: s.visual, model: 'Seedance 2.5', mode: 'First frame', ratio: '9:16', resolution: '720p', length: s.seconds, extra: '×1 · Audio on', quick: ['Style', 'Camera', 'Lighting', 'Pace'], refs: [], runCost: 8 }, position: { x: 448 + i * 600 + 270, y } },
           { op: 'connect', from: { node: key, port: 'out' }, to: { node: shot, port: 'frame' } },
         );
       });
@@ -489,8 +489,8 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
     const defaults: Record<string, Record<string, unknown>> = {
       text: { text: '' },
       script: { rows: [], versionLabel: 'v1' },
-      image: { tone: '#26232A', prompt: '', model: 'Seedream 5.0 Pro', mode: 'Text to image', ratio: '9:16', resolution: '2K', count: 1, quick: ['Style', 'Framing', 'Lighting', 'Camera'], refs: [], runCost: 2 },
-      video: { tone: '#202330', seconds: 5, prompt: '', model: 'Seedance 2.5', mode: 'First frame', ratio: '9:16', resolution: '720p', length: 5, extra: '×1 · Audio on', quick: ['Style', 'Camera', 'Lighting', 'Pace'], refs: [], runCost: 8 },
+      image: { tone: 'var(--c-tone-plum)', prompt: '', model: 'Seedream 5.0 Pro', mode: 'Text to image', ratio: '9:16', resolution: '2K', count: 1, quick: ['Style', 'Framing', 'Lighting', 'Camera'], refs: [], runCost: 2 },
+      video: { tone: 'var(--c-tone-indigo)', seconds: 5, prompt: '', model: 'Seedance 2.5', mode: 'First frame', ratio: '9:16', resolution: '720p', length: 5, extra: '×1 · Audio on', quick: ['Style', 'Camera', 'Lighting', 'Pace'], refs: [], runCost: 8 },
       audio: { voice: 'Clear female', seconds: 0, wave: [], runCost: 2 },
     };
     const r = commit([
@@ -618,10 +618,10 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
           aria-label={intl.formatMessage({ id: 'canvas.credits.label' })}
           onClick={() => setCreditsOpen((o) => !o)}
         >
-          <CanvasIcon name="coin" size={15} stroke="#9A9AA0" />
+          <CanvasIcon name="coin" size={15} stroke="var(--c-text-3)" />
           <span className={canvas.creditsValue}>{intl.formatNumber(MOCK_CREDITS.balance)}</span>
           <span className={canvas.creditsPlus}>
-            <CanvasIcon name="plus" size={13} strokeWidth={2.2} stroke="#F5F5F5" />
+            <CanvasIcon name="plus" size={13} strokeWidth={2.2} stroke="var(--c-text-1)" />
           </span>
         </button>
         <button type="button" className={canvas.share} onClick={() => setOverlay('share')} aria-haspopup="dialog">

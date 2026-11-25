@@ -123,7 +123,7 @@ export function ModelPicker({
     >
       <div className={styles.searchRow}>
         <label htmlFor={searchId} className={styles.search}>
-          <Svg name="search" size={15} stroke="#7C7C84" strokeLinejoin={undefined} />
+          <Svg name="search" size={15} stroke="var(--c-text-4)" strokeLinejoin={undefined} />
           <input
             id={searchId}
             className={styles.input}
@@ -147,7 +147,7 @@ export function ModelPicker({
         onClick={() => onValueChange(AUTO_MODEL)}
       >
         <span className={styles.autoIcon}>
-          <Svg name="cube" size={18} stroke="#C8C8CC" />
+          <Svg name="cube" size={18} stroke="var(--c-text-2)" />
         </span>
         <span className={styles.autoText}>
           <span className={styles.autoName}>

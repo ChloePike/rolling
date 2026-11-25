@@ -50,7 +50,7 @@ function Media({ item, onOpen }: { item: MediaRun; onOpen: () => void }) {
               {t.label && <span className={styles.tileLabel}>{t.label}</span>}
               {!running && item.video && (
                 <span className={styles.play}>
-                  <ToolIcon name="play" size={14} filled color="#F5F5F5" />
+                  <ToolIcon name="play" size={14} filled color="var(--c-text-1)" />
                 </span>
               )}
               {running && <span className={styles.pct}>{pct}</span>}

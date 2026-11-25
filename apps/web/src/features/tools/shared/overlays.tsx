@@ -192,8 +192,8 @@ export function ToolResultViewer({ open, aspect, onClose }: ViewerProps) {
         { label: t('tools.viewer.cost'), value: intl.formatMessage({ id: 'tools.viewer.credits' }, { n: 10 }) },
       ]}
       assets={[
-        { id: 'ast_lead', name: '@Lead', tone: '#26232A' },
-        { id: 'ast_room', name: 'Kitchen set', tone: '#1F2628' },
+        { id: 'ast_lead', name: '@Lead', tone: 'var(--c-tone-plum)' },
+        { id: 'ast_room', name: 'Kitchen set', tone: 'var(--c-tone-teal)' },
       ]}
       actions={mockResultActions}
       onAction={() => onClose()}

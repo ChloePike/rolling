@@ -98,12 +98,12 @@ export const MOCK_AUDIO: Record<string, AudioInfo> = {
 };
 
 export const MOCK_BIN: BinItem[] = [
-  { id: 'bin_shot_a', kind: 'video', title: 'Shot A, hero', seconds: 4, color: '#2B3550', nodeId: 'node_shot_a', assetId: 'ast_shot_a' },
-  { id: 'bin_shot_b', kind: 'video', title: 'Shot B, cap pop', seconds: 5, color: '#243A40', nodeId: 'node_shot_b', assetId: 'ast_shot_b' },
-  { id: 'bin_shot_c', kind: 'video', title: 'Shot C, logo', seconds: 3, notGenerated: true, color: '#1C1C1F', nodeId: 'node_shot_c' },
-  { id: 'bin_voiceover', kind: 'voice', title: 'Voiceover', seconds: 8, color: '#1F3A2C', assetId: 'ast_voiceover' },
-  { id: 'bin_music', kind: 'music', title: 'Music, morning', seconds: 30, color: '#3A3224', assetId: 'ast_music_morning' },
-  { id: 'bin_keyframe', kind: 'image', title: 'Product keyframe', seconds: null, color: '#2E2A3A', assetId: 'ast_keyframe' },
+  { id: 'bin_shot_a', kind: 'video', title: 'Shot A, hero', seconds: 4, color: 'var(--c-clip-video)', nodeId: 'node_shot_a', assetId: 'ast_shot_a' },
+  { id: 'bin_shot_b', kind: 'video', title: 'Shot B, cap pop', seconds: 5, color: 'var(--c-clip-video-2)', nodeId: 'node_shot_b', assetId: 'ast_shot_b' },
+  { id: 'bin_shot_c', kind: 'video', title: 'Shot C, logo', seconds: 3, notGenerated: true, color: 'var(--c-tone-blank)', nodeId: 'node_shot_c' },
+  { id: 'bin_voiceover', kind: 'voice', title: 'Voiceover', seconds: 8, color: 'var(--c-clip-voice)', assetId: 'ast_voiceover' },
+  { id: 'bin_music', kind: 'music', title: 'Music, morning', seconds: 30, color: 'var(--c-clip-music)', assetId: 'ast_music_morning' },
+  { id: 'bin_keyframe', kind: 'image', title: 'Product keyframe', seconds: null, color: 'var(--c-tone-lilac)', assetId: 'ast_keyframe' },
 ];
 
 export function mockProject(projectId: string): EditorProject {
