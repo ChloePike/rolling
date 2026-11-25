@@ -7,11 +7,11 @@ import { ExportDialog } from './ExportDialog';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent } from 'react';
 import { useIntl } from 'react-intl';
-import { agentFailure, applyEditProposal, EditorAgentReply, getEditorProject, mockRun, proposeEdit, reassemble, type EditorProjectReal, type RunOutcome, type RunRequest } from './api';
-import { isMockApi, savePendingAction } from '@/features/overlays/backend';
+import { agentFailure, applyEditProposal, EditorAgentReply, getEditorProject, mockRun, proposeEdit, quoteNode, reassemble, type EditorProjectReal, type RunOutcome, type RunRequest } from './api';
+import { assetMediaUrl, isMockApi, savePendingAction } from '@/features/overlays/backend';
 import { discardProposal } from '@/features/overlays/agent';
 import { subscribeProjectMessages } from '../api';
-import { fetchTimeline, SERVER_OPS, timelineDiff, TimelineSync } from './realTimeline';
+import { fetchTimeline, transitionOps, TimelineSync } from './realTimeline';
 import type { TimelineOp } from '@rolling/core/timeline';
 import { Bin } from './Bin';
 import styles from './Editor.module.css';
@@ -93,7 +93,6 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
   /** The next change came from the server: don't send it back. */
   const fromServer = useRef(false);
   const syncedEdl = useRef<Edl>(project.edl);
-  const localOnlyNoticed = useRef(false);
   const dispatch = useCallback((action: Parameters<typeof rawDispatch>[0]) => {
     commitOps.current = action.type === 'commit' ? action.ops : null;
     rawDispatch(action);
@@ -142,14 +141,8 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
     }
     const committed = commitOps.current;
     commitOps.current = null;
-    const ops = committed && committed.every((o) => SERVER_OPS.has(o.op)) ? committed : timelineDiff(prev, next);
-    if (!ops) {
-      if (!localOnlyNoticed.current) {
-        localOnlyNoticed.current = true;
-        toast.show({ message: t('editor.sync.localOnly') });
-      }
-      return;
-    }
+    // Commits carry their ops (the server takes every op the editor applies); undo/redo/reset send a diff or the whole cut.
+    const ops = committed ?? transitionOps(prev, next);
     void tsync.push(ops).then((outcome) => {
       if (outcome === 'synced') return;
       if (outcome === 'offline') return void toast.show({ message: t('editor.sync.offline') });
@@ -164,10 +157,38 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.change.version]);
 
-  // Edits from other tabs and people (`timeline.patched` on the project channel).
+  /**
+   * A shot's new version arrived: the clip keeps its place, trims and effects;
+   * only its shot reference changes (`replaceShot`, saved like any edit).
+   */
+  const replaceClipShot = useCallback(
+    (clipId: string, nodeId: string, assetId: string) => {
+      const current = findClip(stateRef.current.edl, clipId)?.clip as MediaClip | undefined;
+      if (current && current.assetId !== assetId) {
+        if (project.mediaUrls && !project.mediaUrls[assetId]) project.mediaUrls[assetId] = assetMediaUrl(assetId);
+        dispatch({ type: 'commit', ops: [{ op: 'replaceShot', clipId, nodeId, assetId }], animate: false });
+      }
+      if (stateRef.current.running.includes(clipId)) dispatch({ type: 'running', clipId, on: false });
+    },
+    // stateRef and dispatch are stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [project],
+  );
+
+  // Edits from other tabs and people (`timeline.patched` on the project channel), and shots
+  // generating from here (`node.version` / `job.failed` for a clip that is running).
   useEffect(() => {
     if (!tsync) return;
     return subscribeProjectMessages(project.id, (msg) => {
+      if (msg.type === 'node.version' || msg.type === 'job.failed') {
+        const p = msg.payload as { nodeId?: string; version?: { assetId?: string | null; active?: boolean } | null };
+        const running = stateRef.current.running.filter((id) => (findClip(stateRef.current.edl, id)?.clip as MediaClip | undefined)?.nodeId === p.nodeId);
+        for (const clipId of running) {
+          if (msg.type === 'job.failed') dispatch({ type: 'running', clipId, on: false });
+          else if (p.version?.assetId && p.version.active !== false) replaceClipShot(clipId, p.nodeId!, p.version.assetId);
+        }
+        return;
+      }
       if (msg.type !== 'timeline.patched') return;
       const p = msg.payload as { canvasId: string; revision: number; edl?: Edl };
       if (p.canvasId !== tsync.canvasId || p.revision <= tsync.revision || tsync.busy) return;
@@ -177,7 +198,7 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
         resetFromServer(tl.edl);
       });
     });
-  }, [tsync, project.id, resetFromServer]);
+  }, [tsync, project.id, resetFromServer, replaceClipShot, dispatch]);
 
   useEffect(() => () => playhead.dispose(), [playhead]);
   useEffect(() => playhead.setDuration(edlDuration(state.edl)), [playhead, state.edl]);
@@ -279,21 +300,30 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
     const clip = findClip(state.edl, clipId)?.clip as MediaClip | undefined;
     if (!clip?.nodeId || state.running.includes(clipId)) return;
     if (onRequestRun) return void run(clipId);
-    // Real mode without a host pipeline: shots generate on the canvas (quote, confirm, live progress).
-    if (tsync) {
-      toast.show({ message: t('editor.run.onCanvas') });
-      return void onOpenOnCanvas?.(clip.nodeId);
-    }
-    const shot = project.shots[clip.nodeId];
+    const nodeId = clip.nodeId;
+    const shot = project.shots[nodeId];
     const regenerate = clip.assetId !== null;
     runFlow.request({
-      cost: shotCredits(clip.nodeId),
+      cost: shotCredits(nodeId),
       kind: 'video',
       actionLabel: t(regenerate ? 'editor.run.action' : 'editor.run.generateAction'),
       meta: shot ? t('editor.inspector.shotMeta', { model: shot.model, resolution: shot.resolution, seconds: shot.seconds }) : '',
+      // Real mode: the shot's canvas node runs in place (`scope: 'node'`); the clip updates on `node.version`.
+      ...(tsync
+        ? {
+            projectId: project.id,
+            quote: () => quoteNode(project.id, nodeId),
+            onStarted: () => dispatch({ type: 'running', clipId, on: true }),
+            onFailed: () => dispatch({ type: 'running', clipId, on: false }),
+          }
+        : {}),
       onDone: (r) => {
         // Regenerate keeps the clip's place, trims and effects: only the shot reference changes.
-        const nodeId = clip.nodeId!;
+        if (tsync) {
+          if (r.assetId) replaceClipShot(clipId, nodeId, r.assetId);
+          else dispatch({ type: 'running', clipId, on: false });
+          return;
+        }
         dispatch({ type: 'commit', ops: [{ op: 'replaceShot', clipId, nodeId, assetId: `ast_${nodeId.replace(/^node_/, '')}_${r.id}` }], animate: false });
       },
     });
@@ -509,6 +539,11 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
     [state.tracks],
   );
   const fmt = (n: number) => intl.formatNumber(n, { useGrouping: false });
+  /** Output format (frame size and rate): an undoable edit, saved like any other. */
+  const setFormat = (width: number, height: number, fps: number) => {
+    if (width === state.edl.width && height === state.edl.height && fps === state.edl.fps) return;
+    dispatch({ type: 'commit', ops: [{ op: 'setFormat', width, height, fps }], animate: false });
+  };
 
 
   return (
@@ -569,13 +604,13 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
               key: f.key,
               label: t('editor.formatSize', { ratio: f.key, width: fmt(f.width), height: fmt(f.height) }),
               checked: state.edl.width === f.width && state.edl.height === f.height,
-              onSelect: () => dispatch({ type: 'format', width: f.width, height: f.height, fps: state.edl.fps }),
+              onSelect: () => setFormat(f.width, f.height, state.edl.fps),
             })),
             ...FPS.map((fps) => ({
               key: `fps${fps}`,
               label: t('editor.formatFps', { fps }),
               checked: state.edl.fps === fps,
-              onSelect: () => dispatch({ type: 'format', width: state.edl.width, height: state.edl.height, fps }),
+              onSelect: () => setFormat(state.edl.width, state.edl.height, fps),
             })),
           ]}
           trigger={(tp) => (

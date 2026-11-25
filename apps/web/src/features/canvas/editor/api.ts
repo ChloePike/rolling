@@ -3,9 +3,10 @@ import { assembleFromScript } from '@rolling/core/timeline';
 import { planCutTo } from '@rolling/core/timeline';
 import { edlDuration, type Edl, type TimelineOp } from '@rolling/core/timeline';
 import type { GraphNode } from '@rolling/core/graph';
-import { assetMediaUrl, isMockApi } from '@/features/overlays/backend';
+import { apiFetch, assetMediaUrl, isApiError, isMockApi } from '@/features/overlays/backend';
 import { agentFailure, applyProposal, sendTurn, threadFor, type AgentFailure, type Proposal } from '@/features/overlays/agent';
 import { getProject, openSession, subscribeProjectMessages } from '../api';
+import type { SpecQuote } from '@/features/overlays/runs';
 import { canvasIdFor, fetchTimeline, reassembleTimeline } from './realTimeline';
 import type { BinItem, ShotInfo } from './mocks';
 
@@ -183,6 +184,11 @@ export interface RunRequest {
   credits: number;
 }
 
+/** Real mode: quote regenerating one shot's canvas node (`POST /api/runs/quote { projectId, scope: 'node', nodeIds }`). */
+export function quoteNode(projectId: string, nodeId: string): Promise<SpecQuote> {
+  return apiFetch<SpecQuote>('/runs/quote', { method: 'POST', body: { projectId, scope: 'node', nodeIds: [nodeId] } });
+}
+
 export type RunOutcome = { status: 'done'; nodeId: string; assetId: string } | { status: 'canceled' };
 
 /**
@@ -195,7 +201,7 @@ export async function mockRun(run: RunRequest): Promise<RunOutcome> {
   return { status: 'done', nodeId: run.nodeId, assetId: `ast_${run.nodeId.replace(/^node_/, '')}_${Date.now().toString(36)}` };
 }
 
-/* ---------- Export (`POST /api/projects/:id/exports` → ExportWorkflow + FFmpeg; progress over the project socket) ---------- */
+/* ---------- Export (`POST /api/canvases/:id/export` → ExportWorkflow + FFmpeg; progress over the project socket) ---------- */
 
 export interface ExportOptions {
   /** Whole cut, or the mark in → mark out range. */
@@ -205,20 +211,123 @@ export interface ExportOptions {
 }
 
 export type ExportEvent =
+  | { type: 'started'; exportId: string }
   | { type: 'progress'; progress: number }
   | { type: 'done'; exportId: string; url: string; fileName: string; seconds: number }
-  | { type: 'failed'; reason: string };
+  | { type: 'failed'; reason: string; code?: string };
+
+/** `GET /api/exports/:id` → `export` (docs/api.md → Editor). */
+export interface ExportView {
+  id: string;
+  status: 'queued' | 'running' | 'done' | 'failed';
+  progress: number;
+  duration: number;
+  fileName: string;
+  url: string | null;
+  error: { code: string; message: string } | null;
+}
 
 /** Interval between mock `export.progress` events, ms. */
 export const MOCK_EXPORT_TICK = 120;
+/** Real mode: status poll while the socket is quiet (missed events, reconnects), ms. */
+export const EXPORT_POLL_MS = 4000;
+
+export function getExport(exportId: string): Promise<ExportView> {
+  return apiFetch<{ export: ExportView }>(`/exports/${encodeURIComponent(exportId)}`).then((r) => r.export);
+}
+
+/** A fresh signed download URL for a finished export (the download's `refreshUrl`). */
+export async function exportDownloadUrl(exportId: string): Promise<string | null> {
+  return (await getExport(exportId)).url;
+}
 
 /**
- * Starts an export and streams its events. Returns a cancel function. The
- * mock renders nothing: the "file" is the EDL as JSON (named so), so the
- * download link works end to end until the FFmpeg container is wired.
- * `?mock=exportfail` fails halfway.
+ * Real mode: starts the export, then follows `export.progress|done|failed`
+ * on the project channel, polling `GET /api/exports/:id` as a fallback. The
+ * returned function stops following (the render itself finishes on the
+ * server and its file stays in the project's assets).
+ */
+function startExportReal(projectId: string, opts: ExportOptions, onEvent: (e: ExportEvent) => void): () => void {
+  let stopped = false;
+  let exportId: string | null = null;
+  let last = -1;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let off: () => void = () => {};
+  const stop = () => {
+    stopped = true;
+    off();
+    if (timer) clearTimeout(timer);
+  };
+  const progress = (p: number) => {
+    if (p <= last) return;
+    last = p;
+    onEvent({ type: 'progress', progress: p });
+  };
+  const finish = (e: ExportEvent) => {
+    if (stopped) return;
+    stop();
+    onEvent(e);
+  };
+  const fromView = (v: ExportView) => {
+    if (stopped) return;
+    if (v.status === 'failed') return finish({ type: 'failed', reason: v.error?.message ?? '', ...(v.error ? { code: v.error.code } : {}) });
+    if (v.status === 'done' && v.url) return finish({ type: 'done', exportId: v.id, url: v.url, fileName: v.fileName, seconds: v.duration });
+    progress(v.progress);
+  };
+  const poll = () => {
+    if (stopped || !exportId) return;
+    const id = exportId;
+    getExport(id).then(fromView, () => {}).finally(() => {
+      if (!stopped) timer = setTimeout(poll, EXPORT_POLL_MS);
+    });
+  };
+  const session = openSession(projectId);
+  const canvasId = session?.canvasId() ?? canvasIdFor(projectId);
+  const range = opts.range === 'marks' && opts.marks.out > opts.marks.in ? { start: opts.marks.in, end: opts.marks.out } : undefined;
+  // Events can arrive before the POST answers: keep them until the id is known.
+  const early: { type: string; payload: Record<string, unknown> }[] = [];
+  const onMessage = (msg: { type: string; payload: Record<string, unknown> }) => {
+    if (!exportId) return void early.push(msg);
+    if (msg.payload.exportId !== exportId) return;
+    if (msg.type === 'export.progress') progress(Number(msg.payload.progress ?? 0));
+    else if (msg.type === 'export.failed') finish({ type: 'failed', reason: String(msg.payload.reason ?? ''), code: String(msg.payload.code ?? '') });
+    else if (msg.type === 'export.done') {
+      const url = msg.payload.url;
+      // Mature exports carry no URL in the broadcast: ask for this viewer's.
+      if (typeof url === 'string') finish({ type: 'done', exportId, url, fileName: String(msg.payload.fileName ?? 'export.mp4'), seconds: Number(msg.payload.duration ?? 0) });
+      else void getExport(exportId).then(fromView, () => {});
+    }
+  };
+  off = subscribeProjectMessages(projectId, (msg) => {
+    if (msg.type.startsWith('export.')) onMessage(msg as { type: string; payload: Record<string, unknown> });
+  });
+  apiFetch<{ export: ExportView }>(`/canvases/${encodeURIComponent(canvasId)}/export`, {
+    method: 'POST',
+    body: { preset: opts.resolution === '720p' ? 'mp4_720p' : 'mp4_1080p', ...(range ? { range } : {}) },
+  }).then(
+    ({ export: v }) => {
+      if (stopped) return;
+      exportId = v.id;
+      onEvent({ type: 'started', exportId: v.id });
+      fromView(v);
+      for (const m of early.splice(0)) onMessage(m);
+      timer = setTimeout(poll, EXPORT_POLL_MS);
+    },
+    (e: unknown) => {
+      const code = isApiError(e) ? e.code : 'NETWORK';
+      finish({ type: 'failed', reason: e instanceof Error ? e.message : String(e), code });
+    },
+  );
+  return stop;
+}
+
+/**
+ * Starts an export and streams its events. Returns a cancel function. Real
+ * mode: `POST /api/canvases/:id/export`. The mock renders nothing: the "file"
+ * is the EDL as JSON (named so). `?mock=exportfail` fails halfway.
  */
 export function startExport(projectId: string, edl: Edl, opts: ExportOptions, onEvent: (e: ExportEvent) => void): () => void {
+  if (!isMockApi()) return startExportReal(projectId, opts, onEvent);
   const fail = typeof location !== 'undefined' && new URLSearchParams(location.search).get('mock') === 'exportfail';
   const from = opts.range === 'marks' ? opts.marks.in : 0;
   const to = opts.range === 'marks' ? opts.marks.out : edlDuration(edl);

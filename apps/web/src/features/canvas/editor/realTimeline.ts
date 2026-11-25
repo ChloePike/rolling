@@ -5,15 +5,17 @@
  * one request at a time. Remote edits arrive as `timeline.patched` on the
  * project channel; the editor then reloads the EDL.
  *
- * The server accepts `trim`, `move`, `split`, `remove`, `setGain`,
- * `setCaption` and `replaceShot`. Commits with other ops (transitions, fades,
- * speed, transforms, insert) and undo steps that need them stay on this
- * device until the API takes them (see report: backend gaps).
+ * Client and server validate ops with the same schema
+ * (`@rolling/core/timeline` → `TimelineOpSchema`): every committed op is sent
+ * as is (effects, speed, fades, transitions, inserts and format included).
+ * Undo, redo and resets carry no ops: they send the smallest op diff when one
+ * exists, else `replaceEdl` with the whole timeline.
  */
-import type { Clip, Edl, MediaClip, TimelineOp } from '@rolling/core/timeline';
+import { TIMELINE_OP_NAMES, type Clip, type Edl, type MediaClip, type TimelineOp } from '@rolling/core/timeline';
 import { apiFetch, isApiError } from '@/features/overlays/backend';
 
-export const SERVER_OPS = new Set<TimelineOp['op']>(['trim', 'move', 'split', 'remove', 'setGain', 'setCaption', 'replaceShot']);
+/** Every op the server accepts (the shared schema's list). */
+export const SERVER_OPS = new Set<TimelineOp['op']>(TIMELINE_OP_NAMES);
 
 export interface TimelineState {
   canvasId: string;
@@ -76,6 +78,17 @@ export function timelineDiff(from: Edl, to: Edl): TimelineOp[] | null {
   return ops;
 }
 
+/**
+ * Ops that turn `from` into `to` for undo/redo/reset: the op diff when it can
+ * express the change, else the whole timeline as `replaceEdl` (its
+ * `baseRevision` is filled in by `TimelineSync` when it is sent).
+ */
+export function transitionOps(from: Edl, to: Edl): TimelineOp[] {
+  const sameFormat = from.width === to.width && from.height === to.height && from.fps === to.fps;
+  const diff = sameFormat ? timelineDiff(from, to) : null;
+  return diff ?? [{ op: 'replaceEdl', edl: to, baseRevision: 0 }];
+}
+
 export type PushOutcome = 'synced' | 'conflict' | 'invalid' | 'offline';
 
 /** Serial sender: one patch in flight, each based on the last revision the server answered. */
@@ -98,7 +111,8 @@ export class TimelineSync {
       try {
         const r = await apiFetch<TimelineState & { ops: TimelineOp[] }>(`/canvases/${encodeURIComponent(this.canvasId)}/timeline/patch`, {
           method: 'POST',
-          body: { baseRevision: this.revision, ops },
+          // A whole-timeline replace is based on the revision it is sent against.
+          body: { baseRevision: this.revision, ops: ops.map((o) => (o.op === 'replaceEdl' ? { ...o, baseRevision: this.revision } : o)) },
         });
         this.revision = r.revision;
         return 'synced';

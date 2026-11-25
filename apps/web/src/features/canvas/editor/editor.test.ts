@@ -76,7 +76,7 @@ describe('editor reducer: markers, format, transform and speed', () => {
   });
 
   it('changes the output format as an undoable edit', () => {
-    const s1 = reduce(s0, { type: 'format', width: 1920, height: 1080, fps: 30 });
+    const s1 = reduce(s0, { type: 'commit', ops: [{ op: 'setFormat', width: 1920, height: 1080, fps: 30 }], animate: false });
     expect([s1.edl.width, s1.edl.height, s1.edl.fps]).toEqual([1920, 1080, 30]);
     expect(reduce(s1, { type: 'undo' }).edl.width).toBe(1080);
   });

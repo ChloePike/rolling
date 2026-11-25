@@ -447,6 +447,10 @@ test.describe('editor controls', () => {
     await page.getByRole('button', { name: 'Export', exact: true }).click();
     const dialog = page.getByTestId('export-dialog');
     await expect(dialog).toHaveAttribute('data-phase', 'setup');
+    // The summary shows the preset's output size (short side 1080 / 720, the cut's aspect ratio).
+    await expect(dialog.getByText(/1080×1920/)).toBeVisible();
+    await dialog.getByRole('radio', { name: '720p' }).click();
+    await expect(dialog.getByText(/720×1280 · 24 fps\. Exports are free\./)).toBeVisible();
     await dialog.getByRole('radio', { name: 'Mark in to out' }).click();
     await dialog.getByRole('button', { name: 'Export MP4' }).click();
     await expect(dialog).toHaveAttribute('data-phase', 'running');

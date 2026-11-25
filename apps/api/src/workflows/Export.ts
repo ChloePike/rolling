@@ -93,7 +93,14 @@ export class ExportWorkflow extends WorkflowEntrypoint<Env, ExportWorkflowParams
       const job = JSON.parse(prepared.job) as RenderJob;
 
       await step.do("submit", RETRY, guard(async () => {
-        const res = await render(env)("/render", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(job) });
+        let res: Response;
+        try {
+          res = await render(env)("/render", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(job) });
+        } catch (err) {
+          if (err instanceof ExportFailure) throw err;
+          // Retried by the step; the last attempt's message names the cause.
+          throw new Error(JSON.stringify({ code: "renderer_unavailable", message: "The renderer is not available right now. Try again in a few minutes." }));
+        }
         if (res.status === 400 || res.status === 422) throw new ExportFailure("render_refused", await containerError(res));
         if (!res.ok) throw new Error(`render submit failed: ${await containerError(res)}`);
         return { ok: true };

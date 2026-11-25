@@ -14,6 +14,8 @@ export const env = {
   memberEmail: process.env.PW_MEMBER_EMAIL ?? '',
   productPhoto: process.env.PW_PRODUCT_PHOTO ?? '',
   generate: process.env.PW_GENERATE === '1',
+  /** The FFmpeg container answers behind the Worker (staging, or `wrangler dev --enable-containers` with media URLs reachable from Docker). */
+  exportRender: process.env.PW_EXPORT === '1',
 };
 
 async function latestCode(request: APIRequestContext, email: string, after: number): Promise<string> {

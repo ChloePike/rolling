@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyOps, assembleFromScript, type Edl } from '@rolling/core/timeline';
-import { canvasIdFor, SERVER_OPS, timelineDiff } from './realTimeline';
+import { TIMELINE_OP_NAMES } from '@rolling/core/timeline';
+import { canvasIdFor, SERVER_OPS, timelineDiff, transitionOps } from './realTimeline';
 import { MOCK_SCRIPT } from './mocks';
 
 const base = (): Edl => assembleFromScript(MOCK_SCRIPT);
@@ -38,6 +39,24 @@ describe('timeline sync diff', () => {
     expect(timelineDiff(removed, a)).toBeNull();
     const faded = after(a, [{ op: 'setFade', clipId: 'v1', fadeIn: 0.5 }]);
     expect(timelineDiff(a, faded)).toBeNull();
+  });
+
+  it('the server takes every op the editor applies', () => {
+    expect([...SERVER_OPS].sort()).toEqual([...TIMELINE_OP_NAMES].sort());
+    for (const op of ['insert', 'setTransform', 'setSpeed', 'setFade', 'setTransition', 'setFormat', 'replaceEdl'] as const) expect(SERVER_OPS.has(op)).toBe(true);
+  });
+
+  it('undo of an effect, a restored clip or a format change replaces the whole cut', () => {
+    const a = base();
+    const faded = after(a, [{ op: 'setFade', clipId: 'v1', fadeIn: 0.5 }, { op: 'setSpeed', clipId: 'v2', speed: 2 }]);
+    const undo = transitionOps(faded, a);
+    expect(undo).toEqual([{ op: 'replaceEdl', edl: a, baseRevision: 0 }]);
+    expect(after(faded, undo)).toEqual(a);
+    const wide = after(a, [{ op: 'setFormat', width: 1920, height: 1080, fps: 30 }]);
+    expect(transitionOps(wide, a)[0]!.op).toBe('replaceEdl');
+    // A plain trim still goes as a trim.
+    const trimmed = after(a, [{ op: 'trim', clipId: 'v2', out: 4 }]);
+    expect(transitionOps(trimmed, a).every((o) => o.op !== 'replaceEdl')).toBe(true);
   });
 
   it('caption text and gain changes', () => {

@@ -2,11 +2,17 @@ import { Dialog, Progress, SegmentedControl } from '@rolling/ui';
 import { useEffect, useRef, useState } from 'react';
 import { useIntl } from 'react-intl';
 import { formatTimecode, edlDuration, type Edl } from '@rolling/core/timeline';
-import { startExport, type ExportEvent, type ExportOptions } from './api';
+import { exportSize } from '@rolling/core/export';
+import { exportDownloadUrl, startExport, type ExportEvent, type ExportOptions } from './api';
 import styles from './Editor.module.css';
 import { isMockApi } from '@/features/overlays/backend';
+import { download } from '@/lib/transfers';
 
-type Phase = { kind: 'soon' } | { kind: 'setup' } | { kind: 'running'; progress: number } | { kind: 'done'; url: string; fileName: string; seconds: number } | { kind: 'failed'; reason: string };
+type Phase =
+  | { kind: 'setup' }
+  | { kind: 'running'; progress: number }
+  | { kind: 'done'; exportId: string; url: string; fileName: string; seconds: number }
+  | { kind: 'failed'; reason: string; code?: string };
 
 export interface ExportDialogProps {
   open: boolean;
@@ -19,8 +25,10 @@ export interface ExportDialogProps {
 }
 
 /**
- * Export (MP4): range and resolution, then real progress from the export job,
- * then a download link. Cancel stops the job; a failure says so and offers Retry.
+ * Export (MP4): range and resolution, then real progress from the export job
+ * (`export.progress` on the project channel), then Download through the
+ * shared transfer queue (resumable, the signed URL refreshed through
+ * `GET /api/exports/:id`). Stop stops following; a failure says so and offers Retry.
  */
 export function ExportDialog({ open, onOpenChange, projectId, edl, marks, onDone }: ExportDialogProps) {
   const intl = useIntl();
@@ -30,6 +38,7 @@ export function ExportDialog({ open, onOpenChange, projectId, edl, marks, onDone
   const [phase, setPhase] = useState<Phase>({ kind: 'setup' });
   const cancel = useRef<(() => void) | null>(null);
   const hasMarks = marks.out > marks.in;
+  const real = !isMockApi();
 
   useEffect(() => {
     if (!open) {
@@ -41,24 +50,34 @@ export function ExportDialog({ open, onOpenChange, projectId, edl, marks, onDone
   useEffect(() => () => cancel.current?.(), []);
 
   const run = () => {
-    // Real mode: the API has no export route yet (ExportWorkflow is a stub). Say so instead of faking an MP4.
-    if (!isMockApi()) {
-      setPhase({ kind: 'soon' });
-      return;
-    }
+    cancel.current?.();
     setPhase({ kind: 'running', progress: 0 });
     cancel.current = startExport(projectId, edl, { range, marks, resolution }, (e: ExportEvent) => {
+      if (e.type === 'started') return;
       if (e.type === 'progress') setPhase({ kind: 'running', progress: e.progress });
-      else if (e.type === 'failed') setPhase({ kind: 'failed', reason: e.reason });
-      else {
+      else if (e.type === 'failed') {
         cancel.current = null;
-        setPhase({ kind: 'done', url: e.url, fileName: e.fileName, seconds: e.seconds });
+        setPhase({ kind: 'failed', reason: e.reason, ...(e.code ? { code: e.code } : {}) });
+      } else {
+        cancel.current = null;
+        setPhase({ kind: 'done', exportId: e.exportId, url: e.url, fileName: e.fileName, seconds: e.seconds });
         onDone?.(e.fileName);
       }
     });
   };
 
+  const save = (p: Extract<Phase, { kind: 'done' }>) => {
+    void download(p.url, { filename: p.fileName, refreshUrl: () => exportDownloadUrl(p.exportId) }).catch(() => {});
+  };
+
+  const failure = (p: Extract<Phase, { kind: 'failed' }>) => {
+    if (p.code === 'NO_PLAN') return t('editor.export.join');
+    if (p.code === 'NETWORK') return t('editor.export.offline');
+    return p.reason || t('editor.export.unknown');
+  };
+
   const length = range === 'marks' && hasMarks ? marks.out - marks.in : edlDuration(edl);
+  const size = exportSize(edl, resolution === '720p' ? 'mp4_720p' : 'mp4_1080p');
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange} title={t('editor.export.title')} closeLabel={t('editor.export.close')} width={440}>
@@ -92,8 +111,8 @@ export function ExportDialog({ open, onOpenChange, projectId, edl, marks, onDone
             <p className={styles.exportNote}>
               {t('editor.export.summary', {
                 length: formatTimecode(length, edl.fps),
-                width: intl.formatNumber(edl.width, { useGrouping: false }),
-                height: intl.formatNumber(edl.height, { useGrouping: false }),
+                width: intl.formatNumber(size.width, { useGrouping: false }),
+                height: intl.formatNumber(size.height, { useGrouping: false }),
                 fps: edl.fps,
               })}
             </p>
@@ -103,18 +122,6 @@ export function ExportDialog({ open, onOpenChange, projectId, edl, marks, onDone
               </button>
               <button type="button" className={`${styles.btn} ${styles.primary} ${styles.exportBtn}`} onClick={run}>
                 {t('editor.export.start')}
-              </button>
-            </div>
-          </>
-        ) : null}
-        {phase.kind === 'soon' ? (
-          <>
-            <p className={styles.exportNote} role="status" data-testid="export-soon">
-              {t('editor.export.soon')}
-            </p>
-            <div className={styles.exportActions}>
-              <button type="button" className={`${styles.btn} ${styles.primary} ${styles.exportBtn}`} onClick={() => onOpenChange(false)}>
-                {t('editor.export.close')}
               </button>
             </div>
           </>
@@ -145,21 +152,27 @@ export function ExportDialog({ open, onOpenChange, projectId, edl, marks, onDone
             <p className={styles.exportNote} role="status">
               {t('editor.export.done', { length: formatTimecode(phase.seconds, edl.fps) })}
             </p>
-            <p className={styles.exportHint}>{t('editor.export.mockNote')}</p>
+            {real ? null : <p className={styles.exportHint}>{t('editor.export.mockNote')}</p>}
             <div className={styles.exportActions}>
               <button type="button" className={`${styles.btn} ${styles.secondary} ${styles.exportBtn}`} onClick={() => onOpenChange(false)}>
                 {t('editor.export.close')}
               </button>
-              <a className={`${styles.btn} ${styles.primary} ${styles.exportBtn}`} href={phase.url} download={phase.fileName}>
-                {t('editor.export.download')}
-              </a>
+              {real ? (
+                <button type="button" className={`${styles.btn} ${styles.primary} ${styles.exportBtn}`} onClick={() => save(phase)}>
+                  {t('editor.export.download')}
+                </button>
+              ) : (
+                <a className={`${styles.btn} ${styles.primary} ${styles.exportBtn}`} href={phase.url} download={phase.fileName}>
+                  {t('editor.export.download')}
+                </a>
+              )}
             </div>
           </>
         ) : null}
         {phase.kind === 'failed' ? (
           <>
             <p className={styles.exportNote} role="alert">
-              {t('editor.export.failed', { reason: phase.reason })}
+              {t('editor.export.failed', { reason: failure(phase) })}
             </p>
             <div className={styles.exportActions}>
               <button type="button" className={`${styles.btn} ${styles.secondary} ${styles.exportBtn}`} onClick={() => onOpenChange(false)}>

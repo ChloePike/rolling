@@ -35,6 +35,15 @@ export interface RunRequest {
    * are resolved first. Without a spec the run cannot start in real mode.
    */
   spec?: PromptSpec;
+  /**
+   * Real mode, instead of `spec`: how to quote the run (e.g. a canvas node,
+   * `POST /api/runs/quote { projectId, scope: 'node', nodeIds }`).
+   */
+  quote?: () => Promise<SpecQuote>;
+  /** Real mode: the run started (credits held). */
+  onStarted?: (runId: string) => void;
+  /** Real mode: the run failed or was canceled (credits refunded), or could not start. */
+  onFailed?: () => void;
   /** Real mode: the project the run belongs to (Activity groups by it). */
   projectId?: string;
   /** Toast action after the run finishes (e.g. View opens the result viewer). */
@@ -135,12 +144,16 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
     quoteRef.current = null;
     startQuote(quote.quoteId!).then(
       ({ runId }) => {
+        run.onStarted?.(runId);
         setRunning((n) => n + 1);
         toast.show({ message: t('overlays.run.started', { label: run.actionLabel, cost: quote.total }) });
         waitForRun(runId, run.projectId).then(
           (r) => {
             setRunning((n) => n - 1);
-            if (r.status === 'failed' || r.status === 'canceled') return failed(run, r.refunded);
+            if (r.status === 'failed' || r.status === 'canceled') {
+              run.onFailed?.();
+              return failed(run, r.refunded);
+            }
             const assetId = r.items.find((i) => i.assetId)?.assetId ?? null;
             const finished: FinishedRun = { id: runId, cost: r.spent, assetId, run: r };
             run.onDone?.(finished);
@@ -149,10 +162,14 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
               action: run.viewLabel && run.onDone ? { label: run.viewLabel, onAction: () => run.onDone?.(finished) } : undefined,
             });
           },
-          () => setRunning((n) => n - 1),
+          () => {
+            setRunning((n) => n - 1);
+            run.onFailed?.();
+          },
         );
       },
       (e: unknown) => {
+        run.onFailed?.();
         if (isApiError(e, 'NO_PLAN')) return setStep({ kind: 'join' });
         if (isApiError(e, 'INSUFFICIENT_CREDITS')) return setStep({ kind: 'credits' });
         if (isApiError(e, 'QUOTE_EXPIRED') && attempt < 1) return void advance(run, attempt + 1);
@@ -166,12 +183,13 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
   /** Real mode: quote the spec, show blocks, then gate like the mock flow (the API answers NO_PLAN itself). */
   const advanceReal = (run: RunRequest, attempt = 0) => {
     pending.current = run;
-    if (!run.spec) {
+    const spec = run.spec;
+    const getQuote = run.quote ?? (spec ? () => resolveSpec(spec).then((s) => quoteSpec(s, run.projectId)) : null);
+    if (!getQuote) {
       toast.show({ message: t('overlays.run.unavailable') });
       return;
     }
-    void resolveSpec(run.spec)
-      .then((spec) => quoteSpec(spec, run.projectId))
+    void getQuote()
       .then(
         (q) => {
           quoteRef.current = q;

@@ -9,6 +9,7 @@ import { dragWire, env, nodesByKind, portCenter, signIn } from './support';
  *     pnpm --filter @rolling/web exec playwright test --project=real
  * Every step also survives a reload and is checked from a second tab.
  * Generation steps (6–8) need PW_GENERATE=1 (a gateway behind the Worker: staging).
+ * Step 11 (export) also needs PW_EXPORT=1: the FFmpeg container behind the Worker.
  */
 
 test.describe.configure({ mode: 'serial' });
@@ -213,4 +214,22 @@ test('9: canvas agent “make shot 2 warmer” proposes a graph patch; Apply app
   await expect(second).toHaveAttribute('data-outcome', 'discarded');
   await page.reload();
   await expect(page.getByTestId('graph-proposal').filter({ has: page.locator('[data-outcome="discarded"]') }).or(page.locator('[data-outcome="discarded"]')).first()).toBeVisible({ timeout: 30_000 });
+});
+
+test('11: Export MP4 from the editor: progress from export events, then Download', async ({ page }) => {
+  test.skip(!projectId, 'needs step 1–2');
+  test.skip(!env.generate, 'needs generated shots (PW_GENERATE=1)');
+  test.skip(!env.exportRender, 'needs the FFmpeg container behind the Worker (PW_EXPORT=1)');
+  test.setTimeout(15 * 60_000);
+  await page.goto(`/p/${projectId}?overlay=edit`);
+  await expect(page.getByTestId('editor')).toBeVisible({ timeout: 30_000 });
+  await page.getByRole('button', { name: 'Export', exact: true }).click();
+  const dialog = page.getByTestId('export-dialog');
+  await dialog.getByRole('radio', { name: '720p' }).click();
+  await dialog.getByRole('button', { name: 'Export MP4' }).click();
+  await expect(dialog).toHaveAttribute('data-phase', 'running');
+  await expect(dialog.getByRole('progressbar')).toBeVisible();
+  await expect(dialog).toHaveAttribute('data-phase', 'done', { timeout: 12 * 60_000 });
+  await expect(dialog.getByRole('button', { name: 'Download' })).toBeVisible();
+  await expect(page.getByText('Export ready')).toBeVisible();
 });

@@ -334,6 +334,20 @@ describe("exports", () => {
     sock.close();
   });
 
+  it("fails with renderer_unavailable when the container does not answer", async () => {
+    const { user, ws } = await member("expdown");
+    const { canvasId } = await project(user, ws);
+    setRendererForTests(async () => {
+      throw new Error("connection refused");
+    });
+    try {
+      const created = ((await (await api(user, `/api/canvases/${canvasId}/export`, { method: "POST", json: { preset: "mp4_720p" } })).json()) as any).export;
+      expect(await finalExport(created.id)).toMatchObject({ status: "failed", error_code: "renderer_unavailable" });
+    } finally {
+      setRendererForTests(fakeContainer);
+    }
+  });
+
   it("fails without delivering when the poster breaks a hard limit (D-005)", async () => {
     const { user, ws } = await member("expsafe");
     const { canvasId } = await project(user, ws);

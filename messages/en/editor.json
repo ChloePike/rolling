@@ -132,13 +132,13 @@
   "editor.inspector.position.x": "Position X",
   "editor.inspector.position.y": "Position Y",
   "editor.run.generateAction": "Generate shot",
-  "editor.export.soon": "Export comes soon. Your cut is saved and will be ready to export as MP4 once rendering is switched on.",
-  "editor.sync.localOnly": "Some effects (transitions, fades, speed, framing) are kept on this device until they can be saved to the project.",
   "editor.sync.offline": "Can’t save the cut right now. Changes are kept here and saved when you’re back online.",
   "editor.sync.conflict": "Someone else changed the cut. Showing the latest version.",
   "editor.sync.refused": "That edit couldn’t be saved. Showing the saved cut.",
   "editor.agent.join": "Join a plan to ask the agent for edits. Your request is kept.",
   "editor.agent.allowance": "Agent allowance for this month is used up.",
   "editor.proposal.stale": "The cut changed since this proposal. Ask again.",
-  "editor.run.onCanvas": "Generate this shot on the canvas. It’s selected for you."
+  "editor.export.join": "Exports are part of every plan. Join to export this cut.",
+  "editor.export.offline": "Can’t reach the server. Check your connection and try again.",
+  "editor.export.unknown": "The renderer stopped."
 }
