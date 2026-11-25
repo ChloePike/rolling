@@ -1,3 +1,4 @@
+import { syncModels } from "./sync";
 /**
  * Reads the synced model catalog from D1 and shapes it for clients (D-002).
  * The overlay is merged at read time, so product changes apply on deploy
@@ -25,7 +26,14 @@ export function listingModelsFromRows(rows: readonly ModelRow[]): ListingModel[]
 }
 
 export async function loadCatalog(env: Env, kind?: CatalogKind | null): Promise<Catalog> {
-  const rows = await listModelRows(env.DB, { kind: kind ?? null });
+  let rows = await listModelRows(env.DB, { kind: kind ?? null });
+  if (rows.length === 0 && (await listModelRows(env.DB, { kind: null })).length === 0) {
+    // Fresh environment: the cron has not run yet, so sync once on first read.
+    await syncModels(env).catch((err: unknown) => {
+      console.error(JSON.stringify({ msg: "models: bootstrap sync failed", error: String(err) }));
+    });
+    rows = await listModelRows(env.DB, { kind: kind ?? null });
+  }
   return Catalog.fromListingModels(listingModelsFromRows(rows));
 }
 
