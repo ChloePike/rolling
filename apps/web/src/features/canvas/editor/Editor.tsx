@@ -7,7 +7,12 @@ import { ExportDialog } from './ExportDialog';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent } from 'react';
 import { useIntl } from 'react-intl';
-import { getEditorProject, mockRun, proposeEdit, reassemble, type RunOutcome, type RunRequest } from './api';
+import { agentFailure, applyEditProposal, EditorAgentReply, getEditorProject, mockRun, proposeEdit, reassemble, type EditorProjectReal, type RunOutcome, type RunRequest } from './api';
+import { isMockApi, savePendingAction } from '@/features/overlays/backend';
+import { discardProposal } from '@/features/overlays/agent';
+import { subscribeProjectMessages } from '../api';
+import { fetchTimeline, SERVER_OPS, timelineDiff, TimelineSync } from './realTimeline';
+import type { TimelineOp } from '@rolling/core/timeline';
 import { Bin } from './Bin';
 import styles from './Editor.module.css';
 import { Icon } from './icons';
@@ -78,7 +83,25 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
     [project],
   );
   const reducer = useMemo(() => makeReducer({ sourceDuration }), [sourceDuration]);
-  const [state, dispatch] = useReducer(reducer, project, (p) => initEditorState(p.edl, p.marks, p.view.selection));
+  const [state, rawDispatch] = useReducer(reducer, project, (p) => initEditorState(p.edl, p.marks, p.view.selection));
+
+  /* ---------- Real mode: mirror committed changes to the ProjectRoom timeline ---------- */
+  const real = !isMockApi() && 'canvasId' in project;
+  const [tsync] = useState(() => (real ? new TimelineSync((project as EditorProjectReal).canvasId, (project as EditorProjectReal).revision) : null));
+  /** Ops of the commit being dispatched (sent once the reducer accepted it). */
+  const commitOps = useRef<TimelineOp[] | null>(null);
+  /** The next change came from the server: don't send it back. */
+  const fromServer = useRef(false);
+  const syncedEdl = useRef<Edl>(project.edl);
+  const localOnlyNoticed = useRef(false);
+  const dispatch = useCallback((action: Parameters<typeof rawDispatch>[0]) => {
+    commitOps.current = action.type === 'commit' ? action.ops : null;
+    rawDispatch(action);
+  }, []);
+  const resetFromServer = useCallback((edl: Edl) => {
+    fromServer.current = true;
+    rawDispatch({ type: 'reset', edl });
+  }, []);
   const [playhead] = useState(() => new PlayheadStore(project.view.playhead, edlDuration(project.edl)));
   const [ask, setAsk] = useState(initialAsk ?? '');
   const [shown, setShown] = useState(false);
@@ -105,6 +128,56 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
   );
   const stateRef = useRef(state);
   stateRef.current = state;
+
+  useEffect(() => {
+    if (!tsync) return;
+    const prev = syncedEdl.current;
+    const next = state.edl;
+    if (prev === next) return;
+    syncedEdl.current = next;
+    if (fromServer.current) {
+      fromServer.current = false;
+      commitOps.current = null;
+      return;
+    }
+    const committed = commitOps.current;
+    commitOps.current = null;
+    const ops = committed && committed.every((o) => SERVER_OPS.has(o.op)) ? committed : timelineDiff(prev, next);
+    if (!ops) {
+      if (!localOnlyNoticed.current) {
+        localOnlyNoticed.current = true;
+        toast.show({ message: t('editor.sync.localOnly') });
+      }
+      return;
+    }
+    void tsync.push(ops).then((outcome) => {
+      if (outcome === 'synced') return;
+      if (outcome === 'offline') return void toast.show({ message: t('editor.sync.offline') });
+      // Conflict or refusal: the server's timeline wins.
+      toast.show({ message: t(outcome === 'conflict' ? 'editor.sync.conflict' : 'editor.sync.refused') });
+      void fetchTimeline(tsync.canvasId).then((tl) => {
+        tsync.revision = tl.revision;
+        resetFromServer(tl.edl);
+      });
+    });
+    // Runs per timeline change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.change.version]);
+
+  // Edits from other tabs and people (`timeline.patched` on the project channel).
+  useEffect(() => {
+    if (!tsync) return;
+    return subscribeProjectMessages(project.id, (msg) => {
+      if (msg.type !== 'timeline.patched') return;
+      const p = msg.payload as { canvasId: string; revision: number; edl?: Edl };
+      if (p.canvasId !== tsync.canvasId || p.revision <= tsync.revision || tsync.busy) return;
+      void fetchTimeline(tsync.canvasId).then((tl) => {
+        if (tl.revision <= tsync.revision) return;
+        tsync.revision = tl.revision;
+        resetFromServer(tl.edl);
+      });
+    });
+  }, [tsync, project.id, resetFromServer]);
 
   useEffect(() => () => playhead.dispose(), [playhead]);
   useEffect(() => playhead.setDuration(edlDuration(state.edl)), [playhead, state.edl]);
@@ -136,7 +209,20 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
   const askAgent = useCallback(
     async (request: string, fromUser: boolean) => {
       dispatch({ type: 'proposalPending' });
-      const proposal = await proposeEdit(project, stateRef.current.edl, request);
+      let proposal: Awaited<ReturnType<typeof proposeEdit>> = null;
+      try {
+        proposal = await proposeEdit(project, stateRef.current.edl, request);
+      } catch (e) {
+        dispatch({ type: 'proposal', proposal: null });
+        if (e instanceof EditorAgentReply) return void toast.show({ message: e.text });
+        const f = agentFailure(e);
+        if (f.kind === 'join') {
+          savePendingAction('editor.ask', { projectId: project.id, request });
+          return void toast.show({ message: t('editor.agent.join') });
+        }
+        if (f.kind === 'allowance') return void toast.show({ message: t('editor.agent.allowance') });
+        return void toast.show({ message: t('editor.proposal.failed') });
+      }
       setFocusProposal(fromUser);
       dispatch({ type: 'proposal', proposal });
       if (!proposal) toast.show({ message: t('editor.proposal.failed') });
@@ -158,12 +244,30 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
   const apply = () => {
     const p = state.proposal;
     if (!p) return;
+    if (tsync) {
+      // The server applies exactly the proposed ops as the user; the editor shows the resulting EDL.
+      dispatch({ type: 'proposalClose' });
+      setAsk('');
+      void applyEditProposal(project.id, p.id).then(
+        (edl) => {
+          void fetchTimeline(tsync.canvasId).then((tl) => (tsync.revision = Math.max(tsync.revision, tl.revision)));
+          resetFromServer(edl);
+          toast.show({ message: t('editor.proposal.applied'), action: { label: t('editor.undoAction'), onAction: undo } });
+        },
+        () => toast.show({ message: t('editor.proposal.stale') }),
+      );
+      return;
+    }
     dispatch({ type: 'commit', ops: p.ops, animate: true });
     dispatch({ type: 'proposalClose' });
     setAsk('');
     toast.show({ message: t('editor.proposal.applied'), action: { label: t('editor.undoAction'), onAction: undo } });
   };
-  const discard = () => dispatch({ type: 'proposalClose' });
+  const discard = () => {
+    const id = state.proposal?.id;
+    dispatch({ type: 'proposalClose' });
+    if (tsync && id) void discardProposal(id).catch(() => {});
+  };
 
   /**
    * Generate / Regenerate through the shared run flow (features/overlays
@@ -175,6 +279,11 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
     const clip = findClip(state.edl, clipId)?.clip as MediaClip | undefined;
     if (!clip?.nodeId || state.running.includes(clipId)) return;
     if (onRequestRun) return void run(clipId);
+    // Real mode without a host pipeline: shots generate on the canvas (quote, confirm, live progress).
+    if (tsync) {
+      toast.show({ message: t('editor.run.onCanvas') });
+      return void onOpenOnCanvas?.(clip.nodeId);
+    }
     const shot = project.shots[clip.nodeId];
     const regenerate = clip.assetId !== null;
     runFlow.request({
@@ -424,7 +533,14 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
         <button
           type="button"
           className={`${styles.btn} ${styles.secondary} ${styles.reassemble}`}
-          onClick={() => void reassemble(project.id).then((edl) => dispatch({ type: 'reset', edl }))}
+          onClick={() =>
+            void reassemble(project.id).then((edl) => {
+              if (!tsync) return dispatch({ type: 'reset', edl });
+              // The server already holds the rebuilt cut.
+              void fetchTimeline(tsync.canvasId).then((tl) => (tsync.revision = tl.revision));
+              resetFromServer(edl);
+            })
+          }
         >
           {t('editor.reassemble')}
         </button>

@@ -4,8 +4,9 @@ import { useIntl } from 'react-intl';
 import { formatTimecode, edlDuration, type Edl } from '@rolling/core/timeline';
 import { startExport, type ExportEvent, type ExportOptions } from './api';
 import styles from './Editor.module.css';
+import { isMockApi } from '@/features/overlays/backend';
 
-type Phase = { kind: 'setup' } | { kind: 'running'; progress: number } | { kind: 'done'; url: string; fileName: string; seconds: number } | { kind: 'failed'; reason: string };
+type Phase = { kind: 'soon' } | { kind: 'setup' } | { kind: 'running'; progress: number } | { kind: 'done'; url: string; fileName: string; seconds: number } | { kind: 'failed'; reason: string };
 
 export interface ExportDialogProps {
   open: boolean;
@@ -40,6 +41,11 @@ export function ExportDialog({ open, onOpenChange, projectId, edl, marks, onDone
   useEffect(() => () => cancel.current?.(), []);
 
   const run = () => {
+    // Real mode: the API has no export route yet (ExportWorkflow is a stub). Say so instead of faking an MP4.
+    if (!isMockApi()) {
+      setPhase({ kind: 'soon' });
+      return;
+    }
     setPhase({ kind: 'running', progress: 0 });
     cancel.current = startExport(projectId, edl, { range, marks, resolution }, (e: ExportEvent) => {
       if (e.type === 'progress') setPhase({ kind: 'running', progress: e.progress });
@@ -97,6 +103,18 @@ export function ExportDialog({ open, onOpenChange, projectId, edl, marks, onDone
               </button>
               <button type="button" className={`${styles.btn} ${styles.primary} ${styles.exportBtn}`} onClick={run}>
                 {t('editor.export.start')}
+              </button>
+            </div>
+          </>
+        ) : null}
+        {phase.kind === 'soon' ? (
+          <>
+            <p className={styles.exportNote} role="status" data-testid="export-soon">
+              {t('editor.export.soon')}
+            </p>
+            <div className={styles.exportActions}>
+              <button type="button" className={`${styles.btn} ${styles.primary} ${styles.exportBtn}`} onClick={() => onOpenChange(false)}>
+                {t('editor.export.close')}
               </button>
             </div>
           </>

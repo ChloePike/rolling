@@ -32,7 +32,7 @@ export function findModel(models: CatalogModel[] | undefined, node: GraphNode): 
 /** Credits for one run of `node` at its resolution and length, from the catalog points. */
 export function catalogCredits(model: CatalogModel, node: GraphNode): number | undefined {
   const res = typeof node.params.resolution === 'string' ? node.params.resolution : model.defaultResolution;
-  const seconds = typeof node.params.length === 'number' ? node.params.length : model.defaultSeconds;
+  const seconds = typeof node.params.length === 'number' ? node.params.length : typeof node.params.seconds === 'number' ? node.params.seconds : model.defaultSeconds;
   const count = typeof node.params.count === 'number' ? node.params.count : 1;
   const atRes = model.credits.filter((c) => c.resolution === res || c.resolution === null);
   if (!atRes.length) return undefined;
@@ -71,6 +71,7 @@ export function usePricedNodes(nodes: GraphNode[]): { nodes: GraphNode[]; models
 /** `"9:16 · 720p · 5s"` from the node's params (ratio, resolution, requested length). */
 export function formatLabel(node: GraphNode): string {
   const p = node.params;
-  const parts = [p.ratio, p.resolution, node.kind === 'video' && typeof p.length === 'number' ? `${p.length}s` : null];
+  const len = typeof p.length === 'number' ? p.length : typeof p.seconds === 'number' ? p.seconds : null;
+  const parts = [p.ratio, p.resolution, node.kind === 'video' && len !== null ? `${len}s` : null];
   return parts.filter((x): x is string => typeof x === 'string' && x.length > 0).join(' · ');
 }

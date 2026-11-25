@@ -125,3 +125,31 @@ export function pickerModels(models: readonly CatalogModel[] | undefined, opts: 
     return opts.featuredOnly ? placement === 'featured' : true;
   });
 }
+
+/**
+ * Display name for a node's `params.model`: gateway ids from the catalog
+ * (agent plans and the API store ids, D-009) become the catalog name;
+ * display names, `Auto` and unknown ids are shown as they are.
+ */
+export function modelLabel(models: readonly CatalogModel[] | undefined, model: unknown): string {
+  if (typeof model !== 'string') return '';
+  return models?.find((m) => m.id === model)?.name ?? model;
+}
+
+/** Catalog / planner modes (`t2v`, `i2v`, `t2i`, `edit`, …) to the labels the mode menus use. */
+const MODE_LABELS: Record<string, string> = {
+  t2v: 'Text to video',
+  i2v: 'First frame',
+  flf2v: 'First and last frame',
+  r2v: 'Reference to video',
+  reference: 'Reference to video',
+  t2i: 'Text to image',
+  edit: 'Image to image',
+  i2i: 'Image to image',
+};
+
+/** `params.mode` as shown on node pills: catalog mode ids map to labels, labels stay. */
+export function modeLabel(mode: unknown): string {
+  if (typeof mode !== 'string') return '';
+  return MODE_LABELS[mode] ?? mode;
+}

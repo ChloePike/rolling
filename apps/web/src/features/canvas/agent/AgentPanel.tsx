@@ -1,5 +1,5 @@
 import { cx, presenceProps, type PresenceState } from '@rolling/ui';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AUTO_MODEL, ModelPicker, mockModels, Paywall, catalogToOptions } from '@/features/overlays';
 import { ReferencePicker, useSkills, type RefItem } from '@/features/prompt';
 import { checkoutPlan } from '@/lib/session';
@@ -7,7 +7,10 @@ import { useAgentAllowance } from '@/lib/session/agentAllowance';
 import { pickerModels, useModels } from '@/lib/models';
 import { ModelIcon, modelIcon } from '@/lib/modelIcons';
 import { FormattedMessage, useIntl } from 'react-intl';
-import { agentPlanOptions, sendAgentMessage, type GraphProposal } from '../api';
+import { agentFailure, threadFor } from '@/features/overlays/agent';
+import { isMockApi, savePendingAction, takePendingAction } from '@/features/overlays/backend';
+import { agentPlanOptions, applyAgentProposal, discardAgentProposal, graphProposalFrom, planOptionsFrom, sendAgentMessage, type GraphProposal } from '../api';
+import type { GraphNode } from '@rolling/core/graph';
 import { CanvasIcon } from '../icons';
 import { MenuPopover } from '../layers/Menu';
 import { MOCK_AGENT, type AgentPlanOption } from '../mocks';
@@ -33,7 +36,12 @@ interface AgentPanelProps {
   /** Using the agent needs an active plan (D-007). Non-members can type; sending opens the join paywall. */
   isMember: boolean;
   /** Apply a graph-patch proposal as the user. False when it no longer applies. */
-  onApplyProposal: (proposal: GraphProposal) => boolean;
+  onApplyProposal: (proposal: GraphProposal) => boolean | Promise<boolean>;
+  /** Real mode: the project whose canvas thread this panel talks to. */
+  projectId?: string;
+  /** Selected node ids (sent with the turn) and the current nodes (to describe patches). */
+  selection?: string[];
+  nodes?: GraphNode[];
   /** Nodes the open proposal changes (outlined on the canvas), or null. */
   onPreview: (nodeIds: string[] | null) => void;
 }
@@ -48,22 +56,58 @@ export const AGENT_MODEL_KEY = 'rolling.agent.model';
  * "Build on canvas", composer with the LLM pill and Auto. The agent only
  * proposes; building nodes is free and nothing runs until the user runs it.
  */
-export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal, onPreview }: AgentPanelProps) {
+export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal, onPreview, projectId, selection, nodes }: AgentPanelProps) {
+  const real = !isMockApi() && !!projectId;
   const [paywall, setPaywall] = useState(false);
   const intl = useIntl();
-  const [messages, setMessages] = useState<Message[]>(MOCK_AGENT.messages);
+  const [messages, setMessages] = useState<Message[]>(real ? [] : MOCK_AGENT.messages);
+  /** Real mode: the latest plan proposal of the thread (Build on canvas applies one option). */
+  const [planProposal, setPlanProposal] = useState<{ proposalId: string; options: AgentPlanOption[] } | null>(null);
   const [draft, setDraft] = useState('');
   const [built, setBuilt] = useState<number | null>(null);
   const [option, setOption] = useState(0);
   const [pending, setPending] = useState(false);
-  const [skill, setSkill] = useState(MOCK_AGENT.skill);
+  const [skill, setSkill] = useState(real ? '' : MOCK_AGENT.skill);
   const [menu, setMenu] = useState<'plus' | 'llm' | 'model' | 'refs' | null>(null);
   const [llm, setLlm] = useState<string | null>(() => readLocal(AGENT_LLM_KEY));
   const [model, setModel] = useState<string>(() => readLocal(AGENT_MODEL_KEY) ?? AUTO_MODEL);
   const autoRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const options = agentPlanOptions();
-  const plan = options[option % options.length]!;
+  const options = real ? (planProposal?.options ?? []) : agentPlanOptions();
+  const plan = options.length ? options[option % options.length]! : null;
+  // Real mode: one agent message lists 0..2 leading messages before the plan card in mock; here all go after it.
+  const lead = real ? 0 : 2;
+
+  // Real mode: restore the canvas thread's conversation and its open proposals.
+  useEffect(() => {
+    if (!real) return;
+    let live = true;
+    threadFor(`canvas:${projectId}`, { surface: 'canvas', projectId: projectId! }).then(
+      (t) => {
+        if (!live) return;
+        const byId = new Map(t.proposals.map((p) => [p.id, p]));
+        setMessages(
+          t.messages.map((m) => {
+            const p = m.proposalId ? byId.get(m.proposalId) : undefined;
+            const gp = p ? graphProposalFrom(p, nodes) : null;
+            const outcome = p && p.status !== 'proposed' ? (p.status as Message['outcome']) : undefined;
+            return { role: m.role === 'user' ? 'user' : 'agent', text: m.content, ...(gp ? { proposal: gp, outcome } : {}) };
+          }),
+        );
+        const openPlan = [...t.proposals].reverse().find((p) => p.kind === 'plan' && p.status === 'proposed');
+        if (openPlan) setPlanProposal({ proposalId: openPlan.id, options: planOptionsFrom(openPlan) });
+        // A brief interrupted by the join paywall resumes after checkout (D-007).
+        const pendingText = takePendingAction<{ projectId: string; text: string }>('canvas.agent');
+        if (pendingText?.projectId === projectId && pendingText.text) deliverRef.current(pendingText.text);
+      },
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+    // Once per project.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [real, projectId]);
   const skills = useSkills().data ?? [];
 
   // Public agent LLMs only (D-009): the catalog's chat models, never gateway ids.
@@ -85,28 +129,102 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
   }, [videoAll]);
   const modelLabel = model === AUTO_MODEL ? intl.formatMessage({ id: 'canvas.agent.auto' }) : (videoOptions.find((m) => m.id === model)?.name ?? intl.formatMessage({ id: 'canvas.agent.auto' }));
 
+  const [streamed, setStreamed] = useState('');
+  const failText = (e: unknown): string | null => {
+    const f = agentFailure(e);
+    switch (f.kind) {
+      case 'join':
+        savePendingAction('canvas.agent', { projectId, text: lastSent.current });
+        setDraft(lastSent.current);
+        setMessages((m) => m.slice(0, -1));
+        setPaywall(true);
+        return null;
+      case 'allowance':
+        return intl.formatMessage({ id: 'canvas.agent.error.allowance' }, { date: f.resetsAt ? intl.formatDate(f.resetsAt, { month: 'short', day: 'numeric' }) : '' });
+      case 'rateLimited':
+        return intl.formatMessage({ id: 'canvas.agent.error.rateLimited' });
+      case 'busy':
+        return intl.formatMessage({ id: 'canvas.agent.error.busy' });
+      case 'offline':
+        return intl.formatMessage({ id: 'canvas.agent.error.offline' });
+      default:
+        return intl.formatMessage({ id: 'canvas.agent.error.generic' });
+    }
+  };
+  const lastSent = useRef('');
   const deliver = (text: string) => {
+    lastSent.current = text;
     setMessages((m) => [...m, { role: 'user', text, fresh: true }]);
     setDraft('');
     setPending(true);
-    void sendAgentMessage(text, { llm: llmModel?.id ?? 'default', model }).then((reply) => {
-      setPending(false);
-      setMessages((m) => [...m.map((x) => (x.proposal && !x.outcome ? { ...x, outcome: 'discarded' as const } : x)), { role: 'agent', text: reply.text, fresh: true, proposal: reply.proposal }]);
-      onPreview(reply.proposal ? reply.proposal.changes.map((c) => c.nodeId) : null);
-    });
+    setStreamed('');
+    void sendAgentMessage(text, {
+      llm: llmModel?.id ?? 'default',
+      model,
+      projectId: real ? projectId : undefined,
+      selection,
+      nodes,
+      onDelta: (d) => setStreamed((s) => s + d),
+    }).then(
+      (reply) => {
+        setPending(false);
+        setStreamed('');
+        const replyText = reply.reason === 'safety_blocked' ? reply.text || intl.formatMessage({ id: 'canvas.agent.error.safety' }) : reply.text;
+        setMessages((m) => [...m.map((x) => (x.proposal && !x.outcome ? { ...x, outcome: 'discarded' as const } : x)), { role: 'agent', text: replyText, fresh: true, proposal: reply.proposal }]);
+        if (reply.plan) {
+          setPlanProposal(reply.plan);
+          setOption(0);
+          setBuilt(null);
+        }
+        onPreview(reply.proposal ? reply.proposal.changes.map((c) => c.nodeId) : null);
+      },
+      (e: unknown) => {
+        setPending(false);
+        setStreamed('');
+        const t = failText(e);
+        if (t) setMessages((m) => [...m, { role: 'agent', text: t, fresh: true }]);
+      },
+    );
   };
+  const deliverRef = useRef(deliver);
+  deliverRef.current = deliver;
   const settle = (index: number, outcome: 'applied' | 'discarded') => {
     const msg = messages[index];
     if (!msg?.proposal) return;
-    const result = outcome === 'applied' ? (onApplyProposal(msg.proposal) ? 'applied' : 'stale') : 'discarded';
-    setMessages((m) => m.map((x, i) => (i === index ? { ...x, outcome: result } : x)));
     onPreview(null);
+    if (outcome === 'discarded') {
+      setMessages((m) => m.map((x, i) => (i === index ? { ...x, outcome: 'discarded' } : x)));
+      void discardAgentProposal(msg.proposal.id).catch(() => {});
+      return;
+    }
+    void Promise.resolve(onApplyProposal(msg.proposal)).then(
+      (ok) => setMessages((m) => m.map((x, i) => (i === index ? { ...x, outcome: ok ? 'applied' : 'stale' } : x))),
+      () => setMessages((m) => m.map((x, i) => (i === index ? { ...x, outcome: 'stale' } : x))),
+    );
+  };
+  const build = (p: AgentPlan) => {
+    if (!real || !planProposal) {
+      setBuilt(onBuild(p));
+      return;
+    }
+    // The server applies the picked option's ops as the user (free); nodes arrive as graph.patched.
+    const index = options.indexOf(p);
+    void applyAgentProposal(planProposal.proposalId, index).then(
+      (r) => {
+        setBuilt(Object.keys(r.idMap ?? {}).length || p.shots.length * 2);
+        setPlanProposal(null);
+      },
+      (e: unknown) => {
+        const t = failText(e);
+        if (t) setMessages((m) => [...m, { role: 'agent', text: t, fresh: true }]);
+      },
+    );
   };
   const send = () => {
     const text = draft.trim();
     if (!text || pending) return;
-    // NO_PLAN: keep the draft and send it once checkout completes.
-    if (!isMember) {
+    // NO_PLAN: keep the draft and send it once checkout completes (real mode: the API answers NO_PLAN).
+    if (!real && !isMember) {
       setPaywall(true);
       return;
     }
@@ -143,11 +261,12 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
         </button>
       </div>
       <div className={styles.thread} aria-live="polite">
-        {messages.slice(0, 2).map((m, i) => (
+        {messages.slice(0, lead).map((m, i) => (
           <div key={i} className={m.role === 'user' ? styles.user : styles.agent}>
             {m.text}
           </div>
         ))}
+        {plan ? (
         <div className={styles.plan} data-testid="plan-card" data-option={plan.id}>
           <div key={plan.id} className={cx(styles.planBody, option > 0 && styles.msgIn)} data-motion="">
             <div className={styles.planHead}>
@@ -169,7 +288,7 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
           </div>
           {built === null ? (
             <div className={styles.planActions}>
-              <button type="button" className={cx(styles.build, 'rl-press')} onClick={() => setBuilt(onBuild(plan))}>
+              <button type="button" className={cx(styles.build, 'rl-press')} onClick={() => build(plan)}>
                 <FormattedMessage id="canvas.agent.build" />
               </button>
               <button
@@ -187,8 +306,9 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
             </span>
           )}
         </div>
-        {messages.slice(2).map((m, i) => (
-          <div key={i + 2} className={cx(m.role === 'user' ? styles.user : styles.agent, m.fresh && styles.msgIn)} data-motion="">
+        ) : null}
+        {messages.slice(lead).map((m, i) => (
+          <div key={i + lead} className={cx(m.role === 'user' ? styles.user : styles.agent, m.fresh && styles.msgIn)} data-motion="">
             {m.text}
             {m.proposal ? (
               <div className={styles.plan} data-testid="graph-proposal" data-outcome={m.outcome ?? 'open'}>
@@ -210,10 +330,10 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
                   </span>
                 ) : (
                   <div className={styles.planActions}>
-                    <button type="button" className={cx(styles.build, 'rl-press')} onClick={() => settle(i + 2, 'applied')}>
+                    <button type="button" className={cx(styles.build, 'rl-press')} onClick={() => settle(i + lead, 'applied')}>
                       <FormattedMessage id="canvas.agent.proposal.apply" />
                     </button>
-                    <button type="button" className={styles.shuffle} onClick={() => settle(i + 2, 'discarded')}>
+                    <button type="button" className={styles.shuffle} onClick={() => settle(i + lead, 'discarded')}>
                       <FormattedMessage id="canvas.agent.proposal.discard" />
                     </button>
                   </div>
@@ -224,7 +344,7 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
         ))}
         {pending ? (
           <div className={cx(styles.agent, styles.pending, styles.msgIn)} data-motion="" role="status">
-            <FormattedMessage id="canvas.agent.thinking" />
+            {streamed || <FormattedMessage id="canvas.agent.thinking" />}
           </div>
         ) : null}
       </div>
@@ -367,6 +487,7 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
         onContinue={(option) => {
           void checkoutPlan(option.id).then(() => {
             setPaywall(false);
+            takePendingAction('canvas.agent');
             const text = draft.trim();
             if (text) deliver(text);
           });

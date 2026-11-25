@@ -1,21 +1,143 @@
 import { MOCK_CUT_TO_10, MOCK_SCRIPT, mockProject, type EditorProject, type EditProposal } from './mocks';
 import { assembleFromScript } from '@rolling/core/timeline';
 import { planCutTo } from '@rolling/core/timeline';
-import { edlDuration, type Edl } from '@rolling/core/timeline';
+import { edlDuration, type Edl, type TimelineOp } from '@rolling/core/timeline';
+import type { GraphNode } from '@rolling/core/graph';
+import { assetMediaUrl, isMockApi } from '@/features/overlays/backend';
+import { agentFailure, applyProposal, sendTurn, threadFor, type AgentFailure, type Proposal } from '@/features/overlays/agent';
+import { getProject, openSession } from '../api';
+import { canvasIdFor, fetchTimeline, reassembleTimeline } from './realTimeline';
+import type { BinItem, ShotInfo } from './mocks';
 
 /**
- * Editor data access. Mock for now; the real client reads the ProjectRoom
- * snapshot over the project socket and sends agent requests through the
- * AgentSession (`proposal.created`). Keep this surface small so it can be swapped.
+ * Editor data access. Mock mode: the Ridgeline mock project. Real mode: the
+ * EDL from `GET /api/canvases/:id/timeline`, shot info from the open canvas'
+ * graph, media through signed redirects, agent edits on the project's editor
+ * thread (`propose.timelinePatch`).
  */
 
-export async function getEditorProject(projectId: string): Promise<EditorProject> {
-  return mockProject(projectId);
+const BIN_TONES = ['var(--c-tone-indigo)', 'var(--c-tone-teal)', 'var(--c-tone-plum)', 'var(--c-tone-sand)'];
+
+function shotFromNode(n: GraphNode): ShotInfo {
+  const p = n.params;
+  const seconds = typeof p.length === 'number' ? p.length : typeof p.seconds === 'number' ? p.seconds : 5;
+  return {
+    nodeId: n.id,
+    title: n.title,
+    model: typeof p.model === 'string' ? p.model : '',
+    resolution: typeof p.resolution === 'string' ? p.resolution : '',
+    seconds,
+    credits: n.cost ?? 0,
+  };
 }
 
-/** Rebuilds the cut from the current script (the agent's assemble step). */
-export async function reassemble(_projectId: string): Promise<Edl> {
-  return assembleFromScript(MOCK_SCRIPT);
+export interface EditorProjectReal extends EditorProject {
+  canvasId: string;
+  revision: number;
+}
+
+export async function getEditorProject(projectId: string): Promise<EditorProject> {
+  if (isMockApi()) return mockProject(projectId);
+  const session = openSession(projectId);
+  const canvasId = session?.canvasId() ?? canvasIdFor(projectId);
+  const timeline = await fetchTimeline(canvasId);
+  const nodes = session?.store.getState().nodes ?? [];
+  const videos = nodes.filter((n) => n.kind === 'video');
+  const shots = Object.fromEntries(videos.map((n) => [n.id, shotFromNode(n)]));
+  const mediaUrls: Record<string, string> = {};
+  const audio: EditorProject['audio'] = {};
+  for (const t of timeline.edl.tracks) {
+    for (const c of t.clips) {
+      if (!('assetId' in c) || !c.assetId) continue;
+      mediaUrls[c.assetId] = assetMediaUrl(c.assetId);
+      if (t.kind === 'voice' || t.kind === 'music') audio[c.assetId] = { assetId: c.assetId, title: t.kind === 'voice' ? 'Voiceover' : 'Music', seconds: c.out, peaks: [0] };
+    }
+  }
+  const bin: BinItem[] = videos.map((n, i) => {
+    const media = session?.sync.getMedia(n.id);
+    return {
+      id: `bin_${n.id}`,
+      kind: 'video',
+      title: n.title,
+      seconds: shotFromNode(n).seconds,
+      notGenerated: !media?.assetId,
+      color: typeof n.params.tone === 'string' ? n.params.tone : BIN_TONES[i % BIN_TONES.length]!,
+      nodeId: n.id,
+      ...(media?.assetId ? { assetId: media.assetId } : {}),
+    };
+  });
+  const project: EditorProjectReal = {
+    id: projectId,
+    title: getProject(projectId).title,
+    scriptName: nodes.find((n) => n.kind === 'script')?.title ?? '',
+    edl: timeline.edl,
+    marks: { in: 0, out: edlDuration(timeline.edl) },
+    shots,
+    audio,
+    bin,
+    mediaUrls,
+    view: { playhead: 0, selection: null },
+    canvasId: timeline.canvasId,
+    revision: timeline.revision,
+  };
+  return project;
+}
+
+/** Rebuilds the cut from the current script (real: `POST …/timeline/reassemble`, keeping manual trims). */
+export async function reassemble(projectId: string): Promise<Edl> {
+  if (isMockApi()) return assembleFromScript(MOCK_SCRIPT);
+  const session = openSession(projectId);
+  return (await reassembleTimeline(session?.canvasId() ?? canvasIdFor(projectId))).edl;
+}
+
+/** Real mode: ask the editor thread; a `timelinePatch` proposal becomes the proposal card. Throws on agent errors. */
+async function proposeEditReal(projectId: string, edl: Edl, request: string): Promise<EditProposal | null> {
+  const thread = await threadFor(`editor:${projectId}`, { surface: 'editor', projectId });
+  const r = await sendTurn(thread.id, { text: request });
+  const p: Proposal | null = r.proposal;
+  if (!p || p.body.kind !== 'timelinePatch') {
+    if (r.text) throw new EditorAgentReply(r.text);
+    return null;
+  }
+  const delta = Math.round((p.body.durationBefore - p.body.durationAfter) * 10) / 10;
+  return {
+    id: p.id,
+    request,
+    title: p.summary,
+    bullets: delta > 0 ? [`${p.body.durationBefore}s → ${p.body.durationAfter}s`] : [],
+    note: p.estimate.credits > 0 ? `${p.estimate.credits} credits` : 'Free. Trimmed parts stay recoverable.',
+    credits: p.estimate.credits,
+    ops: p.body.ops as TimelineOp[],
+    highlights: p.body.highlights.map((h) => ({ clipId: h.clipId, kind: h.kind, ...clipSpan(edl, h.clipId) })),
+  };
+}
+
+/** Timeline span of a clip, for proposal highlights. */
+function clipSpan(edl: Edl, clipId: string): { from: number; to: number } {
+  for (const t of edl.tracks) {
+    for (const c of t.clips) {
+      if (c.id !== clipId) continue;
+      if ('end' in c) return { from: c.start, to: c.end };
+      return { from: c.start, to: c.start + (c.out - c.in) / (c.speed ?? 1) };
+    }
+  }
+  return { from: 0, to: 0 };
+}
+
+/** The agent answered with text only (a question or an explanation). */
+export class EditorAgentReply extends Error {
+  constructor(readonly text: string) {
+    super(text);
+  }
+}
+
+export { agentFailure, type AgentFailure };
+
+/** Real mode: applies a timeline proposal as the user; the patched EDL comes back from the server. */
+export async function applyEditProposal(projectId: string, proposalId: string): Promise<Edl> {
+  await applyProposal(proposalId);
+  const session = openSession(projectId);
+  return (await fetchTimeline(session?.canvasId() ?? canvasIdFor(projectId))).edl;
 }
 
 /** Simulated agent latency for edit requests, ms. */
@@ -30,6 +152,7 @@ let proposalSeq = 0;
  * the request can't be planned.
  */
 export async function proposeEdit(project: EditorProject, edl: Edl, request: string): Promise<EditProposal | null> {
+  if (!isMockApi()) return proposeEditReal(project.id, edl, request);
   await new Promise((r) => setTimeout(r, MOCK_AGENT_LATENCY));
   const m = /(\d+(?:\.\d+)?)\s*s(?:ec(?:onds?)?)?\b/i.exec(request);
   if (!m) return null;

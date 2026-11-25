@@ -132,3 +132,4 @@
 .port[data-type].portRefused{box-shadow:inset 0 0 0 2px var(--c-danger),0 0 0 4px color-mix(in srgb,var(--c-danger) 20%,transparent)}
 :global(.react-flow__handle.connectingto).port[data-type]{box-shadow:inset 0 0 0 2px var(--c-danger),0 0 0 4px color-mix(in srgb,var(--c-danger) 20%,transparent)}
 :global(.react-flow__handle.connectingto.valid).port[data-type]{box-shadow:inset 0 0 0 2px var(--c-accent),0 0 0 4px color-mix(in srgb,var(--c-accent) 25%,transparent)}
+.resultMedia{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:inherit;pointer-events:none}

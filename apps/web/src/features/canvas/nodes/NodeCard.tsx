@@ -17,6 +17,10 @@ export interface CardData extends Record<string, unknown> {
   proposed?: boolean;
   /** While a wire is being dragged: what it carries and from which side, to dim ports that can't take it. */
   connecting?: { type: PortType; from: 'out' | 'in'; nodeId: string } | null;
+  /** Signed URL of the active version's media (real mode); the tone stands in without one. */
+  mediaUrl?: string | null;
+  /** Viewer of the project: no edits. */
+  readOnly?: boolean;
   /** Blocked by a bypassed upstream node: the reason. */
   blockedReason?: string | null;
 }
@@ -176,13 +180,25 @@ function Port({ type, node, active, refused, top }: { type: 'in' | 'out'; node: 
 }
 
 /** Done image/video body: the result (tone stands in for the thumbnail). */
+/** The card's result media URL (from `CardData.mediaUrl`). */
+const CardMediaContext = createContext<string | null>(null);
+
 function Result({ node, reveal }: { node: GraphNode; reveal: boolean }) {
   const intl = useIntl();
+  const mediaUrl = useContext(CardMediaContext);
   const actions = useContext(NodeActionsContext);
   const tone = str(node.params.tone, 'var(--c-tone-indigo)');
+  const media = mediaUrl ? (
+    node.kind === 'image' ? (
+      <img className={styles.resultMedia} src={mediaUrl} alt="" draggable={false} data-testid={`node-media-${node.id}`} />
+    ) : (
+      <video className={styles.resultMedia} src={mediaUrl} muted playsInline preload="metadata" data-testid={`node-media-${node.id}`} />
+    )
+  ) : null;
   if (node.kind === 'image') {
     return (
       <div className={cx(styles.reveal, reveal && 'rl-reveal')} style={{ background: tone }} {...motionSafe} onDoubleClick={() => actions.openResult(node.id)}>
+        {media}
         {node.version ? (
           <button
             type="button"
@@ -202,6 +218,7 @@ function Result({ node, reveal }: { node: GraphNode; reveal: boolean }) {
   }
   return (
     <div className={cx(styles.reveal, reveal && 'rl-reveal')} style={{ background: tone }} {...motionSafe}>
+      {media}
       <button
         type="button"
         className={cx(styles.playDisc, styles.chipBtn, 'nodrag')}
@@ -420,6 +437,7 @@ function NodeCardImpl({ data, selected }: NodeProps<CardNode>) {
   const building = buildIndex >= 0;
   const intl = useIntl();
   return (
+    <CardMediaContext.Provider value={data.mediaUrl ?? null}>
     <ConnectingContext.Provider value={connecting ?? null}>
       <div
         className={cx(
@@ -447,6 +465,7 @@ function NodeCardImpl({ data, selected }: NodeProps<CardNode>) {
         {node.collapsed ? <Collapsed node={node} selected={!!selected} /> : <CardContent node={node} selected={!!selected} refused={refused} />}
       </div>
     </ConnectingContext.Provider>
+    </CardMediaContext.Provider>
   );
 }
 

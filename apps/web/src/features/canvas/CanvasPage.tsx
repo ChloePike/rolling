@@ -33,11 +33,22 @@ import {
   useCredits,
   useProject,
   useShare,
+  applyAgentProposal,
+  fetchProjectRuns,
+  requestQuote,
+  runError,
   type GraphProposal,
+  type ProjectFatal,
+  type Quote,
   type QuoteItem,
+  type QuoteRequest,
   type QuoteScope,
   type ProjectSession,
+  type StartRunResult,
 } from './api';
+import { CanvasError } from './CanvasError';
+import { assetMediaUrl, isMockApi, savePendingAction, takePendingAction } from '@/features/overlays/backend';
+import { downloadAsset } from '@/features/overlays/media';
 import canvas from './canvas.module.css';
 import type { LocalOp } from './graph/store';
 import {
@@ -75,6 +86,7 @@ import { ConnectionLine, EdgeActionsContext, Wire, type EdgeActions, type WireEd
 import { PromptPanel } from './prompt/PromptPanel';
 import { formatLabel, usePricedNodes } from './pricing';
 import { getPrefs } from '@/lib/prefs';
+import { modeLabel, modelLabel, type CatalogModel } from '@/lib/models';
 
 /** Layers the design opens through `initOverlay` (Canvas.dc.html), plus the canvas' own. */
 export type CanvasOverlay = 'plan' | 'addMenu' | 'script' | 'share' | 'edit' | 'editAgent' | 'at';
@@ -143,11 +155,14 @@ export function CanvasPage(props: CanvasPageProps) {
   const toast = useToast();
   const intl = useIntl();
   const [session, setSession] = useState<ProjectSession | null>(null);
+  const [fatal, setFatal] = useState<ProjectFatal | null>(null);
   const titles = useRef(new Map<string, string>());
   const retryRef = useRef<(id: string) => void>(() => {});
 
   useEffect(() => {
+    setFatal(null);
     const s = openProject(props.projectId, {
+      onFatal: setFatal,
       onRefused: (r) => toast.show({ message: refusalText(intl, r) }),
       onJobFailed: (nodeId, refunded) =>
         toast.show({
@@ -160,6 +175,8 @@ export function CanvasPage(props: CanvasPageProps) {
     // The session lives as long as the project is open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.projectId]);
+
+  if (fatal) return <CanvasError reason={fatal} />;
 
   return (
     <div className={canvas.root} data-testid="canvas">
@@ -175,18 +192,23 @@ export function CanvasPage(props: CanvasPageProps) {
   );
 }
 
-function planMeta(intl: ReturnType<typeof useIntl>, n: GraphNode, item?: QuoteItem): string {
+function planMeta(intl: ReturnType<typeof useIntl>, n: GraphNode, item?: QuoteItem, models?: CatalogModel[]): string {
   const p = n.params;
   const parts: string[] = [];
   if (item?.action === 'bypassed') return intl.formatMessage({ id: 'canvas.plan.meta.bypassed' });
-  if (item?.action === 'blocked' && item.reason) return item.reason;
+  if (item?.action === 'blocked') {
+    const why = quoteCodeText(intl, item);
+    if (why) return why;
+  }
+  if (item?.action === 'reuse' && item.reason && !isMockApi()) parts.push(item.reason === 'Already running' ? intl.formatMessage({ id: 'canvas.plan.meta.running' }) : item.reason);
   if (n.kind === 'script' || n.kind === 'text') return intl.formatMessage({ id: 'canvas.plan.meta.text' });
   if (n.kind === 'asset') return intl.formatMessage({ id: 'canvas.plan.meta.asset' });
   if (n.kind === 'audio') {
     return intl.formatMessage({ id: 'canvas.plan.meta.tts' }, { voice: String(p.voice ?? ''), seconds: Number(p.seconds ?? 0) });
   }
-  if (typeof p.model === 'string') parts.push(p.model);
-  if (typeof p.mode === 'string' && n.kind === 'video') parts.push(p.mode);
+  if (item?.modelName) parts.push(item.modelName);
+  else if (typeof p.model === 'string') parts.push(modelLabel(models, p.model));
+  if (typeof p.mode === 'string' && n.kind === 'video') parts.push(modeLabel(p.mode));
   const format = formatLabel(n);
   if (format) parts.push(format);
   if (n.status === 'done' && n.version) parts.push(intl.formatMessage({ id: 'canvas.plan.meta.current' }, { n: n.version.n }));
@@ -219,9 +241,9 @@ function acceptingKinds(type: PortType, from: 'out' | 'in'): NodeKind[] {
 }
 
 type RunGate =
-  | { type: 'confirm'; items: QuoteItem[]; nodeId: string }
-  | { type: 'join'; items: QuoteItem[] }
-  | { type: 'credits'; items: QuoteItem[]; total: number };
+  | { type: 'confirm'; quote: Quote; request: QuoteRequest; nodeId: string }
+  | { type: 'join'; request: QuoteRequest }
+  | { type: 'credits'; request: QuoteRequest; total: number };
 
 type Menu =
   | { kind: 'node'; id: string; x: number; y: number }
@@ -250,6 +272,8 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
   const { nodes: pricedNodes, models } = usePricedNodes(storeGraph.nodes);
   const graph = useMemo(() => ({ ...storeGraph, nodes: pricedNodes }), [storeGraph, pricedNodes]);
   const syncStatus = useSyncExternalStore(session.sync.subscribe, session.sync.getStatus);
+  // Result thumbnails follow `node.version` / `job.done` (active version asset per node).
+  const mediaVersion = useSyncExternalStore(session.sync.subscribeMedia, session.sync.getMediaVersion);
   const project = useProject(projectId);
   const credits = useCredits();
   const share = useShare(projectId);
@@ -280,6 +304,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
   const [refRegistry, setRefRegistry] = useState<Record<string, PromptRef>>(MOCK_REFS);
   const pickerFromTyping = useRef(false);
   const [sessionRuns, setSessionRuns] = useState<HistoryRow[]>([]);
+  const [serverRuns, setServerRuns] = useState<HistoryRow[] | null>(null);
   const [size, setSize] = useState({ w: typeof window === 'undefined' ? 1440 : window.innerWidth, h: 900 });
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -318,11 +343,13 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
             proposed: proposed?.includes(node.id) ?? false,
             connecting: wire,
             blockedReason: blocked?.message ?? null,
+            mediaUrl: mediaUrlOf(session, node.id),
+            readOnly: !session.sync.canEdit,
           },
         };
       });
     });
-  }, [graph, selected, refused, session, proposed, wire]);
+  }, [graph, selected, refused, session, proposed, wire, mediaVersion]);
 
   const rfEdges = useMemo<WireEdge[]>(() => {
     const byId = new Map(graph.nodes.map((n) => [n.id, n]));
@@ -546,80 +573,152 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
     [session],
   );
 
-  const executeRun = useCallback(
-    (items: QuoteItem[]) => {
-      const runs = items.filter((i) => i.action === 'run');
-      if (!runs.length) return;
-      const total = runs.reduce((s, i) => s + i.credits, 0);
-      // Generating needs an active plan (D-007): the paywall keeps the run and resumes it.
-      if (!isMember) {
-        setGate({ type: 'join', items: runs });
+  /** What `POST /api/runs` answered (or the mock room), turned into the next gate or a message. */
+  const handleStart = useCallback(
+    (r: StartRunResult, quote: Quote, request: QuoteRequest, retry: (q: Quote) => void) => {
+      const runs = quote.items.filter((i) => i.action === 'run');
+      if (r.ok) {
+        setGate(null);
+        recordRuns(runs);
+        toast.show({ message: intl.formatMessage({ id: 'canvas.toast.started' }, { n: runs.length }) });
         return;
       }
-      const r = startRun(runs);
-      if (!r.ok) {
-        if (r.code === 'INSUFFICIENT_CREDITS') setGate({ type: 'credits', items: runs, total });
-        else toast.show({ message: intl.formatMessage({ id: 'canvas.toast.offline' }) });
-        return;
+      switch (r.code) {
+        case 'NO_PLAN':
+          // D-007: keep the run and resume it after checkout (also across the Stripe redirect).
+          savePendingAction('canvas.run', { projectId, request });
+          setGate({ type: 'join', request });
+          return;
+        case 'INSUFFICIENT_CREDITS':
+          setGate({ type: 'credits', request, total: quote.total });
+          return;
+        case 'QUOTE_EXPIRED':
+          // Prices are held 10 minutes: re-quote and show the new total.
+          void requestQuote(projectId, request, session.store.getState()).then(
+            (q) => {
+              if (q.needsConfirm) {
+                toast.show({ message: intl.formatMessage({ id: 'canvas.toast.requoted' }, { n: q.total }) });
+                setGate({ type: 'confirm', quote: q, request, nodeId: request.nodeIds?.[0] ?? '' });
+              } else retry(q);
+            },
+            () => toast.show({ message: intl.formatMessage({ id: 'canvas.toast.offline' }) }),
+          );
+          return;
+        case 'MEMBER_LIMIT_REACHED':
+          setGate(null);
+          toast.show({ message: intl.formatMessage({ id: 'canvas.toast.memberLimit' }), duration: 0 });
+          return;
+        case 'CONCURRENCY_LIMIT':
+          setGate(null);
+          toast.show({ message: intl.formatMessage({ id: 'canvas.toast.concurrency' }, { limit: r.limit ?? 0 }) });
+          return;
+        case 'NOTHING_TO_RUN':
+          setGate(null);
+          toast.show({ message: intl.formatMessage({ id: 'canvas.toast.nothingToRunAll' }) });
+          return;
+        case 'OFFLINE':
+          toast.show({ message: intl.formatMessage({ id: 'canvas.toast.offline' }) });
+          return;
+        default:
+          setGate(null);
+          toast.show({ message: intl.formatMessage({ id: 'canvas.toast.runError' }, { message: r.message }) });
       }
-      setGate(null);
-      recordRuns(runs);
-      toast.show({ message: intl.formatMessage({ id: 'canvas.toast.started' }, { n: runs.length }) });
     },
-    [isMember, toast, intl, recordRuns],
+    [projectId, session, recordRuns, toast, intl],
+  );
+
+  const executeRun = useCallback(
+    (quote: Quote, request: QuoteRequest, attempt = 0) => {
+      const runs = quote.items.filter((i) => i.action === 'run');
+      if (!runs.length) return;
+      // Mock mode gates on the mock session; the real API answers NO_PLAN itself.
+      if (isMockApi() && !isMember) {
+        setGate({ type: 'join', request });
+        return;
+      }
+      void startRun(quote).then(
+        (r) => handleStart(r, quote, request, (q) => attempt < 1 && executeRunRef.current(q, request, attempt + 1)),
+        (e: unknown) => handleStart(runError(e), quote, request, () => {}),
+      );
+    },
+    [isMember, handleStart],
   );
   executeRunRef.current = executeRun;
+
+  /** Quotes `request` and runs it (or asks first, per the confirm threshold). Quote-time blocks explain themselves. */
+  const runRequest = useCallback(
+    (request: QuoteRequest) => {
+      const state = session.store.getState();
+      const nodes = graph.nodes.length ? graph.nodes : state.nodes;
+      void requestQuote(projectId, request, { nodes, edges: state.edges }).then(
+        (q) => {
+          const runs = q.items.filter((i) => i.action === 'run');
+          if (!runs.length) {
+            const id = request.nodeIds?.[0];
+            const item = q.items.find((i) => i.nodeId === id) ?? q.items[0];
+            const n = nodes.find((x) => x.id === item?.nodeId);
+            toast.show({ message: quoteBlockText(intl, item, n?.title ?? '') });
+            return;
+          }
+          // Runs under the user's "Confirm before running" threshold start without the quote dialog (D-006).
+          if (!q.needsConfirm) executeRun(q, request);
+          else setGate({ type: 'confirm', quote: q, request, nodeId: request.nodeIds?.[0] ?? '' });
+        },
+        (e: unknown) => handleStart(runError(e), { quoteId: null, scope: request.scope, items: [], total: 0, balance: 0, balanceAfter: 0, expiresAt: null, confirmThreshold: 0, needsConfirm: false }, request, () => {}),
+      );
+    },
+    [projectId, session, graph.nodes, executeRun, handleStart, toast, intl],
+  );
+  runRequestRef.current = runRequest;
 
   /** Run one node, or a node with its upstream (`upTo`) or downstream (`from`). */
   const requestRun = useCallback(
     (id: string, scope: Exclude<QuoteScope, 'all'> = 'node') => {
-      const state = session.store.getState();
       if (scope !== 'node') {
         setPlanScope({ scope, nodeId: id });
         setOverlay('plan');
         return;
       }
-      const nodes = graph.nodes.length ? graph.nodes : state.nodes;
-      const q = quoteRun(nodes, state.edges, [id], 'node');
-      const item = q.items[0];
-      if (!item || item.action !== 'run') {
-        const n = nodes.find((x) => x.id === id);
-        toast.show({
-          message:
-            item?.action === 'blocked' && item.reason
-              ? item.reason
-              : intl.formatMessage({ id: item?.action === 'bypassed' ? 'canvas.toast.bypassedRun' : 'canvas.toast.nothingToRun' }, { title: n?.title ?? '' }),
-        });
-        return;
-      }
-      // Runs under the user's "Confirm before running" threshold start without the quote dialog.
-      if (q.total < getPrefs().confirmThreshold) executeRun(q.items);
-      else setGate({ type: 'confirm', items: q.items, nodeId: id });
+      runRequest({ scope: 'node', nodeIds: [id] });
     },
-    [session, graph.nodes, executeRun, toast, intl],
+    [runRequest],
   );
   retryRef.current = (id) => requestRun(id);
 
-  const planQuote = useMemo(
-    () => (planScope.scope === 'all' || !planScope.nodeId ? quoteRun(graph.nodes, graph.edges) : quoteRun(graph.nodes, graph.edges, [planScope.nodeId], planScope.scope)),
-    [graph.nodes, graph.edges, planScope],
+  // A run interrupted by the join paywall resumes once the plan is active (after checkout, even after a redirect).
+  useEffect(() => {
+    if (isMockApi() || syncStatus !== 'saved') return;
+    const pending = takePendingAction<{ projectId: string; request: QuoteRequest }>('canvas.run');
+    if (pending?.projectId === projectId) runRequest(pending.request);
+    // Only once the canvas has loaded.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [syncStatus === 'saved']);
+
+  const planRequest: QuoteRequest = useMemo(
+    () => (planScope.scope === 'all' || !planScope.nodeId ? { scope: 'all' } : { scope: planScope.scope, nodeIds: [planScope.nodeId] }),
+    [planScope],
   );
+  const planQuote = usePlanQuote(projectId, overlay === 'plan', planRequest, graph);
   const runAllEstimate = graph.nodes.filter((n) => willRun(n) && !n.bypass).reduce((s, n) => s + (runCost(n) ?? 0), 0);
   const planRows: RunPlanRow[] = useMemo(
     () =>
-      planQuote.items.map((it) => {
-        const n = graph.nodes.find((x) => x.id === it.nodeId)!;
-        return {
-          id: n.id,
-          name: n.kind === 'script' ? `${intl.formatMessage({ id: 'canvas.node.kind.script' })} · ${String(n.params.versionLabel ?? '')}` : n.title,
-          meta: planMeta(intl, n, it),
-          kind: runKind(n.kind),
-          state: it.action === 'none' || it.action === 'bypassed' ? 'free' : it.action === 'run' || (n.status === 'generating' && it.action !== 'blocked') ? 'run' : it.action,
-          cost: it.action === 'run' || n.status === 'generating' ? runCost(n) ?? 0 : 0,
-          tone: typeof n.params.tone === 'string' ? n.params.tone : undefined,
-        };
+      (planQuote?.items ?? []).flatMap((it) => {
+        const n = graph.nodes.find((x) => x.id === it.nodeId);
+        if (!n) return [];
+        const real = !isMockApi();
+        return [
+          {
+            id: n.id,
+            name: n.kind === 'script' ? `${intl.formatMessage({ id: 'canvas.node.kind.script' })} · ${String(n.params.versionLabel ?? '')}` : n.title,
+            meta: planMeta(intl, n, it, models),
+            kind: runKind(n.kind),
+            state: it.action === 'none' || it.action === 'bypassed' ? 'free' : it.action === 'run' || (n.status === 'generating' && it.action !== 'blocked') ? 'run' : it.action,
+            cost: real ? it.credits : it.action === 'run' || n.status === 'generating' ? runCost(n) ?? 0 : 0,
+            tone: typeof n.params.tone === 'string' ? n.params.tone : undefined,
+          } satisfies RunPlanRow,
+        ];
       }),
-    [planQuote, graph.nodes, intl],
+    [planQuote, graph.nodes, intl, models],
   );
 
   /* ---------- Agent: Build on canvas (a free graph patch from the plan proposal) ---------- */
@@ -686,7 +785,17 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
   );
 
   const applyProposal = useCallback(
-    (p: GraphProposal) => {
+    (p: GraphProposal): boolean | Promise<boolean> => {
+      if (!isMockApi()) {
+        // Exactly the stored ops go to the room as the user (origin agent); they arrive as graph.patched.
+        return applyAgentProposal(p.id).then(
+          () => {
+            toast.show({ message: intl.formatMessage({ id: 'canvas.toast.proposalApplied' }) });
+            return true;
+          },
+          () => false,
+        );
+      }
       const r = commit(p.ops);
       if (r.ok) {
         toast.show({
@@ -738,6 +847,18 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
   const agentP = usePresence(agentOpen);
   const creditsP = usePresence(creditsOpen);
   const historyP = usePresence(historyOpen);
+  // Real mode: the drawer lists this project's runs from the Activity index, refreshed while it is open.
+  useEffect(() => {
+    if (isMockApi() || !historyOpen) return;
+    let live = true;
+    const load = () => void fetchProjectRuns(projectId).then((rows) => live && setServerRuns(rows), () => {});
+    load();
+    const t = window.setInterval(load, 5000);
+    return () => {
+      live = false;
+      window.clearInterval(t);
+    };
+  }, [historyOpen, projectId]);
   const templatesP = usePresence(toolPanel === 'templates');
   const assetsP = usePresence(toolPanel === 'assets');
   const menuP = usePresence(!!menu);
@@ -795,7 +916,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
         tempId,
         kind,
         title: intl.formatMessage({ id: `canvas.add.newTitle.${kind}` }),
-        params: { ...(NODE_DEFAULTS[kind] ?? {}), ...(pick.variant ? { source: pick.variant } : {}) },
+        params: { ...withCatalogModel(NODE_DEFAULTS[kind] ?? {}, kind, models), ...(pick.variant ? { source: pick.variant } : {}) },
         position: at,
       });
     }
@@ -910,8 +1031,9 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
       if (n.status === 'failed') return { ...row, status: 'failed', refunded: n.refunded ?? row.credits };
       return { ...row, status: 'done' };
     };
+    if (!isMockApi()) return (serverRuns ?? sessionRuns).map((r) => live(r.nodeId, r));
     return [...sessionRuns.map((r) => live(r.nodeId, r)), ...MOCK_RUNS.map((r) => live(r.nodeId, r))];
-  }, [graph.nodes, sessionRuns]);
+  }, [graph.nodes, sessionRuns, serverRuns]);
 
   const pickRefs = (items: RefItem[]) => {
     if (!promptNode) return;
@@ -975,7 +1097,9 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
         meta: v === n.version!.total ? intl.formatMessage({ id: 'canvas.node.latest' }) : undefined,
         checked: v === n.version!.n,
         onSelect: () => {
-          if (setActiveVersion(n.id, v)) toast.show({ message: intl.formatMessage({ id: 'canvas.toast.version' }, { title: n.title, n: v }) });
+          void setActiveVersion(projectId, n.id, v).then((ok) => {
+            if (ok) toast.show({ message: intl.formatMessage({ id: 'canvas.toast.version' }, { title: n.title, n: v }) });
+          });
         },
       }));
     }
@@ -1030,6 +1154,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
   const lastResult = useRef(resultNode);
   if (resultNode) lastResult.current = resultNode;
   const shownResult = resultNode ?? lastResult.current;
+  const resultMedia = shownResult ? session.sync.getMedia(shownResult.id) : undefined;
 
   const onResultAction = (id: ResultActionId) => {
     const n = shownResult;
@@ -1042,6 +1167,13 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
       requestRun(n.id);
     } else if (id === 'download') {
       toast.show({ message: intl.formatMessage({ id: 'canvas.toast.download' }, { title: n.title }) });
+      const assetId = session.sync.getMedia(n.id)?.assetId;
+      if (!isMockApi() && assetId) {
+        void downloadAsset(assetId, n.title).then(
+          (ok) => !ok && toast.show({ message: intl.formatMessage({ id: 'canvas.toast.downloadFailed' }, { title: n.title }) }),
+          () => toast.show({ message: intl.formatMessage({ id: 'canvas.toast.downloadFailed' }, { title: n.title }) }),
+        );
+      }
     }
   };
 
@@ -1052,9 +1184,10 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
 
   const gateRows: RunPlanRow[] =
     gate?.type === 'confirm'
-      ? gate.items.map((it) => {
-          const n = graph.nodes.find((x) => x.id === it.nodeId)!;
-          return { id: it.nodeId, name: n.title, meta: planMeta(intl, n), kind: runKind(n.kind), state: 'run', cost: it.credits, tone: typeof n.params.tone === 'string' ? n.params.tone : undefined };
+      ? gate.quote.items.flatMap((it) => {
+          const n = graph.nodes.find((x) => x.id === it.nodeId);
+          if (!n || it.action !== 'run') return [];
+          return [{ id: it.nodeId, name: n.title, meta: planMeta(intl, n, it, models), kind: runKind(n.kind), state: 'run' as const, cost: it.credits, tone: typeof n.params.tone === 'string' ? n.params.tone : undefined }];
         })
       : [];
 
@@ -1291,6 +1424,9 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
           isMember={isMember}
           onApplyProposal={applyProposal}
           onPreview={setProposed}
+          projectId={projectId}
+          selection={selected ? [selected] : undefined}
+          nodes={graph.nodes}
         />
       ) : null}
 
@@ -1404,10 +1540,10 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
           state={planP.state}
           onClose={close}
           rows={planRows}
-          balance={credits.available}
+          balance={planQuote && !isMockApi() ? planQuote.balance : credits.available}
           onConfirm={() => {
             close();
-            executeRun(planQuote.items);
+            if (planQuote) executeRun(planQuote, planRequest);
           }}
         />
       ) : null}
@@ -1421,18 +1557,19 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
         eta={intl.formatMessage({ id: 'canvas.plan.etaSingle' })}
         subtitle={gateRows[0]?.meta}
         actionLabel={intl.formatMessage({ id: 'canvas.run.action' })}
-        onConfirm={() => gate && executeRun(gate.items)}
+        onConfirm={() => gate?.type === 'confirm' && executeRun(gate.quote, gate.request)}
       />
       <Paywall
         open={gate?.type === 'join'}
         onOpenChange={(o) => !o && setGate(null)}
         variant="join"
         onContinue={(option: PaywallOption) => {
-          const items = gate?.items ?? [];
+          const request = gate?.type === 'join' ? gate.request : null;
           void checkoutPlan(option.id).then(() => {
             setGate(null);
-            // The run resumes after checkout with the same quote items.
-            window.setTimeout(() => executeRunRef.current(items), 0);
+            takePendingAction('canvas.run');
+            // The run resumes after checkout: re-quoted (prices may have changed) and confirmed per threshold.
+            if (request) window.setTimeout(() => runRequestRef.current(request), 0);
           });
         }}
       />
@@ -1444,12 +1581,12 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
         balance={credits.available}
         plan={planId}
         onContinue={(option: PaywallOption) => {
-          const items = gate?.items ?? [];
+          const request = gate?.type === 'credits' ? gate.request : null;
           const usd = typeof option.amountUsd === 'number' ? option.amountUsd : Number(/^topup_(\d+(?:\.\d+)?)$/.exec(option.id)?.[1] ?? 0);
           void topUp(usd).then(
             () => {
               setGate(null);
-              window.setTimeout(() => executeRunRef.current(items), 50);
+              if (request) window.setTimeout(() => runRequestRef.current(request), 50);
             },
             () => toast.show({ message: intl.formatMessage({ id: 'canvas.toast.topUpFailed' }) }),
           );
@@ -1468,11 +1605,12 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
           versions={Array.from({ length: shownResult.version.total }, (_, i) => ({ id: `v${i + 1}`, label: `v${i + 1}`, tone: typeof shownResult.params.tone === 'string' ? shownResult.params.tone : undefined }))}
           versionId={`v${shownResult.version.n}`}
           currentVersionId={`v${shownResult.version.n}`}
-          onVersionChange={(id) => setActiveVersion(shownResult.id, Number(id.slice(1)))}
+          onVersionChange={(id) => void setActiveVersion(projectId, shownResult.id, Number(id.slice(1)))}
+          src={resultMedia?.assetId ? assetMediaUrl(resultMedia.assetId) : undefined}
           durationSec={typeof shownResult.params.seconds === 'number' ? shownResult.params.seconds : undefined}
           prompt={String(shownResult.params.prompt ?? '').replace(/@\[([^\]]+)\]/g, '@$1')}
           params={[
-            { label: intl.formatMessage({ id: 'canvas.result.model' }), value: String(shownResult.params.model ?? '') },
+            { label: intl.formatMessage({ id: 'canvas.result.model' }), value: modelLabel(models, shownResult.params.model) },
             { label: intl.formatMessage({ id: 'canvas.result.format' }), value: formatLabel(shownResult) },
           ]}
           assets={refsOf(shownResult).map((r) => ({ id: r.id, name: r.name, tone: r.tone }))}
@@ -1496,8 +1634,81 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
   );
 }
 
+/**
+ * New nodes store gateway model ids (D-009) when the catalog knows the
+ * default's display name (or offers a default for the kind); mock mode keeps
+ * the design's display names.
+ */
+function withCatalogModel(params: Record<string, unknown>, kind: NodeKind, models: CatalogModel[] | undefined): Record<string, unknown> {
+  if (isMockApi() || !models?.length || (kind !== 'image' && kind !== 'video')) return params;
+  const byName = models.find((m) => m.kind === kind && m.name === params.model);
+  const fallback = models.find((m) => m.kind === kind && m.default && !m.hidden);
+  const id = byName?.id ?? fallback?.id;
+  return id ? { ...params, model: id } : params;
+}
+
+/** Result thumbnail of a node's active version (real mode: signed redirect per asset). */
+function mediaUrlOf(session: ProjectSession, nodeId: string): string | null {
+  if (isMockApi()) return null;
+  const m = session.sync.getMedia(nodeId);
+  return m?.assetId ? assetMediaUrl(m.assetId) : null;
+}
+
 /** The resume path after checkout or a top-up needs the latest `executeRun`. */
-const executeRunRef: { current: (items: QuoteItem[]) => void } = { current: () => {} };
+const executeRunRef: { current: (quote: Quote, request: QuoteRequest, attempt?: number) => void } = { current: () => {} };
+const runRequestRef: { current: (request: QuoteRequest) => void } = { current: () => {} };
+
+/**
+ * The plan dialog's quote: the local planner in mock mode (synchronous, for
+ * the fidelity specs), `POST /api/runs/quote` in real mode — re-quoted when
+ * the graph changes while the dialog is open.
+ */
+function usePlanQuote(projectId: string, open: boolean, request: QuoteRequest, graph: GraphState): Quote | null {
+  const mock = isMockApi();
+  const local = useMemo(() => {
+    if (!mock) return null;
+    const q = request.scope === 'all' ? quoteRun(graph.nodes, graph.edges) : quoteRun(graph.nodes, graph.edges, request.nodeIds, request.scope);
+    return { ...q, balance: q.balanceAfter + q.total, expiresAt: null, confirmThreshold: getPrefs().confirmThreshold, needsConfirm: true } satisfies Quote;
+  }, [mock, graph.nodes, graph.edges, request]);
+  const [remote, setRemote] = useState<Quote | null>(null);
+  const revision = graph.revision;
+  useEffect(() => {
+    if (mock || !open) return;
+    const ctl = new AbortController();
+    const t = window.setTimeout(() => {
+      requestQuote(projectId, request, graph, ctl.signal).then(setRemote, () => {});
+    }, 250);
+    return () => {
+      ctl.abort();
+      window.clearTimeout(t);
+    };
+    // Re-quote on a new revision or scope, not on every runtime tick.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mock, open, projectId, request, revision]);
+  return mock ? local : remote;
+}
+
+/** Why a quote has nothing to run for the node (quote codes, D-005 safety codes, plan caps). */
+function quoteBlockText(intl: ReturnType<typeof useIntl>, item: QuoteItem | undefined, title: string): string {
+  if (!item) return intl.formatMessage({ id: 'canvas.toast.nothingToRun' }, { title });
+  if (item.action === 'bypassed') return intl.formatMessage({ id: 'canvas.toast.bypassedRun' }, { title });
+  if (item.action === 'reuse') return intl.formatMessage({ id: 'canvas.toast.reuse' }, { title });
+  if (item.action === 'blocked') return quoteCodeText(intl, item) ?? intl.formatMessage({ id: 'canvas.toast.nothingToRun' }, { title });
+  return intl.formatMessage({ id: 'canvas.toast.nothingToRun' }, { title });
+}
+
+const QUOTE_CODES = new Set(['missing_input', 'upstream_blocked', 'bypassed_input', 'unknown_model', 'no_capable_model', 'unsupported', 'unpriced', 'resolution_locked', 'mature_not_allowed', 'identity_requires_platform_assets', 'empty_prompt', 'SAFETY_BLOCKED', 'MATURE_REQUIRED', 'SAFETY_REVIEW', 'NO_PLAN']);
+
+/** Copy for a blocked quote row: mapped by `code` (plan cap names the plan), else the API's English `reason`. */
+export function quoteCodeText(intl: ReturnType<typeof useIntl>, item: Pick<QuoteItem, 'code' | 'reason' | 'lowestPlan'>): string | undefined {
+  if (item.code && QUOTE_CODES.has(item.code)) {
+    const plan = item.lowestPlan ? (PLAN_LABELS[item.lowestPlan] ?? item.lowestPlan) : '';
+    return intl.formatMessage({ id: `canvas.quote.code.${item.code}`, defaultMessage: item.reason ?? item.code }, { plan, reason: item.reason ?? '' });
+  }
+  return item.reason;
+}
+
+const PLAN_LABELS: Record<string, string> = { starter: 'Starter', plus: 'Plus', pro: 'Pro', team: 'Team' };
 
 function ProjectRename({ title, onDone }: { title: string; onDone: (title: string | null) => void }) {
   const intl = useIntl();

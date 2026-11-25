@@ -1,7 +1,7 @@
 import type { PlanId } from '@rolling/core/pricing/config';
 import { cx, presenceProps, usePresence, type PresenceState } from '@rolling/ui';
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
-import type { CatalogModel } from '@/lib/models';
+import { modeLabel, modelLabel, type CatalogModel } from '@/lib/models';
 import { ModelIcon, modelIcon } from '@/lib/modelIcons';
 import {
   defaultImageParams,
@@ -124,13 +124,13 @@ export function PromptPanel({ node, left, top, state, refs, pickerOpen, onOpenPi
   useEffect(() => setOpen(null), [node.id]);
 
   const options: ModelOption[] = (models?.length ? catalogToOptions(models, kind) : []).length ? catalogToOptions(models!, kind) : mockModels[kind];
-  const currentModel = options.find((o) => o.id === node.params.modelId || o.name === node.params.model);
+  const currentModel = options.find((o) => o.id === node.params.modelId || o.id === node.params.model || o.name === node.params.model);
   const extraLabel = video
     ? intl.formatMessage({ id: 'canvas.prompt.extra' }, { n: count, audio: videoValue(node).audio ? 'on' : 'off' })
     : intl.formatMessage({ id: 'canvas.prompt.count' }, { n: count });
   const pills: Array<{ key: PillKey; label: string; icon: CanvasIconName; caret: boolean }> = [
-    { key: 'model', label: str(node.params.model), icon: 'cube', caret: true },
-    { key: 'mode', label: str(node.params.mode), icon: video ? 'frame' : 'image', caret: true },
+    { key: 'model', label: modelLabel(models, node.params.model), icon: 'cube', caret: true },
+    { key: 'mode', label: modeLabel(node.params.mode), icon: video ? 'frame' : 'image', caret: true },
     { key: 'format', label: formatLabel(node), icon: 'ratio', caret: false },
     { key: 'extra', label: video ? str(node.params.extra) || extraLabel : extraLabel, icon: video ? 'wave' : 'copy', caret: false },
   ];
@@ -292,7 +292,7 @@ export function PromptPanel({ node, left, top, state, refs, pickerOpen, onOpenPi
                 onOpenChange={(o) => setOpen(o ? 'mode' : null)}
                 label={intl.formatMessage({ id: 'canvas.prompt.mode' })}
                 title={intl.formatMessage({ id: 'canvas.prompt.mode' })}
-                entries={MODES[kind].map((m) => ({ key: m, label: m, checked: m === node.params.mode, onSelect: () => onUpdate(node.id, { mode: m }) }))}
+                entries={MODES[kind].map((m) => ({ key: m, label: m, checked: m === modeLabel(node.params.mode), onSelect: () => onUpdate(node.id, { mode: m }) }))}
                 trigger={(t) => (
                   <button {...t} type="button" className={styles.param}>
                     <CanvasIcon name={p.icon} size={13} />

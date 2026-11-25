@@ -16,6 +16,18 @@ const PORT = Number(process.env.PW_PORT ?? 4173);
  */
 const OUT_DIR = `dist-e2e/${PORT}`;
 
+/**
+ * `real` project (docs/canvas-flow.md against a real backend, no mocks):
+ * - `PW_BASE_URL=https://<staging>` runs it against a deployed Worker (no local server);
+ * - `PW_REAL_LOCAL=1` starts `wrangler dev` (ENVIRONMENT=development, dev identity header) on `PW_REAL_PORT`.
+ * The default `chromium` project runs every other spec on the mocks (`VITE_API_MODE=mock`).
+ */
+const REAL_BASE = process.env.PW_BASE_URL;
+const REAL_LOCAL = process.env.PW_REAL_LOCAL === '1';
+const REAL_PORT = Number(process.env.PW_REAL_PORT ?? 8797);
+const realBaseURL = REAL_BASE ?? `http://localhost:${REAL_PORT}`;
+const onlyReal = !!REAL_BASE || REAL_LOCAL;
+
 export default defineConfig({
   testDir: './e2e',
   snapshotPathTemplate: '{testDir}/__snapshots__/{arg}{ext}',
@@ -30,11 +42,24 @@ export default defineConfig({
     colorScheme: 'dark',
     launchOptions: executablePath ? { executablePath } : {},
   },
-  projects: [{ name: 'chromium' }],
-  webServer: {
-    command: `pnpm exec vite build --outDir ${OUT_DIR} --emptyOutDir && pnpm exec vite preview --outDir ${OUT_DIR} --port ${PORT} --strictPort`,
-    url: `http://localhost:${PORT}`,
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
+  projects: [
+    { name: 'chromium', testIgnore: /real\// },
+    { name: 'real', testDir: './e2e/real', use: { baseURL: realBaseURL }, timeout: 15 * 60_000 },
+  ],
+  webServer: onlyReal
+    ? REAL_LOCAL
+      ? {
+          // Builds the SPA into apps/web/dist (the Worker's static assets), applies local D1 migrations, runs the Worker.
+          command: `pnpm exec vite build && cd ../api && pnpm exec wrangler d1 migrations apply rolling-dev --local && pnpm exec wrangler dev --port ${REAL_PORT} --var ENVIRONMENT:development`,
+          url: `http://localhost:${REAL_PORT}/api/health`,
+          reuseExistingServer: !process.env.CI,
+          timeout: 240_000,
+        }
+      : undefined
+    : {
+        command: `VITE_API_MODE=mock pnpm exec vite build --outDir ${OUT_DIR} --emptyOutDir && pnpm exec vite preview --outDir ${OUT_DIR} --port ${PORT} --strictPort`,
+        url: `http://localhost:${PORT}`,
+        reuseExistingServer: !process.env.CI,
+        timeout: 120_000,
+      },
 });
