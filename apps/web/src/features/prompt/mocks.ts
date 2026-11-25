@@ -1,12 +1,13 @@
 import { LIBRARY_CATEGORIES } from '@rolling/core/library/categories';
 import type { LibraryCategoryKey } from '@rolling/core/library/types';
-import { POSEWEAR_ASSET_HOST } from '@rolling/core/library/posewear';
 import type { PromptIconName } from './icons';
 import type { PromptCommand, RefGlyph, RefItem } from './types';
 
 /**
  * Mock data shaped like `GET /api/assets?scope=all` and the skills list.
  * Values match Main.dc.html so the screens can be compared pixel for pixel.
+ * The public items here are the user's recent picks (All tab); the Public
+ * library tab itself reads the GraphQL API.
  */
 
 const letter = (l: string) => ({ type: 'letter', letter: l }) as const;
@@ -20,7 +21,6 @@ function pub(
   meta: string,
   glyph: RefGlyph,
   tone: string,
-  thumbPath?: string,
 ): RefItem {
   const cat = LIBRARY_CATEGORIES.find((c) => c.key === category)!;
   return {
@@ -33,8 +33,6 @@ function pub(
     tone,
     glyph,
     license: cat.license,
-    // Dev fallback: the source CDN thumbnail (D-004). Production reads R2.
-    thumbUrl: thumbPath ? `${POSEWEAR_ASSET_HOST}/${thumbPath}` : undefined,
   };
 }
 
@@ -50,7 +48,7 @@ export const MOCK_REFERENCES: RefItem[] = [
   { id: 'voc_v1', group: 'voice', name: 'Clear female', meta: 'Voice · English', source: 'builtin', tone: '#1C1C1F', glyph: wave },
   { id: 'voc_v2', group: 'voice', name: 'My voice 01', meta: 'Voice · Cloned', source: 'mine', tone: '#1C1C1F', glyph: wave },
   { id: 'voc_v3', group: 'voice', name: 'Steady male', meta: 'Voice · English', source: 'builtin', tone: '#1C1C1F', glyph: wave },
-  pub('pw_pose_P001', 'pose', 'Sitting sideways', 'Pose P001 · 5 angles', icon('pose'), '#26232A', 'p/t/full_single_P001_front.webp'),
+  pub('pw_pose_P001', 'pose', 'Sitting sideways', 'Pose P001 · 5 angles', icon('pose'), '#26232A'),
   pub('pw_pose_P014', 'pose', 'Hands on hips', 'Pose P014 · 5 angles', icon('pose'), '#202330'),
   pub('pw_outfit_W001', 'outfit', 'Beige trench', 'Outfit W001', icon('wear'), '#28251F'),
   pub('pw_outfit_W009', 'outfit', 'Linen shirt', 'Outfit W009', icon('wear'), '#1F2628'),

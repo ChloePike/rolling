@@ -1,5 +1,6 @@
-import { expect, test, type Page, type Route } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { animationTiming, diffScreen, expectBoxesClose, expectDiffUnder, measure, openApp, openDesign, settle } from './support/fidelity';
+import { mockPublicLibrary, PNG_2X2, type PublicCall, type PublicNode } from './support/publicLibrary';
 
 /** Pose names and sub-categories as drawn in PublicLibrary.dc.html. */
 const POSE_NAMES = [
@@ -9,7 +10,7 @@ const POSE_NAMES = [
 ];
 const POSE_SUBS = ['cute', 'sitting', 'standing', 'kneeling', 'lying-down', 'side-sitting', 'squatting', 'leaning-forward', 'leaning-back', 'twisting'];
 
-type Node = { id: string; category: string; sub: string | null; title: string; promptEn: string | null; tags: string[]; assetId: string; license: string; source: string; mature?: boolean };
+type Node = PublicNode;
 
 function poseNodes(): Node[] {
   return POSE_NAMES.map((title, i) => {
@@ -36,20 +37,13 @@ const OTHER: Record<string, Node[]> = {
   expression: [{ id: 'pw_expression_e001', category: 'expression', sub: 'happy', title: 'Smile', promptEn: 'A gentle smile', tags: ['happy'], assetId: 'a3', license: 'MIT', source: 'https://posewear.pages.dev/#expr/e001' }],
 };
 
-async function mockGraphql(page: Page, calls: Array<Record<string, unknown>> = []) {
-  await page.route('**/api/graphql', async (route: Route) => {
-    const body = route.request().postDataJSON() as { variables: { category: string; q: string | null } };
-    calls.push(body.variables);
-    const nodes = body.variables.category === 'pose' ? poseNodes() : (OTHER[body.variables.category] ?? []);
-    await route.fulfill({
-      json: { data: { publicItems: { edges: nodes.map((node) => ({ cursor: node.id, node })), pageInfo: { hasNextPage: false, endCursor: null } } } },
-    });
-  });
+async function mockGraphql(page: Page, calls: PublicCall[] = []) {
+  await mockPublicLibrary(page, (category) => (category === 'pose' ? poseNodes() : (OTHER[category ?? ''] ?? [])), calls);
 }
 
 test.describe('public library (PublicLibrary.dc.html)', () => {
   test('categories from packages/core, sub-categories, first-party items carry no license label', async ({ page }) => {
-    const calls: Array<Record<string, unknown>> = [];
+    const calls: PublicCall[] = [];
     await mockGraphql(page, calls);
     await openApp(page, '/assets/public');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Public library');
@@ -59,12 +53,15 @@ test.describe('public library (PublicLibrary.dc.html)', () => {
     await expect(nav.getByRole('link', { name: /Poses/ })).toHaveAttribute('aria-current', 'page');
     await expect(page.locator('[data-item]')).toHaveCount(15);
     await expect(page.locator('[data-license]')).toHaveCount(0);
-    expect(calls[0]).toMatchObject({ category: 'pose' });
+    expect(calls.find((c) => c.op === 'items')?.variables).toMatchObject({ category: 'pose', sub: null });
+    await expect(nav.getByRole('link', { name: /Poses/ }).first()).toContainText('98');
     const subs = page.getByRole('group', { name: 'Filter by sub-category' });
     await expect(subs.getByRole('button')).toHaveText(['All', 'Cute', 'Sitting', 'Standing', 'Kneeling', 'Lying down', 'Side-sitting', 'Squatting', 'Leaning forward', 'Leaning back', 'Twisting']);
     await subs.getByRole('button', { name: 'Sitting', exact: true }).click();
+    // The sub-category is filtered by the server (publicItems sub), with its facet count.
     await expect(page.locator('[data-item]')).toHaveCount(2);
     await expect(page.getByText('14 items')).toBeVisible();
+    expect(calls.filter((c) => c.op === 'items').at(-1)?.variables).toMatchObject({ category: 'pose', sub: 'sitting' });
     const details = page.getByRole('complementary', { name: 'Asset details' });
     await expect(details).toContainText('PoseWear original content.');
     await expect(details.getByRole('button', { name: 'Use as pose' })).toBeVisible();
@@ -96,12 +93,33 @@ test.describe('public library (PublicLibrary.dc.html)', () => {
     await expect(page.getByRole('alert')).toContainText('Couldn’t load the library.', { timeout: 10_000 });
   });
 
+  test('real thumbnails (relative /api/media and absolute media-domain URLs) fade in over the glyph', async ({ page }) => {
+    await page.route('**/api/media/**', (r) => r.fulfill({ contentType: 'image/png', body: PNG_2X2 }));
+    await page.route('https://media.example.test/**', (r) => r.fulfill({ contentType: 'image/png', body: PNG_2X2 }));
+    await mockPublicLibrary(page, (category) =>
+      category === 'pose'
+        ? poseNodes().map((n, i) => ({
+            ...n,
+            thumbUrl: i % 2 ? `https://media.example.test/public/pose/${n.id}/front.webp` : `/api/media/public/pose/${n.id}/front.webp`,
+            angles: [{ name: 'front', url: `/api/media/public/pose/${n.id}/front.webp`, depthUrl: null }],
+          }))
+        : [],
+    );
+    await openApp(page, '/assets/public');
+    const first = page.locator('[data-item] img').first();
+    await expect(first).toHaveAttribute('src', /^\/api\/media\/public\/pose\//);
+    await expect(page.locator('[data-item] img').nth(1)).toHaveAttribute('src', /^https:\/\/media\.example\.test\//);
+    await expect(first).toHaveAttribute('data-loaded', 'true');
+    expect(await first.evaluate((el) => getComputedStyle(el).transitionProperty)).toContain('opacity');
+    await expect.poll(() => first.evaluate((el) => getComputedStyle(el).opacity)).toBe('1');
+  });
+
   test('search sends q to publicItems', async ({ page }) => {
-    const calls: Array<Record<string, unknown>> = [];
+    const calls: PublicCall[] = [];
     await mockGraphql(page, calls);
     await openApp(page, '/assets/public');
     await page.getByPlaceholder('Search poses, outfits, expressions, or describe one').fill('kneel');
-    await expect.poll(() => calls.at(-1)?.q).toBe('kneel');
+    await expect.poll(() => calls.filter((c) => c.op === 'items').at(-1)?.variables.q).toBe('kneel');
   });
 
   test('box measurements within 2px of the design', async ({ page }) => {

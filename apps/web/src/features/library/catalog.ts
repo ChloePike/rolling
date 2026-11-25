@@ -5,36 +5,7 @@ import {
 } from '@rolling/core/library/categories';
 import type { LibraryCategoryKey } from '@rolling/core/library/types';
 
-/**
- * Sub-categories and item counts per category, in source order, as served by
- * the staging import (2026-11-25). `categories.ts` has no sub-category list
- * and the GraphQL API has no facet query yet; move this into
- * packages/core/src/library/categories.ts (or a `publicFacets` query) when one
- * exists. Categories with no items (hairstyles: CharaDB images are excluded
- * from R2, D-004) are hidden.
- */
-export const CATALOG: Record<LibraryCategoryKey, { count: number; subs: Array<[slug: string, count: number]> }> = {
-  pose: { count: 98, subs: [['cute', 25], ['sitting', 14], ['standing', 14], ['kneeling', 10], ['lying-down', 9], ['side-sitting', 8], ['squatting', 6], ['leaning-forward', 6], ['leaning-back', 3], ['twisting', 3]] },
-  pose_depth: { count: 98, subs: [['cute', 25], ['sitting', 14], ['standing', 14], ['kneeling', 10], ['lying-down', 9], ['side-sitting', 8], ['squatting', 6], ['leaning-forward', 6], ['leaning-back', 3], ['twisting', 3]] },
-  portrait: { count: 1499, subs: [['front', 893], ['lifestyle', 606]] },
-  expression: {
-    count: 95,
-    subs: [['happy', 8], ['laughing', 7], ['angry', 8], ['sad', 8], ['surprised', 7], ['scared', 7], ['confused', 7], ['disgusted', 6], ['flirty', 7], ['serious', 7], ['shy', 5], ['silly', 6], ['smug', 6], ['tired', 6]],
-  },
-  hairstyle: { count: 0, subs: [] },
-  outfit: { count: 1067, subs: [['spring', 215], ['summer', 254], ['autumn', 243], ['winter', 253], ['party', 48], ['swimsuit', 54]] },
-  outfit_anime: { count: 983, subs: [['spring', 197], ['summer', 237], ['autumn', 229], ['winter', 232], ['party', 36], ['swimsuit', 52]] },
-  outfit_historical: {
-    count: 57,
-    subs: [['shang', 2], ['han', 4], ['wei-jin', 4], ['tang', 6], ['song', 8], ['yuan', 2], ['ming', 14], ['qing', 6], ['republican', 8], ['wedding', 3]],
-  },
-  scene: { count: 64, subs: [['indoor', 14], ['city', 12], ['nature', 17], ['historical-and-fantasy', 15], ['studio', 6]] },
-  lighting: { count: 50, subs: [['time-of-day', 11], ['spaces', 11], ['artistic', 11], ['portrait-lighting', 10], ['effects', 7]] },
-  prop: { count: 32, subs: [['handheld-everyday', 12], ['instruments', 10], ['traditional-objects', 10]] },
-  furniture: { count: 41, subs: [['seating', 16], ['tables', 5], ['chinese-style', 11], ['studio-structures', 9]] },
-};
-
-/** Glyphs from PublicLibrary.dc.html, drawn on cards until thumbnails are served. */
+/** Glyphs from PublicLibrary.dc.html, drawn behind thumbnails (and alone when an item has none). */
 const IC = {
   pose: 'M12 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4z M12 6v7 M8 9l4 1 4-3 M12 13l-3 8 M12 13l3 8',
   wear: 'M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z',
@@ -56,8 +27,6 @@ export interface CategoryView {
   ar: string;
   /** Message id of the primary action in the details panel. */
   cta: string;
-  count: number;
-  subs: Array<[string, number]>;
 }
 
 const VIEW: Record<LibraryCategoryKey, { glyph: string; ar: string; cta: string }> = {
@@ -77,19 +46,31 @@ const VIEW: Record<LibraryCategoryKey, { glyph: string; ar: string; cta: string 
 
 export function categoryView(def: LibraryCategory): CategoryView {
   const v = VIEW[def.key];
-  return { key: def.key, def, glyph: v.glyph, ar: v.ar, cta: `library.public.cta.${v.cta}`, count: CATALOG[def.key].count, subs: CATALOG[def.key].subs };
+  return { key: def.key, def, glyph: v.glyph, ar: v.ar, cta: `library.public.cta.${v.cta}` };
 }
 
-/** Groups and categories in registry order, without empty categories. */
-export const CATEGORY_GROUPS = LIBRARY_GROUPS.map((g) => ({
-  group: g,
-  categories: LIBRARY_CATEGORIES.filter((c) => c.group === g.key && CATALOG[c.key].count > 0).map(categoryView),
-})).filter((g) => g.categories.length > 0);
+export const ALL_CATEGORIES = LIBRARY_CATEGORIES.map(categoryView);
 
-export const VISIBLE_CATEGORIES = CATEGORY_GROUPS.flatMap((g) => g.categories);
+export interface CategoryGroupView {
+  group: (typeof LIBRARY_GROUPS)[number];
+  categories: CategoryView[];
+}
 
-export function findCategory(key: string | undefined): CategoryView {
-  return VISIBLE_CATEGORIES.find((c) => c.key === key) ?? VISIBLE_CATEGORIES[0]!;
+/**
+ * Groups and categories in registry order. With server counts (`publicCategories`),
+ * categories without items are hidden (hairstyles: CharaDB images are excluded
+ * from R2, D-004); before the counts arrive every category is listed.
+ */
+export function categoryGroups(counts: ReadonlyMap<string, number> | null): CategoryGroupView[] {
+  return LIBRARY_GROUPS.map((g) => ({
+    group: g,
+    categories: ALL_CATEGORIES.filter((c) => c.def.group === g.key && (!counts || (counts.get(c.key) ?? 0) > 0)),
+  })).filter((g) => g.categories.length > 0);
+}
+
+export function findCategory(key: string | undefined, groups: CategoryGroupView[]): CategoryView {
+  const visible = groups.flatMap((g) => g.categories);
+  return visible.find((c) => c.key === key) ?? ALL_CATEGORIES.find((c) => c.key === key) ?? visible[0] ?? ALL_CATEGORIES[0]!;
 }
 
 /** License chip colors from PublicLibrary.dc.html. First-party items carry no label (D-004). */
@@ -98,8 +79,4 @@ export const LICENSE_CHIP: Record<'cc0' | 'mit', { bg: string; fg: string }> = {
   mit: { bg: 'rgba(59,130,246,.14)', fg: '#93C5FD' },
 };
 
-/** Short card id, e.g. `pw_pose_full_single_P001` → `P001`. */
-export function shortId(id: string): string {
-  const tail = id.split('_').pop() ?? id;
-  return tail.length > 8 ? tail.slice(0, 6).toUpperCase() : tail;
-}
+export { shortId } from '@/lib/publicLibrary';

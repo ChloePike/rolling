@@ -2,14 +2,53 @@ import { staggerStyle } from '@rolling/ui';
 import { LIBRARY_CATEGORIES } from '@rolling/core/library/categories';
 import type { LibraryCategoryKey } from '@rolling/core/library/types';
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
-import { useIntl } from 'react-intl';
+import { useIntl, type IntlShape } from 'react-intl';
+import { usePublicCategories, usePublicItems, type PublicItem } from '@/lib/publicLibrary';
 import { useReferences } from './api';
-import { PromptIcon } from './icons';
+import { PromptIcon, type PromptIconName } from './icons';
 import styles from './ReferencePicker.module.css';
 import type { RefItem, RefTab } from './types';
 
 const TABS: RefTab[] = ['all', 'mine', 'char', 'voice', 'pub'];
 const WAVE = [10, 22, 14, 26, 12, 18];
+const PUB_TONES = ['#26232A', '#202330', '#28251F', '#1F2628', '#22262E', '#26262A', '#2A2420', '#1F2622'];
+const PUB_ICON: Record<LibraryCategoryKey, PromptIconName> = {
+  pose: 'pose',
+  pose_depth: 'pose',
+  portrait: 'user',
+  expression: 'face',
+  hairstyle: 'hair',
+  outfit: 'wear',
+  outfit_anime: 'wear',
+  outfit_historical: 'wear',
+  scene: 'scene',
+  lighting: 'light',
+  prop: 'prop',
+  furniture: 'prop',
+};
+
+/** A public-library item (GraphQL) as a picker card. */
+function publicRef(intl: IntlShape, item: PublicItem, index: number): RefItem {
+  return {
+    id: item.id,
+    group: 'pub',
+    category: item.category,
+    name: item.title,
+    meta: intl.formatMessage(
+      { id: 'prompt.picker.pub.meta' },
+      {
+        category: intl.formatMessage({ id: `prompt.picker.category.${item.category}` }),
+        angles: item.angles.length,
+        license: item.license,
+      },
+    ),
+    source: 'public',
+    tone: PUB_TONES[index % PUB_TONES.length]!,
+    glyph: { type: 'icon', icon: PUB_ICON[item.category] ?? 'img' },
+    thumbUrl: item.thumbUrl ?? undefined,
+    license: item.license,
+  };
+}
 
 export interface ReferencePickerProps {
   /** Text typed after `@` in the prompt. Shown as `@query` and used to filter. */
@@ -65,19 +104,28 @@ export function ReferencePicker({
 
   const q = (query + search).toLowerCase();
   const matches = (r: RefItem) => !q || r.name.toLowerCase().includes(q) || r.meta.toLowerCase().includes(q);
+
+  // Public library tab: categories, counts and items from GraphQL (D-004, lib/publicLibrary).
+  const { data: facets } = usePublicCategories();
+  const counts = useMemo(() => (facets ? new Map(facets.map((f) => [f.key, f.count])) : null), [facets]);
+  const pubCategories = LIBRARY_CATEGORIES.filter((c) => !counts || (counts.get(c.key) ?? 0) > 0).map((c) => c.key);
+  const pubTotal = counts ? [...counts.values()].reduce((a, b) => a + b, 0) : null;
+  const pub = usePublicItems(cat === 'all' ? null : cat, { q: q.trim(), enabled: tab === 'pub' });
+  const pubItems = useMemo(() => (pub.data?.pages.flatMap((p) => p.items) ?? []).map((item, i) => publicRef(intl, item, i)), [pub.data, intl]);
+  // Picked public items stay addable after switching category or tab.
+  const seen = useRef(new Map<string, RefItem>());
+  for (const r of pubItems) seen.current.set(r.id, r);
+
   const list = useMemo(
-    () =>
-      all.filter(
-        (r) => (tab === 'all' || r.group === tab) && (tab !== 'pub' || cat === 'all' || r.category === cat) && matches(r),
-      ),
+    () => (tab === 'pub' ? pubItems : all.filter((r) => (tab === 'all' || r.group === tab) && matches(r))),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [all, tab, cat, q],
+    [all, tab, q, pubItems],
   );
 
   const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
   const commit = () => {
     if (!selected.length) return;
-    const byId = new Map(all.map((r) => [r.id, r]));
+    const byId = new Map([...seen.current, ...all.map((r) => [r.id, r] as const)]);
     onAdd(selected.map((id) => byId.get(id)).filter((r): r is RefItem => !!r));
     setSelected([]);
   };
@@ -139,7 +187,7 @@ export function ReferencePicker({
       </div>
       <div role="tablist" aria-label={t('prompt.picker.tabs')} className={styles.tabs}>
         {TABS.map((k, i) => {
-          const count = all.filter((r) => (k === 'all' || r.group === k) && matches(r)).length;
+          const count = k === 'pub' && pubTotal !== null && !q ? pubTotal : all.filter((r) => (k === 'all' || r.group === k) && matches(r)).length;
           return (
             <button
               key={k}
@@ -163,7 +211,7 @@ export function ReferencePicker({
       </div>
       {tab === 'pub' ? (
         <div className={`${styles.cats}`} role="group" aria-label={t('prompt.picker.categories')}>
-          {(['all', ...LIBRARY_CATEGORIES.map((c) => c.key)] as const).map((k) => (
+          {(['all', ...pubCategories] as const).map((k) => (
             <button
               key={k}
               type="button"
@@ -187,10 +235,26 @@ export function ReferencePicker({
         {list.map((r, i) => (
           <RefCard key={r.id} item={r} index={i} on={selected.includes(r.id)} onToggle={() => toggle(r.id)} />
         ))}
-        {list.length === 0 ? (
+        {tab === 'pub' && pub.isError ? (
+          <div className={styles.empty} role="alert">
+            {t('prompt.picker.pub.error')}{' '}
+            <button type="button" className={styles.retry} onClick={() => void pub.refetch()}>
+              {t('prompt.picker.pub.retry')}
+            </button>
+          </div>
+        ) : tab === 'pub' && pub.isPending ? (
+          <div className={styles.empty} role="status">
+            {t('prompt.picker.pub.loading')}
+          </div>
+        ) : list.length === 0 ? (
           <div className={styles.empty}>
             {q ? t('prompt.picker.empty', { q: query + search }) : t('prompt.picker.emptyCategory')}
           </div>
+        ) : null}
+        {tab === 'pub' && pub.hasNextPage ? (
+          <button type="button" className={styles.more} disabled={pub.isFetchingNextPage} onClick={() => void pub.fetchNextPage()}>
+            {t(pub.isFetchingNextPage ? 'prompt.picker.pub.loading' : 'prompt.picker.pub.more')}
+          </button>
         ) : null}
       </div>
       <div className={styles.footer}>
@@ -211,6 +275,7 @@ export function ReferencePicker({
 function RefCard({ item: r, index, on, onToggle }: { item: RefItem; index: number; on: boolean; onToggle: () => void }) {
   const intl = useIntl();
   const [thumbFailed, setThumbFailed] = useState(false);
+  const [thumbLoaded, setThumbLoaded] = useState(false);
   return (
     <button
       type="button"
@@ -232,7 +297,16 @@ function RefCard({ item: r, index, on, onToggle }: { item: RefItem; index: numbe
         ) : null}
         {r.glyph.type === 'icon' ? <PromptIcon name={r.glyph.icon} size={28} strokeWidth={1.5} /> : null}
         {r.thumbUrl && !thumbFailed ? (
-          <img className={styles.thumbImg} src={r.thumbUrl} alt="" loading="lazy" onError={() => setThumbFailed(true)} />
+          <img
+            className={styles.thumbImg}
+            src={r.thumbUrl}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            data-loaded={thumbLoaded}
+            onLoad={() => setThumbLoaded(true)}
+            onError={() => setThumbFailed(true)}
+          />
         ) : null}
         <span className={styles.src}>{intl.formatMessage({ id: `prompt.source.${r.source}` })}</span>
         <span className={styles.check} aria-hidden="true">

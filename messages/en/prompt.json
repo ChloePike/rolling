@@ -11,14 +11,12 @@
   "prompt.cost.credits": "{n, plural, one {# credit} other {# credits}}",
   "prompt.cost.creditsRich": "<b>{n, number}</b> {n, plural, one {credit} other {credits}}",
   "prompt.cost.label": "Cost: {cost}",
-
   "prompt.plus.label": "Add assets or skills",
   "prompt.plus.add": "Add",
   "prompt.plus.upload": "Upload images, video or audio",
   "prompt.plus.assets": "Choose from Assets",
   "prompt.plus.reference": "Add a character or asset",
   "prompt.plus.skills": "Skills · or just type /",
-
   "prompt.palette.label": "Commands",
   "prompt.palette.group.skills": "Skills",
   "prompt.palette.group.create": "Create",
@@ -44,7 +42,6 @@
   "prompt.cmd.duration.desc": "5, 10, 15 or 30s",
   "prompt.cmd.clear": "Clear",
   "prompt.cmd.clear.desc": "Clear the prompt and skill",
-
   "prompt.picker.label": "Add a reference",
   "prompt.picker.search": "Search references",
   "prompt.picker.searchPlaceholder": "Search your assets, characters, voices and the public library",
@@ -84,5 +81,10 @@
   "prompt.source.mine": "Mine",
   "prompt.source.team": "Team",
   "prompt.source.builtin": "Built-in",
-  "prompt.source.public": "Public"
+  "prompt.source.public": "Public",
+  "prompt.picker.pub.meta": "{category}{angles, plural, =0 {} =1 {} other { · # angles}}{license, select, cc0 { · CC0} mit { · MIT} other {}}",
+  "prompt.picker.pub.loading": "Loading…",
+  "prompt.picker.pub.error": "Couldn’t load the public library.",
+  "prompt.picker.pub.retry": "Retry",
+  "prompt.picker.pub.more": "Load more"
 }

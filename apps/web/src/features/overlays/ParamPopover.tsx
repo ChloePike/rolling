@@ -161,7 +161,7 @@ export function ParamPopover(props: ParamPopoverProps) {
             ]}
           />
         </Group>
-        <Group label={t('resolution')} note={t('note.size')}>
+        <Group label={t('resolution')} note={props.plan && planLockInfo(intl, props.plan, 'image', '4K') ? null : t('note.size')}>
           <SegmentedControl
             className={styles.seg}
             label={t('resolution')}

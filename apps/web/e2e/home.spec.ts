@@ -5,6 +5,7 @@ import { buildDesignPage } from './support/design';
 import { pixelDiffRatio, type Box } from './support/measure';
 import { routeModels } from './support/models';
 import { asPlan } from './support/session';
+import { mockPublicLibrary, PNG_2X2, type PublicCall } from './support/publicLibrary';
 
 /**
  * Home (Main.dc.html) and its states: `/` palette (MainSlash), `+` menu
@@ -30,8 +31,6 @@ async function openDesign(page: Page, props: Record<string, unknown> = {}) {
 }
 
 async function openApp(page: Page, width = W) {
-  // Public library thumbnails come from the PoseWear CDN in dev; keep tests offline (cards show glyphs, like the design).
-  await page.route('https://pwimg.0vo.pro/**', (r) => r.abort());
   // Model names and prices come from the catalog (useModels); serve a fixture that matches the design.
   await routeModels(page);
   await page.setViewportSize({ width, height: H });
@@ -311,23 +310,54 @@ test.describe('home interactions', () => {
     await expect(chips).not.toContainText('@Mia');
   });
 
-  test('`@` picker public library tab shows the PoseWear categories from @rolling/core and filters by category', async ({ page }) => {
+  test('`@` picker public library tab: categories and counts from GraphQL facets, items with real thumbnails, filters by category', async ({ page }) => {
+    const calls: PublicCall[] = [];
+    await page.route('**/api/media/**', (r) => r.fulfill({ contentType: 'image/png', body: PNG_2X2 }));
+    await mockPublicLibrary(
+      page,
+      (category) =>
+        category === 'outfit' || category === null
+          ? ['W001', 'W009'].map((id, i) => ({
+              id: `pw_outfit_${id}`,
+              category: 'outfit',
+              sub: 'spring',
+              title: i ? 'Linen shirt' : 'Beige trench',
+              promptEn: null,
+              tags: [],
+              assetId: `ast_${id}`,
+              license: 'FIRST_PARTY',
+              source: 'https://posewear.pages.dev/',
+              thumbUrl: `/api/media/public/outfit/pw_outfit_${id}/front.webp`,
+              angles: [{ name: 'front', url: `/api/media/public/outfit/pw_outfit_${id}/front.webp`, depthUrl: null }],
+            }))
+          : [],
+      calls,
+    );
     await openApp(page);
     await page.locator('textarea').click();
     await page.keyboard.type('@');
     const picker = page.getByRole('dialog', { name: 'Add a reference' });
+    await expect(picker.getByRole('tab', { name: /Public library/ })).toHaveText(/^Public library\s*4,084$/);
     await picker.getByRole('tab', { name: /Public library/ }).click();
     await expect(picker.getByText('Public library · from PoseWear')).toBeVisible();
     const cats = picker.getByRole('group', { name: 'Public library categories' }).getByRole('button');
-    await expect(cats).toHaveText([
-      'All', 'Poses', 'Depth poses', 'Portraits', 'Expressions', 'Hairstyles', 'Outfits', 'Anime outfits',
-      'Historical', 'Scenes', 'Lighting', 'Props', 'Furniture',
-    ]);
+    // Hairstyles have no items on the server (D-004), so the chip is hidden.
+    await expect(cats).toHaveText(['All', 'Poses', 'Depth poses', 'Portraits', 'Expressions', 'Outfits', 'Anime outfits', 'Historical', 'Scenes', 'Lighting', 'Props', 'Furniture']);
     await cats.filter({ hasText: /^Outfits$/ }).click();
     await expect(picker.getByRole('option')).toHaveCount(2);
-    await expect(picker.getByRole('option').first()).toContainText('Public');
+    expect(calls.filter((c) => c.op === 'items').at(-1)?.variables).toMatchObject({ category: 'outfit' });
+    const first = picker.getByRole('option').first();
+    await expect(first).toContainText('Public');
+    await expect(first).toContainText('Outfits');
+    await expect(first.locator('img')).toHaveAttribute('data-loaded', 'true');
+    await first.click();
     await cats.filter({ hasText: /^Furniture$/ }).click();
     await expect(picker.getByText(/Nothing in this category yet/)).toBeVisible();
+    // A pick from another category is still added.
+    await picker.getByRole('button', { name: 'Add 1' }).click();
+    await expect(page.getByTestId('ref-chips')).toContainText('@Beige trench');
+    await page.keyboard.type('@');
+    await picker.getByRole('tab', { name: /Public library/ }).click();
     await page.mouse.move(2, H - 2);
     await mkdirSync(OUT, { recursive: true });
     await page.waitForTimeout(400);

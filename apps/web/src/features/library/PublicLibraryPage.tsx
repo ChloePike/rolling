@@ -3,8 +3,8 @@ import { Link } from '@tanstack/react-router';
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { ChipGroup, motion, PathIcon, paths, SearchField } from '@/features/account/shared';
-import { CATEGORY_GROUPS, findCategory, LICENSE_CHIP, shortId, type CategoryView } from './catalog';
-import { usePublicItems, type PublicItem } from './publicApi';
+import { shortId, usePublicCategories, usePublicItems, usePublicSubCategories, type PublicItem } from '@/lib/publicLibrary';
+import { categoryGroups, findCategory, LICENSE_CHIP, type CategoryView } from './catalog';
 import styles from './PublicLibrary.module.css';
 
 const cx = (...c: Array<string | false | undefined>) => c.filter(Boolean).join(' ');
@@ -19,33 +19,38 @@ function useDebounced<T>(value: T, ms: number): T {
   return v;
 }
 
-/** `/assets/public` (PublicLibrary.dc.html). Categories, sub-categories and licenses from packages/core (D-004). */
+/**
+ * `/assets/public` (PublicLibrary.dc.html). Category registry and licenses from
+ * packages/core (D-004); item and sub-category counts, filtering and images
+ * from the GraphQL API (lib/publicLibrary).
+ */
 export function PublicLibraryPage({ category, onCategory }: { category?: string; onCategory?: (key: string) => void }) {
   const intl = useIntl();
   const toast = useToast();
-  const cat = findCategory(category);
+  const { data: categoryFacets } = usePublicCategories();
+  const counts = useMemo(() => (categoryFacets ? new Map(categoryFacets.map((f) => [f.key, f.count])) : null), [categoryFacets]);
+  const groups = useMemo(() => categoryGroups(counts), [counts]);
+  const cat = findCategory(category, groups);
+  const { data: subFacets = [] } = usePublicSubCategories(cat.key);
   const [sub, setSub] = useState('all');
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const q = useDebounced(query.trim(), 250);
-  const subLabel = sub === 'all' ? '' : intl.formatMessage({ id: `library.sub.${sub}` });
-  const { data, isPending, isError, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } = usePublicItems(
-    cat.key,
-    [q, subLabel].filter(Boolean).join(' '),
-  );
+  const { data, isPending, isError, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } = usePublicItems(cat.key, {
+    sub: sub === 'all' ? null : sub,
+    q,
+  });
 
   useEffect(() => {
     setSub('all');
     setSelectedId(null);
   }, [cat.key]);
 
-  const items = useMemo(() => {
-    const all = data?.pages.flatMap((p) => p.items) ?? [];
-    return sub === 'all' ? all : all.filter((i) => i.sub === sub);
-  }, [data, sub]);
+  const items = useMemo(() => data?.pages.flatMap((p) => p.items) ?? [], [data]);
   const selectedIndex = Math.max(0, items.findIndex((i) => i.id === selectedId));
   const selected = items[selectedIndex];
-  const total = sub === 'all' ? cat.count : (cat.subs.find(([s]) => s === sub)?.[1] ?? items.length);
+  // Search narrows the list below the facet counts; count what is loaded then.
+  const total = q ? items.length : sub === 'all' ? (counts?.get(cat.key) ?? items.length) : (subFacets.find((f) => f.key === sub)?.count ?? items.length);
 
   function surprise() {
     if (!items.length) return;
@@ -59,7 +64,7 @@ export function PublicLibraryPage({ category, onCategory }: { category?: string;
           <PathIcon d={paths.chevronLeft} size={15} />
           <FormattedMessage id="library.public.back" />
         </Link>
-        {CATEGORY_GROUPS.map((g) => (
+        {groups.map((g) => (
           <div key={g.group.key} role="group" aria-labelledby={`grp-${g.group.key}`} style={{ display: 'contents' }}>
             <span id={`grp-${g.group.key}`} className={styles.groupLabel}>
               <FormattedMessage id={g.group.messageId} />
@@ -77,7 +82,7 @@ export function PublicLibraryPage({ category, onCategory }: { category?: string;
                 <span className={styles.catLabel}>
                   <FormattedMessage id={c.def.messageId} />
                 </span>
-                <span className={styles.catCount}>{intl.formatNumber(c.count)}</span>
+                <span className={styles.catCount}>{counts ? intl.formatNumber(counts.get(c.key) ?? 0) : null}</span>
               </Link>
             ))}
           </div>
@@ -107,7 +112,7 @@ export function PublicLibraryPage({ category, onCategory }: { category?: string;
             onChange={setSub}
             options={[
               { value: 'all', label: intl.formatMessage({ id: 'library.sub.all' }) },
-              ...cat.subs.map(([s]) => ({ value: s, label: intl.formatMessage({ id: `library.sub.${s}` }) })),
+              ...subFacets.map((f) => ({ value: f.key, label: intl.formatMessage({ id: `library.sub.${f.key}`, defaultMessage: f.key }) })),
             ]}
           />
           <span className={styles.spacer} />
@@ -163,6 +168,7 @@ export function PublicLibraryPage({ category, onCategory }: { category?: string;
 
 function Thumb({ item, cat, tone, big }: { item: PublicItem | undefined; cat: CategoryView; tone: string; big?: boolean }) {
   const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
   return (
     <>
       <svg
@@ -178,14 +184,16 @@ function Thumb({ item, cat, tone, big }: { item: PublicItem | undefined; cat: Ca
       >
         <path d={cat.glyph} />
       </svg>
-      {item?.thumbUrl && (
+      {item?.thumbUrl && !failed && (
         <img
           className={styles.thumbImg}
           src={item.thumbUrl}
           alt=""
           loading="lazy"
+          decoding="async"
           data-loaded={loaded}
           onLoad={() => setLoaded(true)}
+          onError={() => setFailed(true)}
           style={{ background: tone }}
         />
       )}

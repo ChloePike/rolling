@@ -4,6 +4,8 @@ import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
 const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
+/** Where dev and preview proxy `/api` (the local Worker by default; e.g. a staging Worker URL for a manual look). */
+const API_ORIGIN = process.env.ROLLING_API_ORIGIN ?? 'http://localhost:8787';
 
 export default defineConfig({
   plugins: [
@@ -27,13 +29,13 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': { target: 'http://localhost:8787', changeOrigin: true, ws: true },
+      '/api': { target: API_ORIGIN, changeOrigin: true, ws: true },
     },
   },
   preview: {
     port: 4173,
     proxy: {
-      '/api': { target: 'http://localhost:8787', changeOrigin: true, ws: true },
+      '/api': { target: API_ORIGIN, changeOrigin: true, ws: true },
     },
   },
 });
