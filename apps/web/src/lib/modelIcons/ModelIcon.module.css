@@ -1,0 +1,4 @@
+.mono{
+  display:inline-block;flex:none;background-color:currentColor;
+  -webkit-mask:var(--model-icon) center / contain no-repeat;mask:var(--model-icon) center / contain no-repeat;
+}

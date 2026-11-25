@@ -94,6 +94,9 @@ importers:
         specifier: ^7.1.14
         version: 7.1.14(react@19.3.1)(typescript@5.9.3)
     devDependencies:
+      '@lobehub/icons-static-svg':
+        specifier: ^1.106.0
+        version: 1.106.0
       '@playwright/test':
         specifier: 1.56.1
         version: 1.56.1
@@ -1421,6 +1424,9 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.9':
     resolution: {integrity: sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==}
+
+  '@lobehub/icons-static-svg@1.106.0':
+    resolution: {integrity: sha512-yRLkEGfCsOh6ZDSIPsA6HrI1ynh9gI1LECZaeFIzpuEHv9ON2i+SzwLnE2iYfW/agsms54QL+OhPde9WpEi/uA==}
 
   '@next/env@16.4.6':
     resolution: {integrity: sha512-SunBjJ6t+oBtecS3dTjdVuMhUogP5wD/vrGL5EVuQYM1iS4O5ilL51HkiJ3sPjMzRHiCChvr4dbaSJbR7F3lxA==}
@@ -3771,6 +3777,8 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.3
       '@jridgewell/sourcemap-codec': 1.6.0
+
+  '@lobehub/icons-static-svg@1.106.0': {}
 
   '@next/env@16.4.6': {}
 

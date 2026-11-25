@@ -74,7 +74,7 @@ describe('lib/prefs', () => {
   it('formats prices in the chosen currency', async () => {
     stubBrowser();
     const { formatPrice } = await import('./currency');
-    const intl = { formatNumber: (n: number, o: Intl.NumberFormatOptions) => new Intl.NumberFormat('en-US', o).format(n) };
+    const intl = { formatNumber: (n: number, o?: Intl.NumberFormatOptions) => new Intl.NumberFormat('en-US', o).format(n) } as never;
     expect(formatPrice(intl, 25)).toBe('$25');
     expect(formatPrice(intl, 39.17)).toBe('$39.17');
     expect(formatPrice(intl, 25, 'JPY')).toBe('¥3,750');
