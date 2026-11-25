@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 describe("Durable Object stubs", () => {
   it("CreditAccount migrates and answers ping()", async () => {
     const stub = env.CREDITS.get(env.CREDITS.idFromName("ws_test"));
-    expect(await stub.ping()).toEqual({ ok: true, schemaVersion: 1 });
+    expect(await stub.ping()).toEqual({ ok: true, schemaVersion: 2 });
   });
 
   it("AgentSession migrates and answers ping()", async () => {

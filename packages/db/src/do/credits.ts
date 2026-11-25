@@ -3,7 +3,7 @@
  * Source of truth for credits. Mirrors `db/do-credits.sql`.
  */
 import { sql } from "drizzle-orm";
-import { check, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { check, index, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import type { DoMigration } from "./migrate";
 
 export const ledgerKinds = ["grant", "purchase", "hold", "settle", "release", "refund", "expire", "adjust"] as const;
@@ -19,6 +19,13 @@ export const balance = sqliteTable(
     held: integer("held").notNull().default(0),
     planExpiresAt: integer("plan_expires_at"),
     autoTopup: text("auto_topup"),
+    // v2 (M2)
+    workspaceId: text("workspace_id"),
+    planId: text("plan_id"),
+    planInterval: text("plan_interval"),
+    periodStart: integer("period_start"),
+    periodEnd: integer("period_end"),
+    autoTopupSeq: integer("auto_topup_seq").notNull().default(0),
   },
   (t) => [check("balance_singleton", sql`${t.id} = 1`)],
 );
@@ -36,8 +43,13 @@ export const ledger = sqliteTable(
     stripeRef: text("stripe_ref"),
     idemKey: text("idem_key").unique(),
     createdAt: integer("created_at").notNull(),
+    // v2 (M2)
+    note: text("note"),
+    /** Set once the line was sent to the `ledger-mirror` queue (outbox). */
+    mirroredAt: integer("mirrored_at"),
   },
   (t) => [
+    index("ledger_unmirrored").on(t.createdAt).where(sql`${t.mirroredAt} IS NULL`),
     check(
       "ledger_kind_check",
       sql`${t.kind} IN ('grant','purchase','hold','settle','release','refund','expire','adjust')`,
@@ -46,20 +58,48 @@ export const ledger = sqliteTable(
   ],
 );
 
-export const holds = sqliteTable("holds", {
-  jobId: text("job_id").primaryKey(),
-  runId: text("run_id").notNull(),
-  userId: text("user_id").notNull(),
-  fromPlan: integer("from_plan").notNull(),
-  fromPurchased: integer("from_purchased").notNull(),
-  createdAt: integer("created_at").notNull(),
-});
+export const holdStatuses = ["held", "settled", "released"] as const;
+
+/** One row per job; kept after settle/release so a job closes at most once. */
+export const holds = sqliteTable(
+  "holds",
+  {
+    jobId: text("job_id").primaryKey(),
+    runId: text("run_id").notNull(),
+    userId: text("user_id").notNull(),
+    fromPlan: integer("from_plan").notNull(),
+    fromPurchased: integer("from_purchased").notNull(),
+    createdAt: integer("created_at").notNull(),
+    // v2 (M2)
+    quoteId: text("quote_id").notNull().default(""),
+    itemRef: text("item_ref").notNull().default(""),
+    modelId: text("model_id").notNull().default(""),
+    credits: integer("credits").notNull().default(0),
+    planExpiresAt: integer("plan_expires_at"),
+    status: text("status", { enum: holdStatuses }).notNull().default("held"),
+    spent: integer("spent"),
+    closedAt: integer("closed_at"),
+  },
+  (t) => [index("holds_status").on(t.status), index("holds_quote").on(t.quoteId)],
+);
 
 export const quotes = sqliteTable("quotes", {
   id: text("id").primaryKey(),
   items: text("items").notNull(),
   total: integer("total").notNull(),
   expiresAt: integer("expires_at").notNull(),
+  // v2 (M2)
+  createdAt: integer("created_at").notNull().default(0),
+  runId: text("run_id"),
+});
+
+/** Results of idempotent operations, by key (v2). */
+export const idempotency = sqliteTable("idempotency", {
+  key: text("key").primaryKey(),
+  op: text("op").notNull(),
+  fingerprint: text("fingerprint").notNull(),
+  result: text("result").notNull(),
+  createdAt: integer("created_at").notNull(),
 });
 
 export const memberUsage = sqliteTable(
@@ -72,7 +112,7 @@ export const memberUsage = sqliteTable(
   (t) => [primaryKey({ columns: [t.userId, t.month] })],
 );
 
-export const creditsSchema = { balance, ledger, holds, quotes, memberUsage };
+export const creditsSchema = { balance, ledger, holds, quotes, memberUsage, idempotency };
 
 export const creditsMigrations: readonly DoMigration[] = [
   {
@@ -85,6 +125,34 @@ CREATE TABLE holds (job_id TEXT PRIMARY KEY, run_id TEXT NOT NULL, user_id TEXT 
 CREATE TABLE quotes (id TEXT PRIMARY KEY, items TEXT NOT NULL, total INTEGER NOT NULL, expires_at INTEGER NOT NULL);
 CREATE TABLE member_usage (user_id TEXT NOT NULL, month TEXT NOT NULL, spent INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (user_id, month));
 INSERT INTO balance (id) VALUES (1);
+`,
+  },
+  {
+    version: 2,
+    name: "ledger_m2",
+    sql: `
+ALTER TABLE balance ADD COLUMN workspace_id TEXT;
+ALTER TABLE balance ADD COLUMN plan_id TEXT;
+ALTER TABLE balance ADD COLUMN plan_interval TEXT;
+ALTER TABLE balance ADD COLUMN period_start INTEGER;
+ALTER TABLE balance ADD COLUMN period_end INTEGER;
+ALTER TABLE balance ADD COLUMN auto_topup_seq INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE ledger ADD COLUMN note TEXT;
+ALTER TABLE ledger ADD COLUMN mirrored_at INTEGER;
+CREATE INDEX ledger_unmirrored ON ledger (created_at) WHERE mirrored_at IS NULL;
+ALTER TABLE holds ADD COLUMN quote_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE holds ADD COLUMN item_ref TEXT NOT NULL DEFAULT '';
+ALTER TABLE holds ADD COLUMN model_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE holds ADD COLUMN credits INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE holds ADD COLUMN plan_expires_at INTEGER;
+ALTER TABLE holds ADD COLUMN status TEXT NOT NULL DEFAULT 'held' CHECK (status IN ('held','settled','released'));
+ALTER TABLE holds ADD COLUMN spent INTEGER;
+ALTER TABLE holds ADD COLUMN closed_at INTEGER;
+CREATE INDEX holds_status ON holds (status);
+CREATE INDEX holds_quote ON holds (quote_id);
+ALTER TABLE quotes ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE quotes ADD COLUMN run_id TEXT;
+CREATE TABLE idempotency (key TEXT PRIMARY KEY, op TEXT NOT NULL, fingerprint TEXT NOT NULL, result TEXT NOT NULL, created_at INTEGER NOT NULL);
 `,
   },
 ];

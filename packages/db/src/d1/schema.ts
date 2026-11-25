@@ -199,10 +199,38 @@ export const subscriptions = sqliteTable(
     currentPeriodEnd: integer("current_period_end").notNull(),
     cancelAtPeriodEnd: integer("cancel_at_period_end", { mode: "boolean" }).notNull().default(false),
     updatedAt: integer("updated_at").notNull(),
+    /** M2 (migration 0005). */
+    stripePriceId: text("stripe_price_id"),
+    currentPeriodStart: integer("current_period_start"),
   },
   (t) => [
+    index("subscriptions_ws").on(t.workspaceId, sql`${t.currentPeriodEnd} DESC`),
     check("subscriptions_plan_check", sql`${t.plan} IN ('starter','plus','pro')`),
     check("subscriptions_interval_check", sql`${t.interval} IN ('month','year')`),
+  ],
+);
+
+/** Checkout sessions created by `POST /api/billing/checkout` (migration 0005). */
+export const checkoutSessions = sqliteTable(
+  "checkout_sessions",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id").notNull(),
+    userId: text("user_id").notNull(),
+    kind: text("kind", { enum: ["plan", "topUp"] }).notNull(),
+    plan: text("plan", { enum: ["starter", "plus", "pro"] }),
+    interval: text("interval", { enum: ["month", "year"] }),
+    amountCents: integer("amount_cents"),
+    credits: integer("credits"),
+    resumeQuoteId: text("resume_quote_id"),
+    status: text("status", { enum: ["open", "complete", "expired"] }).notNull().default("open"),
+    createdAt: integer("created_at").notNull(),
+    completedAt: integer("completed_at"),
+  },
+  (t) => [
+    index("checkout_sessions_ws").on(t.workspaceId, sql`${t.createdAt} DESC`),
+    check("checkout_sessions_kind_check", sql`${t.kind} IN ('plan','topUp')`),
+    check("checkout_sessions_status_check", sql`${t.status} IN ('open','complete','expired')`),
   ],
 );
 
@@ -319,6 +347,8 @@ export const ledgerLines = sqliteTable(
     jobId: text("job_id"),
     stripeRef: text("stripe_ref"),
     createdAt: integer("created_at").notNull(),
+    /** Refund reason / note (migration 0005). */
+    note: text("note"),
   },
   (t) => [index("ledger_ws").on(t.workspaceId, sql`${t.createdAt} DESC`)],
 );
