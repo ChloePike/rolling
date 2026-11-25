@@ -2,6 +2,12 @@
 
 Decisions made after the original spec. Where this file disagrees with `PRD.md`, `architecture.md`, `api.md` or `harness.md`, this file wins. Newest first.
 
+## D-007 — The agent is members-only; margin assumptions (2026-11-25)
+
+- **Non-members cannot use the agent.** This replaces PRD rule 1’s “plan with the agent for free”. Without an active plan a user can sign up, browse, open templates’ previews and the public library, and type a brief; sending it to the agent (Home Agent mode, canvas agent panel, editor “Ask for an edit”, Simple-mode field filling in tools) opens Paywall `variant=join` and keeps the brief so it resumes after checkout. The API enforces it: agent routes and the agent WebSocket messages return `NO_PLAN` for workspaces without an active subscription.
+- Agent turns stay free for members (they do not spend credits); per-workspace daily turn limits still apply as abuse protection.
+- **Margin assumptions** (owner): the Hyperouter 5.5% top-up fee is not counted, and payment-channel risk (e.g. high-risk processors for adult content) is not modelled for now. The 3× markup applies to every model, mature ones included.
+
 ## D-006 — Pricing: credits are the product, plans are the entry ticket (2026-11-25)
 
 Owner decisions: gross margin ≥ 50%; revenue comes mainly from top-ups; plans exist to unlock membership (which is also the age gate, D-005) and are tiered precisely by perks. The Hyperouter 5.5% top-up fee is ignored. Values live in `packages/core/pricing/config.ts`; tests enforce the margin floor and the caps.

@@ -1,6 +1,6 @@
 # Agent harness
 
-The agent turns a brief into a plan, builds nodes, fills prompts and settings, edits the timeline, and explains costs. It never spends credits and never applies changes without the user. Logic lives in `packages/agent`; it runs inside the `AgentSession` Durable Object (one per thread), which stores messages and proposals in its SQLite and streams events to the browser.
+The agent turns a brief into a plan, builds nodes, fills prompts and settings, edits the timeline, and explains costs. It never spends credits and never applies changes without the user. It is available to members only (`docs/decisions.md` D-007). Logic lives in `packages/agent`; it runs inside the `AgentSession` Durable Object (one per thread), which stores messages and proposals in its SQLite and streams events to the browser.
 
 ## 1. Where the agent appears
 

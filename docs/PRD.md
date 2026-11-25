@@ -76,7 +76,7 @@ Out of scope: native apps, phone-specific layouts, compliance/moderation work be
 
 ## Business rules
 
-1. **Membership gate.** Without an active plan a user can browse, use templates’ previews, and plan with the agent (planning is free). Any action that costs credits opens “Pick a plan to generate”. The brief and the agent’s plan are kept and the run resumes after checkout.
+1. **Membership gate.** (Updated by `docs/decisions.md` D-007: the agent is members-only.) Without an active plan a user can browse and use templates’ previews; using the agent or generating requires a plan. Any action that costs credits opens “Pick a plan to generate”. The brief and the agent’s plan are kept and the run resumes after checkout.
 2. **Credits.** One unit, called “credits” in every language (TW/HK UI shows 點數). Prices per model are per 5 seconds of video or per image, set in config.
 3. **Order of spending.** Plan credits first (expire on the next billing date, no rollover), then purchased credits (never expire).
 4. **Quote → hold → settle.** Each run gets a quote valid 10 minutes. Starting it places a hold equal to the quote. Success settles the actual amount (≤ hold). Failure or cancel releases the hold. Partial graph runs settle per node.
