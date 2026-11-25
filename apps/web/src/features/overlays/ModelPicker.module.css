@@ -1,6 +1,6 @@
 /* Source: docs/design/screens/ModelPicker.dc.html */
 .panel{
-  width:420px;box-sizing:border-box;border-radius:20px;background:var(--c-surface-4);box-shadow:var(--shadow-picker);
+  width:420px;box-sizing:border-box;border-radius:20px;background:var(--c-surface-float);box-shadow:var(--shadow-picker);
   padding:10px;color:var(--c-text-1);display:flex;flex-direction:column;gap:6px;
   overflow:hidden;
 }

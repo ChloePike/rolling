@@ -1,6 +1,6 @@
 /* Source: docs/design/screens/ParamPopover.dc.html */
 .panel{
-  width:380px;box-sizing:border-box;border-radius:20px;background:var(--c-surface-4);box-shadow:var(--shadow-picker);
+  width:380px;box-sizing:border-box;border-radius:20px;background:var(--c-surface-float);box-shadow:var(--shadow-picker);
   padding:14px;color:var(--c-text-1);display:flex;flex-direction:column;gap:14px;
 }
 .titleRow{display:flex;align-items:center}

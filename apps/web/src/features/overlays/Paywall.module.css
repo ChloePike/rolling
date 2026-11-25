@@ -1,7 +1,7 @@
 /* Source: docs/design/screens/Paywall.dc.html (variant join and credits). */
 .panel{
   width:520px;max-width:100%;max-height:calc(100vh - 48px);overflow:auto;box-sizing:border-box;border-radius:20px;
-  background:var(--c-surface-4);color:var(--c-text-1);padding:24px;display:flex;flex-direction:column;gap:16px;
+  background:var(--c-surface-float);color:var(--c-text-1);padding:24px;display:flex;flex-direction:column;gap:16px;
   box-shadow:var(--shadow-modal);
 }
 .head{display:flex;align-items:flex-start;gap:12px}

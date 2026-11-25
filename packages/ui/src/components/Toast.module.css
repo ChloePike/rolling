@@ -4,7 +4,7 @@
 }
 .toast{
   pointer-events:auto;display:flex;align-items:center;gap:10px;min-height:40px;max-width:min(560px,calc(100vw - 32px));
-  padding:0 6px 0 14px;border-radius:var(--r-button);background:var(--c-surface-4);color:var(--c-text-1);
+  padding:0 6px 0 14px;border-radius:var(--r-button);background:var(--c-surface-float);color:var(--c-text-1);
   box-shadow:var(--shadow-toast);font-size:var(--fs-meta);line-height:1.4;
 }
 .message{flex:1;padding:10px 0}

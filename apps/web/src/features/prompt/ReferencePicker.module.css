@@ -1,6 +1,6 @@
 /* Values from Main.dc.html (`pk` block). */
 .picker{
-  border-radius:18px;background:var(--c-surface-4);box-shadow:var(--shadow-float);
+  border-radius:18px;background:var(--c-surface-float);box-shadow:var(--shadow-float);
   display:flex;flex-direction:column;overflow:hidden;color:var(--c-text-1);
 }
 .searchRow{display:flex;align-items:center;gap:8px;padding:12px 12px 8px}

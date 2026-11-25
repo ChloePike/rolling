@@ -1,7 +1,7 @@
 .anchor{position:relative;display:inline-flex}
 .content{
   position:absolute;z-index:40;
-  min-width:200px;padding:14px;border-radius:20px;background:var(--c-surface-4);color:var(--c-text-1);
+  min-width:200px;padding:14px;border-radius:20px;background:var(--c-surface-float);color:var(--c-text-1);
   box-shadow:var(--shadow-popover);
 }
 .bottom{top:calc(100% + var(--popover-offset,8px))}

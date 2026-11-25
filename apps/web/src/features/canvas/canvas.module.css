@@ -67,7 +67,7 @@
 
 /* Credits popover. */
 .creditsPop{
-  position:absolute;right:0;top:46px;width:340px;border-radius:20px;background:var(--c-surface-4);box-shadow:var(--shadow-popover);
+  position:absolute;right:0;top:46px;width:340px;border-radius:20px;background:var(--c-surface-float);box-shadow:var(--shadow-popover);
   padding:16px;box-sizing:content-box;
 }
 
@@ -103,7 +103,7 @@
 
 /* Add node menu. */
 .addMenu{
-  position:absolute;z-index:20;width:270px;border-radius:18px;background:var(--c-surface-4);box-shadow:0 20px 56px var(--c-shadow);
+  position:absolute;z-index:20;width:270px;border-radius:18px;background:var(--c-surface-float);box-shadow:0 20px 56px var(--c-shadow);
   padding:8px;display:flex;flex-direction:column;gap:2px;box-sizing:content-box;
 }
 .addTabs{display:grid;grid-template-columns:1fr 1fr;gap:3px;border-radius:12px;background:var(--c-surface-2);padding:3px;margin-bottom:6px}

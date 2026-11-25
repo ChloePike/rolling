@@ -1,7 +1,7 @@
 .wrap{display:inline-flex}
 .tip{
   position:fixed;z-index:90;translate:-50% 0;
-  padding:6px 8px;border-radius:8px;background:var(--c-surface-4);color:var(--c-text-1);
+  padding:6px 8px;border-radius:8px;background:var(--c-surface-float);color:var(--c-text-1);
   box-shadow:var(--shadow-float);font-size:var(--fs-meta);font-weight:500;line-height:1.2;white-space:nowrap;
   pointer-events:none;
   animation:enter var(--m-fast) var(--m-ease-standard);

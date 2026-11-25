@@ -75,7 +75,7 @@
 
 /* Option list for pills without a shared overlay. */
 .pillList{
-  min-width:200px;border-radius:18px;background:var(--c-surface-4);box-shadow:var(--shadow-float);
+  min-width:200px;border-radius:18px;background:var(--c-surface-float);box-shadow:var(--shadow-float);
   padding:6px;display:flex;flex-direction:column;gap:2px;
 }
 .pillOption{
