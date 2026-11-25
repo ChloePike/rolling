@@ -3,7 +3,9 @@ import type { PlanId } from '@rolling/core/pricing/config';
 import { api } from '@/lib/api/client';
 import { ApiError, isApiError } from '@/lib/api/errors';
 import type { CheckoutOutcome, CheckoutStarted, Interval, SeatsChanged } from '@/lib/api/types';
-import { FlowError } from './mock';
+import { isMockApi } from '@/lib/api/mode';
+import { FlowError, mockCheckoutPlan, mockCheckoutTopUp } from './mock';
+import type { BillingPeriod } from './store';
 import { refetchMe } from './real';
 import { bindPendingToCheckout, markCheckoutResumed } from './pending';
 
@@ -127,8 +129,47 @@ export async function openBillingPortal(returnTo = currentReturnPath()): Promise
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** A mock checkout waiting for its return (`__rollingMocks.checkoutRedirect`). */
+type MockCheckout = { kind: 'plan'; planId: string; period: BillingPeriod; seats: number } | { kind: 'topUp'; amountUsd: number };
+const MOCK_CHECKOUT_KEY = 'rolling.mock.checkout';
+
+/** Mock of the Stripe round trip: binds the pending action, then reloads the app at the success return URL. */
+export function mockCheckoutRedirect(c: MockCheckout): Promise<never> {
+  const sessionId = `cs_mock_${Date.now().toString(36)}`;
+  try {
+    sessionStorage.setItem(`${MOCK_CHECKOUT_KEY}:${sessionId}`, JSON.stringify(c));
+  } catch {
+    /* No storage: the return finds nothing and reports the checkout expired. */
+  }
+  bindPendingToCheckout(sessionId);
+  const back = currentReturnPath();
+  redirectTo(`${back}${back.includes('?') ? '&' : '?'}checkout=success&session_id=${sessionId}`);
+  return leaving();
+}
+
+/** Mock return: applies the stored checkout and reports it complete. */
+async function mockPollCheckout(sessionId: string): Promise<CheckoutOutcome> {
+  let c: MockCheckout | null = null;
+  try {
+    const raw = sessionStorage.getItem(`${MOCK_CHECKOUT_KEY}:${sessionId}`);
+    sessionStorage.removeItem(`${MOCK_CHECKOUT_KEY}:${sessionId}`);
+    c = raw ? (JSON.parse(raw) as MockCheckout) : null;
+  } catch {
+    c = null;
+  }
+  const base = { sessionId, interval: null, amountCents: null, credits: null, completedAt: null, seats: null, resume: null, planId: null } as const;
+  if (!c) return { ...base, kind: 'plan', status: 'expired' };
+  if (c.kind === 'plan') {
+    const s = await mockCheckoutPlan(c.planId, c.period, c.seats);
+    return { ...base, kind: 'plan', status: 'complete', planId: s.planId, interval: toInterval(c.period), seats: c.seats, completedAt: Date.now() };
+  }
+  const r = await mockCheckoutTopUp(c.amountUsd);
+  return { ...base, kind: 'topUp', status: 'complete', amountCents: Math.round(c.amountUsd * 100), credits: r.credits, completedAt: Date.now() };
+}
+
 /** Polls the checkout outcome until the webhook completed (or expired) it, up to `timeoutMs`. */
 export async function pollCheckout(sessionId: string, { timeoutMs = 30_000, intervalMs = 1000 } = {}): Promise<CheckoutOutcome> {
+  if (isMockApi()) return mockPollCheckout(sessionId);
   const start = Date.now();
   for (;;) {
     const r = await api.get<CheckoutOutcome>(`/billing/checkout/${encodeURIComponent(sessionId)}`);
@@ -152,16 +193,16 @@ const BUFFER_MS = 2 * 60_000;
 
 /**
  * Subscribes to completed checkouts. A completion that arrived before anyone
- * listened (the page was still loading) is delivered to the first listener.
- * Returns the unsubscribe function.
+ * listened (the page was still loading) is delivered to every listener that
+ * subscribes within two minutes (each takes only its own pending action, so
+ * replays are harmless). Returns the unsubscribe function.
  */
 export function onCheckoutResume(cb: ResumeListener): () => void {
   resumeListeners.add(cb);
   if (buffered && Date.now() - buffered.at < BUFFER_MS) {
     const r = buffered.r;
-    buffered = null;
     queueMicrotask(() => cb(r));
-  }
+  } else buffered = null;
   return () => resumeListeners.delete(cb);
 }
 
@@ -175,10 +216,8 @@ export function useCheckoutResume(cb: ResumeListener): void {
 export function emitCheckoutResume(r: CheckoutResume) {
   // Actions bound to this checkout (`savePendingAction` before the redirect) may replay now.
   markCheckoutResumed(r.outcome.sessionId);
-  if (!resumeListeners.size) {
-    buffered = { r, at: Date.now() };
-    return;
-  }
+  // Hosts that mount later (lazy routes) still get it.
+  buffered = { r, at: Date.now() };
   for (const l of resumeListeners) l(r);
 }
 

@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { isMockApi } from '@/lib/api/mode';
-import { realChangeSeats, realCheckoutPlan, realCheckoutTopUp, type CheckoutOptions } from './checkout';
+import { mockCheckoutRedirect, realChangeSeats, realCheckoutPlan, realCheckoutTopUp, type CheckoutOptions } from './checkout';
 import {
   clampSeats,
   FlowError,
@@ -11,6 +11,7 @@ import {
   mockCheckoutPlan,
   mockCheckoutTopUp,
   mockIdentity,
+  mocks,
   resetMockForTests,
   setMockWorkspace,
   subscribeMockWorkspace,
@@ -80,14 +81,20 @@ if (isMockApi()) {
  * (`PAYMENT_FAILED`, `SEATS_REQUIRED`, `CONFLICT`, ...).
  */
 export async function checkoutPlan(planId: string, period: BillingPeriod = 'monthly', seats = 1, opts: CheckoutOptions = {}): Promise<Session> {
-  if (isMockApi()) return mockCheckoutPlan(planId, period, seats);
+  if (isMockApi()) return mocks().checkoutRedirect ? mockCheckoutRedirect({ kind: 'plan', planId, period, seats }) : mockCheckoutPlan(planId, period, seats);
   await realCheckoutPlan(planId as PlanId, period, planId === 'team' ? clampSeats(seats) : 1, opts);
   return getSession();
 }
 
 /** Top-up checkout (members only, D-007). Real: Stripe Checkout (never settles). Mock: adds the quoted credits. */
 export async function checkoutTopUp(amountUsd: number, opts: CheckoutOptions = {}): Promise<TopUpResult> {
-  if (isMockApi()) return mockCheckoutTopUp(amountUsd);
+  if (isMockApi()) {
+    if (mocks().checkoutRedirect) {
+      if (!getSession().isMember) throw new FlowError('NO_PLAN');
+      return mockCheckoutRedirect({ kind: 'topUp', amountUsd });
+    }
+    return mockCheckoutTopUp(amountUsd);
+  }
   if (!getSession().isMember) throw new FlowError('NO_PLAN');
   return realCheckoutTopUp(amountUsd, opts);
 }

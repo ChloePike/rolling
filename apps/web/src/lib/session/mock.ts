@@ -35,6 +35,12 @@ declare global {
       run?: MockOutcome;
       /** Mock latency in ms for checkout and runs (default 600). */
       latencyMs?: number;
+      /**
+       * Checkout leaves the page like Stripe: the app reloads at
+       * `?checkout=success&session_id=cs_mock_…` and the plan or top-up applies
+       * on return (resume-after-checkout flows, D-007).
+       */
+      checkoutRedirect?: boolean;
     };
   }
 }
@@ -75,7 +81,7 @@ function guestFlag(): boolean {
   }
 }
 
-function mocks() {
+export function mocks() {
   return (typeof window !== 'undefined' && window.__rollingMocks) || {};
 }
 

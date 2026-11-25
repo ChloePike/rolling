@@ -15,7 +15,7 @@ import { useSession } from './store';
 
 /**
  * Session side effects that need the router and toasts (mounted once in the
- * root route, real API only):
+ * root route; the mocks only handle the checkout return):
  * - signed out while on an app route (socket 4401, expired cookie) → `/login`;
  * - Stripe returns (`?checkout=success&session_id=…`, `?checkout=canceled`,
  *   `?portal=returned`): poll the outcome, toast, refresh, hand
@@ -23,8 +23,14 @@ import { useSession } from './store';
  * - failed preference saves and `notification` messages → toasts.
  */
 export function SessionRuntime() {
-  if (isMockApi()) return null;
+  // The mocks only handle the checkout return (`__rollingMocks.checkoutRedirect`).
+  if (isMockApi()) return <MockRuntime />;
   return <Runtime />;
+}
+
+function MockRuntime() {
+  useCheckoutReturn();
+  return null;
 }
 
 function Runtime() {
@@ -33,7 +39,6 @@ function Runtime() {
   const navigate = useNavigate();
   const session = useSession();
   const location = useRouterState({ select: (s) => s.location });
-  const handled = useRef(new Set<string>());
 
   // Signed out under an app route.
   const wasSignedIn = useRef(false);
@@ -45,7 +50,34 @@ function Runtime() {
     void navigate({ to: '/login', search: { redirect: location.href }, replace: true });
   }, [session.status, location.pathname, location.href, navigate, toast, intl]);
 
-  // Stripe returns.
+  useCheckoutReturn();
+
+  // Preference saves the server refused (already rolled back).
+  useEffect(() => {
+    const onError = (e: Event) => {
+      const { error, patch } = (e as CustomEvent<PrefsErrorDetail>).detail;
+      const id = isApiError(error, 'NO_PLAN') && 'matureContent' in patch ? 'shell.prefs.matureNeedsPlan' : 'shell.prefs.saveFailed';
+      toast.show({ message: intl.formatMessage({ id }) });
+    };
+    window.addEventListener(PREFS_ERROR_EVENT, onError);
+    return () => window.removeEventListener(PREFS_ERROR_EVENT, onError);
+  }, [toast, intl]);
+
+  useUserSocketEvent('notification', (p) => {
+    const message = p.message ?? p.title;
+    if (message) toast.show({ message, duration: 6000 });
+  });
+
+  return null;
+}
+
+/** Stripe returns (`?checkout=…&session_id=…`, `?portal=returned`): poll, toast, refresh, resume, strip the params. */
+function useCheckoutReturn() {
+  const intl = useIntl();
+  const toast = useToast();
+  const navigate = useNavigate();
+  const location = useRouterState({ select: (s) => s.location });
+  const handled = useRef(new Set<string>());
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     const checkout = q.get('checkout');
@@ -76,9 +108,12 @@ function Runtime() {
     strip();
     void pollCheckout(sessionId)
       .then(async (outcome) => {
-        await refetchMe();
-        void queryClient.invalidateQueries({ queryKey: ['billing'] });
-        void queryClient.invalidateQueries({ queryKey: ['workspace'] });
+        // The mock return (`__rollingMocks.checkoutRedirect`) applied the plan itself.
+        if (!isMockApi()) {
+          await refetchMe();
+          void queryClient.invalidateQueries({ queryKey: ['billing'] });
+          void queryClient.invalidateQueries({ queryKey: ['workspace'] });
+        }
         if (outcome.status !== 'complete') {
           toast.show({ message: intl.formatMessage({ id: outcome.status === 'expired' ? 'shell.checkout.expired' : 'shell.checkout.pending' }), duration: 8000 });
           return;
@@ -95,21 +130,4 @@ function Runtime() {
       .catch(() => toast.show({ message: intl.formatMessage({ id: 'shell.checkout.pending' }), duration: 8000 }));
   }, [location.searchStr, navigate, toast, intl]);
 
-  // Preference saves the server refused (already rolled back).
-  useEffect(() => {
-    const onError = (e: Event) => {
-      const { error, patch } = (e as CustomEvent<PrefsErrorDetail>).detail;
-      const id = isApiError(error, 'NO_PLAN') && 'matureContent' in patch ? 'shell.prefs.matureNeedsPlan' : 'shell.prefs.saveFailed';
-      toast.show({ message: intl.formatMessage({ id }) });
-    };
-    window.addEventListener(PREFS_ERROR_EVENT, onError);
-    return () => window.removeEventListener(PREFS_ERROR_EVENT, onError);
-  }, [toast, intl]);
-
-  useUserSocketEvent('notification', (p) => {
-    const message = p.message ?? p.title;
-    if (message) toast.show({ message, duration: 6000 });
-  });
-
-  return null;
 }

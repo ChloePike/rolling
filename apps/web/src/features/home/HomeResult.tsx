@@ -1,5 +1,6 @@
 import { useToast } from '@rolling/ui';
 import { useNavigate } from '@tanstack/react-router';
+import { useEffect } from 'react';
 import { useIntl } from 'react-intl';
 import { mockResultActions, ResultViewer, type ResultActionId, type ResultVersion, type RunRequest } from '@/features/overlays';
 import type { RefItem } from '@/features/prompt';
@@ -23,6 +24,13 @@ export interface HomeResultState {
   /** Real mode: the spec to regenerate with, and each version's result asset. */
   spec?: PromptSpec;
   assets?: Record<string, string | null>;
+}
+
+/** A result viewer action a paywall interrupted (`home.result`), replayed after checkout. */
+export interface PendingHomeResult {
+  result: Omit<HomeResultState, 'createdAt'> & { createdAt: number };
+  action: ResultActionId;
+  versionId: string;
 }
 
 const TONES = ['var(--c-tone-indigo)', 'var(--c-tone-teal)', 'var(--c-tone-plum)', 'var(--c-tone-sand)'];
@@ -61,11 +69,16 @@ export function HomeResult({
   result,
   onChange,
   onRun,
+  resumeAction,
+  onResumed,
 }: {
   result: HomeResultState | null;
   onChange: (r: HomeResultState | null) => void;
   /** Starts a paid action through the run flow. */
   onRun: (req: Omit<RunRequest, 'onDone'>, done: (runId: string, assetId?: string | null) => void) => void;
+  /** An action to run again once `result` is shown (after checkout). */
+  resumeAction?: { id: ResultActionId; versionId: string } | null;
+  onResumed?: () => void;
 }) {
   const intl = useIntl();
   const toast = useToast();
@@ -105,6 +118,7 @@ export function HomeResult({
         meta: `${result.modelName} · ${result.versions.find((v) => v.id === versionId)?.label ?? ''}`,
         // Only Regenerate has a spec in real mode (Extend and HD are tool actions not on the API yet).
         ...(id === 'regenerate' && result.spec ? { spec: result.spec } : {}),
+        resume: { kind: 'home.result', data: { result: { ...result, createdAt: result.createdAt.getTime() }, action: id, versionId } satisfies PendingHomeResult },
       },
       (runId, assetId) => {
         const v = nextVersion(result.versions, runId);
@@ -112,6 +126,13 @@ export function HomeResult({
       },
     );
   };
+
+  useEffect(() => {
+    if (!result || !resumeAction) return;
+    onResumed?.();
+    onAction(resumeAction.id, resumeAction.versionId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result, resumeAction]);
 
   return (
     <ResultViewer

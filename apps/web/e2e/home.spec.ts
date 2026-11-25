@@ -621,6 +621,47 @@ test.describe('home flows', () => {
     await expect(balance(page)).toContainText('3,272');
   });
 
+  test('non-member image send: join paywall → checkout redirect (Stripe-style reload) → the same run resumes', async ({ page }) => {
+    await asPlan(page, null);
+    await seed(page, { mocks: { checkoutRedirect: true } });
+    await openApp(page);
+    await mode(page, 'Image');
+    await page.locator('textarea').fill('A glass bottle on wet stone');
+    await page.getByRole('button', { name: 'Start' }).click();
+    const paywall = page.getByRole('dialog', { name: 'Pick a plan to generate' });
+    const left = page.waitForURL(/checkout=success&session_id=cs_mock_/);
+    await paywall.getByRole('button', { name: 'Continue with Plus' }).click();
+    await left;
+    // Back from checkout: the return params are stripped, the brief and mode are restored and the run continues.
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByRole('tablist', { name: 'Creation mode' }).getByRole('tab', { name: 'Image' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('textarea')).toHaveValue('A glass bottle on wet stone');
+    await expect(page.getByRole('status').filter({ hasText: 'Generate images is ready' })).toBeVisible();
+    // 2,480 + 800 (Plus) − 2.
+    await expect(balance(page)).toContainText('3,278');
+    expect(await page.evaluate(() => Object.keys(sessionStorage).filter((k) => k.startsWith('rolling.pendingAction')))).toEqual([]);
+  });
+
+  test('result viewer Regenerate short of credits: top-up redirect → the viewer reopens and the new version runs', async ({ page }) => {
+    await seed(page, { mocks: { checkoutRedirect: true, credits: { available: 10, plan: 10, purchased: 0 } } });
+    await openApp(page);
+    await mode(page, 'Video');
+    await page.locator('textarea').fill('Product turntable');
+    await page.getByRole('button', { name: 'Start' }).click();
+    await page.getByRole('status').getByRole('button', { name: 'View' }).click();
+    const viewer = page.getByRole('dialog', { name: 'Result' });
+    await viewer.getByRole('button', { name: /^Regenerate/ }).click();
+    const paywall = page.getByRole('dialog', { name: 'Not enough credits' });
+    const left = page.waitForURL(/checkout=success&session_id=cs_mock_/);
+    await paywall.getByRole('button', { name: /^Buy 1,100 credits for \$10 and run$/ }).click();
+    await left;
+    await expect(page).toHaveURL(/\/$/);
+    await expect(viewer).toBeVisible();
+    await expect(viewer.getByRole('button', { name: 'v2' })).toHaveAttribute('aria-pressed', 'true');
+    // 10 (seeded again after the reload) + 1,100 − 8.
+    await expect(balance(page)).toContainText('1,102');
+  });
+
   test('not enough credits: top-up paywall → checkout → the run continues', async ({ page }) => {
     await seed(page, { mocks: { credits: { available: 5, plan: 5, purchased: 0 } } });
     await openApp(page);

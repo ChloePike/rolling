@@ -35,7 +35,10 @@ function getAgentLlm(): string | null {
 import { useAgentAllowance } from '@/lib/session/agentAllowance';
 import type { TemplateSummary } from '@/features/templates/types';
 import { useCreateProject, useRecentProjects } from './api';
-import { HomeResult, nextVersion, type HomeResultState } from './HomeResult';
+import { HomeResult, nextVersion, type HomeResultState, type PendingHomeResult } from './HomeResult';
+import type { ResultActionId } from '@/features/overlays';
+import type { PromptSpec } from '@/features/overlays/runs';
+import type { HomeRunSpec } from './useHomePills';
 import { formatSeconds, formatWhen } from './format';
 import { HOME_MODES, type HomeModeId } from './modes';
 import { FEED_TONES } from './mocks';
@@ -50,6 +53,18 @@ const ENTRIES: Array<{ key: string; to: string; icon: PromptIconName }> = [
   { key: 'avatar', to: '/create/avatar', icon: 'person' },
   { key: 'character', to: '/create/character', icon: 'spark' },
 ];
+
+/** A Home generation a paywall interrupted (`home.run`), replayed after checkout. */
+interface PendingHomeRun {
+  mode: HomeModeId;
+  brief: string;
+  title: string;
+  cost: number;
+  actionLabel: string;
+  run: Omit<HomeRunSpec, 'spec'>;
+  refs: RefItem[];
+  spec?: PromptSpec;
+}
 
 const FEED_CATS = ['forYou', 'product', 'talking', 'drama', 'holiday'] as const;
 type FeedCat = (typeof FEED_CATS)[number];
@@ -108,6 +123,28 @@ export function HomePage() {
   const runFlow = (req: Omit<RunRequest, 'onDone'>, done: (runId: string, assetId?: string | null) => void) =>
     flow.request({ ...req, viewLabel: t('overlays.run.view'), onDone: (r) => done(r.id, r.assetId) });
 
+  /** A generation: also what a paywall keeps (`home.run`) so it runs again after checkout. */
+  const runGeneration = (g: PendingHomeRun) =>
+    runFlow(
+      { cost: g.cost, kind: g.run.kind, actionLabel: g.actionLabel, meta: g.run.meta, subtitle: g.run.modelName, spec: g.spec, resume: { kind: 'home.run', data: g } },
+      (runId, assetId) =>
+        setResult({
+          spec: g.spec,
+          assets: { [runId]: assetId ?? null },
+          title: g.title,
+          prompt: g.brief,
+          kind: g.run.kind,
+          aspect: g.run.aspect,
+          modelName: g.run.modelName,
+          params: g.run.params,
+          refs: g.refs,
+          versions: [nextVersion([], runId)],
+          versionId: runId,
+          createdAt: new Date(),
+          cost: g.cost,
+        }),
+    );
+
   const generate = () => {
     if (!run) return;
     const cost = credits ?? 0;
@@ -126,23 +163,8 @@ export function HomePage() {
       if (!voice) return void toast.show({ message: t('home.avatar.needVoice') });
       spec = { ...run.spec, prompt: brief, title: snapshot.title, inputs: { firstFrameAssetId: photo.id, audioAssetId: voice.id } };
     }
-    runFlow({ cost, kind: run.kind, actionLabel, meta: run.meta, subtitle: run.modelName, spec }, (runId, assetId) =>
-      setResult({
-        spec,
-        assets: { [runId]: assetId ?? null },
-        title: snapshot.title,
-        prompt: brief,
-        kind: snapshot.run.kind,
-        aspect: snapshot.run.aspect,
-        modelName: snapshot.run.modelName,
-        params: snapshot.run.params,
-        refs: snapshot.refs,
-        versions: [nextVersion([], runId)],
-        versionId: runId,
-        createdAt: new Date(),
-        cost: snapshot.cost,
-      }),
-    );
+    const { kind, meta, modelName, aspect, params } = snapshot.run;
+    runGeneration({ mode, brief, title: snapshot.title, cost, actionLabel, run: { kind, meta, modelName, aspect, params }, refs: snapshot.refs, ...(spec ? { spec } : {}) });
   };
 
   /** Real mode: the brief goes to a Home agent thread; the plan proposal shows below the prompt box. */
@@ -202,10 +224,26 @@ export function HomePage() {
     );
   };
 
-  // A brief interrupted by the join paywall is sent once the plan is active (after the checkout redirect).
+  // A result viewer action (Regenerate, …) interrupted by a paywall, replayed once the viewer is open again.
+  const [resumeAction, setResumeAction] = useState<{ id: ResultActionId; versionId: string } | null>(null);
+
+  // What a paywall interrupted continues once the plan is active (also after the checkout redirect):
+  // a brief for the agent, a generation, or a result viewer action.
   useCheckoutResume(() => {
     const pending = takePendingAction<{ brief: string; skill: string | null }>('home.agent');
     if (pending) void askAgent(pending.brief, [], pending.skill);
+    const gen = takePendingAction<PendingHomeRun>('home.run');
+    if (gen) {
+      setMode(gen.mode);
+      setText(gen.brief);
+      setRefs(gen.refs);
+      runGeneration(gen);
+    }
+    const viewer = takePendingAction<PendingHomeResult>('home.result');
+    if (viewer) {
+      setResult({ ...viewer.result, createdAt: new Date(viewer.result.createdAt) });
+      setResumeAction({ id: viewer.action, versionId: viewer.versionId });
+    }
   });
 
   const submit = () => {
@@ -325,7 +363,7 @@ export function HomePage() {
       />
       {flow.element}
       {agent ? <HomeAgent state={agent} building={building} onBuild={build} onDismiss={() => setAgent(null)} /> : null}
-      <HomeResult result={result} onChange={setResult} onRun={runFlow} />
+      <HomeResult result={result} onChange={setResult} onRun={runFlow} resumeAction={resumeAction} onResumed={() => setResumeAction(null)} />
       <RecentProjects />
       <Inspiration />
     </>

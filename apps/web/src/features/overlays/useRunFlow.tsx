@@ -3,7 +3,7 @@ import { useToast } from '@rolling/ui';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useIntl } from 'react-intl';
 import { getPrefs } from '@/lib/prefs';
-import { checkoutPlan, checkoutTopUp, getCredits, getSession, MockFlowError, onCheckoutResume, startMockRun, useCredits, type MockRun } from '@/lib/session';
+import { checkoutPlan, checkoutTopUp, getCredits, getSession, MockFlowError, onCheckoutResume, savePendingAction, startMockRun, takePendingAction, useCredits, type MockRun } from '@/lib/session';
 import { Paywall } from './Paywall';
 import { RunConfirm } from './RunConfirm';
 import type { RunRowKind } from './types';
@@ -48,6 +48,12 @@ export interface RunRequest {
   projectId?: string;
   /** Toast action after the run finishes (e.g. View opens the result viewer). */
   viewLabel?: string;
+  /**
+   * Survives the Stripe redirect: when a paywall interrupts this run, `data`
+   * is kept with `savePendingAction(kind, data)`; the host takes it back in
+   * `useCheckoutResume` and requests the run again (D-007).
+   */
+  resume?: { kind: string; data: unknown };
 }
 
 type Step = { kind: 'idle' } | { kind: 'join' } | { kind: 'credits' } | { kind: 'confirm' };
@@ -127,6 +133,19 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
   const pending = useRef<RunRequest | null>(null);
   const t = (id: string, v?: Record<string, string | number>) => intl.formatMessage({ id }, v);
 
+  /** A paywall opens for `run`: keep it for after the checkout (also across the Stripe redirect). */
+  const toPaywall = (run: RunRequest, kind: 'join' | 'credits') => {
+    if (run.resume) savePendingAction(run.resume.kind, run.resume.data);
+    setStep({ kind });
+  };
+  /** The checkout finished in this tab: the run continues here, so its stored copy is dropped. */
+  const continueAfterCheckout = () => {
+    const run = pending.current;
+    if (!run) return;
+    if (run.resume) takePendingAction(run.resume.kind);
+    advance(run);
+  };
+
   const quoteRef = useRef<SpecQuote | null>(null);
   const [quoteTotal, setQuoteTotal] = useState<number | null>(null);
   const [quoteBalance, setQuoteBalance] = useState<number | null>(null);
@@ -170,8 +189,8 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
       },
       (e: unknown) => {
         run.onFailed?.();
-        if (isApiError(e, 'NO_PLAN')) return setStep({ kind: 'join' });
-        if (isApiError(e, 'INSUFFICIENT_CREDITS')) return setStep({ kind: 'credits' });
+        if (isApiError(e, 'NO_PLAN')) return toPaywall(run, 'join');
+        if (isApiError(e, 'INSUFFICIENT_CREDITS')) return toPaywall(run, 'credits');
         if (isApiError(e, 'QUOTE_EXPIRED') && attempt < 1) return void advance(run, attempt + 1);
         if (isApiError(e, 'MEMBER_LIMIT_REACHED')) return void toast.show({ message: t('overlays.run.memberLimit'), duration: 0 });
         if (isApiError(e, 'CONCURRENCY_LIMIT')) return void toast.show({ message: t('overlays.run.concurrency', { limit: (e.data as { limit?: number }).limit ?? 0 }) });
@@ -197,15 +216,15 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
           setQuoteBalance(q.balance);
           const blocked = q.items.find((i) => i.action === 'blocked');
           if (!q.quoteId) {
-            if (blocked?.code === 'NO_PLAN') return setStep({ kind: 'join' });
+            if (blocked?.code === 'NO_PLAN') return toPaywall(run, 'join');
             return void toast.show({ message: blocked?.reason ?? t('overlays.run.unavailable') });
           }
-          if (q.balance < q.total) return setStep({ kind: 'credits' });
+          if (q.balance < q.total) return toPaywall(run, 'credits');
           if (q.needsConfirm) return setStep({ kind: 'confirm' });
           goReal(run, q, attempt);
         },
         (e: unknown) => {
-          if (isApiError(e, 'NO_PLAN')) return setStep({ kind: 'join' });
+          if (isApiError(e, 'NO_PLAN')) return toPaywall(run, 'join');
           toast.show({ message: t('overlays.run.startFailed', { label: run.actionLabel }) });
         },
       );
@@ -244,8 +263,8 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
   function advance(run: RunRequest, attempt = 0) {
     if (!isMockApi()) return advanceReal(run, attempt);
     pending.current = run;
-    if (!getSession().isMember) return setStep({ kind: 'join' });
-    if (getCredits().available < run.cost) return setStep({ kind: 'credits' });
+    if (!getSession().isMember) return toPaywall(run, 'join');
+    if (getCredits().available < run.cost) return toPaywall(run, 'credits');
     const threshold = getPrefs().confirmThreshold;
     if (threshold <= 0 || run.cost >= threshold) return setStep({ kind: 'confirm' });
     go(run);
@@ -264,9 +283,7 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
   // After a checkout in this tab (or the Stripe redirect landing back here), the interrupted run continues.
   useEffect(
     () =>
-      onCheckoutResume(() => {
-        if (pending.current) advance(pending.current);
-      }),
+      onCheckoutResume(() => continueAfterCheckout()),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
@@ -285,7 +302,7 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
               setBusy(false);
               const plan = s.planId ? PLANS[s.planId] : null;
               if (plan) toast.show({ message: t('overlays.run.planActive', { plan: plan.label, credits: plan.monthlyCredits }) });
-              if (pending.current) advance(pending.current);
+              continueAfterCheckout();
             },
             () => {
               setBusy(false);
@@ -307,7 +324,7 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
             (r) => {
               setBusy(false);
               toast.show({ message: t('overlays.run.toppedUp', { credits: r.credits }) });
-              if (pending.current) advance(pending.current);
+              continueAfterCheckout();
             },
             () => {
               setBusy(false);
