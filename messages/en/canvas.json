@@ -155,7 +155,5 @@
   "canvas.plan.meta.asset": "Asset node",
   "canvas.plan.meta.tts": "Text to speech · {voice} · {seconds, number}s",
   "canvas.plan.meta.current": "v{n, number} is current",
-  "canvas.prompt.resolution": "Resolution",
-  "canvas.prompt.locked": "{plan}",
-  "canvas.prompt.lockedLabel": "{resolution}, needs the {plan} plan"
+  "canvas.prompt.resolution": "Resolution"
 }

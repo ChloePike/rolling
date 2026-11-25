@@ -10,6 +10,8 @@ export interface SegmentedOption<T extends string> {
   disabled?: boolean;
   /** Reason shown as a native tooltip when disabled. */
   disabledReason?: string;
+  /** Accessible name when the visible label is not enough (e.g. "4K, Available on Pro"). */
+  ariaLabel?: string;
 }
 
 export interface SegmentedControlProps<T extends string> {
@@ -47,6 +49,7 @@ export function SegmentedControl<T extends string>({ options, value, onValueChan
             aria-checked={checked}
             disabled={o.disabled}
             title={o.disabled ? o.disabledReason : undefined}
+            aria-label={o.ariaLabel}
             tabIndex={i === selectedIndex ? 0 : -1}
             className={styles.option}
             onClick={() => onValueChange(o.value)}

@@ -1,0 +1,5 @@
+/* Locked by plan (D-006): shown inside the locked option, next to its label. */
+.lock{
+  display:inline-flex;align-items:center;gap:3px;height:16px;padding:0 5px;border-radius:4px;flex:none;
+  background:var(--c-surface-5);color:var(--c-text-3);font-size:10px;font-weight:700;line-height:1;vertical-align:middle;
+}

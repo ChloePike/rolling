@@ -25,7 +25,7 @@ import {
 import type { ParamKind, PickerKind } from '../types';
 import type { ToolModel } from './models';
 import { checkoutPlan } from '@/lib/session';
-import { lockedResolutions, useToolPlan } from './plan';
+import { useToolPlan } from './plan';
 import type { PlanId } from '@rolling/core/pricing/config';
 
 /** Balance shown in quotes until the credits API lands (same placeholder as the header). */
@@ -99,7 +99,7 @@ export function ToolParamPopover({ open, kind, onClose, anchorClassName, anchorR
           value={video}
           onValueChange={setVideo}
           cost={estimateVideoCost(video)}
-          unsupported={{ resolution: lockedResolutions(plan, 'video', ['480p', '720p', '1080p']) as VideoParams['resolution'][] }}
+          plan={plan}
           onReset={() => setVideo(defaultVideoParams)}
           onClose={onClose}
           anchorRef={anchorRef}
@@ -111,6 +111,7 @@ export function ToolParamPopover({ open, kind, onClose, anchorClassName, anchorR
           value={image}
           onValueChange={setImage}
           cost={estimateImageCost(image)}
+          plan={plan}
           onReset={() => setImage(defaultImageParams)}
           onClose={onClose}
           anchorRef={anchorRef}

@@ -237,9 +237,5 @@
   "tools.viewer.seed": "Seed",
   "tools.viewer.took": "Took",
   "tools.viewer.cost": "Cost",
-  "tools.viewer.credits": "{n, number} credits",
-  "tools.adv.lockedBy": "Available on {plan}",
-  "tools.plan.starter": "Starter",
-  "tools.plan.plus": "Plus",
-  "tools.plan.pro": "Pro"
+  "tools.viewer.credits": "{n, number} credits"
 }

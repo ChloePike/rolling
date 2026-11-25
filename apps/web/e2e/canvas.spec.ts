@@ -357,11 +357,11 @@ test.describe('canvas behavior', () => {
     await page.getByRole('button', { name: '9:16 · 720p · 5s' }).click();
     const menu = page.getByRole('menu', { name: 'Resolution' });
     await expect(menu.getByRole('menuitemradio', { name: '720p' })).toHaveAttribute('aria-checked', 'true');
-    await expect(menu.getByRole('menuitemradio', { name: '1080p, needs the Plus plan' })).toHaveAttribute('aria-disabled', 'true');
-    await expect(menu.getByRole('menuitemradio', { name: '4K, needs the Pro plan' })).toHaveAttribute('aria-disabled', 'true');
+    await expect(menu.getByRole('menuitemradio', { name: '1080p, Available on Plus' })).toHaveAttribute('aria-disabled', 'true');
+    await expect(menu.getByRole('menuitemradio', { name: '4K, Available on Pro' })).toHaveAttribute('aria-disabled', 'true');
     await page.waitForTimeout(300);
     await page.screenshot({ path: `${OUT}resolution-locked-app.png` });
-    await menu.getByRole('menuitemradio', { name: '1080p, needs the Plus plan' }).click({ force: true });
+    await menu.getByRole('menuitemradio', { name: '1080p, Available on Plus' }).click({ force: true });
     await expect(menu).toBeVisible();
     await menu.getByRole('menuitemradio', { name: '480p' }).click();
     await expect(page.getByRole('button', { name: '9:16 · 480p · 5s' })).toBeVisible();

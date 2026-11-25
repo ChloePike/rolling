@@ -14,6 +14,7 @@ export { ModelPicker, type ModelPickerProps } from './ModelPicker';
 export { ParamPopover, type ParamPopoverProps, type VideoParamPopoverProps, type ImageParamPopoverProps } from './ParamPopover';
 export { RunConfirm, RunConfirmPanel, type RunConfirmProps, type RunConfirmPanelProps } from './RunConfirm';
 export { Paywall, PaywallPanel, defaultPaywallOptions, type PaywallProps, type PaywallPanelProps } from './Paywall';
+export { PlanLock, planLockInfo, type PlanLockInfo } from './PlanLock';
 export { ResultViewer, ResultViewerContent, formatAgo, type ResultViewerProps, type ResultViewerContentProps } from './ResultViewer';
 export * from './types';
 export { catalogToOptions, unitCredits } from './catalog';

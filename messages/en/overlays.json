@@ -118,5 +118,7 @@
   "overlays.paywall.credits.quote": "{credits, number} credits",
   "overlays.paywall.credits.quote.plain": "You get {credits, number} credits",
   "overlays.paywall.credits.quote.bonus": "You get {base, number} + {bonus, number} bonus = {credits, number} credits",
-  "overlays.paywall.plan.meta": "{credits, number} credits a month, video up to {video}"
+  "overlays.paywall.plan.meta": "{credits, number} credits a month, video up to {video}",
+  "overlays.planLock.reason": "Available on {plan}",
+  "overlays.planLock.label": "{option}, {reason}"
 }

@@ -8,6 +8,7 @@ export const Route = createFileRoute('/preview/overlays')({
     kind: typeof s.kind === 'string' ? s.kind : undefined,
     variant: typeof s.variant === 'string' ? s.variant : undefined,
     as: s.as === 'dialog' ? 'dialog' : 'panel',
+    plan: s.plan === 'starter' || s.plan === 'plus' || s.plan === 'pro' ? s.plan : undefined,
   }),
   component: function Preview() {
     return <OverlayPreview {...Route.useSearch()} />;

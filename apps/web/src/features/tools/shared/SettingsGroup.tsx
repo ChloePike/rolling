@@ -1,5 +1,7 @@
+import type { PlanId } from '@rolling/core/pricing/config';
 import type { CSSProperties } from 'react';
 import { useIntl } from 'react-intl';
+import { PlanLock } from '@/features/overlays';
 import layout from './ToolLayout.module.css';
 import styles from './SettingsGroup.module.css';
 import { ToolIcon, type ToolIconName } from './icons';
@@ -16,7 +18,7 @@ export interface SegOption {
   label: string;
   disabled?: boolean;
   /** Plan that unlocks this option (D-006); shown inside the locked option. */
-  lockedBy?: string;
+  lockedBy?: PlanId;
   /** Tooltip for a disabled option. */
   reason?: string;
 }
@@ -70,17 +72,12 @@ export function SettingsGroup({ def, className, style }: { def: SettingsGroupDef
               aria-pressed={def.value === o.value}
               disabled={o.disabled}
               title={o.disabled ? (o.reason ?? intl.formatMessage({ id: 'tools.adv.unavailable' })) : undefined}
-              aria-label={o.lockedBy ? `${o.label}, ${o.reason ?? ''}` : undefined}
+              aria-label={o.lockedBy ? intl.formatMessage({ id: 'overlays.planLock.label' }, { option: o.label, reason: o.reason ?? '' }) : undefined}
               data-locked={o.lockedBy ? 'true' : undefined}
               onClick={() => def.onChange(o.value)}
             >
               {o.label}
-              {o.lockedBy && (
-                <span className={styles.lock} aria-hidden="true">
-                  <ToolIcon name="lock" size={10} strokeWidth={2.4} />
-                  {o.lockedBy}
-                </span>
-              )}
+              {o.lockedBy && <PlanLock plan={o.lockedBy} />}
             </button>
           ))}
         </div>

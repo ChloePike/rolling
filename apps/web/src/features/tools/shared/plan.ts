@@ -1,4 +1,5 @@
-import { lowestPlanFor, planAllowsResolution, PLAN_ORDER, type PlanId } from '@rolling/core/pricing/config';
+import { PLAN_ORDER, type PlanId } from '@rolling/core/pricing/config';
+import { planLockInfo } from '@/features/overlays';
 import type { IntlShape } from 'react-intl';
 import { useSession } from '@/lib/session';
 import type { SegOption } from './SettingsGroup';
@@ -18,20 +19,7 @@ export function useToolPlan(planProp?: PlanId): PlanId {
  */
 export function resolutionOptions(intl: IntlShape, plan: PlanId, kind: 'video' | 'image', list: string[]): SegOption[] {
   return list.map((res) => {
-    if (planAllowsResolution(plan, kind, res)) return { value: res, label: res };
-    const unlock = lowestPlanFor(kind, res);
-    const planName = unlock ? intl.formatMessage({ id: `tools.plan.${unlock}` }) : '';
-    return {
-      value: res,
-      label: res,
-      disabled: true,
-      lockedBy: planName,
-      reason: intl.formatMessage({ id: 'tools.adv.lockedBy' }, { plan: planName }),
-    };
+    const lock = planLockInfo(intl, plan, kind, res);
+    return lock ? { value: res, label: res, disabled: true, lockedBy: lock.plan, reason: lock.reason } : { value: res, label: res };
   });
-}
-
-/** Locked resolutions, for the shared settings popover's `unsupported` list. */
-export function lockedResolutions(plan: PlanId, kind: 'video' | 'image', list: string[]): string[] {
-  return list.filter((res) => !planAllowsResolution(plan, kind, res));
 }

@@ -27,6 +27,20 @@ test.describe('Characters /create/character', () => {
     await expect(dialog.getByRole('radio', { name: '4K' })).toBeEnabled();
   });
 
+  test('plan caps (D-006): on Starter, the image settings popover shows 4K locked with Pro, even at high quality', async ({ page }) => {
+    await asPlan(page, 'starter');
+    await setMode(page, 'simple');
+    await page.goto('/create/character');
+    await page.locator('[data-pill="views"]').click();
+    const dialog = page.getByRole('dialog', { name: 'Image settings' });
+    await dialog.getByRole('radio', { name: 'High quality' }).click();
+    const locked = dialog.getByRole('radio', { name: '4K, Available on Pro' });
+    await expect(locked).toBeDisabled();
+    await expect(locked).toHaveAttribute('title', 'Available on Pro');
+    await expect(locked.locator('[data-plan-lock="pro"]')).toHaveText('Pro');
+    await expect(dialog.getByRole('radio', { name: '2K' })).toBeEnabled();
+  });
+
   test('plan caps (D-006): on Starter, 4K images are locked and name Pro', async ({ page }) => {
     await asPlan(page, 'starter');
     await setMode(page, 'advanced');

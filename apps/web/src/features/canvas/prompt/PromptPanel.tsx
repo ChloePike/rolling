@@ -2,6 +2,7 @@ import type { PlanId } from '@rolling/core/pricing/config';
 import { cx, presenceProps, usePresence, type PresenceState } from '@rolling/ui';
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { CatalogModel } from '@/lib/models';
+import { PlanLock, type PlanLockInfo } from '@/features/overlays';
 import { findModel, formatLabel, mediaKind, resolutionOptions } from '../pricing';
 import { runCost } from '../nodes/NodeCard';
 import { useIntl } from 'react-intl';
@@ -74,7 +75,7 @@ export function PromptPanel({ node, left, top, state, extraRefs, pickerOpen, onO
       ];
   const cost = runCost(node) ?? 0;
   const kind = mediaKind(node);
-  const resolutions = kind ? resolutionOptions(findModel(models, node), kind, plan) : [];
+  const resolutions = kind ? resolutionOptions(intl, findModel(models, node), kind, plan) : [];
   const running = node.status === 'generating' || node.status === 'queued';
 
   return (
@@ -154,7 +155,7 @@ export function PromptPanel({ node, left, top, state, extraRefs, pickerOpen, onO
 interface ResolutionMenuProps {
   state: PresenceState;
   current: string;
-  options: Array<{ value: string; allowed: boolean; unlockPlan: string | null }>;
+  options: Array<{ value: string; lock: PlanLockInfo | null }>;
   onPick: (resolution: string) => void;
   onClose: () => void;
 }
@@ -192,20 +193,14 @@ function ResolutionMenu({ state, current, options, onPick, onClose }: Resolution
           type="button"
           role="menuitemradio"
           aria-checked={o.value === current}
-          aria-disabled={!o.allowed || undefined}
-          aria-label={o.allowed ? o.value : intl.formatMessage({ id: 'canvas.prompt.lockedLabel' }, { resolution: o.value, plan: o.unlockPlan })}
+          aria-disabled={o.lock ? true : undefined}
+          aria-label={o.lock ? o.lock.label : o.value}
+          title={o.lock?.reason}
           className={styles.resItem}
-          onClick={() => o.allowed && onPick(o.value)}
+          onClick={() => !o.lock && onPick(o.value)}
         >
           <span>{o.value}</span>
-          {o.allowed ? null : (
-            <span className={styles.resLock}>
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true">
-                <path d="M7 11V7a5 5 0 0 1 10 0v4 M5 11h14v10H5z" />
-              </svg>
-              {intl.formatMessage({ id: 'canvas.prompt.locked' }, { plan: o.unlockPlan })}
-            </span>
-          )}
+          {o.lock ? <PlanLock plan={o.lock.plan} /> : null}
         </button>
       ))}
     </div>

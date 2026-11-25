@@ -182,6 +182,18 @@ test.describe('overlay behavior and states', () => {
     await expect(dialog.getByRole('radio', { name: '4K' })).toBeEnabled();
   });
 
+  test('param popover: plan caps lock resolutions with the unlocking plan (video on Starter, image on Plus)', async ({ page }) => {
+    await openPreview(page, 'c=params&kind=video&plan=starter');
+    const video = page.getByRole('dialog', { name: 'Video settings' });
+    await expect(video.getByRole('radio', { name: '1080p, Available on Plus' })).toBeDisabled();
+    await expect(video.getByRole('radio', { name: '720p' })).toBeEnabled();
+    await openPreview(page, 'c=params&kind=image&plan=plus');
+    const image = page.getByRole('dialog', { name: 'Image settings' });
+    await image.getByRole('radio', { name: 'High quality' }).click();
+    await expect(image.getByRole('radio', { name: '4K, Available on Pro' })).toBeDisabled();
+    await expect(image.locator('[data-plan-lock]')).toHaveText(['Pro']);
+  });
+
   test('run confirm (graph): stat line, row states, blocked note, totals and run button', async ({ page }) => {
     await openPreview(page, 'c=runConfirm&variant=graph');
     await expect(page.getByText('3 to generate · 1 reused · 1 blocked · ~4 min')).toBeVisible();

@@ -1,4 +1,6 @@
-import { DEFAULT_CONFIRM_THRESHOLD_CREDITS, lowestPlanFor, planAllowsResolution, PLANS, type PlanId } from '@rolling/core/pricing/config';
+import { DEFAULT_CONFIRM_THRESHOLD_CREDITS, type PlanId } from '@rolling/core/pricing/config';
+import type { IntlShape } from 'react-intl';
+import { planLockInfo } from '@/features/overlays';
 import { useMemo } from 'react';
 import { useModels, type CatalogModel } from '@/lib/models';
 import type { GraphNode } from '@rolling/core/graph';
@@ -43,13 +45,10 @@ export function catalogCredits(model: CatalogModel, node: GraphNode): number | u
   return Math.ceil((near.credits / near.seconds!) * seconds) * count;
 }
 
-export function resolutionOptions(model: CatalogModel | undefined, kind: MediaKind, plan: PlanId) {
+/** Resolutions for the node's model; `lock` (from the shared overlays) is set for those above the plan's cap. */
+export function resolutionOptions(intl: IntlShape, model: CatalogModel | undefined, kind: MediaKind, plan: PlanId) {
   const list = model?.resolutions.length ? model.resolutions : DEFAULT_RESOLUTIONS[kind];
-  return list.map((value) => {
-    const allowed = planAllowsResolution(plan, kind, value);
-    const unlock = allowed ? null : lowestPlanFor(kind, value);
-    return { value, allowed, unlockPlan: unlock ? PLANS[unlock].label : null };
-  });
+  return list.map((value) => ({ value, lock: planLockInfo(intl, plan, kind, value) }));
 }
 
 /** Adds the catalog price (or the mock estimate) to every node that can run. */

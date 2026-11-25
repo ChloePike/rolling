@@ -46,3 +46,4 @@
   transition:background-color var(--dur-fast) var(--ease-standard);
 }
 .reset:hover{background:var(--c-surface-5)}
+.locked{display:inline-flex;align-items:center;gap:5px}

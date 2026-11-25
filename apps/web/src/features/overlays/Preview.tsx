@@ -1,3 +1,4 @@
+import type { PlanId } from '@rolling/core/pricing/config';
 import { useState } from 'react';
 import { ModelPicker } from './ModelPicker';
 import { mockModels, mockGraphBlockedNote, mockGraphPlan, mockResultActions, mockSingleRun, mockVersions, defaultImageParams, defaultVideoParams } from './mocks';
@@ -13,6 +14,8 @@ export interface OverlayPreviewSearch {
   variant?: string;
   /** `dialog` renders the real modal (scrim + motion) instead of the bare panel. */
   as?: 'panel' | 'dialog';
+  /** Params: the plan whose resolution caps apply (D-006). */
+  plan?: PlanId;
 }
 
 const TEN_MIN_AGO = () => new Date(Date.now() - 10 * 60_000);
@@ -21,7 +24,7 @@ const TEN_MIN_AGO = () => new Date(Date.now() - 10 * 60_000);
  * Renders one overlay with the design's mock data at the design artboard's
  * position (top-left), for the fidelity specs in e2e/overlays.spec.ts.
  */
-export function OverlayPreview({ c = 'modelPicker', kind, variant, as = 'panel' }: OverlayPreviewSearch) {
+export function OverlayPreview({ c = 'modelPicker', kind, variant, as = 'panel', plan }: OverlayPreviewSearch) {
   const [model, setModel] = useState(AUTO_MODEL);
   const [video, setVideo] = useState<VideoParams>(defaultVideoParams);
   const [image, setImage] = useState<ImageParams>(defaultImageParams);
@@ -35,9 +38,9 @@ export function OverlayPreview({ c = 'modelPicker', kind, variant, as = 'panel' 
   } else if (c === 'params') {
     body =
       kind === 'image' ? (
-        <ParamPopover kind="image" value={image} onValueChange={setImage} open={open} onClose={() => setOpen(false)} dismissOnOutside={false} />
+        <ParamPopover kind="image" plan={plan} value={image} onValueChange={setImage} open={open} onClose={() => setOpen(false)} dismissOnOutside={false} />
       ) : (
-        <ParamPopover kind="video" value={video} onValueChange={setVideo} open={open} onClose={() => setOpen(false)} dismissOnOutside={false} />
+        <ParamPopover kind="video" plan={plan} value={video} onValueChange={setVideo} open={open} onClose={() => setOpen(false)} dismissOnOutside={false} />
       );
   } else if (c === 'runConfirm') {
     const graph = variant === 'graph';

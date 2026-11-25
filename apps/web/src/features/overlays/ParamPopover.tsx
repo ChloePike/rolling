@@ -1,9 +1,11 @@
-import { cx, presenceProps, SegmentedControl, Switch, useIndicator, usePresence } from '@rolling/ui';
+import type { PlanId } from '@rolling/core/pricing/config';
+import { cx, presenceProps, SegmentedControl, Switch, useIndicator, usePresence, type SegmentedOption } from '@rolling/ui';
 import { useId, useRef, type CSSProperties, type RefObject } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { Svg } from './icons';
 import { defaultImageParams, defaultVideoParams, estimateImageCost, estimateVideoCost } from './mocks';
 import styles from './ParamPopover.module.css';
+import { PlanLock, planLockInfo } from './PlanLock';
 import type { ImageParams, VideoAspect, VideoParams } from './types';
 import { useDismiss } from './useDismiss';
 
@@ -23,6 +25,11 @@ interface ParamPopoverCommon {
   /** Trigger element, ignored by outside-click dismissal. */
   anchorRef?: RefObject<HTMLElement | null>;
   dismissOnOutside?: boolean;
+  /**
+   * The workspace's plan (D-006). Resolutions above its cap stay visible but
+   * locked, with the lowest plan that unlocks them. Omit to show no plan locks.
+   */
+  plan?: PlanId;
   className?: string;
   style?: CSSProperties;
 }
@@ -31,7 +38,7 @@ export interface VideoParamPopoverProps extends ParamPopoverCommon {
   kind: 'video';
   value: VideoParams;
   onValueChange: (value: VideoParams) => void;
-  /** Options the selected model cannot do (shown disabled, "Not supported on this model"). Default: 30s. */
+  /** Options the selected model cannot do (shown disabled, "Not supported on this model"). Default: 30s. Plan caps use `plan`. */
   unsupported?: { resolution?: VideoParams['resolution'][]; duration?: VideoParams['duration'][]; count?: VideoParams['count'][] };
   /** Note next to Duration, e.g. "Max 15s on this model". Pass null to hide. */
   durationNote?: string | null;
@@ -43,6 +50,8 @@ export interface ImageParamPopoverProps extends ParamPopoverCommon {
   kind: 'image';
   value: ImageParams;
   onValueChange: (value: ImageParams) => void;
+  /** Options the selected model cannot do (shown disabled, "Not supported on this model"). Plan caps use `plan`. */
+  unsupported?: { size?: ImageParams['size'][]; count?: ImageParams['count'][] };
 }
 
 /** Props: `kind` selects video or image settings (ParamPopover.dc.html `kind`). */
@@ -76,6 +85,25 @@ export function ParamPopover(props: ParamPopoverProps) {
   const t = (id: string) => intl.formatMessage({ id: `overlays.params.${id}` });
   const unsupported = t('unsupported');
 
+  /** D-006: options above the plan's cap are disabled and show the plan that unlocks them. */
+  const withPlanLocks = <T extends string>(options: Array<SegmentedOption<T>>, kind: 'video' | 'image'): Array<SegmentedOption<T>> =>
+    options.map((o) => {
+      const lock = props.plan ? planLockInfo(intl, props.plan, kind, o.value) : null;
+      if (!lock) return o;
+      return {
+        ...o,
+        disabled: true,
+        disabledReason: lock.reason,
+        ariaLabel: lock.label,
+        label: (
+          <span className={styles.locked}>
+            {o.value}
+            <PlanLock plan={lock.plan} />
+          </span>
+        ),
+      };
+    });
+
   const setRatio = (aspectRatio: VideoAspect) => {
     if (props.kind === 'video') props.onValueChange({ ...props.value, aspectRatio });
     else props.onValueChange({ ...props.value, aspectRatio });
@@ -94,7 +122,7 @@ export function ParamPopover(props: ParamPopoverProps) {
     groups = (
       <>
         <Group label={t('resolution')}>
-          <SegmentedControl className={styles.seg} label={t('resolution')} value={v.resolution} onValueChange={(resolution) => set({ resolution })} options={opts(['480p', '720p', '1080p'] as const, off.resolution)} />
+          <SegmentedControl className={styles.seg} label={t('resolution')} value={v.resolution} onValueChange={(resolution) => set({ resolution })} options={withPlanLocks(opts(['480p', '720p', '1080p'] as const, off.resolution), 'video')} />
         </Group>
         <Group label={t('duration')} note={durationNote}>
           <SegmentedControl className={styles.seg} label={t('duration')} value={v.duration} onValueChange={(duration) => set({ duration })} options={opts(['5s', '10s', '15s', '30s'] as const, off.duration)} />
@@ -117,6 +145,7 @@ export function ParamPopover(props: ParamPopoverProps) {
     eta = props.eta ?? (parseInt(v.duration, 10) > 5 ? '3 min' : '2 min');
   } else {
     const v = props.value;
+    const off = { size: [], count: [], ...props.unsupported };
     const set = (patch: Partial<ImageParams>) => props.onValueChange({ ...v, ...patch });
     groups = (
       <>
@@ -138,16 +167,19 @@ export function ParamPopover(props: ParamPopoverProps) {
             label={t('resolution')}
             value={v.size}
             onValueChange={(size) => set({ size })}
-            options={(['1K', '2K', '4K'] as const).map((value) => ({
-              value,
-              label: value,
-              disabled: value === '4K' && v.quality === 'standard',
-              disabledReason: unsupported,
-            }))}
+            options={withPlanLocks(
+              (['1K', '2K', '4K'] as const).map((value) => ({
+                value,
+                label: value,
+                disabled: (value === '4K' && v.quality === 'standard') || (off.size as string[]).includes(value),
+                disabledReason: unsupported,
+              })),
+              'image',
+            )}
           />
         </Group>
         <Group label={t('images')}>
-          <SegmentedControl className={styles.seg} label={t('images')} value={v.count} onValueChange={(count) => set({ count })} options={(['1', '2', '4'] as const).map((value) => ({ value, label: value }))} />
+          <SegmentedControl className={styles.seg} label={t('images')} value={v.count} onValueChange={(count) => set({ count })} options={(['1', '2', '4'] as const).map((value) => ({ value, label: value, disabled: (off.count as string[]).includes(value), disabledReason: unsupported }))} />
         </Group>
       </>
     );

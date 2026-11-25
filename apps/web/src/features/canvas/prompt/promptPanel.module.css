@@ -59,4 +59,3 @@
 .resItem[aria-checked="true"]{background:#2E2E33}
 .resItem[aria-disabled="true"]{color:var(--c-text-4);cursor:default}
 .resItem[aria-disabled="true"]:hover{background:none}
-.resLock{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 7px;border-radius:999px;background:rgba(184,149,90,.14);color:var(--c-pro);font-size:11px}
