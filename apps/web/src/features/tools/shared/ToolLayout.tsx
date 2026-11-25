@@ -1,6 +1,6 @@
 import { useToast } from '@rolling/ui';
 import { useNavigate } from '@tanstack/react-router';
-import { useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import type { PlanId } from '@rolling/core/pricing/config';
 import { usePref } from '@/lib/prefs';
@@ -17,6 +17,11 @@ import styles from './ToolLayout.module.css';
 import { useFilePicker } from './useFilePicker';
 import { usePresence } from './usePresence';
 import { useRuns, type RunSpec } from './useRuns';
+import { assetMediaUrl, isApiError, isMockApi } from '@/features/overlays/backend';
+import { agentFailure, applyProposal, sendTurn, threadFor, type AgentTool } from '@/features/overlays/agent';
+import { downloadAsset } from '@/features/overlays/media';
+import { listRuns, quoteSpec, startQuote, type PromptSpec, type SpecQuote } from '@/features/overlays/runs';
+import { resolveAssetId } from '@/lib/transfers';
 
 export type ToolOverlay = 'model' | 'params' | 'confirm' | 'viewer' | 'paywall';
 type Filter = 'all' | 'running' | 'saved';
@@ -60,6 +65,15 @@ export interface ToolLayoutProps {
   onRewriteDraft?: (draft: ScriptDraft) => ScriptDraft;
   /** Decorates feed items at render (e.g. the draft's live persona and voice line). */
   mapItem?: (item: FeedItem) => FeedItem;
+  /**
+   * Real mode: what Generate quotes and runs (`POST /api/runs/quote { promptSpec }`), given the prompt.
+   * Tools without one (avatar, characters, remix until the API takes them) say they can't run yet.
+   */
+  spec?: (prompt: string) => PromptSpec | null;
+  /** Real mode: the agent tool id for Simple-mode field filling (Refine), `propose.fields`. */
+  agentTool?: AgentTool;
+  /** Real mode: fields the agent proposed (`quick { prompt, model?, seconds?, ratio?, … }`) beyond the prompt. */
+  onFields?: (fields: Record<string, unknown>) => void;
 }
 
 /** Deterministic mock of the agent's prompt refinement (members only, D-007). */
@@ -81,7 +95,8 @@ export function ToolLayout(p: ToolLayoutProps) {
   const [extraRefs, setExtraRefs] = useState<ComposerRef[]>([]);
   const [refining, setRefining] = useState(false);
   /** A run waiting for the confirm dialog (Generate, Retry, Regenerate). */
-  const pendingRun = useRef<{ prompt: string; cost: number } | null>(null);
+  const pendingRun = useRef<{ prompt: string; cost: number; quote?: SpecQuote } | null>(null);
+  const real = !isMockApi();
   const adv = usePresence(p.advanced, 140);
   const pillsRef = useRef<HTMLDivElement>(null);
   const close = () => setOverlay(null);
@@ -107,10 +122,93 @@ export function ToolLayout(p: ToolLayoutProps) {
       }),
   });
 
+  // Real mode: the feed starts with this tool's recent runs (Activity index, `source: quickCreate`).
+  useEffect(() => {
+    if (!real || !p.spec) return;
+    let live = true;
+    void listRuns({ first: 30 }).then(
+      (page) => {
+        if (!live) return;
+        const mine = page.runs.filter((r) => r.source === 'quickCreate' && r.status !== 'running' && r.status !== 'queued');
+        runs.setItems((cur) => [
+          ...cur.filter((it) => it.kind === 'media' && it.runId),
+          ...mine.map((r): MediaRun => {
+            const asset = r.items.find((i) => i.assetId)?.assetId ?? null;
+            return {
+              kind: 'media',
+              id: r.id,
+              runId: r.id,
+              assetId: asset,
+              aspect: p.run.aspect,
+              tiles: [{ tone: 'var(--c-tone-blank)', ...(asset ? { src: assetMediaUrl(asset) } : {}) }],
+              prompt: r.name,
+              tags: r.params.split(' · ').slice(1),
+              video: r.items[0]?.kind !== 'image',
+              actions: p.actions,
+              finishedAgoMin: Math.round((Date.now() - (r.finishedAt ?? r.createdAt)) / 60_000),
+              ...(r.status === 'failed' ? { failed: { refunded: r.refunded } } : {}),
+            };
+          }),
+        ]);
+      },
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+    // Once per page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [real]);
+
+  /** Real mode: `POST /api/runs { quoteId }` and a feed card that follows the run. */
+  const beginReal = (prompt: string, quote: SpecQuote) => {
+    void startQuote(quote.quoteId!).then(
+      ({ runId }) => {
+        runs.startReal({ ...p.run, prompt, cost: quote.total, actions: p.actions }, runId);
+        setFilter((f) => (f === 'saved' ? 'all' : f));
+        toast.show({ message: t('tools.toast.started', { n: quote.total }) });
+      },
+      (e: unknown) => runFailed(e, prompt),
+    );
+  };
+
+  const runFailed = (e: unknown, prompt: string) => {
+    if (isApiError(e, 'NO_PLAN')) return setOverlay('paywall');
+    if (isApiError(e, 'INSUFFICIENT_CREDITS')) return void toast.show({ message: t('tools.toast.noCredits'), action: { label: t('tools.toast.topUp'), onAction: () => void navigate({ to: '/upgrade' }) } });
+    if (isApiError(e, 'QUOTE_EXPIRED')) return void spendReal(prompt);
+    if (isApiError(e, 'CONCURRENCY_LIMIT')) return void toast.show({ message: t('tools.toast.concurrency') });
+    if (isApiError(e, 'MEMBER_LIMIT_REACHED')) return void toast.show({ message: t('tools.toast.memberLimit') });
+    toast.show({ message: t('tools.toast.runError') });
+  };
+
+  /** Real mode: quote the tool's spec; blocks explain themselves; confirm per the quote's threshold (D-006). */
+  function spendReal(prompt: string) {
+    const raw = p.spec?.(prompt);
+    if (!raw) return void toast.show({ message: t('tools.toast.notYet') });
+    const refs = raw.inputs?.referenceAssetIds;
+    void Promise.all((refs ?? []).map((id) => resolveAssetId(id)))
+      .then((resolved) => quoteSpec(refs ? { ...raw, inputs: { ...raw.inputs, referenceAssetIds: resolved } } : raw))
+      .then(
+        (q) => {
+          if (!q.quoteId) {
+            const b = q.items.find((i) => i.action === 'blocked');
+            if (b?.code === 'NO_PLAN') return setOverlay('paywall');
+            return void toast.show({ message: b?.reason ?? t('tools.toast.notYet') });
+          }
+          if (q.needsConfirm) {
+            pendingRun.current = { prompt, cost: q.total, quote: q };
+            return setOverlay('confirm');
+          }
+          beginReal(prompt, q);
+        },
+        (e: unknown) => runFailed(e, prompt),
+      );
+  }
+
   const begin = (prompt: string, cost: number) => {
     runs.start({ ...p.run, prompt, cost, actions: p.actions });
     // Hold and settle on the shared balance (header credits); the feed card shows the job itself.
-    if (!(window as unknown as { __rollingMocks?: { runFails?: boolean } }).__rollingMocks?.runFails) void startMockRun(cost).catch(() => undefined);
+    if (!real && !(window as unknown as { __rollingMocks?: { runFails?: boolean } }).__rollingMocks?.runFails) void startMockRun(cost).catch(() => undefined);
     setFilter((f) => (f === 'saved' ? 'all' : f));
   };
 
@@ -120,6 +218,7 @@ export function ToolLayout(p: ToolLayoutProps) {
    * run confirm; smaller ones start right away (D-006, threshold 0 = always).
    */
   function spend(prompt = p.composer.text, cost = p.confirm.cost) {
+    if (real) return spendReal(prompt);
     if (!isMember) return setOverlay('paywall');
     if (threshold > 0 && cost < threshold) {
       begin(prompt, cost);
@@ -131,9 +230,34 @@ export function ToolLayout(p: ToolLayoutProps) {
   }
 
   async function refine() {
-    if (!isMember) return setOverlay('paywall');
+    if (!real && !isMember) return setOverlay('paywall');
     const before = p.composer.text;
     if (!before.trim()) return toast.show({ message: t('tools.toast.refineEmpty') });
+    if (real && p.agentTool) {
+      // Simple mode: the agent fills the tool's fields (`propose.fields`); Apply returns them.
+      setRefining(true);
+      try {
+        const thread = await threadFor(`tool:${p.agentTool}`, { surface: 'tool', tool: p.agentTool });
+        const r = await sendTurn(thread.id, { text: before });
+        const proposal = r.proposal?.body.kind === 'fields' ? r.proposal : null;
+        if (!proposal) {
+          toast.show({ message: r.text || t('tools.toast.refineNone') });
+          return;
+        }
+        const applied = await applyProposal(proposal.id);
+        const fields = applied.fields ?? (proposal.body.kind === 'fields' ? proposal.body.fields : {});
+        if (typeof fields.prompt === 'string') p.composer.onText(fields.prompt);
+        p.onFields?.(fields);
+        toast.show({ message: t('tools.toast.refined'), action: { label: t('tools.toast.undo'), onAction: () => p.composer.onText(before) } });
+      } catch (e) {
+        const f = agentFailure(e);
+        if (f.kind === 'join') setOverlay('paywall');
+        else toast.show({ message: t(f.kind === 'allowance' ? 'tools.toast.allowance' : 'tools.toast.refineFailed') });
+      } finally {
+        setRefining(false);
+      }
+      return;
+    }
     setRefining(true);
     await new Promise((r) => setTimeout(r, 600));
     setRefining(false);
@@ -167,6 +291,10 @@ export function ToolLayout(p: ToolLayoutProps) {
           action: { label: t('tools.toast.view'), onAction: () => void navigate({ to: '/assets', search: { folder: 'characters' } }) },
         });
       case 'down':
+        if (real && item.assetId) {
+          void downloadAsset(item.assetId, item.prompt.slice(0, 60)).catch(() => toast.show({ message: t('tools.toast.runError') }));
+          return toast.show({ message: t('tools.toast.downloaded') });
+        }
         downloadMock(item.id, item.prompt, item.video);
         return toast.show({ message: t('tools.toast.downloaded') });
       case 'star': {
@@ -300,6 +428,11 @@ export function ToolLayout(p: ToolLayoutProps) {
           const r = pendingRun.current ?? { prompt: p.composer.text, cost: p.confirm.cost };
           pendingRun.current = null;
           close();
+          if (real) {
+            if (r.quote) beginReal(r.prompt, r.quote);
+            else spendReal(r.prompt);
+            return;
+          }
           begin(r.prompt, r.cost);
         }}
       />
@@ -314,6 +447,11 @@ export function ToolLayout(p: ToolLayoutProps) {
           const run = viewing;
           close();
           if (id === 'download') {
+            if (real && run?.assetId) {
+              toast.show({ message: t('tools.toast.downloaded') });
+              void downloadAsset(run.assetId, run.prompt.slice(0, 60)).catch(() => toast.show({ message: t('tools.toast.runError') }));
+              return;
+            }
             downloadMock(run?.id ?? 'result', run?.prompt ?? '', true);
             toast.show({ message: t('tools.toast.downloaded') });
           } else if (id === 'sendToCanvas') {

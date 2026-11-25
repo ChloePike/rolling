@@ -11,6 +11,8 @@ export interface RunStep {
 export interface MediaTile {
   label?: string;
   tone: string;
+  /** Real mode: the result media (signed redirect). */
+  src?: string;
 }
 
 export interface MediaRun {
@@ -34,6 +36,9 @@ export interface MediaRun {
   cost?: number;
   /** The run failed; its hold was released (handoff 4: failures refund automatically). */
   failed?: { refunded: number };
+  /** Real mode: the API run and its first result asset. */
+  runId?: string;
+  assetId?: string | null;
 }
 
 export interface DraftLine {

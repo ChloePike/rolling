@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FeedItem, MediaRun, MediaTile } from '../types';
+import { assetMediaUrl, userEvents } from '@/features/overlays/backend';
+import { findRun, runFinished, type RunView } from '@/features/overlays/runs';
 
 /**
  * Tool runs on mock data (`POST /api/runs` → job progress over the user
@@ -105,6 +107,58 @@ export function useRuns(seed: FeedItem[], events: RunEvents = {}) {
     return id;
   }, []);
 
+  /**
+   * Real mode: a run started with `POST /api/runs`. The card follows the run
+   * (`activity.updated` on the user channel, polling as a fallback) until it
+   * is done (result media) or failed (refund shown).
+   */
+  const startReal = useCallback((spec: RunSpec, runId: string): string => {
+    const id = runId;
+    specs.current.set(id, spec);
+    const steps = (pct: number) => [...spec.steps.map((label) => ({ label, state: 'done' as const })), { label: spec.generating(pct), state: 'now' as const }];
+    const tiles: MediaTile[] = (spec.tiles.length ? spec.tiles : [undefined]).map((label) => (label ? { label, tone: 'var(--c-tone-blank)' } : { tone: 'var(--c-tone-blank)' }));
+    const run: MediaRun = { kind: 'media', id, runId, aspect: spec.aspect, tiles, prompt: spec.prompt, tags: spec.tags, progress: 0, video: spec.video, steps: steps(0), actions: spec.actions, cost: spec.cost };
+    setItems((all) => [run, ...all]);
+    let finished = false;
+    const apply = (r: RunView) => {
+      if (finished) return;
+      if (!runFinished(r)) {
+        const pct = Math.round((r.progress ?? 0) * 100);
+        update(id, (cur) => ({ ...cur, progress: pct, steps: steps(pct) }));
+        return;
+      }
+      finished = true;
+      stop(id);
+      off();
+      const cur = itemsRef.current.find((it): it is MediaRun => it.id === id && it.kind === 'media');
+      if (!cur) return;
+      if (r.status === 'failed' || r.status === 'canceled') {
+        const failed: MediaRun = { ...cur, progress: undefined, steps: undefined, failed: { refunded: r.refunded }, finishedAgoMin: 0 };
+        setItems((all) => all.map((it) => (it.id === id ? failed : it)));
+        ev.current.onFail?.(failed);
+        return;
+      }
+      const assets = r.items.map((i) => i.assetId).filter((x): x is string => !!x);
+      const done: MediaRun = {
+        ...cur,
+        progress: undefined,
+        steps: undefined,
+        assetId: assets[0] ?? null,
+        tiles: (assets.length ? assets : [null]).map((a, i) => ({ ...(cur.tiles[i] ?? { tone: 'var(--c-tone-blank)' }), ...(a ? { src: assetMediaUrl(a) } : {}) })),
+        durationSec: spec.durationSec,
+        finishedAgoMin: 0,
+      };
+      setItems((all) => all.map((it) => (it.id === id ? done : it)));
+      ev.current.onDone?.(done);
+    };
+    const check = () => void findRun(runId).then((r) => r && apply(r), () => {});
+    const off = userEvents((msg) => {
+      if (msg.type === 'activity.updated' && (msg.payload as { runId?: string })?.runId === runId) check();
+    });
+    timers.current.set(id, window.setInterval(check, 4000));
+    return id;
+  }, []);
+
   /** Cancel a running job: the hold is released, so the card leaves the feed. */
   const cancel = useCallback((id: string) => {
     stop(id);
@@ -129,5 +183,5 @@ export function useRuns(seed: FeedItem[], events: RunEvents = {}) {
 
   const remove = useCallback((id: string) => setItems((all) => all.filter((it) => it.id !== id)), []);
 
-  return { items, favorites, start, cancel, specOf, toggleFavorite, replaceDraft, remove };
+  return { items, favorites, start, startReal, cancel, specOf, toggleFavorite, replaceDraft, remove, setItems };
 }

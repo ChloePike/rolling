@@ -284,5 +284,14 @@
   "tools.run.step.tts": "Text to speech",
   "tools.run.step.describe": "Build description",
   "tools.run.step.generating": "Generating {pct, number, ::percent}",
-  "tools.run.step.lipSync": "Lip-sync {pct, number, ::percent}"
+  "tools.run.step.lipSync": "Lip-sync {pct, number, ::percent}",
+  "tools.toast.noCredits": "Not enough credits for this run.",
+  "tools.toast.topUp": "Top up",
+  "tools.toast.concurrency": "Too many jobs running for your plan. Wait for one to finish, or upgrade.",
+  "tools.toast.memberLimit": "Your team limit for this month is used.",
+  "tools.toast.runError": "That didn’t work. Nothing was charged. Try again.",
+  "tools.toast.notYet": "This tool can’t generate yet. Use Quick Create or the canvas.",
+  "tools.toast.refineNone": "The agent had no changes for this prompt.",
+  "tools.toast.refineFailed": "The agent couldn’t refine this. Nothing was changed.",
+  "tools.toast.allowance": "Agent allowance for this month is used up."
 }

@@ -249,6 +249,20 @@ export function QuickCreatePage({ initialOverlay, models: modelsOverride, plan: 
         durationSec: quickTemplate.durationSec,
       }}
       actions={['redo', 'sliders', 'frame', 'down', 'star']}
+      spec={(prompt) => ({
+        kind: 'video',
+        model: adv && p.model !== 'Auto' ? (models.find((m) => m.name === p.model)?.id ?? p.model) : 'auto',
+        prompt,
+        title: quickTemplate.name,
+        ratio,
+        seconds: quickTemplate.durationSec,
+        ...(adv ? { resolution: p.res } : {}),
+      })}
+      agentTool="quick"
+      onFields={(f) => {
+        const m = typeof f.model === 'string' ? models.find((x) => x.id === f.model || x.name === f.model) : undefined;
+        if (m) set('model', m.name);
+      }}
       viewerAspect="9/16"
       initialOverlay={initialOverlay}
       isMember={isMember}
