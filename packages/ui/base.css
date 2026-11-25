@@ -9,7 +9,7 @@ body{
   font-variant-numeric:tabular-nums;
 }
 a{color:var(--c-text-1);text-decoration:none}
-a:hover{color:#FFFFFF}
+a:hover{color:var(--c-text-hover)}
 button,input,textarea,select{font:inherit;color:inherit}
 :focus{outline:none}
 :focus-visible{outline:none;box-shadow:var(--focus-ring)}

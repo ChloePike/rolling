@@ -1,5 +1,18 @@
-/* Design tokens. Source: docs/design/tokens.css (keep in sync), plus motion and focus tokens from docs/design/handoff.md section 7. */
+/*
+ * Design tokens. Source: docs/design/tokens.css (keep in sync), plus motion and focus tokens from docs/design/handoff.md section 7.
+ *
+ * Themes (D-010): `:root` holds the dark values (the approved designs). Light values apply
+ * when the system prefers light and no `data-theme="dark"` override is set, or when
+ * `data-theme="light"` is set on <html>. The two light blocks below must stay identical
+ * (packages/ui/src/__tests__/tokens.test.ts checks it). Token names are stable; components
+ * use only tokens, never literal colors (apps/web/scripts/check-colors.mjs enforces it).
+ *
+ * Translucent colors are derived with color-mix() from an "ink" token, so a theme changes
+ * the ink once and every alpha step follows. A semi-transparent ink scales those alphas
+ * (light shadows use rgba(17,17,19,.22), so a 60% shadow becomes 13%).
+ */
 :root{
+  color-scheme:dark;
   --c-bg:#0B0B0C;
   --c-surface-1:#111113;
   --c-surface-2:#141416;
@@ -42,7 +55,6 @@
   --r-button:10px;
   --r-input:8px;
   --r-clip:4px;
-  --shadow-float:0 18px 48px rgba(0,0,0,.6);
   --m-instant:80ms;
   --m-fast:140ms;
   --m-base:200ms;
@@ -77,7 +89,6 @@
   --c-surface-7:#333338;
   --c-control-off:#3A3A40;
   --c-disabled-text:#4A4A52;
-  --c-header-bg:rgba(11,11,12,.82);
   --c-upgrade:#FFC53D;
   --c-accent-soft:rgba(59,130,246,.16);
   --c-danger-strong:#FCA5A5;
@@ -88,13 +99,347 @@
   --c-upgrade-soft:rgba(255,197,61,.14);
   --c-warning-text:#FFD87A;
   --c-warning-bg:rgba(255,197,61,.1);
-  --c-scrim:rgba(5,5,6,.7);
-  --shadow-picker:0 24px 64px rgba(0,0,0,.6);
-  --shadow-modal:0 30px 80px rgba(0,0,0,.65);
+  --c-warning-soft:rgba(250,204,21,.12);
+
+  /* Floating layers (popovers, menus, dialogs). Equal to surface-4 on dark; white on light. */
+  --c-surface-float:#1C1C1F;
+  /* Hover steps the approved screens use between the numbered surfaces. */
+  --c-surface-2-hover:#18181B;
+  --c-surface-hover:#222226;
+  --c-surface-7-hover:#38383E;
+  --c-row-alt:#121214;
+  /* Text steps between the numbered ones: bold numbers in cost lines, a muted cost, placeholders. */
+  --c-text-strong:#E4E4E7;
+  --c-text-faint:#55555E;
+  --c-placeholder:#757575;
+  /* Primary buttons are filled with text-1; this is their hover fill. */
+  --c-primary-hover:#FFFFFF;
+  /* Text and links on hover: one step past text-1. */
+  --c-text-hover:#FFFFFF;
+  /* Count badge inside a primary (text-1) button. */
+  --c-primary-badge:#E2E2E5;
+  --c-on-accent:#FFFFFF;
+  /* Secondary portion of a meter (purchased credits). */
+  --c-meter-2:#55555E;
+  /* Live states. */
+  --c-saved:#3DF08C;
+  --c-generating:#4D9CFF;
+  --c-failed:#FF7A7A;
+  --c-failed-soft:rgba(255,77,77,.12);
+  --c-failed-text:#FF9C9C;
+  --c-failed-bg:rgba(255,77,77,.08);
+  /* Canvas board, its dot grid, and the translucent chrome floating on it. */
+  --c-canvas-bg:#0B0B0C;
+  --c-canvas-dot:#232326;
+  --c-glass:#141416;
+  --c-composer:#161618;
+
+  /* Inks: the base colors that translucent tokens are mixed from. */
+  --c-ink-shadow:#000000;
+  --c-ink-scrim:#050506;
+  /* Frosted chips and play discs on media (dark on dark, white on light; text inherits text-1). */
+  --c-ink-media:#0B0B0C;
+  /* 1px inset hairlines on translucent panels. */
+  --c-ink-hairline:#FFFFFF;
+
+  /* Media placeholder tones (stand in for thumbnails until real media loads). */
+  --c-tone-indigo:#202330;
+  --c-tone-plum:#26232A;
+  --c-tone-sand:#28251F;
+  --c-tone-teal:#1F2628;
+  --c-tone-slate:#22262E;
+  --c-tone-clay:#2A2420;
+  --c-tone-moss:#1F2622;
+  --c-tone-neutral:#26262A;
+  --c-tone-blank:#1C1C1F;
+  --c-tone-ochre:#2B2619;
+  --c-tone-pine:#1C2A22;
+  --c-tone-lilac:#2E2A3A;
+  --c-tone-mauve:#2A2630;
+  --c-tone-sage:#22292A;
+  --c-tone-fern:#2B3A33;
+  --c-tone-graphite:#333338;
+  --c-tone-scene:#1A2030;
+
+  /* Editor timeline (drawn on <canvas>; read with getComputedStyle, see TimelineCanvas.tsx). */
+  --c-tl-bg:#111113;
+  --c-tl-rule:#1F1F23;
+  --c-tl-ruler-rule:#26262A;
+  --c-tl-tick-major:#55555E;
+  --c-tl-tick-minor:#3A3A40;
+  --c-tl-tick-label:#7C7C84;
+  --c-tl-mark-range:rgba(96,165,250,.35);
+  --c-tl-playhead:#60A5FA;
+  --c-tl-label:#F5F5F5;
+  --c-tl-label-muted:#C8C8CC;
+  --c-tl-hatch-a:#1C1C1F;
+  --c-tl-hatch-b:#18181B;
+  --c-tl-hatch-ring:#3A3A40;
+  --c-tl-selected:#F5F5F5;
+  --c-tl-envelope:#F5F5F5;
+  --c-tl-dissolve-fill:rgba(245,245,245,.18);
+  --c-tl-dissolve-ring:rgba(245,245,245,.3);
+  --c-tl-remove-fill:rgba(239,68,68,.18);
+  --c-tl-remove-ring:rgba(248,113,113,.7);
+  --c-tl-change-fill:rgba(59,130,246,.18);
+  --c-tl-change-ring:rgba(96,165,250,.7);
+  /* Clip hover ring: this RGB triplet at .08–.25 alpha. */
+  --c-tl-hover-rgb:255,255,255;
+  --c-tl-video-tile-1a:#34405E;
+  --c-tl-video-tile-1b:#3A4766;
+  --c-tl-video-tile-1c:#323C58;
+  --c-tl-video-tile-2a:#2C4850;
+  --c-tl-video-tile-2b:#31525A;
+  --c-tl-video-tile-2c:#294248;
+
+  /* Derived (theme follows the inks above). */
+  --c-header-bg:color-mix(in srgb,var(--c-bg) 82%,transparent);
+  --c-scrim:color-mix(in srgb,var(--c-ink-scrim) 70%,transparent);
+  --c-media-chip:color-mix(in srgb,var(--c-ink-media) 60%,transparent);
+  --c-media-chip-strong:color-mix(in srgb,var(--c-ink-media) 66%,transparent);
+  --c-media-disc:color-mix(in srgb,var(--c-ink-media) 55%,transparent);
+  --c-media-disc-hover:color-mix(in srgb,var(--c-ink-media) 75%,transparent);
+  --c-glass-88:color-mix(in srgb,var(--c-glass) 88%,transparent);
+  --c-composer-94:color-mix(in srgb,var(--c-composer) 94%,transparent);
+  --c-shadow:color-mix(in srgb,var(--c-ink-shadow) 60%,transparent);
+  --shadow-float:0 18px 48px color-mix(in srgb,var(--c-ink-shadow) 60%,transparent);
+  --shadow-picker:0 24px 64px color-mix(in srgb,var(--c-ink-shadow) 60%,transparent);
+  --shadow-modal:0 30px 80px color-mix(in srgb,var(--c-ink-shadow) 65%,transparent);
+  --shadow-popover:0 20px 60px color-mix(in srgb,var(--c-ink-shadow) 60%,transparent);
+  --shadow-toast:0 12px 32px color-mix(in srgb,var(--c-ink-shadow) 60%,transparent);
+  --shadow-composer:0 20px 60px color-mix(in srgb,var(--c-ink-shadow) 55%,transparent),inset 0 0 0 1px color-mix(in srgb,var(--c-ink-hairline) 6%,transparent);
   /* Focus ring: accent, offset from the surface. */
   --focus-ring:0 0 0 2px var(--c-bg),0 0 0 4px var(--c-accent);
-  --shadow-popover:0 20px 60px rgba(0,0,0,.6);
-  --shadow-toast:0 12px 32px rgba(0,0,0,.6);
+}
+
+/* Light theme (D-010): system light without a dark override. Keep identical to the block below. */
+@media (prefers-color-scheme:light){
+  :root:not([data-theme="dark"]){
+    color-scheme:light;
+    --c-bg:#FFFFFF;
+    --c-surface-1:#FAFAFA;
+    --c-surface-2:#F7F7F8;
+    --c-surface-3:#F3F3F5;
+    --c-surface-4:#EFEFF1;
+    --c-surface-5:#E7E7EA;
+    --c-surface-6:#DEDEE2;
+    --c-surface-7:#D4D4D9;
+    --c-border:#E4E4E7;
+    --c-text-1:#111113;
+    --c-text-2:#3A3A41;
+    --c-text-3:#55555D;
+    --c-text-4:#63636B;
+    --c-accent:#3B82F6;
+    --c-accent-text:#1D4ED8;
+    --c-accent-soft:rgba(59,130,246,.14);
+    --c-link:#1D4ED8;
+    --c-info-soft:rgba(59,130,246,.14);
+    --c-success:#166534;
+    --c-success-soft:rgba(22,163,74,.12);
+    --c-warning:#854D0E;
+    --c-warning-text:#854D0E;
+    --c-warning-bg:rgba(245,158,11,.12);
+    --c-warning-soft:rgba(202,138,4,.12);
+    --c-danger:#B91C1C;
+    --c-danger-strong:#991B1B;
+    --c-upgrade:#92400E;
+    --c-upgrade-soft:rgba(245,158,11,.14);
+    --c-pro:#8A6A33;
+    --c-control-off:#C9C9CF;
+    --c-disabled-text:#A8A8B0;
+    --c-clip-video:#C9D4F0;
+    --c-clip-video-2:#C2DEE3;
+    --c-clip-voice:#CBE8D6;
+    --c-wave-voice:#2F8F5B;
+    --c-clip-music:#EEDFC2;
+    --c-wave-music:#9A6F1F;
+    --c-clip-caption:#DDD3F0;
+    --c-surface-float:#FFFFFF;
+    --c-surface-2-hover:#F0F0F2;
+    --c-surface-hover:#EBEBEE;
+    --c-surface-7-hover:#CDCDD3;
+    --c-row-alt:#FAFAFB;
+    --c-text-strong:#27272A;
+    --c-text-faint:#7A7A82;
+    --c-placeholder:#6B6B73;
+    --c-primary-hover:#2C2C31;
+    --c-text-hover:#000000;
+    --c-primary-badge:#3A3A41;
+    --c-meter-2:#A1A1AA;
+    --c-saved:#16A34A;
+    --c-generating:#2563EB;
+    --c-failed:#B91C1C;
+    --c-failed-soft:rgba(220,38,38,.1);
+    --c-failed-text:#991B1B;
+    --c-failed-bg:rgba(220,38,38,.07);
+    --c-canvas-bg:#F4F4F5;
+    --c-canvas-dot:#D4D4D8;
+    --c-glass:#FFFFFF;
+    --c-composer:#FFFFFF;
+    --c-ink-shadow:rgba(17,17,19,.22);
+    --c-ink-scrim:rgba(17,17,19,.5);
+    --c-ink-media:#FFFFFF;
+    --c-ink-hairline:#111113;
+    --c-tone-indigo:#DCE0EE;
+    --c-tone-plum:#E6E0EA;
+    --c-tone-sand:#EDE7DB;
+    --c-tone-teal:#DAE6E8;
+    --c-tone-slate:#DFE3EA;
+    --c-tone-clay:#EEE3DB;
+    --c-tone-moss:#DCE8E0;
+    --c-tone-neutral:#E5E5E9;
+    --c-tone-blank:#EFEFF1;
+    --c-tone-ochre:#EFE6D2;
+    --c-tone-pine:#D6E7DC;
+    --c-tone-lilac:#E3DEF0;
+    --c-tone-mauve:#E8E1EC;
+    --c-tone-sage:#DDE6E5;
+    --c-tone-fern:#D3E4DA;
+    --c-tone-graphite:#D4D4D9;
+    --c-tone-scene:#D5DCEC;
+    --c-tl-bg:#FAFAFA;
+    --c-tl-rule:#E4E4E7;
+    --c-tl-ruler-rule:#E7E7EA;
+    --c-tl-tick-major:#A1A1AA;
+    --c-tl-tick-minor:#D4D4D9;
+    --c-tl-tick-label:#63636B;
+    --c-tl-mark-range:rgba(37,99,235,.2);
+    --c-tl-playhead:#2563EB;
+    --c-tl-label:#111113;
+    --c-tl-label-muted:#3A3A41;
+    --c-tl-hatch-a:#EFEFF1;
+    --c-tl-hatch-b:#E4E4E7;
+    --c-tl-hatch-ring:#C9C9CF;
+    --c-tl-selected:#111113;
+    --c-tl-envelope:#111113;
+    --c-tl-dissolve-fill:rgba(17,17,19,.1);
+    --c-tl-dissolve-ring:rgba(17,17,19,.28);
+    --c-tl-remove-fill:rgba(220,38,38,.14);
+    --c-tl-remove-ring:rgba(185,28,28,.7);
+    --c-tl-change-fill:rgba(59,130,246,.16);
+    --c-tl-change-ring:rgba(37,99,235,.7);
+    --c-tl-hover-rgb:17,17,19;
+    --c-tl-video-tile-1a:#BCC9EA;
+    --c-tl-video-tile-1b:#B4C2E6;
+    --c-tl-video-tile-1c:#C2CEED;
+    --c-tl-video-tile-2a:#B3D4DA;
+    --c-tl-video-tile-2b:#AACDD4;
+    --c-tl-video-tile-2c:#BAD9DF;
+  }
+}
+
+/* Light theme (D-010): explicit override. Keep identical to the block above. */
+:root[data-theme="light"]{
+  color-scheme:light;
+  --c-bg:#FFFFFF;
+  --c-surface-1:#FAFAFA;
+  --c-surface-2:#F7F7F8;
+  --c-surface-3:#F3F3F5;
+  --c-surface-4:#EFEFF1;
+  --c-surface-5:#E7E7EA;
+  --c-surface-6:#DEDEE2;
+  --c-surface-7:#D4D4D9;
+  --c-border:#E4E4E7;
+  --c-text-1:#111113;
+  --c-text-2:#3A3A41;
+  --c-text-3:#55555D;
+  --c-text-4:#63636B;
+  --c-accent:#3B82F6;
+  --c-accent-text:#1D4ED8;
+  --c-accent-soft:rgba(59,130,246,.14);
+  --c-link:#1D4ED8;
+  --c-info-soft:rgba(59,130,246,.14);
+  --c-success:#166534;
+  --c-success-soft:rgba(22,163,74,.12);
+  --c-warning:#854D0E;
+  --c-warning-text:#854D0E;
+  --c-warning-bg:rgba(245,158,11,.12);
+  --c-warning-soft:rgba(202,138,4,.12);
+  --c-danger:#B91C1C;
+  --c-danger-strong:#991B1B;
+  --c-upgrade:#92400E;
+  --c-upgrade-soft:rgba(245,158,11,.14);
+  --c-pro:#8A6A33;
+  --c-control-off:#C9C9CF;
+  --c-disabled-text:#A8A8B0;
+  --c-clip-video:#C9D4F0;
+  --c-clip-video-2:#C2DEE3;
+  --c-clip-voice:#CBE8D6;
+  --c-wave-voice:#2F8F5B;
+  --c-clip-music:#EEDFC2;
+  --c-wave-music:#9A6F1F;
+  --c-clip-caption:#DDD3F0;
+  --c-surface-float:#FFFFFF;
+  --c-surface-2-hover:#F0F0F2;
+  --c-surface-hover:#EBEBEE;
+  --c-surface-7-hover:#CDCDD3;
+  --c-row-alt:#FAFAFB;
+  --c-text-strong:#27272A;
+  --c-text-faint:#7A7A82;
+  --c-placeholder:#6B6B73;
+  --c-primary-hover:#2C2C31;
+  --c-text-hover:#000000;
+  --c-primary-badge:#3A3A41;
+  --c-meter-2:#A1A1AA;
+  --c-saved:#16A34A;
+  --c-generating:#2563EB;
+  --c-failed:#B91C1C;
+  --c-failed-soft:rgba(220,38,38,.1);
+  --c-failed-text:#991B1B;
+  --c-failed-bg:rgba(220,38,38,.07);
+  --c-canvas-bg:#F4F4F5;
+  --c-canvas-dot:#D4D4D8;
+  --c-glass:#FFFFFF;
+  --c-composer:#FFFFFF;
+  --c-ink-shadow:rgba(17,17,19,.22);
+  --c-ink-scrim:rgba(17,17,19,.5);
+  --c-ink-media:#FFFFFF;
+  --c-ink-hairline:#111113;
+  --c-tone-indigo:#DCE0EE;
+  --c-tone-plum:#E6E0EA;
+  --c-tone-sand:#EDE7DB;
+  --c-tone-teal:#DAE6E8;
+  --c-tone-slate:#DFE3EA;
+  --c-tone-clay:#EEE3DB;
+  --c-tone-moss:#DCE8E0;
+  --c-tone-neutral:#E5E5E9;
+  --c-tone-blank:#EFEFF1;
+  --c-tone-ochre:#EFE6D2;
+  --c-tone-pine:#D6E7DC;
+  --c-tone-lilac:#E3DEF0;
+  --c-tone-mauve:#E8E1EC;
+  --c-tone-sage:#DDE6E5;
+  --c-tone-fern:#D3E4DA;
+  --c-tone-graphite:#D4D4D9;
+  --c-tone-scene:#D5DCEC;
+  --c-tl-bg:#FAFAFA;
+  --c-tl-rule:#E4E4E7;
+  --c-tl-ruler-rule:#E7E7EA;
+  --c-tl-tick-major:#A1A1AA;
+  --c-tl-tick-minor:#D4D4D9;
+  --c-tl-tick-label:#63636B;
+  --c-tl-mark-range:rgba(37,99,235,.2);
+  --c-tl-playhead:#2563EB;
+  --c-tl-label:#111113;
+  --c-tl-label-muted:#3A3A41;
+  --c-tl-hatch-a:#EFEFF1;
+  --c-tl-hatch-b:#E4E4E7;
+  --c-tl-hatch-ring:#C9C9CF;
+  --c-tl-selected:#111113;
+  --c-tl-envelope:#111113;
+  --c-tl-dissolve-fill:rgba(17,17,19,.1);
+  --c-tl-dissolve-ring:rgba(17,17,19,.28);
+  --c-tl-remove-fill:rgba(220,38,38,.14);
+  --c-tl-remove-ring:rgba(185,28,28,.7);
+  --c-tl-change-fill:rgba(59,130,246,.16);
+  --c-tl-change-ring:rgba(37,99,235,.7);
+  --c-tl-hover-rgb:17,17,19;
+  --c-tl-video-tile-1a:#BCC9EA;
+  --c-tl-video-tile-1b:#B4C2E6;
+  --c-tl-video-tile-1c:#C2CEED;
+  --c-tl-video-tile-2a:#B3D4DA;
+  --c-tl-video-tile-2b:#AACDD4;
+  --c-tl-video-tile-2c:#BAD9DF;
 }
 
 /*
