@@ -46,7 +46,7 @@ Repo: `apps/api` (Worker + DO classes + Workflows), `apps/web` (SPA), `container
 ## Non-negotiable rules
 
 - Credits are money. Every charge goes through the `CreditAccount` Durable Object (quote → hold → settle or release). Never change a balance anywhere else. Every provider call carries an idempotency key.
-- Nothing that costs credits runs without the user’s approval in the UI, except runs below the user’s “Confirm before running” threshold (default 20 credits). The agent can propose; only the user (or that threshold) can spend.
+- Nothing that costs credits runs without the user’s approval in the UI, except runs below the user’s “Confirm before running” threshold (default 300 credits, D-006). The agent can propose; only the user (or that threshold) can spend.
 - Non-members can sign up and browse. Using the agent and generating both require an active plan (D-007); the API returns `NO_PLAN` and the UI opens the join paywall, keeping the user’s brief. Top-ups are sold only to members.
 - All UI strings live in `messages/en/<feature>.json` (ICU, keys prefixed by feature, merged at build). No string concatenation for sentences; use placeholders and plural rules. Dates, numbers and currency go through `Intl`.
 - Visual style: neutral dark, one blue accent (`#3B82F6`) for UI state, brand yellow (`#FFCB2B`) only for the logo, app icon and splash. No gradients, no glow, no emoji in UI, no decorative motion. Follow `docs/design/handoff.md` → Copy rules: short, specific, sentence case, no “AI magic” language.
