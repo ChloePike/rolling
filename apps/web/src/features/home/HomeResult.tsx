@@ -4,6 +4,9 @@ import { useIntl } from 'react-intl';
 import { mockResultActions, ResultViewer, type ResultActionId, type ResultVersion, type RunRequest } from '@/features/overlays';
 import type { RefItem } from '@/features/prompt';
 import { useCreateProject } from './api';
+import { assetMediaUrl, isMockApi } from '@/features/overlays/backend';
+import { downloadAsset } from '@/features/overlays/media';
+import type { PromptSpec } from '@/features/overlays/runs';
 
 export interface HomeResultState {
   title: string;
@@ -17,6 +20,9 @@ export interface HomeResultState {
   versionId: string;
   createdAt: Date;
   cost: number;
+  /** Real mode: the spec to regenerate with, and each version's result asset. */
+  spec?: PromptSpec;
+  assets?: Record<string, string | null>;
 }
 
 const TONES = ['var(--c-tone-indigo)', 'var(--c-tone-teal)', 'var(--c-tone-plum)', 'var(--c-tone-sand)'];
@@ -59,7 +65,7 @@ export function HomeResult({
   result: HomeResultState | null;
   onChange: (r: HomeResultState | null) => void;
   /** Starts a paid action through the run flow. */
-  onRun: (req: Omit<RunRequest, 'onDone'>, done: (runId: string) => void) => void;
+  onRun: (req: Omit<RunRequest, 'onDone'>, done: (runId: string, assetId?: string | null) => void) => void;
 }) {
   const intl = useIntl();
   const toast = useToast();
@@ -72,6 +78,12 @@ export function HomeResult({
     const action = mockResultActions.find((a) => a.id === id);
     if (id === 'download') {
       const v = result.versions.find((x) => x.id === versionId);
+      const assetId = result.assets?.[versionId];
+      if (!isMockApi() && assetId) {
+        toast.show({ message: t('overlays.viewer.downloading', { name: result.title }) });
+        void downloadAsset(assetId, `${result.title} ${v?.label ?? ''}`.trim()).catch(() => {});
+        return;
+      }
       const name = `${result.title} ${v?.label ?? ''}`.trim().replace(/[^\w.-]+/g, '-');
       downloadPoster(name, v?.tone ?? TONES[0]!, result.aspect);
       toast.show({ message: t('overlays.viewer.downloading', { name }) });
@@ -91,10 +103,12 @@ export function HomeResult({
         kind: result.kind,
         actionLabel: t(`overlays.viewer.action.${id}`),
         meta: `${result.modelName} · ${result.versions.find((v) => v.id === versionId)?.label ?? ''}`,
+        // Only Regenerate has a spec in real mode (Extend and HD are tool actions not on the API yet).
+        ...(id === 'regenerate' && result.spec ? { spec: result.spec } : {}),
       },
-      (runId) => {
+      (runId, assetId) => {
         const v = nextVersion(result.versions, runId);
-        onChange({ ...result, versions: [...result.versions, v], versionId: v.id, createdAt: new Date() });
+        onChange({ ...result, versions: [...result.versions, v], versionId: v.id, createdAt: new Date(), assets: { ...result.assets, [v.id]: assetId ?? null } });
       },
     );
   };
@@ -111,6 +125,7 @@ export function HomeResult({
       versions={result?.versions ?? []}
       versionId={result?.versionId ?? ''}
       onVersionChange={(versionId) => result && onChange({ ...result, versionId })}
+      src={result?.assets?.[result.versionId] ? assetMediaUrl(result.assets[result.versionId]!) : undefined}
       prompt={result?.prompt ?? ''}
       params={result?.params ?? []}
       assets={(result?.refs ?? []).map((r) => ({ id: r.id, name: r.name, tone: r.tone, thumbnailUrl: r.thumbUrl }))}

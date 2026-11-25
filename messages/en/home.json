@@ -58,5 +58,17 @@
   "home.result.duration": "Duration",
   "home.result.resolution": "Resolution",
   "home.result.persona": "Persona",
-  "home.result.voice": "Voice"
+  "home.result.voice": "Voice",
+  "home.agent.label": "Agent plan",
+  "home.agent.thinking": "Planning…",
+  "home.agent.options": "Plan options",
+  "home.agent.optionMeta": "{seconds}s · {ratio} · about {n, plural, one {# credit} other {# credits}}",
+  "home.agent.shot": "{title} · {seconds}s — {visual}",
+  "home.agent.estimate": "About {n, plural, one {# credit} other {# credits}} to generate. Building is free.",
+  "home.agent.build": "Build on canvas",
+  "home.agent.dismiss": "Dismiss",
+  "home.agent.safety": "This can’t be made under our content rules. Change the brief and try again.",
+  "home.agent.error": "The agent couldn’t answer. Nothing was changed. Try again.",
+  "home.agent.rateLimited": "Too many messages at once. Wait a moment and send again.",
+  "home.agent.stale": "This plan was already used or replaced. Send the brief again."
 }

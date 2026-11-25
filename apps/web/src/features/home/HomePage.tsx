@@ -16,7 +16,21 @@ import {
 } from '@/features/prompt';
 import { Paywall, useRunFlow, type RunRequest } from '@/features/overlays';
 import { useTemplates } from '@/features/templates/api';
-import { checkoutPlan, useSession } from '@/lib/session';
+import { checkoutPlan, useCheckoutResume, useSession } from '@/lib/session';
+import { useQueryClient } from '@tanstack/react-query';
+import { agentFailure, applyProposal, createThread, sendTurn, skillId } from '@/features/overlays/agent';
+import { isMockApi, savePendingAction, takePendingAction } from '@/features/overlays/backend';
+import { resolveAssetId } from '@/lib/transfers';
+import { HomeAgent, type HomeAgentState } from './HomeAgent';
+
+/** Agent LLM picked in the canvas panel (public id, D-009), shared with Home. */
+function getAgentLlm(): string | null {
+  try {
+    return localStorage.getItem('rolling.agent.llm');
+  } catch {
+    return null;
+  }
+}
 import { useAgentAllowance } from '@/lib/session/agentAllowance';
 import type { TemplateSummary } from '@/features/templates/types';
 import { useCreateProject, useRecentProjects } from './api';
@@ -71,6 +85,9 @@ export function HomePage() {
   // Image, video and avatar sends go through the shared run flow (paywalls, RunConfirm by threshold).
   const flow = useRunFlow();
   const [result, setResult] = useState<HomeResultState | null>(null);
+  const [agent, setAgent] = useState<HomeAgentState | null>(null);
+  const [building, setBuilding] = useState(false);
+  const qc = useQueryClient();
   const t = (id: string, v?: Record<string, string | number>) => intl.formatMessage({ id }, v);
 
   const modes: PromptMode[] = HOME_MODES.map((m) => ({ id: m.id, icon: m.icon, label: intl.formatMessage({ id: `home.mode.${m.id}` }) }));
@@ -84,8 +101,8 @@ export function HomePage() {
     void navigate({ to: '/p/$projectId', params: { projectId: id } });
   };
 
-  const runFlow = (req: Omit<RunRequest, 'onDone'>, done: (runId: string) => void) =>
-    flow.request({ ...req, viewLabel: t('overlays.run.view'), onDone: (r) => done(r.id) });
+  const runFlow = (req: Omit<RunRequest, 'onDone'>, done: (runId: string, assetId?: string | null) => void) =>
+    flow.request({ ...req, viewLabel: t('overlays.run.view'), onDone: (r) => done(r.id, r.assetId) });
 
   const generate = () => {
     if (!run) return;
@@ -93,8 +110,13 @@ export function HomePage() {
     const actionLabel = t(`home.send.${mode}`);
     const brief = text.trim();
     const snapshot = { run, refs, title: title(), cost };
-    runFlow({ cost, kind: run.kind, actionLabel, meta: run.meta, subtitle: run.modelName }, (runId) =>
+    // Real mode: the prompt, title and `@` images (uploads resolve to asset ids in the flow) go in the spec.
+    const imageRefs = refs.filter((r) => r.group !== 'pub' && /^(ast_|upl_)/.test(r.id)).map((r) => r.id);
+    const spec = run.spec ? { ...run.spec, prompt: brief, title: snapshot.title, ...(imageRefs.length ? { inputs: { referenceAssetIds: imageRefs } } : {}) } : undefined;
+    runFlow({ cost, kind: run.kind, actionLabel, meta: run.meta, subtitle: run.modelName, spec }, (runId, assetId) =>
       setResult({
+        spec,
+        assets: { [runId]: assetId ?? null },
         title: snapshot.title,
         prompt: brief,
         kind: snapshot.run.kind,
@@ -110,6 +132,64 @@ export function HomePage() {
     );
   };
 
+  /** Real mode: the brief goes to a Home agent thread; the plan proposal shows below the prompt box. */
+  const askAgent = async (brief: string, refItems: RefItem[], skillName: string | null) => {
+    setAgent({ brief, text: '', pending: true, plan: null, notice: null });
+    try {
+      // `@` uploads still in flight resolve to their asset ids first.
+      const refIds = await Promise.all(refItems.map((r) => resolveAssetId(r.id)));
+      const thread = await createThread({ surface: 'home', skill: skillId(skillName) });
+      const r = await sendTurn(thread.id, { text: brief, refs: refIds.filter((id) => id.startsWith('ast_')), llm: getAgentLlm() }, {
+        onDelta: (d) => setAgent((a) => (a ? { ...a, text: a.text + d } : a)),
+      });
+      const plan = r.proposal?.body.kind === 'plan' ? { proposalId: r.proposal.id, options: r.proposal.body.options } : null;
+      const notice = r.reason === 'safety_blocked' ? t('home.agent.safety') : r.error ? t('home.agent.error') : null;
+      setAgent({ brief, text: r.text, pending: false, plan, notice });
+    } catch (e) {
+      const f = agentFailure(e);
+      if (f.kind === 'join') {
+        // D-007: keep the brief; it is sent again after checkout.
+        savePendingAction('home.agent', { brief, skill: skillName });
+        setAgent(null);
+        setPaywall(true);
+        return;
+      }
+      const notice =
+        f.kind === 'allowance'
+          ? t('home.agent.allowanceUsedUp', { date: f.resetsAt ? intl.formatDate(f.resetsAt, { month: 'short', day: 'numeric' }) : '' })
+          : f.kind === 'rateLimited'
+            ? t('home.agent.rateLimited')
+            : t('home.agent.error');
+      setAgent({ brief, text: '', pending: false, plan: null, notice });
+    }
+  };
+
+  const build = (optionIndex: number) => {
+    const plan = agent?.plan;
+    if (!plan) return;
+    setBuilding(true);
+    const option = plan.options[optionIndex];
+    applyProposal(plan.proposalId, { optionIndex, title: option?.title }).then(
+      (r) => {
+        setBuilding(false);
+        void qc.invalidateQueries({ queryKey: ['projects'] });
+        if (r.projectId) void navigate({ to: '/p/$projectId', params: { projectId: r.projectId } });
+      },
+      (e: unknown) => {
+        setBuilding(false);
+        const f = agentFailure(e);
+        if (f.kind === 'join') return setPaywall(true);
+        toast.show({ message: t(f.kind === 'stale' ? 'home.agent.stale' : 'home.agent.error') });
+      },
+    );
+  };
+
+  // A brief interrupted by the join paywall is sent once the plan is active (after the checkout redirect).
+  useCheckoutResume(() => {
+    const pending = takePendingAction<{ brief: string; skill: string | null }>('home.agent');
+    if (pending) void askAgent(pending.brief, [], pending.skill);
+  });
+
   const submit = () => {
     if (!text.trim() && !refs.length && !skill) {
       document.getElementById('brief')?.focus();
@@ -117,6 +197,7 @@ export function HomePage() {
       return;
     }
     if (mode !== 'agent') return generate();
+    if (!isMockApi()) return void askAgent(text.trim(), refs, skill?.name ?? null);
     return isMember ? void start() : setPaywall(true);
   };
 
@@ -194,7 +275,11 @@ export function HomePage() {
             () => {
               setPaying(false);
               setPaywall(false);
-              void start();
+              if (isMockApi()) void start();
+              else {
+                takePendingAction('home.agent');
+                void askAgent(text.trim(), refs, skill?.name ?? null);
+              }
             },
             () => {
               setPaying(false);
@@ -204,6 +289,7 @@ export function HomePage() {
         }}
       />
       {flow.element}
+      {agent ? <HomeAgent state={agent} building={building} onBuild={build} onDismiss={() => setAgent(null)} /> : null}
       <HomeResult result={result} onChange={setResult} onRun={runFlow} />
       <RecentProjects />
       <Inspiration />
@@ -213,6 +299,8 @@ export function HomePage() {
 
 function RecentProjects() {
   const intl = useIntl();
+  const navigate = useNavigate();
+  const createProject = useCreateProject();
   const { data: projects } = useRecentProjects();
   const meta = (p: ProjectSummary) => {
     const when = formatWhen(intl, p.updatedAt);
@@ -235,7 +323,17 @@ function RecentProjects() {
         </Link>
       </div>
       <div className={styles.projectGrid}>
-        <Link to="/p/$projectId" params={{ projectId: 'prj_new' }} className={styles.newProject}>
+        <Link
+          to="/p/$projectId"
+          params={{ projectId: 'prj_new' }}
+          className={styles.newProject}
+          onClick={(e) => {
+            if (isMockApi()) return;
+            // Real mode: create the project first, then open it.
+            e.preventDefault();
+            void createProject({ title: intl.formatMessage({ id: 'home.project.untitled' }), kind: 'canvas' }).then(({ id }) => navigate({ to: '/p/$projectId', params: { projectId: id } }));
+          }}
+        >
           <span className={styles.newIcon}>
             <PromptIcon name="plus" size={20} />
           </span>
@@ -245,7 +343,7 @@ function RecentProjects() {
         </Link>
         {projects.map((p) => (
           <Link key={p.id} to="/p/$projectId" params={{ projectId: p.id }} className={styles.project}>
-            <div className={styles.projectThumb} style={{ background: p.tone }}>
+            <div className={styles.projectThumb} style={p.thumbUrl ? { background: `center / cover no-repeat url("${p.thumbUrl}"), ${p.tone}` } : { background: p.tone }}>
               <span className={styles.badge}>
                 <FormattedMessage id={`home.project.kind.${p.kind}`} />
               </span>

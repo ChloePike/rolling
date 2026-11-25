@@ -10,4 +10,6 @@ export interface ProjectSummary {
   updatedAt: string;
   /** Cover placeholder tone until thumbnails exist. */
   tone: string;
+  /** Real mode: signed thumbnail (never a mature output). */
+  thumbUrl?: string;
 }

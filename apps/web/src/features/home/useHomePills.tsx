@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { useIntl } from 'react-intl';
+import type { PromptSpec } from '@/features/overlays/runs';
 import { pickerModels, useModels, type CatalogModel } from '@/lib/models';
 import { usePref } from '@/lib/prefs';
 import { useSession } from '@/lib/session';
@@ -39,6 +40,8 @@ export interface HomeRunSpec {
   /** CSS aspect ratio of the result, e.g. "9/16". */
   aspect: string;
   params: Array<{ label: string; value: string }>;
+  /** Real mode: what `POST /api/runs/quote { promptSpec }` generates (avatar has none yet). */
+  spec?: PromptSpec;
 }
 
 /**
@@ -199,6 +202,7 @@ export function useHomePills(mode: HomeModeId): {
     );
     run = {
       kind: 'image',
+      spec: { kind: 'image', model: m?.id ?? 'auto', ratio: image.aspectRatio, resolution: image.size, n: Number(image.count) || 1 },
       modelName: m?.name ?? '',
       meta: [m?.name, image.aspectRatio, size.label].filter(Boolean).join(' · '),
       aspect: cssRatio(image.aspectRatio),
@@ -226,6 +230,7 @@ export function useHomePills(mode: HomeModeId): {
     };
     run = {
       kind: 'video',
+      spec: { kind: 'video', model: m?.id ?? 'auto', ratio: video.aspectRatio, resolution: video.resolution, seconds: Number.parseInt(String(video.duration), 10) || 5, audio: video.audio },
       modelName: m?.name ?? '',
       meta: [m?.name, video.aspectRatio, video.resolution, secs(video.duration), t(`home.pill.${FRAME_MODES[frame]}`)].filter(Boolean).join(' · '),
       aspect: cssRatio(video.aspectRatio),

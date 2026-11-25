@@ -1,12 +1,18 @@
 import { PLANS } from '@rolling/core/pricing/config';
 import { useToast } from '@rolling/ui';
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useIntl } from 'react-intl';
 import { getPrefs } from '@/lib/prefs';
-import { checkoutPlan, checkoutTopUp, getCredits, getSession, MockFlowError, startMockRun, useCredits, type MockRun } from '@/lib/session';
+import { checkoutPlan, checkoutTopUp, getCredits, getSession, MockFlowError, onCheckoutResume, startMockRun, useCredits, type MockRun } from '@/lib/session';
 import { Paywall } from './Paywall';
 import { RunConfirm } from './RunConfirm';
 import type { RunRowKind } from './types';
+import { isApiError, isMockApi, userEvents } from './backend';
+import { findRun, quoteSpec, runFinished, startQuote, type PromptSpec, type RunView, type SpecQuote } from './runs';
+import { resolveAssetId } from '@/lib/transfers';
+
+/** What a finished run hands back: the mock run, or the real run with its first result asset. */
+export type FinishedRun = MockRun & { assetId?: string | null; run?: RunView };
 
 /** One paid run a host asks for (a generation from a prompt box, a regenerate in the viewer, …). */
 export interface RunRequest {
@@ -21,13 +27,76 @@ export interface RunRequest {
   subtitle?: string;
   /** Typical wait, e.g. "~2 min". */
   eta?: string;
-  /** Called when the mock job finishes. */
-  onDone?: (run: MockRun) => void;
+  /** Called when the job finishes (real mode: with the result asset). */
+  onDone?: (run: FinishedRun) => void;
+  /**
+   * Real mode: what to generate (`POST /api/runs/quote { promptSpec }`). The
+   * quote replaces `cost`; input asset refs may be upload ids (`upl_…`), they
+   * are resolved first. Without a spec the run cannot start in real mode.
+   */
+  spec?: PromptSpec;
+  /** Real mode: the project the run belongs to (Activity groups by it). */
+  projectId?: string;
   /** Toast action after the run finishes (e.g. View opens the result viewer). */
   viewLabel?: string;
 }
 
 type Step = { kind: 'idle' } | { kind: 'join' } | { kind: 'credits' } | { kind: 'confirm' };
+
+async function resolveSpec(spec: PromptSpec): Promise<PromptSpec> {
+  const i = spec.inputs;
+  if (!i) return spec;
+  const one = async (id?: string) => (id ? resolveAssetId(id) : undefined);
+  const many = async (ids?: string[]) => (ids ? Promise.all(ids.map((id) => resolveAssetId(id))) : undefined);
+  const inputs = {
+    ...(i.firstFrameAssetId ? { firstFrameAssetId: await one(i.firstFrameAssetId) } : {}),
+    ...(i.lastFrameAssetId ? { lastFrameAssetId: await one(i.lastFrameAssetId) } : {}),
+    ...(i.referenceAssetIds ? { referenceAssetIds: await many(i.referenceAssetIds) } : {}),
+    ...(i.inputAssetIds ? { inputAssetIds: await many(i.inputAssetIds) } : {}),
+    ...(i.audioAssetId ? { audioAssetId: await one(i.audioAssetId) } : {}),
+  };
+  return { ...spec, inputs };
+}
+
+/** Waits for a real run to finish: `activity.updated` on the user channel, with a polling fallback. */
+function waitForRun(runId: string, projectId?: string): Promise<RunView> {
+  return new Promise((resolve, reject) => {
+    let done = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const check = () => {
+      if (done) return;
+      findRun(runId, projectId ? { projectId } : {}).then(
+        (r) => {
+          if (done || !r || !runFinished(r)) return;
+          done = true;
+          off();
+          if (timer) clearTimeout(timer);
+          resolve(r);
+        },
+        () => {},
+      );
+    };
+    const off = userEvents((msg) => {
+      if (msg.type === 'activity.updated' && (msg.payload as { runId?: string })?.runId === runId) check();
+    });
+    let delay = 3000;
+    const poll = () => {
+      check();
+      if (done) return;
+      delay = Math.min(15_000, delay * 1.3);
+      timer = setTimeout(poll, delay);
+    };
+    timer = setTimeout(poll, delay);
+    // Give up waiting after 30 minutes; the result stays in Activity.
+    setTimeout(() => {
+      if (done) return;
+      done = true;
+      off();
+      if (timer) clearTimeout(timer);
+      reject(new Error('timeout'));
+    }, 30 * 60_000);
+  });
+}
 
 /**
  * The gate every paid run goes through (CLAUDE.md non-negotiables, D-006,
@@ -49,7 +118,86 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
   const pending = useRef<RunRequest | null>(null);
   const t = (id: string, v?: Record<string, string | number>) => intl.formatMessage({ id }, v);
 
+  const quoteRef = useRef<SpecQuote | null>(null);
+  const [quoteTotal, setQuoteTotal] = useState<number | null>(null);
+  const [quoteBalance, setQuoteBalance] = useState<number | null>(null);
+
+  const failed = (run: RunRequest, refunded: number) =>
+    toast.show({
+      message: t('overlays.run.failed', { label: run.actionLabel, cost: refunded }),
+      action: { label: t('overlays.run.retry'), onAction: () => advance(run) },
+      duration: 0,
+    });
+
+  /** Real mode: `POST /api/runs { quoteId }`, then follow the run to its end. */
+  const goReal = (run: RunRequest, quote: SpecQuote, attempt = 0) => {
+    setStep({ kind: 'idle' });
+    quoteRef.current = null;
+    startQuote(quote.quoteId!).then(
+      ({ runId }) => {
+        setRunning((n) => n + 1);
+        toast.show({ message: t('overlays.run.started', { label: run.actionLabel, cost: quote.total }) });
+        waitForRun(runId, run.projectId).then(
+          (r) => {
+            setRunning((n) => n - 1);
+            if (r.status === 'failed' || r.status === 'canceled') return failed(run, r.refunded);
+            const assetId = r.items.find((i) => i.assetId)?.assetId ?? null;
+            const finished: FinishedRun = { id: runId, cost: r.spent, assetId, run: r };
+            run.onDone?.(finished);
+            toast.show({
+              message: t('overlays.run.done', { label: run.actionLabel }),
+              action: run.viewLabel && run.onDone ? { label: run.viewLabel, onAction: () => run.onDone?.(finished) } : undefined,
+            });
+          },
+          () => setRunning((n) => n - 1),
+        );
+      },
+      (e: unknown) => {
+        if (isApiError(e, 'NO_PLAN')) return setStep({ kind: 'join' });
+        if (isApiError(e, 'INSUFFICIENT_CREDITS')) return setStep({ kind: 'credits' });
+        if (isApiError(e, 'QUOTE_EXPIRED') && attempt < 1) return void advance(run, attempt + 1);
+        if (isApiError(e, 'MEMBER_LIMIT_REACHED')) return void toast.show({ message: t('overlays.run.memberLimit'), duration: 0 });
+        if (isApiError(e, 'CONCURRENCY_LIMIT')) return void toast.show({ message: t('overlays.run.concurrency', { limit: (e.data as { limit?: number }).limit ?? 0 }) });
+        toast.show({ message: t('overlays.run.startFailed', { label: run.actionLabel }), action: { label: t('overlays.run.retry'), onAction: () => advance(run) } });
+      },
+    );
+  };
+
+  /** Real mode: quote the spec, show blocks, then gate like the mock flow (the API answers NO_PLAN itself). */
+  const advanceReal = (run: RunRequest, attempt = 0) => {
+    pending.current = run;
+    if (!run.spec) {
+      toast.show({ message: t('overlays.run.unavailable') });
+      return;
+    }
+    void resolveSpec(run.spec)
+      .then((spec) => quoteSpec(spec, run.projectId))
+      .then(
+        (q) => {
+          quoteRef.current = q;
+          setQuoteTotal(q.total);
+          setQuoteBalance(q.balance);
+          const blocked = q.items.find((i) => i.action === 'blocked');
+          if (!q.quoteId) {
+            if (blocked?.code === 'NO_PLAN') return setStep({ kind: 'join' });
+            return void toast.show({ message: blocked?.reason ?? t('overlays.run.unavailable') });
+          }
+          if (q.balance < q.total) return setStep({ kind: 'credits' });
+          if (q.needsConfirm) return setStep({ kind: 'confirm' });
+          goReal(run, q, attempt);
+        },
+        (e: unknown) => {
+          if (isApiError(e, 'NO_PLAN')) return setStep({ kind: 'join' });
+          toast.show({ message: t('overlays.run.startFailed', { label: run.actionLabel }) });
+        },
+      );
+  };
+
   const go = (run: RunRequest) => {
+    if (!isMockApi()) {
+      const q = quoteRef.current;
+      return q?.quoteId ? goReal(run, q) : advanceReal(run);
+    }
     setStep({ kind: 'idle' });
     setRunning((n) => n + 1);
     toast.show({ message: t('overlays.run.started', { label: run.actionLabel, cost: run.cost }) });
@@ -75,7 +223,8 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
   };
 
   /** Moves the run to its next gate, reading the live session, credits and threshold. */
-  function advance(run: RunRequest) {
+  function advance(run: RunRequest, attempt = 0) {
+    if (!isMockApi()) return advanceReal(run, attempt);
     pending.current = run;
     if (!getSession().isMember) return setStep({ kind: 'join' });
     if (getCredits().available < run.cost) return setStep({ kind: 'credits' });
@@ -90,6 +239,19 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
     pending.current = null;
   };
   const run = pending.current;
+  const real = !isMockApi();
+  const shownCost = real && quoteTotal !== null ? quoteTotal : (run?.cost ?? 0);
+  const shownBalance = real && quoteBalance !== null ? quoteBalance : credits.available;
+
+  // After a checkout in this tab (or the Stripe redirect landing back here), the interrupted run continues.
+  useEffect(
+    () =>
+      onCheckoutResume(() => {
+        if (pending.current) advance(pending.current);
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
 
   const element = (
     <>
@@ -118,8 +280,8 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
         open={step.kind === 'credits'}
         onOpenChange={(o) => !o && !busy && close()}
         variant="credits"
-        runCost={run?.cost ?? 0}
-        balance={credits.available}
+        runCost={shownCost}
+        balance={shownBalance}
         busy={busy}
         onContinue={(option) => {
           setBusy(true);
@@ -140,8 +302,8 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
         open={step.kind === 'confirm'}
         onOpenChange={(o) => !o && close()}
         variant="single"
-        rows={run ? [{ id: 'run_this', name: t('overlays.run.row'), meta: run.meta, kind: run.kind, state: 'run', cost: run.cost }] : []}
-        balance={credits.available}
+        rows={run ? [{ id: 'run_this', name: t('overlays.run.row'), meta: run.meta, kind: run.kind, state: 'run', cost: shownCost }] : []}
+        balance={shownBalance}
         eta={run?.eta ?? '~2 min'}
         subtitle={run?.subtitle}
         actionLabel={run?.actionLabel}
