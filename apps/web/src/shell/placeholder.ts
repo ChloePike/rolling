@@ -1,7 +1,6 @@
 /** Static placeholder data for the M0 shell. Replaced by API data in M1+. */
 export const placeholderAccount = {
   initial: 'A',
-  plan: 'pro' as const,
   creditBalance: 2480,
   currency: 'USD',
   defaultAspectRatio: '9:16',

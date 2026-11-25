@@ -3,6 +3,8 @@ import { Switch } from '@rolling/ui';
 import { Link } from '@tanstack/react-router';
 import { useState, type ReactNode } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
+import { setCreationMode, setLanguage, useCreationMode, useLanguagePref } from '@/lib/prefs';
+import { useSession } from '@/lib/session';
 import { motion, PathIcon, Segmented } from './shared';
 import { SelectMenu } from './shared/SelectMenu';
 import { useAutoTopUp, useInvoices, useMe, useMembers, useTopUps, useUpdatePrefs, formatUsd, topUpFor } from './api';
@@ -172,8 +174,11 @@ function PreferencesSection({ me }: { me: Me }) {
   const update = useUpdatePrefs();
   const p = me.prefs;
   const set = (patch: Partial<Prefs>) => update.mutate(patch);
+  // Creation mode and language are shared with the header settings popover (lib/prefs).
+  const creationMode = useCreationMode();
+  const language = useLanguagePref() ?? p.language;
   // D-005: the mature preference exists only for workspaces with an active plan that allow it.
-  const showMature = me.plan?.status === 'active' && me.workspace.matureAllowed;
+  const showMature = useSession().matureAllowed;
   const t = (id: string, values?: Record<string, string | number>) => intl.formatMessage({ id }, values);
   return (
     <>
@@ -181,9 +186,12 @@ function PreferencesSection({ me }: { me: Me }) {
       <Row label={t('account.settings.prefs.language')}>
         <SelectMenu
           label={t('account.settings.prefs.language')}
-          value={p.language}
+          value={language}
           options={LANGUAGES.map((l) => ({ value: l, label: languageName(l) }))}
-          onChange={(language) => set({ language })}
+          onChange={(next) => {
+            setLanguage(next);
+            set({ language: next });
+          }}
         />
       </Row>
       <Row label={t('account.settings.prefs.currency')} hint={t('account.settings.prefs.currency.hint')}>
@@ -197,8 +205,11 @@ function PreferencesSection({ me }: { me: Me }) {
       <Row label={t('account.settings.prefs.mode')} hint={t('account.settings.prefs.mode.hint')}>
         <Segmented<CreationMode>
           label={t('account.settings.prefs.mode')}
-          value={p.creationMode}
-          onChange={(creationMode) => set({ creationMode })}
+          value={creationMode}
+          onChange={(next) => {
+            setCreationMode(next);
+            set({ creationMode: next });
+          }}
           className={styles.seg}
           optionClassName={styles.segOption}
           indicatorClassName={styles.segFill}

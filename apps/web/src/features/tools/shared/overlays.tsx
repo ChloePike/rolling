@@ -24,7 +24,8 @@ import {
 } from '@/features/overlays';
 import type { ParamKind, PickerKind } from '../types';
 import type { ToolModel } from './models';
-import { lockedResolutions, mockPlan } from './plan';
+import { checkoutPlan } from '@/lib/session';
+import { lockedResolutions, useToolPlan } from './plan';
 import type { PlanId } from '@rolling/core/pricing/config';
 
 /** Balance shown in quotes until the credits API lands (same placeholder as the header). */
@@ -85,7 +86,8 @@ interface ParamProps {
   plan?: PlanId;
 }
 
-export function ToolParamPopover({ open, kind, onClose, anchorClassName, anchorRef, plan = mockPlan }: ParamProps) {
+export function ToolParamPopover({ open, kind, onClose, anchorClassName, anchorRef, plan: planProp }: ParamProps) {
+  const plan = useToolPlan(planProp);
   const [video, setVideo] = useState<VideoParams>(defaultVideoParams);
   const [image, setImage] = useState<ImageParams>(defaultImageParams);
   return (
@@ -208,5 +210,12 @@ interface PaywallAdapterProps {
  * path; the composer keeps what was typed so the run resumes after checkout.
  */
 export function ToolPaywall({ open, onClose }: PaywallAdapterProps) {
-  return <Paywall open={open} onOpenChange={(o) => !o && onClose()} variant="join" onContinue={() => onClose()} />;
+  return (
+    <Paywall
+      open={open}
+      onOpenChange={(o) => !o && onClose()}
+      variant="join"
+      onContinue={(option) => void checkoutPlan(option.id).then(onClose)}
+    />
+  );
 }

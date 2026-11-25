@@ -18,13 +18,15 @@ import { FormattedMessage, useIntl } from 'react-intl';
 import { ReferencePicker, type RefItem } from '@/features/prompt';
 import type { RunPlanRow, RunRowKind } from '@/features/overlays';
 import { AgentPanel, type AgentPlan } from './agent/AgentPanel';
-import { getAccount, getProject, getShare, openProject, quoteRun, startRun, type ProjectSession } from './api';
+import { getProject, getShare, openProject, quoteRun, startRun, type ProjectSession } from './api';
 import canvas from './canvas.module.css';
 import type { LocalOp } from './graph/store';
 import type { GraphNode, GraphState, NodeKind, Refusal } from '@rolling/core/graph';
 import { CanvasIcon, CanvasLogo, type CanvasIconName } from './icons';
 import { AddNodeMenu, CreditsPopover, HistoryDrawer, MOCK_RUNS, PlanDialog, ScriptDialog, ShareDialog, type HistoryRow } from './layers/Layers';
-import { MOCK_ACCOUNT, MOCK_CREDITS, type PromptRef } from './mocks';
+import { MOCK_CREDITS, type PromptRef } from './mocks';
+import { useSession } from '@/lib/session';
+import { PLAN_ORDER } from '@rolling/core/pricing/config';
 import { NodeActionsContext, NodeCard, NODE_WIDTH, runCost, willRun, type CardNode, type NodeActions } from './nodes/NodeCard';
 import styles from './nodes/nodes.module.css';
 import { ConnectionLine, Wire, type WireEdge } from './nodes/Wire';
@@ -170,7 +172,8 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
   const [overlay, setOverlay] = useState<CanvasOverlay | null>(initialOverlay);
   const [tool, setTool] = useState<Tool>('add');
   const [agentOpen, setAgentOpen] = useState(true);
-  const [isMember, setIsMember] = useState(() => getAccount().isMember);
+  // Membership and plan caps come from the shared session (D-006, D-007).
+  const { isMember, planId } = useSession();
   const [creditsOpen, setCreditsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [addAt, setAddAt] = useState(ADD_AT);
@@ -587,7 +590,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
           onOpenPicker={() => setOverlay((o) => (o === 'at' ? null : 'at'))}
           onGenerate={generate}
           models={models}
-          plan={MOCK_ACCOUNT.plan}
+          plan={planId ?? PLAN_ORDER[0]!}
           onSetResolution={(nodeId, resolution) => commit([{ op: 'updateNode', nodeId, params: { resolution } }])}
         />
       ) : null}
@@ -677,7 +680,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
         </div>
       </div>
 
-      {agentP.mounted ? <AgentPanel state={agentP.state} onClose={() => setAgentOpen(false)} onBuild={buildPlan} isMember={isMember} onJoined={() => setIsMember(true)} /> : null}
+      {agentP.mounted ? <AgentPanel state={agentP.state} onClose={() => setAgentOpen(false)} onBuild={buildPlan} isMember={isMember} /> : null}
 
       {historyP.mounted ? <HistoryDrawer state={historyP.state} onClose={() => setHistoryOpen(false)} rows={historyRows} /> : null}
 

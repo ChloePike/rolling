@@ -2,7 +2,7 @@ import { MockProjectRoom } from './graph/mockRoom';
 import { GraphStore } from './graph/store';
 import { ProjectSync, type SyncEvents } from './graph/sync';
 import type { GraphEdge, GraphNode } from '@rolling/core/graph';
-import { mockGraph, MOCK_ACCOUNT, MOCK_CREDITS, MOCK_PROJECT, MOCK_SHARE } from './mocks';
+import { mockGraph, MOCK_CREDITS, MOCK_PROJECT, MOCK_SHARE } from './mocks';
 
 /**
  * The canvas talks to the backend only through this file. Today everything
@@ -26,7 +26,7 @@ declare global {
 
 function mockFlags() {
   const q = typeof location === 'undefined' ? new URLSearchParams() : new URLSearchParams(location.search);
-  return { frozen: q.get('mock') === 'frozen', fast: q.get('mock') === 'fast', guest: q.get('member') === '0' };
+  return { frozen: q.get('mock') === 'frozen', fast: q.get('mock') === 'fast' };
 }
 
 let room: MockProjectRoom | null = null;
@@ -53,19 +53,6 @@ export function openProject(projectId: string, events: SyncEvents): ProjectSessi
 
 export function getProject(projectId: string) {
   return { ...MOCK_PROJECT, id: projectId };
-}
-
-/**
- * `GET /api/me` (mock). `isMember` defaults to true so the design states stay
- * as drawn; `?member=0` opens the canvas as a signed-up non-member (D-007).
- */
-export function getAccount(): { plan: typeof MOCK_ACCOUNT.plan; isMember: boolean } {
-  return { ...MOCK_ACCOUNT, isMember: MOCK_ACCOUNT.isMember && !mockFlags().guest };
-}
-
-/** Checkout (`POST /api/billing/checkout`) — the mock completes at once. */
-export async function checkoutPlan(_planId: string): Promise<{ isMember: true }> {
-  return { isMember: true };
 }
 
 export function getCredits() {

@@ -3,6 +3,8 @@ import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import styles from './AccountMenu.module.css';
+import { PLANS } from '@rolling/core/pricing/config';
+import { useSession } from '@/lib/session';
 import { placeholderAccount, placeholderHandle, placeholderWorkspaces } from './placeholder';
 
 const P = {
@@ -36,6 +38,8 @@ export function AccountMenuContent({ onClose, onLogout }: { onClose: () => void;
   const [workspace, setWorkspace] = useState(placeholderWorkspaces[0]!.id);
   const rootRef = useRef<HTMLDivElement>(null);
   const account = placeholderAccount;
+  const { planId } = useSession();
+  const planLabel = planId ? PLANS[planId].label : null;
 
   useEffect(() => {
     rootRef.current?.querySelector<HTMLElement>('[role^="menuitem"]')?.focus();
@@ -57,7 +61,7 @@ export function AccountMenuContent({ onClose, onLogout }: { onClose: () => void;
   const links = [
     { id: 'profile', to: '/u/$handle', params: { handle: placeholderHandle }, d: P.profile },
     { id: 'settings', to: '/settings/$section', params: { section: 'account' }, d: P.settings },
-    { id: 'plans', to: '/upgrade', d: P.plans, note: intl.formatMessage({ id: 'shell.account.plans.note' }) },
+    { id: 'plans', to: '/upgrade', d: P.plans, note: planLabel ?? undefined },
     { id: 'billing', to: '/settings/$section', params: { section: 'billing' }, d: P.billing },
     { id: 'members', to: '/settings/$section', params: { section: 'team' }, d: P.members, note: intl.formatNumber(5) },
     { id: 'help', to: '/settings/$section', params: { section: 'account' }, d: P.help, href: '#' },
@@ -72,7 +76,7 @@ export function AccountMenuContent({ onClose, onLogout }: { onClose: () => void;
         <span className={styles.whoText}>
           <span className={styles.whoName}>{account.initial}</span>
           <span className={styles.whoPlan}>
-            <FormattedMessage id="shell.account.planLine" />
+            {planLabel ? <FormattedMessage id="shell.account.planLine" values={{ plan: planLabel }} /> : <FormattedMessage id="shell.account.noPlan" />}
           </span>
         </span>
       </div>
@@ -133,7 +137,7 @@ export function AccountMenuContent({ onClose, onLogout }: { onClose: () => void;
             <span className={styles.itemLabel}>
               <FormattedMessage id={`shell.account.${l.id}`} />
             </span>
-            {'note' in l ? <span className={styles.note}>{l.note}</span> : null}
+            {'note' in l && l.note ? <span className={styles.note}>{l.note}</span> : null}
           </Link>
         ),
       )}

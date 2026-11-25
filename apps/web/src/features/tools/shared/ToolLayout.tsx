@@ -5,7 +5,8 @@ import type { ComposerPill, FeedItem, MediaRun, ParamKind, PickerKind } from '..
 import { Composer, type ComposerProps } from './Composer';
 import { FeedCard } from './FeedCard';
 import { ToolModelPicker, ToolParamPopover, ToolPaywall, ToolResultViewer, ToolRunConfirm } from './overlays';
-import { mockIsMember } from './plan';
+import { useSession } from '@/lib/session';
+import type { PlanId } from '@rolling/core/pricing/config';
 import { SettingsGroup, type SettingsGroupDef } from './SettingsGroup';
 import styles from './ToolLayout.module.css';
 import { usePresence } from './usePresence';
@@ -36,8 +37,10 @@ export interface ToolLayoutProps {
   confirm: { cost: number; label: string };
   viewerAspect: string;
   initialOverlay?: ToolOverlay | null;
-  /** Active plan (D-007). Defaults to the membership mock. */
+  /** Active plan (D-007). Defaults to the session (lib/session). */
   isMember?: boolean;
+  /** Plan whose resolution caps the settings popover shows (D-006). */
+  plan?: PlanId;
 }
 
 /** Shared layout of Quick Create, Remix, Avatar and Characters: left panel, history feed, floating composer. */
@@ -48,8 +51,8 @@ export function ToolLayout(p: ToolLayoutProps) {
   const adv = usePresence(p.advanced, 140);
   const pillsRef = useRef<HTMLDivElement>(null);
   const close = () => setOverlay(null);
-  const [memberMock] = useState(mockIsMember);
-  const isMember = p.isMember ?? memberMock;
+  const session = useSession();
+  const isMember = p.isMember ?? session.isMember;
   // Generate and the agent path need a plan; non-members get the join paywall and keep their text.
   const spend = () => setOverlay(isMember ? 'confirm' : 'paywall');
   const agent = () => !isMember && setOverlay('paywall');
@@ -126,7 +129,7 @@ export function ToolLayout(p: ToolLayoutProps) {
           anchorClassName={styles.anchor}
           anchorRef={pillsRef}
         />
-        <ToolParamPopover open={overlay === 'params'} kind={p.paramKind} onClose={close} anchorClassName={styles.anchor} anchorRef={pillsRef} />
+        <ToolParamPopover open={overlay === 'params'} kind={p.paramKind} plan={p.plan} onClose={close} anchorClassName={styles.anchor} anchorRef={pillsRef} />
       </section>
       <ToolRunConfirm open={overlay === 'confirm'} cost={p.confirm.cost} label={p.confirm.label} views={p.paramKind === 'image'} onClose={close} />
       <ToolPaywall open={overlay === 'paywall'} onClose={close} />

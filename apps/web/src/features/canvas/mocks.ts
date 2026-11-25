@@ -206,6 +206,3 @@ export const MOCK_RUNS = [
   { id: 'run_01JDCANVASRUN00000000002', nodeId: NODE.keyframe, title: 'Product keyframe', model: 'Seedream 5.0 Pro', credits: 2, status: 'done' as const, at: new Date(2026, 10, 25, 10, 4) },
   { id: 'run_01JDCANVASRUN00000000003', nodeId: NODE.shotA, title: 'Shot A: Hero shot', model: 'Seedance 2.5', credits: 8, status: 'done' as const, at: new Date(2026, 10, 25, 9, 58) },
 ];
-
-/** The signed-in workspace (`GET /api/me`): plan caps resolutions (D-006). */
-export const MOCK_ACCOUNT = { plan: 'starter' as const, isMember: true };

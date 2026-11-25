@@ -1,7 +1,7 @@
 import { cx, presenceProps, type PresenceState } from '@rolling/ui';
 import { useState } from 'react';
 import { Paywall } from '@/features/overlays';
-import { checkoutPlan } from '../api';
+import { checkoutPlan } from '@/lib/session';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { CanvasIcon } from '../icons';
 import { MOCK_AGENT } from '../mocks';
@@ -22,7 +22,6 @@ interface AgentPanelProps {
   onBuild: (plan: AgentPlan) => number;
   /** Using the agent needs an active plan (D-007). Non-members can type; sending opens the join paywall. */
   isMember: boolean;
-  onJoined: () => void;
 }
 
 /**
@@ -30,7 +29,7 @@ interface AgentPanelProps {
  * "Build on canvas", composer with the LLM pill and Auto. The agent only
  * proposes; building nodes is free and nothing runs until the user runs it.
  */
-export function AgentPanel({ state, onClose, onBuild, isMember, onJoined }: AgentPanelProps) {
+export function AgentPanel({ state, onClose, onBuild, isMember }: AgentPanelProps) {
   const [paywall, setPaywall] = useState(false);
   const intl = useIntl();
   const [messages, setMessages] = useState<Message[]>(MOCK_AGENT.messages);
@@ -156,7 +155,6 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onJoined }: Agen
         onContinue={(option) => {
           void checkoutPlan(option.id).then(() => {
             setPaywall(false);
-            onJoined();
             const text = draft.trim();
             if (text) deliver(text);
           });

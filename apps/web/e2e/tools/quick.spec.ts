@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { asPlan } from '../support/session';
 import { animationsOf, EXIT, MODAL, MODEL_PANEL, registerFidelity, setMode, STANDARD } from './support/toolSpec';
 
 test.describe('Quick Create /create/quick', () => {
@@ -119,6 +120,7 @@ test.describe('Quick Create /create/quick', () => {
   });
 
   test('plan caps (D-006): on Starter, 1080p stays visible but locked and names Plus as the unlocking plan', async ({ page }) => {
+    await asPlan(page, 'starter');
     await setMode(page, 'advanced');
     await page.goto('/create/quick');
     const locked = page.locator('main aside [data-group="res"] button[data-locked]');

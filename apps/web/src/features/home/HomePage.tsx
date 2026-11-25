@@ -14,7 +14,9 @@ import {
   type PromptMode,
   type RefItem,
 } from '@/features/prompt';
+import { Paywall } from '@/features/overlays';
 import { useTemplates } from '@/features/templates/api';
+import { checkoutPlan, useSession } from '@/lib/session';
 import type { TemplateSummary } from '@/features/templates/types';
 import { createProject, useRecentProjects } from './api';
 import { formatSeconds, formatWhen } from './format';
@@ -46,13 +48,19 @@ export function HomePage() {
   const { data: skills } = useSkills();
   const commandGroups = useDefaultCommandGroups(skills, { model: 'model', aspect: 'ratio', duration: 'duration' });
   const { pills, renderPillPopover, credits } = useHomePills(mode);
+  const { isMember } = useSession();
+  // D-007: sending to the agent (or generating) needs a plan. Non-members get
+  // the join paywall; the brief, refs and skill stay in the prompt box and the
+  // send resumes after checkout.
+  const [paywall, setPaywall] = useState(false);
 
   const modes: PromptMode[] = HOME_MODES.map((m) => ({ id: m.id, icon: m.icon, label: intl.formatMessage({ id: `home.mode.${m.id}` }) }));
 
-  const submit = async () => {
+  const start = async () => {
     const { id } = await createProject({ title: text.slice(0, 80) });
     void navigate({ to: '/p/$projectId', params: { projectId: id } });
   };
+  const submit = () => (isMember ? start() : setPaywall(true));
 
   const onCommand = (c: PromptCommand) => {
     if (c.id === COMMAND.canvas) void navigate({ to: '/p/$projectId', params: { projectId: 'prj_new' } });
@@ -105,6 +113,17 @@ export function HomePage() {
           ))}
         </nav>
       </section>
+      <Paywall
+        open={paywall}
+        onOpenChange={setPaywall}
+        variant="join"
+        onContinue={(option) => {
+          void checkoutPlan(option.id).then(() => {
+            setPaywall(false);
+            void start();
+          });
+        }}
+      />
       <RecentProjects />
       <Inspiration />
     </>

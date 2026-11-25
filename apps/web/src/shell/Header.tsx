@@ -7,6 +7,7 @@ import { CreditsPopoverContent } from './CreditsPopover';
 import styles from './Header.module.css';
 import { Icon, LogoMark } from './icons';
 import { isNavItemActive, navItems } from './nav';
+import { useSession } from '@/lib/session';
 import { placeholderAccount } from './placeholder';
 import { SettingsPopoverContent } from './SettingsPopover';
 import { NARROW_NAV_QUERY, useMediaQuery } from './useMediaQuery';
@@ -31,6 +32,7 @@ export function Header() {
   // The active pill slides between items (200ms, standard curve) on navigation.
   const pill = useIndicator(navRef, `${pathname}-${narrow}`, '[aria-current="page"]');
   const account = placeholderAccount;
+  const { planId } = useSession();
 
   return (
     <header className={styles.header} data-testid="app-header">
@@ -124,7 +126,7 @@ export function Header() {
           trigger={(p) => (
             <button {...p} type="button" className={styles.avatar} aria-label={intl.formatMessage({ id: 'header.account' })}>
               <span aria-hidden="true">{account.initial}</span>
-              {account.plan === 'pro' ? (
+              {planId === 'pro' ? (
                 <span className={styles.proBadge} aria-hidden="true">
                   <FormattedMessage id="header.proBadge" />
                 </span>

@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { buildDesignPage } from './support/design';
 import { pixelDiffRatio, type Box } from './support/measure';
 import { routeModels } from './support/models';
+import { asPlan } from './support/session';
 
 /**
  * Home (Main.dc.html) and its states: `/` palette (MainSlash), `+` menu
@@ -252,6 +253,21 @@ test.describe('home interactions', () => {
     await menu.getByRole('menuitem', { name: /Add a character or asset/ }).click();
     await expect(page.getByRole('dialog', { name: 'Add a reference' })).toBeVisible();
     await expect(page.getByRole('textbox', { name: 'Search references' })).toBeFocused();
+  });
+
+  test('agent is members-only (D-007): a non-member’s send opens the join paywall and keeps the brief; checkout resumes it', async ({ page }) => {
+    await asPlan(page, null);
+    await openApp(page);
+    const ta = page.locator('textarea');
+    await ta.fill('A 15s ad for a sparkling water');
+    await page.getByRole('button', { name: 'Start' }).click();
+    const paywall = page.getByRole('dialog', { name: 'Pick a plan to generate' });
+    await expect(paywall).toBeVisible();
+    await expect(paywall.getByRole('radio')).toHaveText([/Starter/, /Plus/, /Pro/]);
+    await expect(ta).toHaveValue('A 15s ad for a sparkling water');
+    await expect(page).toHaveURL(/\/$/);
+    await paywall.getByRole('button', { name: /^Continue with/ }).click();
+    await expect(page).toHaveURL(/\/p\/prj_new$/);
   });
 
   test('`@` picker: opens on @ at the end, filters by the query, multi-selects, Enter adds chips with source, Esc closes and strips the @', async ({ page }) => {

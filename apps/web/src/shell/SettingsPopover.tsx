@@ -1,41 +1,25 @@
 import { IconButton } from '@rolling/ui';
-import { useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
+import { setCreationMode, useCreationMode, useLanguagePref, type CreationMode } from '@/lib/prefs';
 import { Icon, type IconName } from './icons';
 import { placeholderAccount } from './placeholder';
 import styles from './SettingsPopover.module.css';
-
-type CreationMode = 'simple' | 'advanced';
-/** Local stand-in for `prefs.creationMode` until M1 wires prefs. */
-const MODE_KEY = 'rolling.creationMode';
 
 const modes: ReadonlyArray<{ value: CreationMode; icon: IconName }> = [
   { value: 'simple', icon: 'chat' },
   { value: 'advanced', icon: 'sliders' },
 ];
 
-function readMode(): CreationMode {
-  try {
-    return window.localStorage.getItem(MODE_KEY) === 'advanced' ? 'advanced' : 'simple';
-  } catch {
-    return 'simple';
-  }
-}
-
 export function SettingsPopoverContent({ onClose }: { onClose: () => void }) {
   const intl = useIntl();
-  const [mode, setMode] = useState<CreationMode>(readMode);
+  // Shared with Settings → Preferences; tools follow the `rolling:creation-mode` event.
+  const mode = useCreationMode();
+  const language = useLanguagePref() ?? intl.locale;
   const refs = useRef<Array<HTMLButtonElement | null>>([]);
   const account = placeholderAccount;
 
-  const pick = (value: CreationMode) => {
-    setMode(value);
-    try {
-      window.localStorage.setItem(MODE_KEY, value);
-    } catch {
-      /* Storage unavailable; keep the in-memory choice. */
-    }
-  };
+  const pick = (value: CreationMode) => setCreationMode(value);
   const onKeyDown = (e: KeyboardEvent, i: number) => {
     if (!['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
     e.preventDefault();
@@ -47,8 +31,7 @@ export function SettingsPopoverContent({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const languageName =
-    new Intl.DisplayNames([intl.locale], { type: 'language' }).of(intl.locale) ?? intl.locale;
+  const languageName = new Intl.DisplayNames([intl.locale], { type: 'language' }).of(language) ?? language;
 
   const rows: Array<{ id: string; value: ReactNode }> = [
     { id: 'settingsPopover.language', value: languageName },

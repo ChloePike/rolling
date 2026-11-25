@@ -44,14 +44,6 @@ export function resolveLocale(
   return DEFAULT_LOCALE;
 }
 
-export function readLocalePreference(): string | null {
-  try {
-    return window.localStorage.getItem(LOCALE_PREF_KEY);
-  } catch {
-    return null;
-  }
-}
-
 export function browserLocales(): readonly string[] {
   if (typeof navigator === 'undefined') return [];
   return navigator.languages?.length ? navigator.languages : [navigator.language];

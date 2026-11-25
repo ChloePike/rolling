@@ -82,6 +82,16 @@ test.describe('settings (Settings.dc.html)', () => {
     await expect(mature).toHaveAttribute('aria-checked', 'true');
   });
 
+  test('preferences: creation mode is shared with the header settings popover (lib/prefs)', async ({ page }) => {
+    await openApp(page, '/settings/preferences');
+    await page.getByRole('radio', { name: 'Advanced' }).click();
+    await page.getByTestId('app-header').getByRole('button', { name: 'Settings' }).click();
+    const popover = page.getByRole('dialog', { name: 'Settings' });
+    await expect(popover.getByRole('radio', { name: /Advanced/ })).toHaveAttribute('aria-checked', 'true');
+    await popover.getByRole('radio', { name: /Simple/ }).click();
+    await expect(page.getByRole('radio', { name: 'Simple', exact: true })).toHaveAttribute('aria-checked', 'true');
+  });
+
   test('preferences: no mature-content switch without an active plan or when the workspace turned it off', async ({ page }) => {
     await withMe(page, { plan: null });
     await openApp(page, '/settings/preferences');

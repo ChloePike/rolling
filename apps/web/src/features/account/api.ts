@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PLAN_ORDER, PLANS, quoteTopUp, TOP_UP, type PlanId } from '@rolling/core/pricing/config';
+import { getSession, mockOverrides } from '@/lib/session';
 import { invoicesMock, meMock, membersMock } from './mocks';
 import type { Invoice, Me, Member, Prefs } from './types';
 
@@ -8,23 +9,19 @@ import type { Invoice, Me, Member, Prefs } from './types';
  * `/api/workspace/members`). Runs on mock data until those routes land; swap
  * the bodies for real requests and keep the hooks.
  *
- * Test seam: `window.__rollingMocks.me` (set before the app loads) is merged
- * over the mock user, e.g. `{ plan: null }` for a workspace without a plan.
+ * Membership (plan, mature access) comes from `lib/session`, the one source
+ * shared with the header, Home, tools and canvas. Its test seam
+ * `window.__rollingMocks.me` (set before the app loads) is also merged over
+ * the mock user here, e.g. `{ plan: null }` for a workspace without a plan.
  */
-declare global {
-  interface Window {
-    __rollingMocks?: { me?: Partial<Me> };
-  }
-}
-
 let me: Me = structuredClone(meMock);
 let overridesApplied = false;
 
 function current(): Me {
-  if (!overridesApplied && typeof window !== 'undefined' && window.__rollingMocks?.me) {
-    me = { ...me, ...window.__rollingMocks.me };
-  }
+  if (!overridesApplied) me = { ...me, ...(mockOverrides() as Partial<Me>) };
   overridesApplied = true;
+  // The plan always follows the session (checkout elsewhere updates it).
+  me = { ...me, plan: getSession().plan };
   return me;
 }
 

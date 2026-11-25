@@ -1,9 +1,16 @@
-import { lowestPlanFor, planAllowsResolution, type PlanId } from '@rolling/core/pricing/config';
+import { lowestPlanFor, planAllowsResolution, PLAN_ORDER, type PlanId } from '@rolling/core/pricing/config';
 import type { IntlShape } from 'react-intl';
+import { useSession } from '@/lib/session';
 import type { SegOption } from './SettingsGroup';
 
-/** Current plan until the account API lands (mock, D-006). */
-export const mockPlan: PlanId = 'starter';
+/**
+ * Plan whose caps the tool shows (D-006): an explicit prop, else the session's
+ * plan, else the entry plan (non-members see what joining unlocks).
+ */
+export function useToolPlan(planProp?: PlanId): PlanId {
+  const { planId } = useSession();
+  return planProp ?? planId ?? PLAN_ORDER[0]!;
+}
 
 /**
  * Resolution options for a plan (D-006): options above the plan's cap stay
@@ -27,19 +34,4 @@ export function resolutionOptions(intl: IntlShape, plan: PlanId, kind: 'video' |
 /** Locked resolutions, for the shared settings popover's `unsupported` list. */
 export function lockedResolutions(plan: PlanId, kind: 'video' | 'image', list: string[]): string[] {
   return list.filter((res) => !planAllowsResolution(plan, kind, res));
-}
-
-/**
- * Membership mock (D-007): generating and the agent path (Refine, Simple-mode
- * field filling) need an active plan. Defaults to a member so the design states
- * render as drawn; set localStorage `rolling.mock.isMember` to `false` to try
- * the non-member path. Replaced by the account API.
- */
-export const MOCK_MEMBER_KEY = 'rolling.mock.isMember';
-export function mockIsMember(): boolean {
-  try {
-    return window.localStorage.getItem(MOCK_MEMBER_KEY) !== 'false';
-  } catch {
-    return true;
-  }
 }

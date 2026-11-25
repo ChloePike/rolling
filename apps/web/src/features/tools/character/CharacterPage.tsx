@@ -7,11 +7,11 @@ import { ToolIcon } from '../shared/icons';
 import layout from '../shared/ToolLayout.module.css';
 import type { SettingsGroupDef } from '../shared/SettingsGroup';
 import { ToolLayout, type ToolOverlay } from '../shared/ToolLayout';
-import { useCreationMode } from '../shared/useCreationMode';
+import { useCreationMode } from '@/lib/prefs';
 import { quoteCredits, segModels, useToolModels } from '../shared/useToolModels';
 import type { PlanId } from '@rolling/core/pricing/config';
 import type { ToolModel } from '../shared/models';
-import { mockPlan, resolutionOptions } from '../shared/plan';
+import { resolutionOptions, useToolPlan } from '../shared/plan';
 import type { ComposerPill } from '../types';
 import styles from './Character.module.css';
 import { characterBody, characterHair, characterOutfits, characterPrompt, characterStyles, characterStyleTones } from './mocks';
@@ -25,13 +25,14 @@ interface Props {
   initialOverlay?: ToolOverlay | null;
   /** Injected model list (tests); defaults to the synced catalog. */
   models?: ToolModel[];
-  /** Current plan (D-006 resolution caps); mocked as Starter until the account API lands. */
+  /** Current plan (D-006 resolution caps); defaults to the session's plan (lib/session). */
   plan?: PlanId;
-  /** Active plan (D-007); defaults to the membership mock. */
+  /** Active plan (D-007); defaults to the session. */
   isMember?: boolean;
 }
 
-export function CharacterPage({ initialOverlay, models: modelsOverride, plan = mockPlan, isMember }: Props) {
+export function CharacterPage({ initialOverlay, models: modelsOverride, plan: planProp, isMember }: Props) {
+  const plan = useToolPlan(planProp);
   const intl = useIntl();
   const t = (id: string, v?: Record<string, string | number>) => intl.formatMessage({ id }, v);
   const adv = useCreationMode() === 'advanced';
@@ -180,6 +181,7 @@ export function CharacterPage({ initialOverlay, models: modelsOverride, plan = m
       viewerAspect="2/3"
       initialOverlay={initialOverlay}
       isMember={isMember}
+      plan={plan}
     />
   );
 }

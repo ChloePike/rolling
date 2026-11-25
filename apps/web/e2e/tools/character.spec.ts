@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { asPlan } from '../support/session';
 import { registerFidelity, setMode } from './support/toolSpec';
 
 test.describe('Characters /create/character', () => {
@@ -27,6 +28,7 @@ test.describe('Characters /create/character', () => {
   });
 
   test('plan caps (D-006): on Starter, 4K images are locked and name Pro', async ({ page }) => {
+    await asPlan(page, 'starter');
     await setMode(page, 'advanced');
     await page.goto('/create/character');
     const locked = page.locator('main aside [data-group="res"] button[data-locked]');

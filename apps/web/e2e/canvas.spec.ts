@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { asPlan } from './support/session';
 import { mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { NODE } from '../src/features/canvas/mocks';
@@ -351,6 +352,7 @@ test.describe('canvas behavior', () => {
   });
 
   test('resolution caps (D-006): on Starter, 1080p and 4K are locked and name the plan that unlocks them', async ({ page }) => {
+    await asPlan(page, 'starter');
     await openApp(page);
     await page.getByRole('button', { name: '9:16 · 720p · 5s' }).click();
     const menu = page.getByRole('menu', { name: 'Resolution' });
