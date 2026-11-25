@@ -15,6 +15,9 @@ import { loadCatalog } from "../models/catalog";
 import { gatewayFetch, generationProvider, hyperouterClient } from "./provider";
 import { ports, quietly } from "./ports";
 import { advanceRun, advanceWorkspace, pushCredits } from "./service";
+import { isMatureRating, type SafetyOutput, type SafetyReference } from "@rolling/core/safety";
+import { jobPostCheck, jobPreCheck, referenceSource } from "../safety/pipeline";
+import { pictureDataUrl, r2Picture, sha256OfBytes } from "../safety/service";
 import { getItem, getJob, getRun, parseJson, refreshRun, type RunOptions } from "./store";
 
 export interface GenerateParams {
@@ -90,20 +93,21 @@ async function modelFor(env: Env, modelId: string): Promise<CatalogModel> {
 
 const SIGNED_INPUT_TTL = 6 * 3600;
 
-async function assetUrl(env: Env, ctx: JobContext, assetId: string): Promise<{ url: string; origin: ImageSource } | null> {
-  const row = await env.DB.prepare("SELECT r2_key, workspace_id, source, status FROM assets WHERE id = ?").bind(assetId).first<{
+async function assetUrl(env: Env, ctx: JobContext, assetId: string): Promise<{ url: string; origin: ImageSource; key: string; name: string } | null> {
+  const row = await env.DB.prepare("SELECT r2_key, workspace_id, source, status, name FROM assets WHERE id = ?").bind(assetId).first<{
     r2_key: string;
     workspace_id: string | null;
     source: string;
     status: string;
+    name: string;
   }>();
   if (!row || row.status !== "ready" || (row.workspace_id !== null && row.workspace_id !== ctx.workspaceId)) return null;
   const origin: ImageSource = row.source === "generated" || row.source === "public" || row.source === "builtin" ? row.source : row.source === "team" ? "team" : "upload";
-  if (row.r2_key.startsWith("public/") && env.PUBLIC_MEDIA_BASE_URL) return { url: publicMediaUrl(row.r2_key, env.PUBLIC_MEDIA_BASE_URL), origin };
+  if (row.r2_key.startsWith("public/") && env.PUBLIC_MEDIA_BASE_URL) return { url: publicMediaUrl(row.r2_key, env.PUBLIC_MEDIA_BASE_URL), origin, key: row.r2_key, name: row.name };
   const ws = row.workspace_id && keyBelongsTo(row.r2_key, row.workspace_id) ? row.workspace_id : "_";
   if (!keyBelongsTo(row.r2_key, ws)) return null;
   const url = await signMediaUrl(env, row.r2_key, { workspaceId: ws, expiresIn: SIGNED_INPUT_TTL, absolute: true });
-  return { url: url.startsWith("http") ? url : new URL(url, env.PUBLIC_APP_URL).toString(), origin };
+  return { url: url.startsWith("http") ? url : new URL(url, env.PUBLIC_APP_URL).toString(), origin, key: row.r2_key, name: row.name };
 }
 
 export interface Prepared {
@@ -112,7 +116,11 @@ export interface Prepared {
   digest: string;
 }
 
-/** `prepare`: resolves inputs to signed URLs (upstream outputs have landed by now) and builds the request. */
+/**
+ * `prepare`: resolves inputs to signed URLs (upstream outputs have landed by
+ * now), builds the request and runs the D-005 pre-check (block = the job
+ * fails before any provider call and the hold is released).
+ */
 export async function prepareJob(env: Env, ctx: JobContext, modelId: string): Promise<Prepared> {
   const model = await modelFor(env, modelId);
   let digest = `dg_spec_${ctx.jobId}`;
@@ -129,6 +137,7 @@ export async function prepareJob(env: Env, ctx: JobContext, modelId: string): Pr
     digest = !isRoomError(d) && (ctx.paramsHash === null || paramsHash(node) === ctx.paramsHash) ? d.digest : `dg_changed_${ctx.jobId}`;
   }
   const resolved: ResolvedInput[] = [];
+  const references: SafetyReference[] = [];
   for (const input of ctx.spec.inputs as GenInput[]) {
     let assetId: string | undefined;
     if ("node" in input.from) {
@@ -140,10 +149,19 @@ export async function prepareJob(env: Env, ctx: JobContext, modelId: string): Pr
     if (!a) fail("input_missing", "An input file is not available.");
     const origin: ImageSource = "node" in input.from ? "generated" : (input.from as { origin: ImageSource }).origin;
     resolved.push({ input, url: a.url, origin });
+    const ref: SafetyReference = { kind: input.media, source: referenceSource(origin), caption: a.name };
+    // Mature runs: image references go to the vision check as inline pictures (the gateway can't reach private media).
+    if (ctx.spec.mature && input.media === "image") {
+      const pic = await r2Picture(env, a.key);
+      if (pic) Object.assign(ref, { url: pic.url, hash: pic.hash });
+    }
+    references.push(ref);
   }
   const request = buildGenerateRequest(ctx.spec, model, resolved);
   const problems = requestProblems(model, request);
   if (problems.length) fail("invalid_request", `The request does not fit ${model.displayName}: ${problems.join("; ")}.`);
+  const blocked = await jobPreCheck(env, safetyJob(ctx), model, request.prompt, ctx.spec.negativePrompt, references);
+  if (blocked) fail(blocked.code, blocked.message);
   return { request, digest };
 }
 
@@ -225,57 +243,116 @@ async function download(url: string): Promise<{ body: ArrayBuffer; contentType: 
 export interface Stored {
   assetIds: string[];
   kind: "image" | "video";
+  /** D-005 content rating of the outputs (highest), null when unrated. */
+  rating?: { rating: string; confidence: number; model: string } | null;
 }
 
-/** `store`: copies outputs to R2 right away (provider URLs expire), makes thumbnails, registers assets. */
+function safetyJob(ctx: JobContext) {
+  return { jobId: ctx.jobId, runId: ctx.runId, workspaceId: ctx.workspaceId, userId: ctx.createdBy, spec: ctx.spec };
+}
+
+/**
+ * `store`: copies outputs to R2 right away (provider URLs expire), makes
+ * thumbnails, runs the D-005 post-check over what was stored, then registers
+ * assets with their content rating. A blocked output is deleted from R2 and
+ * never registered; the job fails and its hold is released.
+ */
 export async function storeOutputs(env: Env, ctx: JobContext, status: JobStatus, modelId: string): Promise<Stored> {
-  // A repeat of this step after a crash reuses what it stored.
-  const existing = await env.DB.prepare("SELECT id FROM assets WHERE json_extract(meta, '$.jobId') = ? ORDER BY name").bind(ctx.jobId).all<{ id: string }>();
-  if (existing.results.length > 0) return { assetIds: existing.results.map((r) => r.id), kind: ctx.spec.kind };
+  // A repeat of this step after a crash reuses what it stored (already reviewed).
+  const existing = await env.DB.prepare("SELECT id, rating, rating_confidence, rating_model FROM assets WHERE json_extract(meta, '$.jobId') = ? ORDER BY name")
+    .bind(ctx.jobId)
+    .all<{ id: string; rating: string | null; rating_confidence: number | null; rating_model: string | null }>();
+  if (existing.results.length > 0) {
+    const r = existing.results.find((x) => x.rating) ?? null;
+    return { assetIds: existing.results.map((r) => r.id), kind: ctx.spec.kind, rating: r ? { rating: r.rating!, confidence: r.rating_confidence ?? 0, model: r.rating_model ?? "" } : null };
+  }
   const main = status.outputs.filter((o) => o.kind === ctx.spec.kind);
   if (main.length === 0) fail("no_output", "The provider returned no output.");
   const poster = status.outputs.find((o) => o.kind === "thumbnail");
   const base = `ws/${ctx.workspaceId}/gen/${ctx.jobId}`;
-  const assetIds: string[] = [];
   const now = Date.now();
+  const written: string[] = [];
+  const files: { key: string; meta: Record<string, unknown>; size: number; contentType: string }[] = [];
+  const review: SafetyOutput[] = [];
   for (const [i, out] of main.entries()) {
     const file = await download(out.url);
     const ext = EXT[file.contentType] ?? (ctx.spec.kind === "video" ? "mp4" : "png");
     const key = `${base}/${i}.${ext}`;
     await env.MEDIA.put(key, file.body, { httpMetadata: { contentType: file.contentType } });
+    written.push(key);
+    const hash = await sha256OfBytes(file.body);
     const meta: Record<string, unknown> = { jobId: ctx.jobId, runId: ctx.runId, model: modelId };
     if (ctx.spec.kind === "image") {
+      let thumb: ArrayBuffer | null = null;
       try {
         const info = await env.IMAGES.info(new Blob([file.body]).stream());
         if ("width" in info) Object.assign(meta, { width: info.width, height: info.height });
-        const thumb = (await env.IMAGES.input(new Blob([file.body]).stream()).transform({ width: 480 }).output({ format: "image/webp" })).response();
+        thumb = await (await env.IMAGES.input(new Blob([file.body]).stream()).transform({ width: 480 }).output({ format: "image/webp" })).response().arrayBuffer();
         const thumbKey = `${base}/${i}.thumb.webp`;
-        await env.MEDIA.put(thumbKey, await thumb.arrayBuffer(), { httpMetadata: { contentType: "image/webp" } });
+        await env.MEDIA.put(thumbKey, thumb, { httpMetadata: { contentType: "image/webp" } });
+        written.push(thumbKey);
         meta.thumbKey = thumbKey;
       } catch (err) {
         // Images binding unavailable (local tests): the original serves as its own thumbnail.
         console.warn(JSON.stringify({ msg: "runs: thumbnail failed", jobId: ctx.jobId, error: String(err) }));
       }
-    } else if (poster && i === 0) {
-      try {
-        const p = await download(poster.url);
-        const thumbKey = `${base}/poster.${EXT[p.contentType] ?? "jpg"}`;
-        await env.MEDIA.put(thumbKey, p.body, { httpMetadata: { contentType: p.contentType } });
-        meta.thumbKey = thumbKey;
-      } catch (err) {
-        console.warn(JSON.stringify({ msg: "runs: poster failed", jobId: ctx.jobId, error: String(err) }));
+      const picture = (await pictureDataUrl(env, file.body, file.contentType)) ?? out.url;
+      review.push({ kind: "image", url: picture, hash });
+    } else {
+      let frame: string | null = null;
+      if (poster && i === 0) {
+        try {
+          const p = await download(poster.url);
+          const thumbKey = `${base}/poster.${EXT[p.contentType] ?? "jpg"}`;
+          await env.MEDIA.put(thumbKey, p.body, { httpMetadata: { contentType: p.contentType } });
+          written.push(thumbKey);
+          meta.thumbKey = thumbKey;
+          frame = await pictureDataUrl(env, p.body, p.contentType);
+        } catch (err) {
+          console.warn(JSON.stringify({ msg: "runs: poster failed", jobId: ctx.jobId, error: String(err) }));
+        }
       }
+      review.push({ kind: "video", frames: frame ? [frame] : [], hash });
     }
     if (ctx.spec.kind === "video" && ctx.spec.seconds) meta.durationSec = ctx.spec.seconds;
+    files.push({ key, meta, size: file.body.byteLength, contentType: file.contentType });
+  }
+
+  const checked = await jobPostCheck(env, safetyJob(ctx), review);
+  if (checked.error) {
+    await env.MEDIA.delete(written);
+    fail(checked.error.code, checked.error.message);
+  }
+  const rating = checked.verdict.rating ?? null;
+  // D-005 visibility follows the rating; unrated outputs keep the run's mature flag.
+  const mature = rating ? isMatureRating(rating.rating) : ctx.spec.mature;
+  const assetIds: string[] = [];
+  for (const [i, f] of files.entries()) {
     const assetId = newId("asset");
     await env.DB.prepare(
-      "INSERT INTO assets (id, workspace_id, kind, source, name, r2_key, meta, project_id, created_by, created_at, status, mature, size, content_type) VALUES (?, ?, ?, 'generated', ?, ?, ?, ?, ?, ?, 'ready', ?, ?, ?)",
+      "INSERT INTO assets (id, workspace_id, kind, source, name, r2_key, meta, project_id, created_by, created_at, status, mature, size, content_type, rating, rating_confidence, rating_model) VALUES (?, ?, ?, 'generated', ?, ?, ?, ?, ?, ?, 'ready', ?, ?, ?, ?, ?, ?)",
     )
-      .bind(assetId, ctx.workspaceId, ctx.spec.kind, main.length > 1 ? `${ctx.title} ${i + 1}` : ctx.title, key, JSON.stringify(meta), ctx.projectId, ctx.createdBy, now + i, ctx.spec.mature ? 1 : 0, file.body.byteLength, file.contentType)
+      .bind(
+        assetId,
+        ctx.workspaceId,
+        ctx.spec.kind,
+        main.length > 1 ? `${ctx.title} ${i + 1}` : ctx.title,
+        f.key,
+        JSON.stringify(f.meta),
+        ctx.projectId,
+        ctx.createdBy,
+        now + i,
+        mature ? 1 : 0,
+        f.size,
+        f.contentType,
+        rating?.rating ?? null,
+        rating?.confidence ?? null,
+        rating?.model ?? null,
+      )
       .run();
     assetIds.push(assetId);
   }
-  return { assetIds, kind: ctx.spec.kind };
+  return { assetIds, kind: ctx.spec.kind, rating };
 }
 
 /** Credits actually charged: the provider's cost through creditsFor (D-006), else the quoted price for the model used. */
@@ -296,7 +373,8 @@ export async function commitJob(env: Env, ctx: JobContext, stored: Stored, prepa
   let version: number | null = null;
   if (ctx.projectId && ctx.nodeId) {
     const room = p.room(ctx.projectId);
-    const r = await room.addVersion({ nodeId: ctx.nodeId, assetId: stored.assetIds[0] ?? null, inputDigest: prepared.digest, model: modelId, jobId: ctx.jobId, output: { assetIds: stored.assetIds } });
+    // The rating travels in the version output until ProjectRoom stores it as a column (M3, docs/api.md → Safety).
+    const r = await room.addVersion({ nodeId: ctx.nodeId, assetId: stored.assetIds[0] ?? null, inputDigest: prepared.digest, model: modelId, jobId: ctx.jobId, output: { assetIds: stored.assetIds, rating: stored.rating?.rating ?? null } });
     if (!isRoomError(r)) {
       version = r.version.n;
       await quietly("job.done", () => room.broadcast("job.done", { jobId: ctx.jobId, nodeId: ctx.nodeId, version: { n: r.version.n, total: r.version.n }, assetId: stored.assetIds[0] ?? null }));

@@ -18,6 +18,7 @@ import { isRoomError, roomFailure } from "../lib/room";
 import type { RoomCaller } from "../lib/access";
 import { loadCatalog } from "../models/catalog";
 import { autoClassifier } from "./provider";
+import { quoteSafety } from "../safety/pipeline";
 import { ports, quietly } from "./ports";
 import {
   getItems,
@@ -146,6 +147,9 @@ export async function quoteRun(env: Env, auth: AuthContext, req: QuoteRequest): 
     }
     items = (await planRun({ graph: graph.state, structural: structural.items, catalog, ctx: { plan: auth.plan, matureAllowed: req.matureAllowed }, classify })).items;
   }
+
+  // D-005: deterministic hard-limit rules before anything is priced or held.
+  await quoteSafety(env, auth, items, catalog);
 
   const credits = ports(env).credits(auth.workspaceId);
   const runs = items.filter((i) => i.action === "run");
