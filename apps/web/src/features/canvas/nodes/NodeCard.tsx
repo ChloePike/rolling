@@ -204,7 +204,7 @@ function Result({ node, reveal }: { node: GraphNode; reveal: boolean }) {
   const tone = str(node.params.tone, 'var(--c-tone-indigo)');
   // D-005: suggestive / explicit results are blurred with Show unless the viewer has mature content on.
   const media = mediaUrl ? (
-    <RatedThumb className={cx(styles.resultMedia, 'nodrag')} src={mediaUrl} alt={node.title} rating={rating ?? null} kind={node.kind === 'video' ? 'video' : 'image'} />
+    <RatedThumb className={cx(styles.resultMedia, 'nodrag')} src={mediaUrl} alt={node.title} rating={rating ?? null} kind={node.kind === 'video' ? 'video' : 'image'} testId={`node-media-${node.id}`} />
   ) : null;
   if (node.kind === 'image') {
     return (

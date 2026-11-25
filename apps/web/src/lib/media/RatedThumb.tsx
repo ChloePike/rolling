@@ -39,6 +39,8 @@ export interface RatedThumbProps {
   /** Overlays drawn above the media (badges, duration). */
   children?: ReactNode;
   onReveal?: () => void;
+  /** `data-testid` on the root (tests). */
+  testId?: string;
 }
 
 /**
@@ -47,7 +49,7 @@ export interface RatedThumbProps {
  * content allowed; on public surfaces they are never shown. Shared by the
  * account side and the creation features (assets, canvas, Activity, `@` picker).
  */
-export function RatedThumb({ src, alt, rating, kind = 'image', poster, publicSurface, className, style, children, onReveal }: RatedThumbProps) {
+export function RatedThumb({ src, alt, rating, kind = 'image', poster, publicSurface, className, style, children, onReveal, testId }: RatedThumbProps) {
   const intl = useIntl();
   const visible = useMatureVisible();
   const [revealed, setRevealed] = useState(false);
@@ -56,7 +58,7 @@ export function RatedThumb({ src, alt, rating, kind = 'image', poster, publicSur
 
   if (mature && publicSurface) {
     return (
-      <span className={cls} style={style} data-rating={rating} data-hidden="true">
+      <span className={cls} style={style} data-rating={rating} data-hidden="true" data-testid={testId}>
         <span className={styles.hidden}>{intl.formatMessage({ id: 'shell.media.hidden' })}</span>
       </span>
     );
@@ -65,7 +67,7 @@ export function RatedThumb({ src, alt, rating, kind = 'image', poster, publicSur
   const blurred = mature && !visible && !revealed;
   const mediaCls = [styles.media, blurred && styles.blurred].filter(Boolean).join(' ');
   return (
-    <span className={cls} style={style} data-rating={rating ?? 'safe'} data-blurred={blurred || undefined}>
+    <span className={cls} style={style} data-rating={rating ?? 'safe'} data-blurred={blurred || undefined} data-testid={testId}>
       {src ? (
         kind === 'video' && !poster ? (
           <video className={mediaCls} src={src} muted playsInline preload="metadata" aria-label={alt} />
