@@ -18,7 +18,7 @@ import { Paywall, useRunFlow, type RunRequest } from '@/features/overlays';
 import { useTemplates } from '@/features/templates/api';
 import { checkoutPlan, useCheckoutResume, useSession } from '@/lib/session';
 import { useQueryClient } from '@tanstack/react-query';
-import { agentFailure, applyProposal, createThread, sendTurn, skillId } from '@/features/overlays/agent';
+import { agentFailure, applyProposal, createThread, rememberThread, sendTurn, skillId } from '@/features/overlays/agent';
 import { isMockApi, savePendingAction, takePendingAction } from '@/features/overlays/backend';
 import { resolveAssetId } from '@/lib/transfers';
 import { HomeAgent, type HomeAgentState } from './HomeAgent';
@@ -87,6 +87,7 @@ export function HomePage() {
   const [result, setResult] = useState<HomeResultState | null>(null);
   const [agent, setAgent] = useState<HomeAgentState | null>(null);
   const [building, setBuilding] = useState(false);
+  const homeThread = useRef<string | null>(null);
   const qc = useQueryClient();
   const t = (id: string, v?: Record<string, string | number>) => intl.formatMessage({ id }, v);
 
@@ -139,6 +140,7 @@ export function HomePage() {
       // `@` uploads still in flight resolve to their asset ids first.
       const refIds = await Promise.all(refItems.map((r) => resolveAssetId(r.id)));
       const thread = await createThread({ surface: 'home', skill: skillId(skillName) });
+      homeThread.current = thread.id;
       const r = await sendTurn(thread.id, { text: brief, refs: refIds.filter((id) => id.startsWith('ast_')), llm: getAgentLlm() }, {
         onDelta: (d) => setAgent((a) => (a ? { ...a, text: a.text + d } : a)),
       });
@@ -173,7 +175,11 @@ export function HomePage() {
       (r) => {
         setBuilding(false);
         void qc.invalidateQueries({ queryKey: ['projects'] });
-        if (r.projectId) void navigate({ to: '/p/$projectId', params: { projectId: r.projectId } });
+        if (r.projectId) {
+          // The thread moves to the new project (surface canvas): the canvas panel continues it.
+          if (homeThread.current) rememberThread(`canvas:${r.projectId}`, homeThread.current);
+          void navigate({ to: '/p/$projectId', params: { projectId: r.projectId } });
+        }
       },
       (e: unknown) => {
         setBuilding(false);

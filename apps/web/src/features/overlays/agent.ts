@@ -146,6 +146,31 @@ export async function threadFor(key: string, input: Parameters<typeof createThre
   return t;
 }
 
+/** Remembers `threadId` for a surface key (e.g. a Home thread that moved to its new project's canvas). */
+export function rememberThread(key: string, threadId: string) {
+  try {
+    localStorage.setItem(threadKey(key), threadId);
+  } catch {
+    /* Storage unavailable. */
+  }
+}
+
+/** The remembered thread for a surface key, without creating one (null when none or gone). */
+export async function existingThread(key: string): Promise<Thread | null> {
+  let id: string | null = null;
+  try {
+    id = localStorage.getItem(threadKey(key));
+  } catch {
+    id = null;
+  }
+  if (!id) return null;
+  try {
+    return await getThread(id);
+  } catch {
+    return null;
+  }
+}
+
 export function forgetThread(key: string) {
   try {
     localStorage.removeItem(threadKey(key));

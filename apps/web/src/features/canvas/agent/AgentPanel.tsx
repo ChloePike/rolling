@@ -7,7 +7,7 @@ import { useAgentAllowance } from '@/lib/session/agentAllowance';
 import { pickerModels, useModels } from '@/lib/models';
 import { ModelIcon, modelIcon } from '@/lib/modelIcons';
 import { FormattedMessage, useIntl } from 'react-intl';
-import { agentFailure, threadFor } from '@/features/overlays/agent';
+import { agentFailure, existingThread } from '@/features/overlays/agent';
 import { isMockApi, savePendingAction, takePendingAction } from '@/features/overlays/backend';
 import { agentPlanOptions, applyAgentProposal, discardAgentProposal, graphProposalFrom, planOptionsFrom, sendAgentMessage, type GraphProposal } from '../api';
 import type { GraphNode } from '@rolling/core/graph';
@@ -82,20 +82,23 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
   useEffect(() => {
     if (!real) return;
     let live = true;
-    threadFor(`canvas:${projectId}`, { surface: 'canvas', projectId: projectId! }).then(
+    // Only an existing thread is read here; a new one is created on the first send (members only, D-007).
+    existingThread(`canvas:${projectId}`).then(
       (t) => {
         if (!live) return;
-        const byId = new Map(t.proposals.map((p) => [p.id, p]));
-        setMessages(
-          t.messages.map((m) => {
-            const p = m.proposalId ? byId.get(m.proposalId) : undefined;
-            const gp = p ? graphProposalFrom(p, nodes) : null;
-            const outcome = p && p.status !== 'proposed' ? (p.status as Message['outcome']) : undefined;
-            return { role: m.role === 'user' ? 'user' : 'agent', text: m.content, ...(gp ? { proposal: gp, outcome } : {}) };
-          }),
-        );
-        const openPlan = [...t.proposals].reverse().find((p) => p.kind === 'plan' && p.status === 'proposed');
-        if (openPlan) setPlanProposal({ proposalId: openPlan.id, options: planOptionsFrom(openPlan) });
+        if (t) {
+          const byId = new Map(t.proposals.map((p) => [p.id, p]));
+          setMessages(
+            t.messages.map((m) => {
+              const p = m.proposalId ? byId.get(m.proposalId) : undefined;
+              const gp = p ? graphProposalFrom(p, nodes) : null;
+              const outcome = p && p.status !== 'proposed' ? (p.status as Message['outcome']) : undefined;
+              return { role: m.role === 'user' ? 'user' : 'agent', text: m.content, ...(gp ? { proposal: gp, outcome } : {}) };
+            }),
+          );
+          const openPlan = [...t.proposals].reverse().find((p) => p.kind === 'plan' && p.status === 'proposed');
+          if (openPlan) setPlanProposal({ proposalId: openPlan.id, options: planOptionsFrom(openPlan) });
+        }
         // A brief interrupted by the join paywall resumes after checkout (D-007).
         const pendingText = takePendingAction<{ projectId: string; text: string }>('canvas.agent');
         if (pendingText?.projectId === projectId && pendingText.text) deliverRef.current(pendingText.text);
