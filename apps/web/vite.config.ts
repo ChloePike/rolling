@@ -21,6 +21,8 @@ export default defineConfig({
       '@geist-fonts': r('./node_modules/geist/dist/fonts/geist-sans'),
     },
   },
+  // Transfer workers (D-011) are module workers and code-split like the app.
+  worker: { format: 'es' },
   build: {
     // The Worker (apps/api) serves the SPA from here as static assets.
     outDir: r('./dist'),
