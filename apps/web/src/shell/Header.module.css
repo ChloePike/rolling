@@ -65,3 +65,4 @@
 }
 [role].creditsLayer{padding:16px}
 [role].accountLayer{padding:8px}
+.avatarImg{position:absolute;inset:0;width:100%;height:100%;border-radius:inherit;object-fit:cover;display:block}

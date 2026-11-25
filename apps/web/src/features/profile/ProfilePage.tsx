@@ -5,6 +5,7 @@ import { FormattedMessage, useIntl } from 'react-intl';
 import { useMe } from '@/features/account/api';
 import { motion, ResultModal, Segmented } from '@/features/account/shared';
 import { isMockApi } from '@/lib/api/mode';
+import { publicSafe } from '@/lib/media';
 import { useProfile } from './api';
 import styles from './Profile.module.css';
 
@@ -17,7 +18,11 @@ function timecode(sec: number) {
   return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
 }
 
-/** `/u/$handle` (Profile.dc.html). Public page: mature works are never listed (D-005). */
+/**
+ * `/u/$handle` (Profile.dc.html). Public page: mature works are never listed
+ * (D-005). Real API: published works open their share link; the owner sees how
+ * to publish (Share → Publish to profile) or to pick a username first.
+ */
 export function ProfilePage({ handle }: { handle: string }) {
   const intl = useIntl();
   const toast = useToast();
@@ -36,9 +41,11 @@ export function ProfilePage({ handle }: { handle: string }) {
       </div>
     );
   }
-  const own = me?.user.handle === profile.handle;
-  const count = (k: ProfileTab) => profile.works.filter((w) => w.kind === k).length;
-  const works = profile.works.filter((w) => w.kind === tab);
+  const own = profile.isYou ?? me?.user.handle === profile.handle;
+  const all = publicSafe(profile.works);
+  const count = (k: ProfileTab) => all.filter((w) => w.kind === k).length;
+  const works = all.filter((w) => w.kind === tab);
+  const emptyId = profile.unclaimed ? 'profile.empty.unclaimed' : own ? `profile.empty.own.${tab}` : isMockApi() ? 'profile.empty' : `profile.empty.other.${tab}`;
 
   async function share() {
     const url = `${window.location.origin}/u/${profile!.handle}`;
@@ -53,14 +60,14 @@ export function ProfilePage({ handle }: { handle: string }) {
   return (
     <div className={styles.page}>
       <section className={styles.head} aria-labelledby="profile-name">
-        <span className={styles.avatar} aria-hidden="true">
-          {profile.name.slice(0, 1)}
+        <span className={styles.avatar} aria-hidden="true" data-testid="profile-avatar">
+          {profile.avatarUrl ? <img src={profile.avatarUrl} alt="" className={styles.avatarImg} draggable={false} /> : profile.name.slice(0, 1)}
         </span>
         <div className={styles.who}>
           <h1 id="profile-name" className={styles.name}>
             {profile.name}
           </h1>
-          <span className={styles.handle}>@{profile.handle}</span>
+          {!profile.unclaimed && <span className={styles.handle}>@{profile.handle}</span>}
           <p className={styles.bio}>{profile.bio ?? intl.formatMessage({ id: isMockApi() ? 'profile.bio.placeholder' : 'profile.bio.empty' })}</p>
         </div>
         <div className={styles.actions}>
@@ -69,9 +76,11 @@ export function ProfilePage({ handle }: { handle: string }) {
               <FormattedMessage id="profile.edit" />
             </Link>
           )}
-          <button type="button" className={cx(styles.btn, motion.hover)} onClick={() => void share()}>
-            <FormattedMessage id="profile.share" />
-          </button>
+          {!profile.unclaimed && (
+            <button type="button" className={cx(styles.btn, motion.hover)} onClick={() => void share()}>
+              <FormattedMessage id="profile.share" />
+            </button>
+          )}
         </div>
       </section>
       <Segmented<ProfileTab>
@@ -100,17 +109,34 @@ export function ProfilePage({ handle }: { handle: string }) {
             className={cx(styles.work, motion.stagger)}
             style={{ '--i': i } as CSSProperties}
             data-work={w.id}
-            onClick={() => (tab === 'template' ? void navigate({ to: '/templates' }) : setViewing({ title: w.title, durationSec: w.durationSec }))}
+            onClick={() =>
+              tab === 'template'
+                ? void navigate({ to: '/templates' })
+                : w.shareId
+                  ? void navigate({ to: '/share/$id', params: { id: w.shareId } })
+                  : setViewing({ title: w.title, durationSec: w.durationSec })
+            }
           >
-            <span className={styles.thumb} style={{ background: TONES[i % TONES.length] }}>
-              <span className={styles.dur}>{timecode(w.durationSec)}</span>
+            <span
+              className={styles.thumb}
+              style={w.coverUrl ? { backgroundImage: `url(${w.coverUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundColor: 'var(--c-surface-4)' } : { background: TONES[i % TONES.length] }}
+            >
+              {w.durationSec > 0 && <span className={styles.dur}>{timecode(w.durationSec)}</span>}
             </span>
             <span className={styles.title}>{w.title}</span>
           </button>
         ))}
         {works.length === 0 && (
-          <p className={styles.empty}>
-            <FormattedMessage id="profile.empty" />
+          <p className={styles.empty} data-testid="profile-empty">
+            <FormattedMessage id={emptyId} />
+            {profile.unclaimed && (
+              <>
+                {' '}
+                <Link to="/settings/$section" params={{ section: 'account' }}>
+                  <FormattedMessage id="profile.empty.pickHandle" />
+                </Link>
+              </>
+            )}
           </p>
         )}
       </div>

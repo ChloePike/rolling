@@ -12,8 +12,12 @@ export function accountName(s: Pick<Session, 'user'>): string {
   return s.user?.name?.trim() || s.user?.email?.split('@')[0] || '';
 }
 
-/** Public handle for `/u/:handle` until handles exist on the server: the email's local part, lowercased and safe. */
+/**
+ * Public handle for `/u/:handle`: the server handle once chosen, else a stand-in
+ * from the email's local part (the profile page then offers to claim a handle).
+ */
 export function accountHandle(s: Pick<Session, 'user'>): string {
+  if (s.user?.handle) return s.user.handle;
   const base = (s.user?.email?.split('@')[0] ?? s.user?.name ?? 'me').toLowerCase().replace(/[^a-z0-9_]/g, '');
   return base.length >= 3 ? base.slice(0, 24) : `${base}_me`.slice(0, 24);
 }

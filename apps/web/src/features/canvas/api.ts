@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { getPrefs } from '@/lib/prefs';
 import { checkoutTopUp, getCredits as getSessionCredits } from '@/lib/session';
 import { apiFetch, ApiError, isApiError, isMockApi, openProjectChannel } from '@/features/overlays/backend';
@@ -330,29 +330,84 @@ export interface ShareSettings {
   audience: ShareAudience;
   allowDownloads: boolean;
   showPrompt: boolean;
+  /** "Publish to profile" (real API only; the dialog shows the row when set). */
+  showOnProfile?: boolean;
 }
+
+export type SharePatch = Partial<Pick<ShareSettings, 'audience' | 'allowDownloads' | 'showPrompt' | 'showOnProfile'>>;
 
 const shareKey = (id: string) => `rolling.canvas.share.${id}`;
 type StoredShare = Omit<ShareSettings, 'snapshotAt'> & { snapshotAt: string };
 const shares = observable<Record<string, ShareSettings>>(() => ({}));
+const shareLoads = new Map<string, Promise<void>>();
 
 function defaultShare(): ShareSettings {
-  // Real mode: nothing is shared until the first publish (the API has no share read; the last known state is kept locally).
-  if (!isMockApi()) return { active: false, url: '', snapshotAt: new Date(), audience: 'link', allowDownloads: false, showPrompt: true };
+  // Real mode: nothing is shared until the first publish; `GET /api/projects/:id/share` replaces this on open.
+  if (!isMockApi()) return { active: false, url: '', snapshotAt: new Date(), audience: 'link', allowDownloads: false, showPrompt: true, showOnProfile: false };
   return { active: true, url: MOCK_SHARE.url, snapshotAt: MOCK_SHARE.snapshotAt, audience: 'link', allowDownloads: false, showPrompt: true };
 }
 
-interface ShareResponse {
-  shareId: string;
-  url: string;
+interface ShareSettingsWire {
+  audience: ShareAudience;
   allowDownload: boolean;
-  createdAt: number;
+  showPrompt: boolean;
+  showOnProfile: boolean;
 }
 
-/** `POST /api/projects/:id/share { allowDownload }`: (re)writes the snapshot; the link stays the same. */
-async function postShare(projectId: string, cur: ShareSettings, allowDownloads: boolean): Promise<ShareSettings> {
-  const r = await apiFetch<ShareResponse>(`/projects/${encodeURIComponent(projectId)}/share`, { method: 'POST', body: { allowDownload: allowDownloads } });
-  return saveShare(projectId, { ...cur, active: true, url: r.url.replace(/^https?:\/\//, ''), allowDownloads: r.allowDownload, snapshotAt: new Date(r.createdAt || Date.now()) });
+/** `GET` and `PATCH /api/projects/:id/share` answer this; `POST` answers `{ shareId, url, createdAt, ...settings }`. */
+interface ShareStateWire extends ShareSettingsWire {
+  enabled: boolean;
+  url: string | null;
+  snapshotAt: number | null;
+}
+
+function fromWire(cur: ShareSettings, w: ShareSettingsWire & { url: string | null; at: number | null; active: boolean }): ShareSettings {
+  return {
+    ...cur,
+    active: w.active,
+    url: w.active && w.url ? w.url.replace(/^https?:\/\//, '') : cur.url,
+    snapshotAt: w.at ? new Date(w.at) : cur.snapshotAt,
+    audience: w.audience,
+    allowDownloads: w.allowDownload,
+    showPrompt: w.showPrompt,
+    showOnProfile: w.showOnProfile,
+  };
+}
+
+function toWire(p: SharePatch): Partial<ShareSettingsWire> {
+  return {
+    ...(p.audience !== undefined ? { audience: p.audience } : {}),
+    ...(p.allowDownloads !== undefined ? { allowDownload: p.allowDownloads } : {}),
+    ...(p.showPrompt !== undefined ? { showPrompt: p.showPrompt } : {}),
+    ...(p.showOnProfile !== undefined ? { showOnProfile: p.showOnProfile } : {}),
+  };
+}
+
+/** `POST /api/projects/:id/share` with every setting: (re)writes the snapshot; the link stays the same. */
+async function postShare(projectId: string, cur: ShareSettings): Promise<ShareSettings> {
+  const r = await apiFetch<ShareSettingsWire & { shareId: string; url: string; createdAt: number }>(`/projects/${encodeURIComponent(projectId)}/share`, {
+    method: 'POST',
+    body: toWire(cur),
+  });
+  return saveShare(projectId, fromWire(cur, { ...r, at: r.createdAt || Date.now(), active: true }));
+}
+
+/** Reads the server's share state (real API), so the dialog shows it after a reload too. */
+export function loadShare(projectId: string): Promise<void> {
+  if (isMockApi()) return Promise.resolve();
+  let p = shareLoads.get(projectId);
+  if (!p) {
+    p = apiFetch<ShareStateWire>(`/projects/${encodeURIComponent(projectId)}/share`)
+      .then((r) => {
+        saveShare(projectId, fromWire(getShare(projectId), { ...r, at: r.snapshotAt, active: r.enabled }));
+      })
+      .catch(() => {
+        // Keep the last known state; the next open retries.
+        shareLoads.delete(projectId);
+      });
+    shareLoads.set(projectId, p);
+  }
+  return p;
 }
 
 export function getShare(projectId = MOCK_PROJECT.id): ShareSettings {
@@ -364,6 +419,9 @@ export function getShare(projectId = MOCK_PROJECT.id): ShareSettings {
 
 export function useShare(projectId: string): ShareSettings {
   useSyncExternalStore(shares.subscribe, shares.get, shares.get);
+  useEffect(() => {
+    void loadShare(projectId);
+  }, [projectId]);
   return getShare(projectId);
 }
 
@@ -373,13 +431,24 @@ function saveShare(projectId: string, next: ShareSettings): ShareSettings {
   return next;
 }
 
-/** `PATCH /api/projects/:id/share`. */
-export async function updateShare(projectId: string, patch: Partial<Pick<ShareSettings, 'audience' | 'allowDownloads' | 'showPrompt'>>): Promise<ShareSettings> {
-  const next = { ...getShare(projectId), ...patch };
-  // Downloads are a share setting on the server: re-sharing refreshes the snapshot with it. Audience and
-  // "show prompt" have no API yet and stay local (TODO(api): share settings endpoint).
-  if (!isMockApi() && next.active && patch.allowDownloads !== undefined) return postShare(projectId, next, next.allowDownloads);
-  return saveShare(projectId, next);
+/**
+ * Share settings. Real API: `PATCH /api/projects/:id/share` changes them on the
+ * active link without re-publishing (the server enforces the audience; prompts
+ * are hidden at once and shown again from the next publish). With sharing off
+ * they are kept and sent with the next publish.
+ */
+export async function updateShare(projectId: string, patch: SharePatch): Promise<ShareSettings> {
+  const cur = getShare(projectId);
+  const next = { ...cur, ...patch };
+  if (isMockApi() || !cur.active) return saveShare(projectId, next);
+  saveShare(projectId, next);
+  try {
+    const r = await apiFetch<ShareStateWire>(`/projects/${encodeURIComponent(projectId)}/share`, { method: 'PATCH', body: toWire(patch) });
+    return saveShare(projectId, fromWire(next, { ...r, at: r.snapshotAt, active: r.enabled }));
+  } catch {
+    // Refused (role, network): the toggle visibly snaps back.
+    return saveShare(projectId, cur);
+  }
 }
 
 /** `DELETE /api/projects/:id/share`: the link stops working. */
@@ -388,10 +457,10 @@ export async function stopSharing(projectId: string): Promise<ShareSettings> {
   return saveShare(projectId, { ...getShare(projectId), active: false });
 }
 
-/** `POST /api/projects/:id/share`: a new snapshot (and a link again after stopping). */
+/** `POST /api/projects/:id/share`: a new snapshot (and a link again after stopping), with the current settings. */
 export async function publishShare(projectId: string = MOCK_PROJECT.id): Promise<ShareSettings> {
   const cur = getShare(projectId);
-  if (!isMockApi()) return postShare(projectId, cur, cur.allowDownloads);
+  if (!isMockApi()) return postShare(projectId, cur);
   const url = cur.active ? cur.url : `${MOCK_SHARE.url.replace(/\/s\/.*/, '')}/s/${Math.random().toString(36).slice(2, 6)}-${Math.random().toString(36).slice(2, 6)}`;
   return saveShare(projectId, { ...cur, active: true, url, snapshotAt: new Date() });
 }

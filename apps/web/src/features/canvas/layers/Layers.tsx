@@ -359,7 +359,7 @@ function EditableText({
 export interface ShareDialogProps extends LayerProps {
   share: ShareSettings;
   onCopy: () => void;
-  onUpdate: (patch: Partial<Pick<ShareSettings, 'audience' | 'allowDownloads' | 'showPrompt'>>) => void;
+  onUpdate: (patch: Partial<Pick<ShareSettings, 'audience' | 'allowDownloads' | 'showPrompt' | 'showOnProfile'>>) => void;
   onStop: () => void;
   onPublish: () => void;
   busy: boolean;
@@ -369,9 +369,11 @@ export function ShareDialog({ state, onClose, share, onCopy, onUpdate, onStop, o
   const intl = useIntl();
   const ref = useLayer<HTMLDivElement>(state === 'open', onClose, { modal: true });
   const [audienceOpen, setAudienceOpen] = useState(false);
-  const toggles: Array<{ k: 'download' | 'prompt'; on: boolean; flip: () => void }> = [
+  const toggles: Array<{ k: 'download' | 'prompt' | 'profile'; on: boolean; flip: () => void }> = [
     { k: 'download', on: share.allowDownloads, flip: () => onUpdate({ allowDownloads: !share.allowDownloads }) },
     { k: 'prompt', on: share.showPrompt, flip: () => onUpdate({ showPrompt: !share.showPrompt }) },
+    // "Publish to profile" comes with the real API (the setting is undefined in the design mock).
+    ...(share.showOnProfile !== undefined ? [{ k: 'profile' as const, on: share.showOnProfile, flip: () => onUpdate({ showOnProfile: !share.showOnProfile }) }] : []),
   ];
   const audienceLabel = (a: ShareAudience) => intl.formatMessage({ id: `canvas.shareDialog.view.${a}` });
   return (

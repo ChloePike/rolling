@@ -65,7 +65,8 @@ export interface WorkspaceRef {
 }
 
 export interface MeResponse {
-  user: { id: string; email: string | null; name: string; image: string | null; emailVerified: boolean };
+  /** `handle` is null until the user picks one; `image` is the avatar URL (`/api/media/avatar/…` or a provider photo). */
+  user: { id: string; email: string | null; name: string; image: string | null; emailVerified: boolean; handle?: string | null; bio?: string | null };
   workspace: { id: string; name: string; kind: 'personal' | 'team'; matureAllowed: boolean };
   role: Role;
   monthlyCreditLimit: number | null;
@@ -188,6 +189,8 @@ export interface InviteView {
   id: string;
   email: string;
   role: Role;
+  /** Applied to the member on accept; null = no limit. */
+  monthlyCreditLimit?: number | null;
   invitedBy: string;
   createdAt: number;
   expiresAt: number;
@@ -251,4 +254,32 @@ export interface ShareSnapshot {
   nodes: ShareNode[];
   edges: GraphEdge[];
   groups: GraphGroup[];
+}
+
+/** `GET /api/profiles/:handle` (public). D-005: only safe covers are listed by the server. */
+export interface ProfileResponse {
+  userId: string;
+  name: string;
+  handle: string;
+  bio: string | null;
+  avatarUrl: string | null;
+  works: { shareId: string; title: string; url: string; coverUrl: string | null; kind: 'image' | 'video'; durationSec: number | null; createdAt: number }[];
+  templates: { id: string; title: string; category: string | null; coverUrl: string | null; uses: number }[];
+  isYou: boolean;
+}
+
+/** `PATCH /api/me/profile`. */
+export interface ProfileUpdate {
+  profile: { name: string; handle: string | null; bio: string | null; image: string | null };
+}
+
+/** `GET /api/billing/payment-method`. */
+export interface PaymentMethodView {
+  id: string;
+  type: string;
+  brand: string | null;
+  last4: string | null;
+  expMonth: number | null;
+  expYear: number | null;
+  wallet: string | null;
 }

@@ -26,6 +26,10 @@ export type ApiErrorCode =
   | 'SEATS_IN_USE'
   | 'PAYMENT_FAILED'
   | 'AGENT_ALLOWANCE_EXHAUSTED'
+  | 'HANDLE_TAKEN'
+  | 'OWNER_OF_TEAM'
+  | 'AVATAR_REJECTED'
+  | 'SAFETY_UNAVAILABLE'
   | 'NOT_IMPLEMENTED'
   | 'INTERNAL'
   /** Client side: the request never got an answer (offline, DNS, CORS). */
@@ -53,6 +57,9 @@ export interface ApiErrorData {
   CONFLICT: { reason?: string; state?: string; status?: string };
   FORBIDDEN: { required?: string; role?: string; email?: string };
   PAYMENT_FAILED: { seats?: number; current?: number };
+  HANDLE_TAKEN: { handle?: string };
+  OWNER_OF_TEAM: { workspaces?: { id: string; name: string; members: number }[] };
+  AVATAR_REJECTED: { reason?: 'rating' | 'blocked'; rating?: string };
 }
 
 export type DataFor<C extends ApiErrorCode> = C extends keyof ApiErrorData ? ApiErrorData[C] : Record<string, unknown>;
@@ -61,7 +68,7 @@ const KNOWN = new Set<string>([
   'BAD_REQUEST', 'VALIDATION_FAILED', 'UNAUTHENTICATED', 'FORBIDDEN', 'NOT_FOUND', 'CONFLICT', 'RATE_LIMITED', 'INVALID_CODE',
   'CODE_EXPIRED', 'TOO_MANY_ATTEMPTS', 'NO_PLAN', 'INSUFFICIENT_CREDITS', 'QUOTE_EXPIRED', 'MEMBER_LIMIT_REACHED',
   'CONCURRENCY_LIMIT', 'SEAT_LIMIT_REACHED', 'TEAM_REQUIRED', 'SEATS_REQUIRED', 'SEATS_IN_USE', 'PAYMENT_FAILED',
-  'AGENT_ALLOWANCE_EXHAUSTED', 'NOT_IMPLEMENTED', 'INTERNAL',
+  'AGENT_ALLOWANCE_EXHAUSTED', 'HANDLE_TAKEN', 'OWNER_OF_TEAM', 'AVATAR_REJECTED', 'SAFETY_UNAVAILABLE', 'NOT_IMPLEMENTED', 'INTERNAL',
 ]);
 
 export class ApiError<C extends ApiErrorCode = ApiErrorCode> extends Error {

@@ -118,7 +118,7 @@ test.describe('settings (Settings.dc.html)', () => {
     await expect(page.getByRole('switch', { name: 'Plan renewal' })).toHaveAttribute('aria-checked', 'true');
   });
 
-  test('account: edits validate inline, save with a toast; photo uses a real file chooser', async ({ page }) => {
+  test('account: edits validate inline, save with a toast; taken handles refused; bio saves; photo uses a real file chooser', async ({ page }) => {
     await page.addInitScript(() => {
       (window as unknown as { __rollingMocks: Record<string, unknown> }).__rollingMocks = { delayMs: 150 };
     });
@@ -128,8 +128,12 @@ test.describe('settings (Settings.dc.html)', () => {
     await handle.fill('@Bad Name');
     await expect(page.getByTestId('save-bar')).toBeVisible();
     await page.getByRole('button', { name: 'Save', exact: true }).click();
-    await expect(page.getByRole('alert')).toHaveText('Use 3–24 lowercase letters, numbers or underscores.');
-    await handle.fill('@alex_makes');
+    await expect(page.getByRole('alert')).toHaveText('Use 3–30 lowercase letters, numbers, dots or underscores.');
+    await handle.fill('@taken');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.getByRole('alert')).toHaveText('That username is taken. Try another.');
+    await handle.fill('@alex.makes');
+    await page.getByLabel('Bio').fill('Short ads for small brands.');
     await page.getByLabel('Name', { exact: true }).fill('Alex C.');
     await page.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(page.getByText('Profile saved.')).toBeVisible();
@@ -140,9 +144,30 @@ test.describe('settings (Settings.dc.html)', () => {
     await page.getByRole('button', { name: 'Change photo' }).click();
     await (await chooser).setFiles({ name: 'me.png', mimeType: 'image/png', buffer: Buffer.from('89504e470d0a1a0a', 'hex') });
     await expect(page.getByText('Photo updated.')).toBeVisible();
+    await expect(page.getByTestId('account-avatar')).toHaveAttribute('style', /background-image/);
   });
 
-  test('account: manage sign-in keeps one method; delete needs the confirm word and signs out', async ({ page }) => {
+  test('account: changing the email asks for the code sent to the new address', async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as unknown as { __rollingMocks: Record<string, unknown> }).__rollingMocks = { delayMs: 50 };
+    });
+    await openApp(page, '/settings/account');
+    await page.getByLabel('Email', { exact: true }).fill('alex@new.example');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    const dlg = page.getByRole('dialog', { name: 'Confirm your new email' });
+    await expect(dlg).toContainText('alex@new.example');
+    const confirm = dlg.getByRole('button', { name: 'Confirm email' });
+    await expect(confirm).toBeDisabled();
+    await dlg.getByLabel('6-digit code').fill('000000');
+    await confirm.click();
+    await expect(dlg.getByRole('alert')).toHaveText('That code isn’t right. Check the email and try again.');
+    await dlg.getByLabel('6-digit code').fill('123456');
+    await confirm.click();
+    await expect(page.getByText('Your email is now alex@new.example.')).toBeVisible();
+    await expect(dlg).toHaveCount(0);
+  });
+
+  test('account: manage sign-in keeps one method; delete needs the emailed code and signs out', async ({ page }) => {
     await page.addInitScript(() => {
       (window as unknown as { __rollingMocks: Record<string, unknown> }).__rollingMocks = { delayMs: 50 };
     });
@@ -160,9 +185,14 @@ test.describe('settings (Settings.dc.html)', () => {
 
     await page.getByRole('button', { name: 'Delete account' }).click();
     const del = page.getByRole('dialog', { name: 'Delete your account?' });
+    await del.getByRole('button', { name: 'Email me a code' }).click();
+    await expect(del).toContainText('We sent a 6-digit code to');
     const confirm = del.getByRole('button', { name: 'Delete account' });
     await expect(confirm).toBeDisabled();
-    await del.getByLabel('Type “delete” to confirm').fill('delete');
+    await del.getByLabel('6-digit code').fill('000000');
+    await confirm.click();
+    await expect(del.getByRole('alert')).toHaveText('That code isn’t right. Check the email and try again.');
+    await del.getByLabel('6-digit code').fill('424242');
     await confirm.click();
     await expect(page).toHaveURL(/\/login$/);
   });

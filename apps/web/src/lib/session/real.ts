@@ -56,7 +56,7 @@ export function sessionFromMe(me: MeResponse): Session {
     : null;
   return derive(me.isMember ? plan : null, me.workspace.matureAllowed, {
     status: 'signedIn',
-    user: { id: me.user.id, email: me.user.email, name: me.user.name, image: me.user.image },
+    user: { id: me.user.id, email: me.user.email, name: me.user.name, image: me.user.image, handle: me.user.handle ?? null },
     workspace: me.workspace,
     workspaces: me.workspaces,
     role: me.role,

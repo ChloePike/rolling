@@ -121,6 +121,7 @@ a.btn{display:inline-block;line-height:32px}
 .fieldWrap{display:flex;flex-direction:column;gap:4px;align-items:flex-start}
 .fieldError{margin:0;font-size:12px;color:var(--c-danger)}
 .fieldFull{width:100%}
+.fieldWide{width:min(100%,360px)}
 .saveBar{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:12px 0;border-bottom:1px solid var(--c-border)}
 .saveBar > span{margin-right:auto}
 .btn:disabled{cursor:default;opacity:.55}

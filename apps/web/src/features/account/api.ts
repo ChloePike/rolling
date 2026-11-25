@@ -4,10 +4,10 @@ import { PLAN_ORDER, PLANS, type PlanId } from '@rolling/core/pricing/config';
 import { api } from '@/lib/api/client';
 import { ApiError as HttpError, isApiError } from '@/lib/api/errors';
 import { isMockApi } from '@/lib/api/mode';
-import type { AutoTopUpView, BillingSummary, InvoiceView, LedgerPage, MembersResponse, MeResponse, SeatsPreview } from '@/lib/api/types';
+import type { AutoTopUpView, BillingSummary, InvoiceView, LedgerPage, MembersResponse, MeResponse, PaymentMethodView, ProfileUpdate, SeatsPreview } from '@/lib/api/types';
+import { uploadFiles } from '@/lib/transfers';
 import { topUpFor, topUpPresets, type TopUpOption } from '@/lib/topUp';
 import { checkoutTopUp, getSession, ME_KEY, meQuery, mockOverrides, MockFlowError, openBillingPortal, refetchMe, useSession } from '@/lib/session';
-import { accountHandle } from '@/shell/account';
 import { invoicesMock, meMock, membersMock } from './mocks';
 import type { Invoice, Me, Member, Prefs, Role } from './types';
 
@@ -17,8 +17,11 @@ import type { Invoice, Me, Member, Prefs, Role } from './types';
  * Real API (docs/api.md): `GET /api/me` (shared with lib/session), `GET
  * /api/billing`, `PATCH /api/billing/auto-topup`, `GET /api/billing/ledger`,
  * `GET /api/billing/invoices`, `POST /api/billing/portal`, `GET
- * /api/billing/seats/preview`, `/api/workspace/members|invites`, Better Auth
- * `update-user` / `list-accounts` / `link-social` / `unlink-account`.
+ * /api/billing/seats/preview`, `GET /api/billing/payment-method`,
+ * `/api/workspace/members|invites`, `PATCH /api/me/profile` (name, handle, bio,
+ * avatar), account deletion (`POST /api/me/delete/send-code`, `POST
+ * /api/me/delete`), Better Auth `email-otp/request-email-change` /
+ * `email-otp/change-email` / `list-accounts` / `link-social` / `unlink-account`.
  *
  * Mock mode (`VITE_API_MODE=mock`): in-memory data from `mocks.ts`. The test
  * seam `window.__rollingMocks.me` is merged over the mock user here, e.g.
@@ -30,7 +33,7 @@ import type { Invoice, Me, Member, Prefs, Role } from './types';
 /** API error with a code from docs/api.md (`NO_PLAN`, `VALIDATION`, ...). Mock flows throw it; real calls throw `HttpError`. */
 export class ApiError extends Error {
   constructor(
-    readonly code: 'NO_PLAN' | 'VALIDATION' | 'NOT_FOUND' | 'CARD_DECLINED' | 'TEAM_REQUIRED' | 'SEATS_REQUIRED',
+    readonly code: 'NO_PLAN' | 'VALIDATION' | 'NOT_FOUND' | 'CARD_DECLINED' | 'TEAM_REQUIRED' | 'SEATS_REQUIRED' | 'HANDLE_TAKEN' | 'INVALID_CODE' | 'AVATAR_REJECTED',
     message: string = code,
   ) {
     super(message);
@@ -66,7 +69,9 @@ function wait(): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-export const HANDLE_RE = /^[a-z0-9_]{3,24}$/;
+/** Server rule (`@rolling/core/auth/profile`): 3–30 of a–z, 0–9, `_` and `.`. */
+export const HANDLE_RE = /^[a-z0-9_.]{3,30}$/;
+export const BIO_MAX = 160;
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // ---------------------------------------------------------------- real mapping
@@ -74,15 +79,17 @@ export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const toPeriod = (i: 'month' | 'year' | null | undefined) => (i === 'year' ? ('yearly' as const) : ('monthly' as const));
 
 /** The Settings view model from `/api/me` and `/api/billing`. */
-export function accountFromApi(m: MeResponse, b: BillingSummary | undefined, signIn: Me['user']['signIn'] = 'email'): Me {
+export function accountFromApi(m: MeResponse, b: BillingSummary | undefined, signIn: Me['user']['signIn'] = 'email', card: PaymentMethodView | null = null): Me {
   const auto: AutoTopUpView | null = b?.autoTopUp ?? null;
   return {
     user: {
       id: m.user.id,
       name: m.user.name || (m.user.email ?? '').split('@')[0] || '',
-      handle: accountHandle({ user: m.user }),
+      handle: m.user.handle ?? '',
       email: m.user.email ?? '',
       signIn,
+      bio: m.user.bio ?? null,
+      image: m.user.image,
     },
     workspace: { id: m.workspace.id, name: m.workspace.name, matureAllowed: m.workspace.matureAllowed },
     role: m.role,
@@ -104,8 +111,8 @@ export function accountFromApi(m: MeResponse, b: BillingSummary | undefined, sig
     plan: m.plan ? { id: m.plan.id, period: toPeriod(m.plan.interval), status: 'active', seats: m.plan.perks.seats } : null,
     balance: { plan: m.balance.plan, purchased: m.balance.purchased, held: m.balance.held },
     autoTopUp: { enabled: auto?.enabled ?? false, below: auto?.thresholdCredits ?? 200, amountUsd: (auto?.amountCents ?? 1000) / 100 },
-    // Cards live in the Stripe customer portal; the API does not expose them.
-    paymentMethod: null,
+    // Read from `GET /api/billing/payment-method`; changes go through the Stripe portal.
+    paymentMethod: card ? cardFromApi(card) : null,
     cancelAtPeriodEnd: b?.cancelAtPeriodEnd ?? m.plan?.cancelAtPeriodEnd ?? false,
     periodEnd: b?.periodEnd ?? m.plan?.currentPeriodEnd ?? null,
     periodStart: b?.periodStart ?? null,
@@ -113,10 +120,17 @@ export function accountFromApi(m: MeResponse, b: BillingSummary | undefined, sig
   };
 }
 
+export function cardFromApi(c: PaymentMethodView): Me['paymentMethod'] {
+  const brand = c.wallet ? c.wallet.replace(/_/g, ' ') : (c.brand ?? c.type);
+  const label = brand ? brand.charAt(0).toUpperCase() + brand.slice(1) : 'Card';
+  const expires = c.expMonth && c.expYear ? `${String(c.expMonth).padStart(2, '0')}/${String(c.expYear).slice(-2)}` : '';
+  return { brand: label, last4: c.last4 ?? '', expires };
+}
+
 export function membersFromApi(r: MembersResponse): Member[] {
   return [
     ...r.members.map((m) => ({ id: m.userId, name: m.name || m.email.split('@')[0] || m.email, email: m.email, role: m.role, monthlyCreditLimit: m.monthlyCreditLimit, isYou: m.isYou })),
-    ...r.invites.map((i) => ({ id: i.id, name: i.email.split('@')[0] || i.email, email: i.email, role: i.role, monthlyCreditLimit: null, invited: true, expiresAt: i.expiresAt })),
+    ...r.invites.map((i) => ({ id: i.id, name: i.email.split('@')[0] || i.email, email: i.email, role: i.role, monthlyCreditLimit: i.monthlyCreditLimit ?? null, invited: true, expiresAt: i.expiresAt })),
   ];
 }
 
@@ -154,20 +168,70 @@ export async function fetchTopUps(plan: PlanId | null): Promise<TopUpOption[]> {
 
 // ---------------------------------------------------------------- writes
 
-/** Profile: name (Better Auth `update-user`); handle and email only in the mock (no API yet). */
-export async function patchProfile(patch: Partial<Pick<Me['user'], 'name' | 'handle' | 'email'>>): Promise<Me> {
+/**
+ * `PATCH /api/me/profile`: name, handle and bio. `HANDLE_TAKEN` (409) when the
+ * handle belongs to someone else or is reserved. Email changes go through
+ * `requestEmailChange` / `confirmEmailChange`.
+ */
+export async function patchProfile(patch: Partial<Pick<Me['user'], 'name' | 'handle'>> & { bio?: string | null }): Promise<Me> {
   if (patch.name !== undefined && !patch.name.trim()) throw new ApiError('VALIDATION', 'name');
+  if (patch.handle !== undefined && !HANDLE_RE.test(patch.handle)) throw new ApiError('VALIDATION', 'handle');
   if (!isMockApi()) {
-    if (patch.name !== undefined) await api.post('/auth/update-user', { name: patch.name.trim() }, { noWorkspace: true });
+    const body: Record<string, unknown> = {};
+    if (patch.name !== undefined) body.name = patch.name.trim();
+    if (patch.handle !== undefined) body.handle = patch.handle;
+    if (patch.bio !== undefined) body.bio = patch.bio ?? '';
+    if (Object.keys(body).length) await api.patch<ProfileUpdate>('/me/profile', body);
     await refetchMe();
     return structuredClone(current());
   }
   await wait();
-  if (patch.handle !== undefined && !HANDLE_RE.test(patch.handle)) throw new ApiError('VALIDATION', 'handle');
-  if (patch.email !== undefined && !EMAIL_RE.test(patch.email)) throw new ApiError('VALIDATION', 'email');
+  if (patch.handle === 'taken') throw new ApiError('HANDLE_TAKEN');
   const base = current();
   me = { ...base, user: { ...base.user, ...patch } };
   return structuredClone(me);
+}
+
+/**
+ * New avatar: the file goes through the shared upload queue (direct to R2,
+ * D-011), then `PATCH /api/me/profile { avatarAssetId }`; the server rates it
+ * and refuses anything but safe images (`AVATAR_REJECTED`, D-005). Mock: an
+ * object URL. Returns the new image URL.
+ */
+export async function uploadAvatar(file: File): Promise<string> {
+  if (isMockApi()) {
+    await wait();
+    const url = URL.createObjectURL(file);
+    const base = current();
+    me = { ...base, user: { ...base.user, image: url } };
+    return url;
+  }
+  const { items, rejected } = uploadFiles([file], { purpose: 'other', priority: 'high', quiet: true });
+  if (rejected.length || !items[0]) throw new ApiError('VALIDATION', 'avatar');
+  const { assetId } = await items[0].done;
+  const r = await api.patch<ProfileUpdate>('/me/profile', { avatarAssetId: assetId });
+  await refetchMe();
+  return r.profile.image ?? '';
+}
+
+/** Email change, step 1: a 6-digit code goes to the new address (Better Auth email OTP). */
+export async function requestEmailChange(newEmail: string): Promise<void> {
+  if (!EMAIL_RE.test(newEmail)) throw new ApiError('VALIDATION', 'email');
+  if (isMockApi()) return wait();
+  await api.post('/auth/email-otp/request-email-change', { newEmail }, { noWorkspace: true });
+}
+
+/** Email change, step 2: the code from the new inbox switches the account's email. Mock: `000000` is wrong. */
+export async function confirmEmailChange(newEmail: string, otp: string): Promise<void> {
+  if (isMockApi()) {
+    await wait();
+    if (otp === '000000') throw new ApiError('INVALID_CODE');
+    const base = current();
+    me = { ...base, user: { ...base.user, email: newEmail } };
+    return;
+  }
+  await api.post('/auth/email-otp/change-email', { newEmail, otp }, { noWorkspace: true });
+  await refetchMe();
 }
 
 export async function patchPrefs(patch: Partial<Prefs>): Promise<Me> {
@@ -231,7 +295,11 @@ export async function patchPaymentMethod(card: { number: string; expires: string
 export async function inviteMember(input: { email: string; role: Role; monthlyCreditLimit: number | null }): Promise<Member[]> {
   if (!EMAIL_RE.test(input.email)) throw new ApiError('VALIDATION', 'email');
   if (!isMockApi()) {
-    await api.post('/workspace/invites', { email: input.email, role: input.role === 'owner' ? 'editor' : input.role });
+    await api.post('/workspace/invites', {
+      email: input.email,
+      role: input.role === 'owner' ? 'editor' : input.role,
+      ...(input.monthlyCreditLimit !== null ? { monthlyCreditLimit: input.monthlyCreditLimit } : {}),
+    });
     void refetchMe();
     return fetchMembers();
   }
@@ -286,9 +354,27 @@ export function saveFile(name: string, blob: Blob) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-/** Account deletion: mock only (the API has no delete route yet; the real dialog says so). */
-export async function deleteAccount(): Promise<void> {
-  await wait();
+/**
+ * Account deletion, step 1: the server checks the account can go (a Team you
+ * own with other members needs a new owner first: `OWNER_OF_TEAM`) and emails a
+ * code. Mock: always sends.
+ */
+export async function sendDeleteCode(): Promise<{ email: string }> {
+  if (isMockApi()) {
+    await wait();
+    return { email: current().user.email };
+  }
+  return api.post<{ email: string }>('/me/delete/send-code', {}, { noWorkspace: true });
+}
+
+/** Account deletion, step 2: the emailed code deletes the account and ends the session. Mock: `000000` is wrong. */
+export async function deleteAccount(code: string): Promise<void> {
+  if (isMockApi()) {
+    await wait();
+    if (code === '000000') throw new ApiError('INVALID_CODE');
+    return;
+  }
+  await api.post('/me/delete', { code }, { noWorkspace: true });
 }
 
 /** Top-up quotes live in lib/topUp (shared with the header and the paywall). */
@@ -322,6 +408,18 @@ export function useBilling() {
   });
 }
 
+/** `GET /api/billing/payment-method` (owners, real only): the Stripe default card. */
+export function useCardOnFile() {
+  const { workspace, status, role } = useSession();
+  return useQuery({
+    queryKey: ['billing', 'payment-method', workspace?.id ?? null],
+    queryFn: async () => (await api.get<{ paymentMethod: PaymentMethodView | null }>('/billing/payment-method')).paymentMethod,
+    enabled: !isMockApi() && status === 'signedIn' && role === 'owner',
+    staleTime: 60_000,
+    retry: false,
+  });
+}
+
 /** Linked sign-in methods (Better Auth `list-accounts`), real only. */
 export function useLinkedAccounts() {
   const { status } = useSession();
@@ -338,13 +436,14 @@ export function useMe(): { data: Me | undefined; isPending: boolean } {
   const real = useQuery({ ...meQuery(), enabled: !isMockApi() });
   const billing = useBilling();
   const accounts = useLinkedAccounts();
+  const card = useCardOnFile();
   const data = useMemo(() => {
     if (isMockApi()) return mock.data;
     if (!real.data) return undefined;
     const ids = (accounts.data ?? []).map((a) => a.providerId);
     const signIn: Me['user']['signIn'] = ids.includes('google') ? 'google' : ids.includes('apple') ? 'apple' : 'email';
-    return accountFromApi(real.data, billing.data, signIn);
-  }, [mock.data, real.data, billing.data, accounts.data]);
+    return accountFromApi(real.data, billing.data, signIn, card.data ?? null);
+  }, [mock.data, real.data, billing.data, accounts.data, card.data]);
   return { data, isPending: isMockApi() ? mock.isPending : real.isPending };
 }
 
@@ -515,8 +614,5 @@ export async function unlinkProvider(provider: 'google' | 'apple'): Promise<void
   await api.post('/auth/unlink-account', { providerId: provider }, { noWorkspace: true });
 }
 
-/** Signals a profile handle change is possible (mock only until handles exist on the server). */
-export const canEditHandle = () => isMockApi();
-export const canEditEmail = () => isMockApi();
-export const canDeleteAccount = () => isMockApi();
+
 

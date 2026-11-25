@@ -30,6 +30,8 @@ export interface SessionUser {
   email: string | null;
   name: string;
   image: string | null;
+  /** Public profile handle; null until chosen (mock users always have one). */
+  handle?: string | null;
 }
 
 export interface SessionWorkspace {

@@ -23,17 +23,20 @@ import {
 import { isApiError } from '@/lib/api/errors';
 import { isMockApi } from '@/lib/api/mode';
 import type { LedgerLine } from '@/lib/api/types';
-import { openBillingPortal, useCredits, useSession } from '@/lib/session';
+import { ME_KEY, openBillingPortal, signOut, useCredits, useSession } from '@/lib/session';
 import { parseTopUpAmount } from '@/lib/topUp';
 import { motion, PathIcon, paths, Segmented } from './shared';
 import { SelectMenu } from './shared/SelectMenu';
 import {
   accountsKey,
   ApiError,
-  canDeleteAccount,
-  canEditEmail,
-  canEditHandle,
+  BIO_MAX,
+  confirmEmailChange,
   EMAIL_RE,
+  meKey,
+  requestEmailChange,
+  sendDeleteCode,
+  uploadAvatar,
   errorCode,
   fetchLedgerPage,
   linkProvider,
@@ -173,30 +176,34 @@ function useShortDate() {
   return (ms: number | null | undefined) => (ms ? intl.formatDate(ms, { month: 'short', day: 'numeric', year: new Date(ms).getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined }) : '—');
 }
 
-const PROFILE_FIELDS = ['name', 'handle', 'email'] as const;
+const PROFILE_FIELDS = ['name', 'handle', 'bio', 'email'] as const;
 type ProfileField = (typeof PROFILE_FIELDS)[number];
 
 function AccountSection({ me }: { me: Me }) {
   const t = useT();
   const toast = useToast();
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const save = usePatchProfile();
   const fileRef = useRef<HTMLInputElement>(null);
-  const [photo, setPhoto] = useState<string | null>(null);
-  const initial = { name: me.user.name, handle: `@${me.user.handle}`, email: me.user.email };
+  const [photo, setPhoto] = useState<string | null>(me.user.image ?? null);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const initial = { name: me.user.name, handle: me.user.handle ? `@${me.user.handle}` : '', bio: me.user.bio ?? '', email: me.user.email };
   const [form, setForm] = useState(initial);
   const [errors, setErrors] = useState<Partial<Record<ProfileField, string>>>({});
   const [signInOpen, setSignInOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [emailChange, setEmailChange] = useState<string | null>(null);
   const dirty = PROFILE_FIELDS.some((k) => form[k] !== initial[k]);
-  // Real API: only the name is editable (handles and email changes have no route yet).
-  const editable: Record<ProfileField, boolean> = { name: true, handle: canEditHandle(), email: canEditEmail() };
+  useEffect(() => setPhoto(me.user.image ?? null), [me.user.image]);
 
   function validate() {
     const e: Partial<Record<ProfileField, string>> = {};
+    const handle = form.handle.trim().replace(/^@/, '').toLowerCase();
     if (!form.name.trim()) e.name = t('account.settings.account.error.name');
-    if (editable.handle && !HANDLE_RE.test(form.handle.replace(/^@/, ''))) e.handle = t('account.settings.account.error.handle');
-    if (editable.email && !EMAIL_RE.test(form.email.trim())) e.email = t('account.settings.account.error.email');
+    if ((handle || initial.handle) && !HANDLE_RE.test(handle)) e.handle = t('account.settings.account.error.handle');
+    if (form.bio.length > BIO_MAX) e.bio = t('account.settings.account.error.bio', { max: BIO_MAX });
+    if (!EMAIL_RE.test(form.email.trim())) e.email = t('account.settings.account.error.email');
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -204,30 +211,63 @@ function AccountSection({ me }: { me: Me }) {
   async function submit(ev: FormEvent) {
     ev.preventDefault();
     if (!validate()) return;
+    const handle = form.handle.trim().replace(/^@/, '').toLowerCase();
+    const email = form.email.trim();
+    const emailChanged = email.toLowerCase() !== me.user.email.toLowerCase();
     try {
-      await save.mutateAsync({
-        name: form.name.trim(),
-        ...(editable.handle ? { handle: form.handle.replace(/^@/, '') } : {}),
-        ...(editable.email ? { email: form.email.trim() } : {}),
-      });
-      toast.show({ message: t(form.email.trim() !== me.user.email ? 'account.settings.account.savedEmail' : 'account.settings.account.saved') });
-    } catch {
+      const patch = {
+        ...(form.name !== initial.name ? { name: form.name.trim() } : {}),
+        ...(form.handle !== initial.handle && handle ? { handle } : {}),
+        ...(form.bio !== initial.bio ? { bio: form.bio.trim() || null } : {}),
+      };
+      if (Object.keys(patch).length) await save.mutateAsync(patch);
+      if (emailChanged) {
+        // The new address gets a code; the email changes once it is entered.
+        await requestEmailChange(email);
+        setEmailChange(email);
+        setForm((f) => ({ ...f, email: me.user.email }));
+        return;
+      }
+      toast.show({ message: t('account.settings.account.saved') });
+    } catch (e) {
+      const code = errorCode(e);
+      if (code === 'HANDLE_TAKEN') return setErrors({ handle: t('account.settings.account.error.handleTaken') });
+      if (code === 'RATE_LIMITED') return toast.show({ message: t('account.settings.account.email.wait') });
       toast.show({ message: t('account.settings.account.saveFailed') });
     }
   }
 
-  const field = (k: ProfileField, id: string, auto: string, type = 'text') => (
+  async function changePhoto(file: File) {
+    const prev = photo;
+    setPhotoBusy(true);
+    try {
+      setPhoto(await uploadAvatar(file));
+      toast.show({ message: t('account.settings.account.photoUpdated') });
+      if (isMockApi()) void qc.invalidateQueries({ queryKey: meKey });
+    } catch (e) {
+      setPhoto(prev);
+      const code = errorCode(e);
+      toast.show({
+        message: t(
+          code === 'AVATAR_REJECTED' ? 'account.settings.account.photoRejected' : code === 'SAFETY_UNAVAILABLE' ? 'account.settings.account.photoCheckDown' : 'account.settings.account.photoFailed',
+        ),
+      });
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
+
+  const field = (k: ProfileField, id: string, auto: string, type = 'text', placeholder?: string) => (
     <span className={styles.fieldWrap}>
       <input
         id={id}
         type={type}
-        className={styles.field}
+        className={cx(styles.field, k === 'bio' && styles.fieldWide)}
         value={form[k]}
-        readOnly={!editable[k]}
-        aria-readonly={!editable[k] || undefined}
-        title={!editable[k] ? t(`account.settings.account.${k}.readOnly`) : undefined}
+        placeholder={placeholder}
+        maxLength={k === 'bio' ? BIO_MAX : undefined}
         aria-invalid={!!errors[k]}
-        aria-describedby={errors[k] ? `${id}-err` : !editable[k] ? `${id}-ro` : undefined}
+        aria-describedby={errors[k] ? `${id}-err` : undefined}
         onChange={(e) => {
           setForm((f) => ({ ...f, [k]: e.target.value }));
           setErrors((er) => ({ ...er, [k]: undefined }));
@@ -239,11 +279,6 @@ function AccountSection({ me }: { me: Me }) {
           {errors[k]}
         </span>
       )}
-      {!editable[k] && (
-        <span id={`${id}-ro`} className="rl-visually-hidden">
-          {t(`account.settings.account.${k}.readOnly`)}
-        </span>
-      )}
     </span>
   );
 
@@ -251,7 +286,7 @@ function AccountSection({ me }: { me: Me }) {
     <form onSubmit={submit} noValidate>
       <Head id="account.settings.section.account" />
       <div className={styles.profileRow}>
-        <span className={styles.avatarLg} aria-hidden="true" style={photo ? { backgroundImage: `url(${photo})`, backgroundSize: 'cover' } : undefined}>
+        <span className={styles.avatarLg} aria-hidden="true" data-testid="account-avatar" style={photo ? { backgroundImage: `url(${photo})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}>
           {photo ? '' : me.user.name.slice(0, 1)}
         </span>
         <span className={styles.who}>
@@ -268,25 +303,24 @@ function AccountSection({ me }: { me: Me }) {
           data-testid="photo-input"
           onChange={(e) => {
             const f = e.target.files?.[0];
-            if (!f) return;
-            setPhoto(URL.createObjectURL(f));
-            toast.show({ message: t('account.settings.account.photoUpdated') });
             e.target.value = '';
+            if (f) void changePhoto(f);
           }}
         />
-        {isMockApi() && (
-          <button type="button" className={cx(styles.btn, motion.hover)} onClick={() => fileRef.current?.click()}>
-            <FormattedMessage id="account.settings.account.changePhoto" />
-          </button>
-        )}
+        <button type="button" className={cx(styles.btn, motion.hover)} disabled={photoBusy} aria-busy={photoBusy || undefined} onClick={() => fileRef.current?.click()}>
+          <FormattedMessage id={photoBusy ? 'account.settings.account.photoUploading' : 'account.settings.account.changePhoto'} />
+        </button>
       </div>
       <Row label={<FormattedMessage id="account.settings.account.name" />} labelFor="acc-name">
         {field('name', 'acc-name', 'name')}
       </Row>
       <Row label={<FormattedMessage id="account.settings.account.username" />} hint={<FormattedMessage id="account.settings.account.username.hint" />} labelFor="acc-handle">
-        {field('handle', 'acc-handle', 'username')}
+        {field('handle', 'acc-handle', 'username', 'text', t('account.settings.account.username.placeholder'))}
       </Row>
-      <Row label={<FormattedMessage id="account.settings.account.email" />} labelFor="acc-email">
+      <Row label={<FormattedMessage id="account.settings.account.bio" />} hint={<FormattedMessage id="account.settings.account.bio.hint" values={{ max: BIO_MAX }} />} labelFor="acc-bio">
+        {field('bio', 'acc-bio', 'off', 'text', t('account.settings.account.bio.placeholder'))}
+      </Row>
+      <Row label={<FormattedMessage id="account.settings.account.email" />} hint={<FormattedMessage id="account.settings.account.email.hint" />} labelFor="acc-email">
         {field('email', 'acc-email', 'email', 'email')}
       </Row>
       {dirty && (
@@ -323,10 +357,23 @@ function AccountSection({ me }: { me: Me }) {
         </button>
       </div>
       <SignInDialog open={signInOpen} onClose={() => setSignInOpen(false)} me={me} />
+      <EmailChangeDialog
+        email={emailChange}
+        onClose={() => setEmailChange(null)}
+        onChanged={(email) => {
+          setEmailChange(null);
+          setForm((f) => ({ ...f, email }));
+          void qc.invalidateQueries({ queryKey: ME_KEY });
+          if (isMockApi()) void qc.invalidateQueries({ queryKey: meKey });
+          toast.show({ message: t('account.settings.account.emailChanged', { email }) });
+        }}
+      />
       <DeleteDialog
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
         onDeleted={() => {
+          // The server ended every session; forget the cached one (real API).
+          if (!isMockApi()) void signOut();
           toast.show({ message: t('account.settings.account.deleted') });
           void navigate({ to: '/login' });
         }}
@@ -407,52 +454,212 @@ function SignInDialog({ open, onClose, me }: { open: boolean; onClose: () => voi
   );
 }
 
+/** Six-digit code field shared by the email change and delete dialogs. */
+function CodeField({ id, value, onChange, invalid }: { id: string; value: string; onChange: (v: string) => void; invalid: boolean }) {
+  return (
+    <input
+      id={id}
+      className={cx(styles.field, styles.fieldFull)}
+      inputMode="numeric"
+      autoComplete="one-time-code"
+      maxLength={6}
+      value={value}
+      aria-invalid={invalid}
+      onChange={(e) => onChange(e.target.value.replace(/\D/g, '').slice(0, 6))}
+    />
+  );
+}
+
+function codeError(t: ReturnType<typeof useT>, e: unknown): string {
+  const code = errorCode(e);
+  if (code === 'INVALID_CODE') return t('account.settings.code.invalid');
+  if (code === 'CODE_EXPIRED') return t('account.settings.code.expired');
+  if (code === 'TOO_MANY_ATTEMPTS') return t('account.settings.code.tooMany');
+  if (code === 'RATE_LIMITED') return t('account.settings.code.wait');
+  if (code === 'CONFLICT') return t('account.settings.account.email.inUse');
+  return t('account.settings.code.failed');
+}
+
+/** Email change (Better Auth email OTP): the code went to `email`; entering it switches the account's address. */
+function EmailChangeDialog({ email, onClose, onChanged }: { email: string | null; onClose: () => void; onChanged: (email: string) => void }) {
+  const t = useT();
+  const id = useId();
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState<'confirm' | 'resend' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setCode('');
+    setError(null);
+  }, [email]);
+  async function confirm(e: FormEvent) {
+    e.preventDefault();
+    if (!email || code.length !== 6) return;
+    setBusy('confirm');
+    try {
+      await confirmEmailChange(email, code);
+      onChanged(email);
+    } catch (err) {
+      setError(codeError(t, err));
+      setCode('');
+    } finally {
+      setBusy(null);
+    }
+  }
+  async function resend() {
+    if (!email) return;
+    setBusy('resend');
+    try {
+      await requestEmailChange(email);
+      setError(null);
+    } catch (err) {
+      setError(codeError(t, err));
+    } finally {
+      setBusy(null);
+    }
+  }
+  return (
+    <Dialog
+      open={email !== null}
+      onOpenChange={(o) => !o && onClose()}
+      title={t('account.settings.emailChange.title')}
+      description={t('account.settings.emailChange.lead', { email: email ?? '' })}
+      closeLabel={t('account.settings.close')}
+    >
+      <form className={styles.dlgForm} onSubmit={confirm} noValidate>
+        <label htmlFor={id} className={styles.dlgLabel}>
+          <FormattedMessage id="account.settings.code.label" />
+        </label>
+        <CodeField id={id} value={code} onChange={(v) => (setCode(v), setError(null))} invalid={!!error} />
+        {error && (
+          <p role="alert" className={cx(styles.fieldError, motion.enter)}>
+            {error}
+          </p>
+        )}
+        <DialogActions>
+          <button type="button" className={cx(styles.btn, motion.hover)} disabled={busy !== null} onClick={() => void resend()}>
+            <FormattedMessage id={busy === 'resend' ? 'account.settings.code.sending' : 'account.settings.code.resend'} />
+          </button>
+          <button type="submit" className={cx(styles.btn, styles.btnPrimary, motion.press)} disabled={code.length !== 6 || busy !== null}>
+            <FormattedMessage id={busy === 'confirm' ? 'account.settings.saving' : 'account.settings.emailChange.confirm'} />
+          </button>
+        </DialogActions>
+      </form>
+    </Dialog>
+  );
+}
+
+/**
+ * Delete account: send a code to the account's email, enter it, delete. A Team
+ * you own with other members must get a new owner first (`OWNER_OF_TEAM`).
+ */
 function DeleteDialog({ open, onClose, onDeleted }: { open: boolean; onClose: () => void; onDeleted: () => void }) {
   const t = useT();
   const id = useId();
-  const [text, setText] = useState('');
+  const [step, setStep] = useState<'intro' | 'code'>('intro');
+  const [sentTo, setSentTo] = useState('');
+  const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
-  const word = t('account.settings.delete.word');
+  const [error, setError] = useState<string | null>(null);
+  const [blockedBy, setBlockedBy] = useState<string[] | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    setStep('intro');
+    setCode('');
+    setError(null);
+    setBlockedBy(null);
+  }, [open]);
+  async function send() {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await sendDeleteCode();
+      setSentTo(r.email);
+      setStep('code');
+    } catch (e) {
+      if (isApiError(e, 'OWNER_OF_TEAM')) setBlockedBy(((e.data as { workspaces?: { name: string }[] }).workspaces ?? []).map((w) => w.name));
+      else setError(codeError(t, e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function confirm(e: FormEvent) {
+    e.preventDefault();
+    if (code.length !== 6) return;
+    setBusy(true);
+    try {
+      await deleteAccount(code);
+      onClose();
+      onDeleted();
+    } catch (err) {
+      if (isApiError(err, 'OWNER_OF_TEAM')) {
+        setStep('intro');
+        setBlockedBy(((err.data as { workspaces?: { name: string }[] }).workspaces ?? []).map((w) => w.name));
+      } else {
+        setError(codeError(t, err));
+        setCode('');
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <Dialog
       open={open}
       onOpenChange={(o) => !o && onClose()}
       title={t('account.settings.delete.title')}
-      description={t(canDeleteAccount() ? 'account.settings.delete.lead' : 'account.settings.delete.unavailable')}
+      description={t(step === 'code' ? 'account.settings.delete.codeLead' : 'account.settings.delete.lead', { email: sentTo })}
       closeLabel={t('account.settings.close')}
     >
-      {!canDeleteAccount() ? (
-        <DialogActions>
-          <button type="button" className={cx(styles.btn, motion.hover)} onClick={onClose}>
-            <FormattedMessage id="account.settings.close" />
-          </button>
-        </DialogActions>
+      {blockedBy ? (
+        <>
+          <p role="alert" className={styles.rowHint} data-testid="delete-owner-of-team">
+            <FormattedMessage id="account.settings.delete.ownerOfTeam" values={{ names: blockedBy.join(', '), n: blockedBy.length }} />
+          </p>
+          <DialogActions>
+            <button type="button" className={cx(styles.btn, motion.hover)} onClick={onClose}>
+              <FormattedMessage id="account.settings.close" />
+            </button>
+            <Link to="/settings/$section" params={{ section: 'team' }} className={cx(styles.btn, styles.btnPrimary, motion.press)} onClick={onClose}>
+              <FormattedMessage id="account.settings.delete.toTeam" />
+            </Link>
+          </DialogActions>
+        </>
+      ) : step === 'intro' ? (
+        <>
+          {error && (
+            <p role="alert" className={cx(styles.fieldError, motion.enter)}>
+              {error}
+            </p>
+          )}
+          <DialogActions>
+            <button type="button" className={cx(styles.btn, motion.hover)} onClick={onClose}>
+              <FormattedMessage id="account.settings.cancel" />
+            </button>
+            <button type="button" className={cx(styles.btn, styles.btnDanger, motion.press)} disabled={busy} aria-busy={busy || undefined} onClick={() => void send()}>
+              <FormattedMessage id={busy ? 'account.settings.code.sending' : 'account.settings.delete.sendCode'} />
+            </button>
+          </DialogActions>
+        </>
       ) : (
-      <>
-      <label htmlFor={id} className={styles.rowHint}>
-        <FormattedMessage id="account.settings.delete.type" values={{ word }} />
-      </label>
-      <input id={id} className={cx(styles.field, styles.fieldFull)} value={text} onChange={(e) => setText(e.target.value)} autoComplete="off" />
-      <DialogActions>
-        <button type="button" className={cx(styles.btn, motion.hover)} onClick={onClose}>
-          <FormattedMessage id="account.settings.cancel" />
-        </button>
-        <button
-          type="button"
-          className={cx(styles.btn, styles.btnDanger, motion.press)}
-          disabled={text.trim().toLowerCase() !== word.toLowerCase() || busy}
-          onClick={async () => {
-            setBusy(true);
-            await deleteAccount();
-            setBusy(false);
-            onClose();
-            onDeleted();
-          }}
-        >
-          <FormattedMessage id={busy ? 'account.settings.delete.deleting' : 'account.settings.delete.confirm'} />
-        </button>
-      </DialogActions>
-      </>
+        <form className={styles.dlgForm} onSubmit={confirm} noValidate>
+          <label htmlFor={id} className={styles.dlgLabel}>
+            <FormattedMessage id="account.settings.code.label" />
+          </label>
+          <CodeField id={id} value={code} onChange={(v) => (setCode(v), setError(null))} invalid={!!error} />
+          {error && (
+            <p role="alert" className={cx(styles.fieldError, motion.enter)}>
+              {error}
+            </p>
+          )}
+          <DialogActions>
+            <button type="button" className={cx(styles.btn, motion.hover)} disabled={busy} onClick={() => void send()}>
+              <FormattedMessage id="account.settings.code.resend" />
+            </button>
+            <button type="submit" className={cx(styles.btn, styles.btnDanger, motion.press)} disabled={code.length !== 6 || busy}>
+              <FormattedMessage id={busy ? 'account.settings.delete.deleting' : 'account.settings.delete.confirm'} />
+            </button>
+          </DialogActions>
+        </form>
       )}
     </Dialog>
   );
@@ -806,12 +1013,19 @@ function BillingSection({ me }: { me: Me }) {
       />
       <Row label={<FormattedMessage id="account.settings.billing.payment" />} hint={<FormattedMessage id="account.settings.billing.payment.hint" />}>
         <span className={cx(styles.rowValue, styles.rowValueWide)}>
-          {real ? (
-            <FormattedMessage id="account.settings.billing.cardInPortal" />
-          ) : me.paymentMethod ? (
+          {me.paymentMethod ? (
             <span data-testid="card">
               <FormattedMessage id="account.settings.billing.card" values={{ brand: me.paymentMethod.brand, last4: me.paymentMethod.last4 }} />
+              {/* The expiry comes from Stripe (real API); the design card line has none. */}
+              {real && me.paymentMethod.expires && (
+                <span className={styles.rowHint}>
+                  {' · '}
+                  <FormattedMessage id="account.settings.billing.cardExpires" values={{ date: me.paymentMethod.expires }} />
+                </span>
+              )}
             </span>
+          ) : real ? (
+            <FormattedMessage id="account.settings.billing.cardInPortal" />
           ) : (
             <FormattedMessage id="account.settings.billing.noCard" />
           )}
@@ -824,7 +1038,7 @@ function BillingSection({ me }: { me: Me }) {
               title={!isOwner ? t('account.settings.billing.ownerOnly') : undefined}
               onClick={() => void toPortal()}
             >
-              <FormattedMessage id={portal ? 'account.settings.billing.portal.opening' : 'account.settings.billing.manage'} />
+              <FormattedMessage id={portal ? 'account.settings.billing.portal.opening' : 'account.settings.billing.updateInPortal'} />
             </button>
           ) : (
             <button type="button" className={cx(styles.btn, motion.hover)} onClick={() => setCardOpen(true)}>
@@ -1303,7 +1517,7 @@ function InviteDialog({
           indicatorClassName={styles.segFill}
           options={(['editor', 'viewer'] as const).map((r) => ({ value: r, label: t(`account.settings.team.role.${r}`) }))}
         />
-        {role !== 'viewer' && isMockApi() && (
+        {role !== 'viewer' && (
           <>
             <label htmlFor={limitId} className={styles.dlgLabel}>
               <FormattedMessage id="account.settings.team.invite.limit" />

@@ -115,5 +115,11 @@
   "shell.media.explicit": "Mature",
   "shell.media.show": "Show",
   "shell.media.show.label": "Show {name}",
-  "shell.media.hidden": "Not shown here"
+  "shell.media.hidden": "Not shown here",
+  "shell.help.kind": "Feedback type",
+  "shell.help.kind.bug": "Problem",
+  "shell.help.kind.idea": "Idea",
+  "shell.help.kind.other": "Other",
+  "shell.help.diagnostics": "Include browser and workspace details",
+  "shell.help.limited": "You’ve sent a lot of feedback this hour. Try again later."
 }

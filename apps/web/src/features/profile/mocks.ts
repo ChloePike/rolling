@@ -7,6 +7,9 @@ export interface ProfileWork {
   mature: boolean;
   /** Content rating of the output; suggestive and explicit are never public. */
   rating?: 'safe' | 'suggestive' | 'explicit';
+  /** Real API: the signed cover image and, for published works, the share link (`/share/:id`). */
+  coverUrl?: string | null;
+  shareId?: string;
 }
 
 export interface PublicProfile {
@@ -15,6 +18,11 @@ export interface PublicProfile {
   /** Null until the user writes one; the design shows the placeholder. */
   bio: string | null;
   works: ProfileWork[];
+  avatarUrl?: string | null;
+  /** The signed-in user's own profile. */
+  isYou?: boolean;
+  /** Own profile without a chosen handle yet (real API): the page offers to pick one. */
+  unclaimed?: boolean;
 }
 
 /** Profile.dc.html, plus a mature and a suggestive work that must never be listed publicly. */

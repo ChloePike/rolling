@@ -8,7 +8,7 @@ import styles from './Header.module.css';
 import { Icon, LogoMark } from './icons';
 import { isNavItemActive, navItems } from './nav';
 import { signOut, useCredits, useSession } from '@/lib/session';
-import { accountInitial } from './account';
+import { AvatarFace } from './AvatarFace';
 import { HelpDialog } from './HelpDialog';
 import { SettingsPopoverContent } from './SettingsPopover';
 import { NARROW_NAV_QUERY, useMediaQuery } from './useMediaQuery';
@@ -37,7 +37,6 @@ export function Header() {
   const [help, setHelp] = useState(false);
   const session = useSession();
   const { planId } = session;
-  const initial = accountInitial(session);
   const logout = () => {
     void signOut()
       .catch(() => undefined)
@@ -150,7 +149,7 @@ export function Header() {
               className={styles.accountLayer}
               trigger={(p) => (
                 <button {...p} type="button" className={styles.avatar} aria-label={intl.formatMessage({ id: 'header.account' })}>
-                  <span aria-hidden="true">{initial}</span>
+                  <AvatarFace session={session} className={styles.avatarImg} />
                   {planId === 'pro' || planId === 'team' ? (
                     <span className={styles.proBadge} aria-hidden="true" data-badge={planId}>
                       <FormattedMessage id={planId === 'team' ? 'header.teamBadge' : 'header.proBadge'} />

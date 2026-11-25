@@ -7,6 +7,7 @@ import { PLANS } from '@rolling/core/pricing/config';
 import { useMembers } from '@/features/account/api';
 import { setActiveWorkspace, useSession } from '@/lib/session';
 import { accountHandle, accountInitial, accountName } from './account';
+import { AvatarFace } from './AvatarFace';
 
 const P = {
   profile: 'M18 20a6 6 0 0 0-12 0 M12 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8z',
@@ -80,7 +81,7 @@ export function AccountMenuContent({ onClose, onLogout, onHelp }: { onClose: () 
     <div ref={rootRef} className={styles.menu} onKeyDown={onKeyDown}>
       <div className={styles.who}>
         <span className={styles.bigAvatar} aria-hidden="true">
-          {accountInitial(session)}
+          <AvatarFace session={session} className={styles.avatarImg} />
         </span>
         <span className={styles.whoText}>
           <span className={styles.whoName}>{accountName(session)}</span>

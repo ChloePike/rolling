@@ -1,18 +1,23 @@
-import { Button, Dialog, useToast } from '@rolling/ui';
+import { Button, Dialog, SegmentedControl, Switch, useToast } from '@rolling/ui';
 import { useId, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
-import { sendFeedback } from './api';
+import { isApiError } from '@/lib/api/errors';
+import { sendFeedback, type FeedbackKind } from './api';
 import styles from './HelpDialog.module.css';
 
 /**
  * Help and feedback (account menu). Help pages come with launch; until then
- * the dialog says so and takes feedback (`POST /api/feedback`, mocked).
+ * the dialog says so and takes feedback (`POST /api/feedback { message, kind,
+ * page, includeDiagnostics }`; the current path goes along as `page`).
  */
 export function HelpDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const intl = useIntl();
   const toast = useToast();
   const fieldId = useId();
   const [text, setText] = useState('');
+  const diagId = useId();
+  const [kind, setKind] = useState<FeedbackKind>('bug');
+  const [diagnostics, setDiagnostics] = useState(true);
   const [state, setState] = useState<'idle' | 'sending'>('idle');
   const t = (id: string) => intl.formatMessage({ id });
 
@@ -20,12 +25,12 @@ export function HelpDialog({ open, onOpenChange }: { open: boolean; onOpenChange
     if (!text.trim()) return;
     setState('sending');
     try {
-      await sendFeedback(text.trim());
+      await sendFeedback({ message: text.trim(), kind, page: window.location.pathname, includeDiagnostics: diagnostics });
       setText('');
       onOpenChange(false);
       toast.show({ message: t('shell.help.sent') });
-    } catch {
-      toast.show({ message: t('shell.help.failed') });
+    } catch (e) {
+      toast.show({ message: t(isApiError(e, 'RATE_LIMITED') ? 'shell.help.limited' : 'shell.help.failed') });
     } finally {
       setState('idle');
     }
@@ -37,6 +42,12 @@ export function HelpDialog({ open, onOpenChange }: { open: boolean; onOpenChange
         <p className={styles.text}>
           <FormattedMessage id="shell.help.body" />
         </p>
+        <SegmentedControl<FeedbackKind>
+          label={t('shell.help.kind')}
+          value={kind}
+          onValueChange={setKind}
+          options={(['bug', 'idea', 'other'] as const).map((k) => ({ value: k, label: t(`shell.help.kind.${k}`) }))}
+        />
         <label htmlFor={fieldId} className={styles.label}>
           <FormattedMessage id="shell.help.feedback" />
         </label>
@@ -48,6 +59,12 @@ export function HelpDialog({ open, onOpenChange }: { open: boolean; onOpenChange
           value={text}
           onChange={(e) => setText(e.target.value)}
         />
+        <div className={styles.diag}>
+          <span id={diagId} className={styles.diagText}>
+            <FormattedMessage id="shell.help.diagnostics" />
+          </span>
+          <Switch size="sm" checked={diagnostics} onCheckedChange={setDiagnostics} aria-labelledby={diagId} />
+        </div>
         <div className={styles.actions}>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             <FormattedMessage id="shell.help.cancel" />

@@ -7,4 +7,6 @@
 }
 .field::placeholder{color:var(--c-text-4)}
 .field:focus-visible{outline:none;box-shadow:var(--focus-ring)}
+.diag{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.diagText{font-size:var(--fs-meta);color:var(--c-text-3)}
 .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
