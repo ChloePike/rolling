@@ -65,9 +65,56 @@ test.describe('auth screens (Login.dc.html)', () => {
   test('verify with a full code goes Home', async ({ page }) => {
     await openApp(page, '/login');
     await toCodeStep(page);
+    await expect(page.getByRole('button', { name: 'Verify' })).toBeDisabled();
     await page.keyboard.type('482913');
-    await page.getByRole('button', { name: 'Verify' }).click();
+    // The sixth digit submits on its own.
     await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByText('You’re logged in.')).toBeVisible();
+  });
+
+  test('wrong code shows an inline error and clears; resend after the timer sends a new code', async ({ page }) => {
+    await page.clock.install();
+    await openApp(page, '/signup');
+    await toCodeStep(page);
+    await page.keyboard.type('000000');
+    await expect(page.getByRole('alert')).toHaveText('That code isn’t right. Check the email or resend a new code.');
+    await expect(page.getByLabel('Verification code').locator('input')).toHaveValue('');
+    await expect(page.getByLabel('Verification code').locator('input')).toHaveAttribute('aria-invalid', 'true');
+    await page.clock.runFor(61_000);
+    await page.getByRole('button', { name: 'Resend code' }).click();
+    await expect(page.getByText('New code sent to alex@ridgeline.co.')).toBeVisible();
+    await expect(page.getByRole('button', { name: /Resend in 1:00|Resend in 0:59/ })).toBeDisabled();
+    await page.getByLabel('Verification code').locator('input').focus();
+    await page.keyboard.type('123456');
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByText('Your account is ready.')).toBeVisible();
+  });
+
+  test('Google and Apple start the provider redirect (pending state, then back in the app)', async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as unknown as { __rollingMocks: Record<string, unknown> }).__rollingMocks = { delayMs: 300 };
+    });
+    await openApp(page, '/login');
+    await page.getByRole('button', { name: 'Continue with Google' }).click();
+    await expect(page.getByRole('button', { name: 'Opening Google…' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Continue with Apple' })).toBeDisabled();
+    await expect(page).toHaveURL(/\/$/);
+    await openApp(page, '/signup');
+    await page.getByRole('button', { name: 'Continue with Apple' }).click();
+    await expect(page.getByRole('button', { name: 'Opening Apple…' })).toBeVisible();
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByText('Your account is ready.')).toBeVisible();
+  });
+
+  test('Terms and Privacy links open a dialog; Escape closes it', async ({ page }) => {
+    await openApp(page, '/login');
+    await page.getByRole('link', { name: 'Terms' }).click();
+    await expect(page.getByRole('dialog', { name: 'Terms' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.getByRole('link', { name: 'Privacy Policy' }).click();
+    await expect(page.getByRole('dialog', { name: 'Privacy Policy' })).toBeVisible();
+    await expect(page).toHaveURL(/\/login$/);
   });
 
   for (const s of [
@@ -117,6 +164,9 @@ test.describe('auth screens (Login.dc.html)', () => {
   });
 
   test('motion: steps enter with 200ms standard fade and 4px rise; reduced motion is opacity only', async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as unknown as { __rollingMocks: Record<string, unknown> }).__rollingMocks = { delayMs: 0 };
+    });
     await openApp(page, '/login');
     await page.getByLabel('Email').fill('alex@ridgeline.co');
     await page.getByRole('button', { name: 'Continue with email' }).click();
