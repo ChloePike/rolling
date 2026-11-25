@@ -1,7 +1,10 @@
 import {
   clipEnd,
   findClip,
+  IDENTITY_TRANSFORM,
   isCaptionClip,
+  MAX_SPEED,
+  MIN_SPEED,
   type CaptionClip,
   type Clip,
   type Edl,
@@ -62,7 +65,17 @@ export function validateEdl(edl: Edl): string | null {
   return null;
 }
 
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
 function applyUnchecked(edl: Edl, op: TimelineOp, opts: ApplyOptions): ApplyResult {
+  if (op.op === 'insert') {
+    const trackIndex = edl.tracks.findIndex((t) => t.id === op.trackId);
+    const track = edl.tracks[trackIndex];
+    if (!track) return { ok: false, error: `Unknown track ${op.trackId}` };
+    if (findClip(edl, op.clip.id)) return { ok: false, error: `Clip ${op.clip.id} already exists` };
+    if ((track.kind === 'caption') !== isCaptionClip(op.clip)) return { ok: false, error: `Clip ${op.clip.id} does not fit ${track.id}` };
+    return { ok: true, edl: replaceClip(edl, trackIndex, (cs) => [...cs, op.clip]) };
+  }
   const ref = findClip(edl, op.clipId);
   if (!ref) return { ok: false, error: `Unknown clip ${op.clipId}` };
   const { clip, trackIndex, track } = ref;
@@ -82,7 +95,7 @@ function applyUnchecked(edl: Edl, op: TimelineOp, opts: ApplyOptions): ApplyResu
       const limit = opts.sourceDuration?.(m);
       if (limit !== undefined && newOut > limit + EPS) return { ok: false, error: `Trim past the end of the media of ${m.id}` };
       // A head trim keeps the remaining frames where they were on the timeline.
-      const next: MediaClip = { ...m, in: round(newIn), out: round(newOut), start: round(m.start + (newIn - m.in)) };
+      const next: MediaClip = { ...m, in: round(newIn), out: round(newOut), start: round(m.start + (newIn - m.in) / (m.speed ?? 1)) };
       return { ok: true, edl: replaceClip(edl, trackIndex, (cs) => cs.map((c) => (c.id === clip.id ? next : c))) };
     }
     case 'move': {
@@ -104,7 +117,7 @@ function applyUnchecked(edl: Edl, op: TimelineOp, opts: ApplyOptions): ApplyResu
         left = { ...clip, end: round(op.at) };
         right = { ...clip, id, start: round(op.at) };
       } else {
-        const cut = round(clip.in + (op.at - clip.start));
+        const cut = round(clip.in + (op.at - clip.start) * (clip.speed ?? 1));
         // The outgoing transition stays on the right part; a fade-in stays on the left.
         const { transitionOut: _t, ...leftBase } = clip;
         const { fadeIn: _f, ...rightBase } = clip;
@@ -157,6 +170,48 @@ function applyUnchecked(edl: Edl, op: TimelineOp, opts: ApplyOptions): ApplyResu
     case 'replaceShot': {
       if (track.kind !== 'video' || !media) return { ok: false, error: `Clip ${clip.id} is not a shot` };
       const next: MediaClip = { ...media, nodeId: op.nodeId, assetId: op.assetId ?? media.assetId };
+      return { ok: true, edl: replaceClip(edl, trackIndex, (cs) => cs.map((c) => (c.id === clip.id ? next : c))) };
+    }
+    case 'setTransform': {
+      if (track.kind !== 'video' || !media) return { ok: false, error: `Clip ${clip.id} has no picture` };
+      const t = { ...IDENTITY_TRANSFORM, ...media.transform, ...op.transform };
+      const transform = {
+        scale: round(clamp(t.scale, 0.1, 4)),
+        x: round(t.x),
+        y: round(t.y),
+        rotation: round(clamp(t.rotation, -360, 360)),
+        opacity: round(clamp(t.opacity, 0, 1)),
+      };
+      return { ok: true, edl: replaceClip(edl, trackIndex, (cs) => cs.map((c) => (c.id === clip.id ? { ...media, transform } : c))) };
+    }
+    case 'setSpeed': {
+      if (!media) return { ok: false, error: `Clip ${clip.id} has no media` };
+      if (!Number.isFinite(op.speed)) return { ok: false, error: 'Speed must be a number' };
+      const speed = round(clamp(op.speed, MIN_SPEED, MAX_SPEED));
+      const next: MediaClip = { ...media, speed, reverse: op.reverse ?? media.reverse ?? false };
+      const delta = clipEnd(next) - clipEnd(media);
+      const oldEnd = clipEnd(media);
+      return {
+        ok: true,
+        edl: replaceClip(edl, trackIndex, (cs) =>
+          cs.map((c) => {
+            if (c.id === clip.id) return next;
+            // Ripple: later clips on this track keep their distance to this clip's end.
+            if (c.start < oldEnd - EPS) return c;
+            return isCaptionClip(c) ? { ...c, start: round(c.start + delta), end: round(c.end + delta) } : { ...c, start: round(c.start + delta) };
+          }),
+        ),
+      };
+    }
+    case 'setFade': {
+      if (!media) return { ok: false, error: `Clip ${clip.id} has no media` };
+      const fadeIn = round(clamp(op.fadeIn, 0, clipEnd(media) - media.start));
+      return { ok: true, edl: replaceClip(edl, trackIndex, (cs) => cs.map((c) => (c.id === clip.id ? { ...media, fadeIn } : c))) };
+    }
+    case 'setTransition': {
+      if (track.kind !== 'video' || !media) return { ok: false, error: `Clip ${clip.id} is not a shot` };
+      const { transitionOut: _old, ...rest } = media;
+      const next: MediaClip = op.transition ? { ...rest, transitionOut: { ...op.transition } } : rest;
       return { ok: true, edl: replaceClip(edl, trackIndex, (cs) => cs.map((c) => (c.id === clip.id ? next : c))) };
     }
   }
