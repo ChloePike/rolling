@@ -274,6 +274,7 @@ type QuoteResponse = {
     code?: 'missing_input' | 'upstream_blocked' | 'bypassed_input' | 'unknown_model' | 'no_capable_model'
          | 'unsupported' | 'unpriced' | 'resolution_locked' | 'mature_not_allowed'
          | 'identity_requires_platform_assets' | 'empty_prompt'
+         | 'SAFETY_BLOCKED' | 'MATURE_REQUIRED' | 'SAFETY_REVIEW' | 'NO_PLAN'   // D-005, see Safety below
     reason?: string               // English; the UI maps `code` to copy ('Already running' on reuse rows of running nodes)
     lowestPlan?: 'starter' | 'plus' | 'pro' | null   // resolution_locked: plan that unlocks it
     autoVia?: 'classifier' | 'fallback' | 'single'
@@ -311,6 +312,33 @@ Rules:
 - Holds are per item: when a run starts, items whose inputs are ready are held (up to the plan's jobs at once); dependents are held and started when their inputs land. A dependent of a failed item is `skipped` (never charged). An item whose later hold fails (balance spent elsewhere) is `failed` with that code.
 - Charges: settle with the provider's reported cost through `creditsFor` (3× markup), never above the hold; no cost reported → the quoted credits. Failures release the hold (`refunded` = held credits). Auto items retry once on the next fallback model that fits under the same hold.
 - `options.forceFailure` (staging/development only, ignored in production): the listed items (or all with `true`) fail without calling the provider and are refunded — for testing the refund path end to end.
+
+### Safety (D-005 hard limits)
+
+Implementation: `@rolling/core/safety` (rules, classifiers, `preCheck` / `postCheck` / `rateMedia`, `SafetyGate`), Worker side `apps/api/src/safety/*`. Nothing here is configurable; no setting, plan, preference or env var turns a check off.
+
+Quote item codes (`action: 'blocked'`, `credits: 0`; the copy is neutral, internal codes never reach the client):
+
+| `code` | When | `reason` (show as is, or map) |
+|---|---|---|
+| `SAFETY_BLOCKED` | The deterministic rules hit a hard limit (e.g. minor-coded + sexual terms; face/head swap on a mature run). Logged. | “This can’t be generated under our content rules.” |
+| `MATURE_REQUIRED` | A non-mature run whose prompt is clearly explicit (member). Not silently routed to a mature model. | “Turn on mature content in Settings to generate this, or change the prompt.” |
+| `NO_PLAN` | Same, for a non-member → open Paywall `variant=join`. | “Join a plan and turn on mature content to generate this, or change the prompt.” |
+| `SAFETY_REVIEW` | A mature item in a workspace flagged for review (≥ 3 hard-limit blocks in 24 h). Non-mature runs still work. | “Mature content is paused for this workspace while recent activity is reviewed.” |
+
+Job error codes (run item / job `errorCode`, node `job.failed.reason`; the hold is always released, “No credits were charged.”):
+- `safety_blocked` — the `prepare` pre-check (rules → DeepSeek V4.1 Flash text classifier → on mature runs vision on image references and `lumina/face-detect` on uploaded photographs) or the `store` post-check (vision on image outputs / the video poster frame) hit a hard limit. A post-blocked output is deleted from R2 and never registered or versioned.
+- `mature_required` — a non-mature run classified explicit (prompt or output).
+- `safety_unavailable` — a classifier failed or timed out on a mature run (fail closed). Non-mature runs continue when the rules pass; the outage is logged.
+- `safety_review` — mature job of a flagged workspace.
+
+Content rating: every generated output gets `assets.rating` (`safe | suggestive | explicit`), `rating_confidence`, `rating_model`; `assets.mature` follows the rating (`suggestive`/`explicit` → 1), or the run's mature flag when unrated. Share links, public surfaces and the media signer already read `assets.mature`, so they follow the rating. New versions carry it in `output.rating` (`{ assetIds, rating }`).
+
+Hooks for other areas (no messages needed; call them):
+- **M3 uploads** (`media.process` consumer): after an upload is `ready` (and its poster exists for video), call `rateAsset(env, assetId)` from `apps/api/src/safety/service.ts`. It stores the rating and `mature`, and marks the asset `failed` (logged, stage `upload`) when the media itself shows a hard-limit violation. **M3 should also** add a `rating` column to ProjectRoom versions (today it is read from `output.rating`) and blur `suggestive`/`explicit` thumbnails in lists until clicked.
+- **M6 agent** (wired): `AgentPorts.safety: SafetyGate` (`agentSafetyGate(env, caller)`). `checkBrief` runs at the start of every turn (block → turn ends with reason `safety_blocked` and the neutral message, no LLM call); `checkProposal` runs on every valid proposal's `prompt`/`visual` strings (block → invalid proposal with a neutral reason so the model rewrites; explicit on a non-mature turn → the mature-content reason). Non-mature turns use the free rules only; mature turns add the classifier. Events are logged with stage `agent`.
+
+Logging: `safety_events` (D1 0009: workspace, user, run, job, stage `quote|pre|post|agent|upload`, verdict, codes, model, ≤ 200-character excerpt, no media) and Analytics Engine (`blobs: ['safety', stage, verdict, codes, model]`, `doubles: [hard, costUsd]`, index workspace). Review clears a flag with `UPDATE workspaces SET safety_flag = 0, safety_flagged_at = NULL WHERE id = ?`. Classifier assessments are cached 30 days by content hash in `safety_cache`.
 
 GraphQL: `runs(filter: { status, projectId, model, from, to }, first, after) { nodes { …RunView } stats { … } pageInfo { hasNextPage endCursor } }`.
 

@@ -164,11 +164,11 @@ describe('preCheck: references on mature runs (vision + faces)', () => {
     expect(f.calls.some((c) => c.model === FACE_DETECT_MODEL)).toBe(true);
   });
 
-  it('allows an uploaded illustration (no photographic face) and skips face detection for platform assets', async () => {
+  it('allows an uploaded illustration and skips face detection for illustrations and platform assets', async () => {
     const f = fakeLlm({ text: text({ sexualLevel: 'explicit' }), vision: vision({ photographic: false }, {}), faces: JSON.stringify({ faces: [{ confidence: 99 }] }) });
     const v = await preCheck({ prompt: 'adult scene', references: [upload, generated], mature: true }, deps(f.llm));
     expect(v.verdict).toBe('allow');
-    expect(f.calls.filter((c) => c.model === FACE_DETECT_MODEL)).toHaveLength(1);
+    expect(f.calls.filter((c) => c.model === FACE_DETECT_MODEL)).toHaveLength(0);
     // Both images go in one batched vision request.
     expect(f.calls.filter((c) => c.model !== FACE_DETECT_MODEL && typeof (c.messages[1] as any).content !== 'string')).toHaveLength(1);
   });
@@ -183,7 +183,7 @@ describe('preCheck: references on mature runs (vision + faces)', () => {
   it('fails closed when vision or face detection is unavailable on a mature run', async () => {
     const v1 = await preCheck({ prompt: 'adult scene', references: [generated], mature: true }, deps(fakeLlm({ text: text({}), vision: 'nope' }).llm));
     expect(v1.reasons.map((r) => r.code)).toEqual(['SAFETY_UNAVAILABLE']);
-    const v2 = await preCheck({ prompt: 'adult scene', references: [upload], mature: true }, deps(fakeLlm({ text: text({}), vision: vision({}), faces: new Error('x') }).llm));
+    const v2 = await preCheck({ prompt: 'adult scene', references: [upload], mature: true }, deps(fakeLlm({ text: text({}), vision: vision({ photographic: true }), faces: new Error('x') }).llm));
     expect(v2.reasons.map((r) => r.code)).toEqual(['SAFETY_UNAVAILABLE']);
     // Wrong number of rated images is invalid.
     const v3 = await preCheck({ prompt: 'adult scene', references: [generated, { ...generated, hash: 'h3' }], mature: true }, deps(fakeLlm({ text: text({}), vision: vision({}) }).llm));

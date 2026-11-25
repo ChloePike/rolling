@@ -241,7 +241,8 @@ export async function preCheck(input: PreCheckInput, deps: SafetyDeps): Promise<
     else {
       for (const [i, ref] of images.entries()) {
         let face: FaceResult | null = null;
-        if (ref.source === 'upload') {
+        // Face detection (the costliest check, ~$0.0013) only for uploaded photographs.
+        if (ref.source === 'upload' && rated.assessments[i]!.photographic) {
           try {
             const key = `face:${ref.hash ?? (await sha256Hex(ref.url!))}`;
             const t0 = Date.now();
