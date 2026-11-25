@@ -1,7 +1,8 @@
-import { useToast } from '@rolling/ui';
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { Popover, useToast } from '@rolling/ui';
+import { useNavigate } from '@tanstack/react-router';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { FormattedMessage, FormattedNumber, useIntl } from 'react-intl';
-import { ChipGroup, motion, PathIcon, paths, SearchField } from '@/features/account/shared';
+import { ChipGroup, motion, PathIcon, paths, ResultModal, SearchField, type ResultModalItem } from '@/features/account/shared';
 import { useActivity } from './api';
 import type { RunAction, RunRow, RunStatus } from './types';
 import styles from './Activity.module.css';
@@ -41,6 +42,23 @@ const ACTIONS: Record<RunStatus, RunAction[]> = {
 
 const TONES = ['var(--c-tone-indigo)', 'var(--c-tone-plum)', 'var(--c-tone-teal)', 'var(--c-tone-sand)', 'var(--c-tone-neutral)', 'var(--c-tone-moss)'];
 
+export const RANGES = ['last24', 'last7', 'last30', 'all'] as const;
+export type ActivityRange = (typeof RANGES)[number];
+const RANGE_MINUTES: Record<ActivityRange, number> = { last24: 24 * 60, last7: 7 * 24 * 60, last30: 30 * 24 * 60, all: Infinity };
+
+const SOURCE_ROUTE: Record<RunRow['source'], '/create/quick' | '/create/remix' | '/create/avatar' | '/create/character' | null> = {
+  canvas: null,
+  quickCreate: '/create/quick',
+  remix: '/create/remix',
+  avatar: '/create/avatar',
+  characters: '/create/character',
+};
+
+function csvCell(v: string | number) {
+  const s = String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
 function matches(run: RunRow, q: string) {
   if (!q) return true;
   const hay = `${run.name} ${run.ref} ${run.projectTitle ?? ''} ${run.params}`.toLowerCase();
@@ -54,6 +72,12 @@ export function ActivityPage({ initialFilter = 'all' }: { initialFilter?: Activi
   const { data } = useActivity();
   const [filter, setFilter] = useState<ActivityFilter>(initialFilter);
   const [query, setQuery] = useState('');
+  const [range, setRange] = useState<ActivityRange>('last7');
+  const [rangeOpen, setRangeOpen] = useState(false);
+  const [viewing, setViewing] = useState<RunRow | null>(null);
+  const navigate = useNavigate();
+  const timers = useRef<number[]>([]);
+  useEffect(() => () => timers.current.forEach((t) => window.clearInterval(t)), []);
   const [runs, setRuns] = useState<RunRow[]>([]);
   useEffect(() => {
     if (data) setRuns(data.runs);
@@ -61,8 +85,10 @@ export function ActivityPage({ initialFilter = 'all' }: { initialFilter?: Activi
 
   const rows = useMemo(
     () =>
-      runs.filter((r) => (filter === 'all' || FILTER_STATUSES[filter].includes(r.status)) && matches(r, query.trim())),
-    [runs, filter, query],
+      runs.filter(
+        (r) => r.minutesAgo <= RANGE_MINUTES[range] && (filter === 'all' || FILTER_STATUSES[filter].includes(r.status)) && matches(r, query.trim()),
+      ),
+    [runs, filter, query, range],
   );
 
   function act(run: RunRow, action: RunAction) {
@@ -70,12 +96,60 @@ export function ActivityPage({ initialFilter = 'all' }: { initialFilter?: Activi
       setRuns((all) => all.map((r) => (r.id === run.id ? { ...r, status: 'canceled', credits: 0, progress: undefined } : r)));
       toast.show({ message: intl.formatMessage({ id: 'activity.toast.canceled' }, { name: run.name }) });
     } else if (action === 'retry') {
-      setRuns((all) =>
-        all.map((r) => (r.id === run.id ? { ...r, status: 'queued', error: undefined, minutesAgo: 0 } : r)),
-      );
+      // Mock of `POST /api/runs/:id/retry`: queued → running with progress → done.
+      setRuns((all) => all.map((r) => (r.id === run.id ? { ...r, status: 'queued', error: undefined, minutesAgo: 0, credits: r.credits || r.refunded, refunded: 0 } : r)));
       toast.show({ message: intl.formatMessage({ id: 'activity.toast.retried' }, { name: run.name }) });
+      let p = 0;
+      const t = window.setInterval(() => {
+        p = Math.min(1, p + 0.25);
+        if (p >= 1) {
+          window.clearInterval(t);
+          setRuns((all) => all.map((r) => (r.id === run.id ? { ...r, status: 'done', progress: undefined } : r)));
+          toast.show({
+            message: intl.formatMessage({ id: 'activity.toast.done' }, { name: run.name }),
+            action: { label: intl.formatMessage({ id: 'activity.action.view' }), onAction: () => setViewing({ ...run, status: 'done' }) },
+          });
+        } else {
+          setRuns((all) => all.map((r) => (r.id === run.id ? { ...r, status: 'running', progress: p } : r)));
+        }
+      }, 500);
+      timers.current.push(t);
+    } else if (action === 'view') {
+      setViewing(run);
+    } else if (action === 'locate') {
+      const to = SOURCE_ROUTE[run.source];
+      if (to) void navigate({ to });
+      else void navigate({ to: '/p/$projectId', params: { projectId: 'prj_demo' } });
     }
   }
+
+  function exportCsv() {
+    const t = (id: string) => intl.formatMessage({ id });
+    const head = [t('activity.col.activity'), 'ID', t('activity.col.source'), t('activity.col.model'), t('activity.col.status'), t('activity.col.credits'), t('activity.export.refunded')];
+    const lines = [head, ...rows.map((r) => [r.name, r.ref, intl.formatMessage({ id: `activity.source.${r.source}` }, { project: r.projectTitle ?? '' }), r.params, t(`activity.status.${r.status}`), r.credits, r.refunded])];
+    const blob = new Blob([lines.map((l) => l.map(csvCell).join(',')).join('\n') + '\n'], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `rolling-activity-${range}.csv`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast.show({ message: intl.formatMessage({ id: 'activity.toast.exported' }, { n: rows.length }) });
+  }
+
+  const viewItem: ResultModalItem | null = viewing
+    ? {
+        title: viewing.name,
+        prompt: viewing.name,
+        aspect: viewing.source === 'avatar' ? '9/16' : viewing.source === 'characters' ? '2/3' : '16/9',
+        kind: /Seedream/.test(viewing.params) ? 'image' : 'video',
+        minutesAgo: viewing.minutesAgo,
+        params: [
+          { label: intl.formatMessage({ id: 'activity.col.model' }), value: viewing.params },
+          { label: intl.formatMessage({ id: 'activity.col.credits' }), value: intl.formatNumber(viewing.credits) },
+        ],
+      }
+    : null;
 
   const s = data?.stats;
   const stats = s
@@ -150,11 +224,39 @@ export function ActivityPage({ initialFilter = 'all' }: { initialFilter?: Activi
           onChange={setFilter}
         />
         <span className={styles.spacer} />
-        <button type="button" className={cx(styles.ghost, motion.hover)} aria-haspopup="menu">
-          <FormattedMessage id="activity.range.last7" />
-          <PathIcon d={paths.chevronDown} size={12} strokeWidth={2.4} />
-        </button>
-        <button type="button" className={cx(styles.ghost, motion.hover)}>
+        <Popover
+          open={rangeOpen}
+          onOpenChange={setRangeOpen}
+          role="listbox"
+          label={intl.formatMessage({ id: 'activity.range.label' })}
+          align="end"
+          offset={6}
+          className={styles.rangeMenu}
+          trigger={(tp) => (
+            <button {...tp} type="button" className={cx(styles.ghost, motion.hover)}>
+              <FormattedMessage id={`activity.range.${range}`} />
+              <PathIcon d={paths.chevronDown} size={12} strokeWidth={2.4} />
+            </button>
+          )}
+        >
+          {RANGES.map((r) => (
+            <button
+              key={r}
+              type="button"
+              role="option"
+              aria-selected={r === range}
+              className={styles.rangeOption}
+              onClick={() => {
+                setRange(r);
+                setRangeOpen(false);
+              }}
+            >
+              <FormattedMessage id={`activity.range.${r}`} />
+              {r === range && <PathIcon d={paths.check} size={13} strokeWidth={2.4} />}
+            </button>
+          ))}
+        </Popover>
+        <button type="button" className={cx(styles.ghost, motion.hover)} onClick={exportCsv}>
           <FormattedMessage id="activity.export" />
         </button>
       </div>
@@ -186,6 +288,15 @@ export function ActivityPage({ initialFilter = 'all' }: { initialFilter?: Activi
           </div>
         </div>
       </div>
+      <ResultModal
+        item={viewItem}
+        onClose={() => setViewing(null)}
+        onAction={(id) => {
+          setViewing(null);
+          if (id === 'sendToCanvas' || id === 'edit') void navigate({ to: '/p/$projectId', params: { projectId: 'prj_demo' } });
+          else toast.show({ message: intl.formatMessage({ id: 'activity.toast.downloaded' }) });
+        }}
+      />
     </div>
   );
 }

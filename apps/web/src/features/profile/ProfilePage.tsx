@@ -1,9 +1,9 @@
 import { useToast } from '@rolling/ui';
-import { Link } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { useState, type CSSProperties } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { useMe } from '@/features/account/api';
-import { motion, Segmented } from '@/features/account/shared';
+import { motion, ResultModal, Segmented } from '@/features/account/shared';
 import { useProfile } from './api';
 import styles from './Profile.module.css';
 
@@ -23,6 +23,8 @@ export function ProfilePage({ handle }: { handle: string }) {
   const { data: profile } = useProfile(handle);
   const { data: me } = useMe();
   const [tab, setTab] = useState<ProfileTab>('published');
+  const [viewing, setViewing] = useState<{ title: string; durationSec: number } | null>(null);
+  const navigate = useNavigate();
   if (!profile) return null;
   const own = me?.user.handle === profile.handle;
   const count = (k: ProfileTab) => profile.works.filter((w) => w.kind === k).length;
@@ -82,18 +84,19 @@ export function ProfilePage({ handle }: { handle: string }) {
       />
       <div key={tab} className={styles.grid} role="tabpanel" aria-label={intl.formatMessage({ id: `profile.tab.${tab}` })}>
         {works.map((w, i) => (
-          <a
+          <button
             key={w.id}
-            href={tab === 'template' ? `/templates#${w.id}` : `/s/${w.id}`}
+            type="button"
             className={cx(styles.work, motion.stagger)}
             style={{ '--i': i } as CSSProperties}
             data-work={w.id}
+            onClick={() => (tab === 'template' ? void navigate({ to: '/templates' }) : setViewing({ title: w.title, durationSec: w.durationSec }))}
           >
             <span className={styles.thumb} style={{ background: TONES[i % TONES.length] }}>
               <span className={styles.dur}>{timecode(w.durationSec)}</span>
             </span>
             <span className={styles.title}>{w.title}</span>
-          </a>
+          </button>
         ))}
         {works.length === 0 && (
           <p className={styles.empty}>
@@ -101,6 +104,16 @@ export function ProfilePage({ handle }: { handle: string }) {
           </p>
         )}
       </div>
+      <ResultModal
+        item={viewing ? { title: viewing.title, prompt: viewing.title, aspect: '9/16', kind: 'video', minutesAgo: 60 * 24, durationSec: viewing.durationSec, params: [] } : null}
+        actions={own ? [{ id: 'edit' }, { id: 'download' }] : [{ id: 'download' }]}
+        onClose={() => setViewing(null)}
+        onAction={(id) => {
+          setViewing(null);
+          if (id === 'edit') void navigate({ to: '/create/quick' });
+          else toast.show({ message: intl.formatMessage({ id: 'profile.downloaded' }) });
+        }}
+      />
     </div>
   );
 }

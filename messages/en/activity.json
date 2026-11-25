@@ -60,5 +60,13 @@
   "activity.time.days": "{n} days ago",
   "activity.empty": "No runs match these filters.",
   "activity.toast.canceled": "Canceled “{name}”. The held credits were released.",
-  "activity.toast.retried": "“{name}” is queued again."
+  "activity.toast.retried": "“{name}” is queued again.",
+  "activity.range.label": "Time range",
+  "activity.range.last24": "Last 24 hours",
+  "activity.range.last30": "Last 30 days",
+  "activity.range.all": "All time",
+  "activity.export.refunded": "Refunded",
+  "activity.toast.exported": "Exported {n, plural, one {# run} other {# runs}} as CSV.",
+  "activity.toast.done": "{name} is done.",
+  "activity.toast.downloaded": "Download started."
 }

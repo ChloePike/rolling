@@ -120,4 +120,36 @@ test.describe('activity (Tasks.dc.html)', () => {
     expect(reduced.dur).toBe('0.001s');
     expect(reduced.move).toBe('0px');
   });
+
+  test('range menu filters by time, Export downloads a CSV, View opens the result, Locate goes to the source', async ({ page }) => {
+    await openApp(page, '/activity');
+    const rows = page.locator('[data-run-status]');
+    await expect(rows).toHaveCount(9);
+    await page.getByRole('button', { name: 'Last 7 days' }).click();
+    const menu = page.getByRole('listbox', { name: 'Time range' });
+    await menu.getByRole('option', { name: 'Last 24 hours' }).click();
+    await expect(menu).toHaveCount(0);
+    await expect(rows).toHaveCount(7);
+    await page.getByRole('button', { name: 'Last 24 hours' }).click();
+    await page.keyboard.press('Escape');
+    const dl = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Export' }).click();
+    expect((await dl).suggestedFilename()).toBe('rolling-activity-last24.csv');
+    await expect(page.getByText('Exported 7 runs as CSV.')).toBeVisible();
+    await page.getByRole('button', { name: 'View Talking head · Desk organizer' }).click();
+    await expect(page.getByRole('dialog')).toContainText('Talking head · Desk organizer');
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: /^Locate Shot B · Cap pop/ }).click();
+    await expect(page).toHaveURL(/\/p\/prj_demo$/);
+  });
+
+  test('Retry runs the job to Done and offers View', async ({ page }) => {
+    await openApp(page, '/activity');
+    await page.getByRole('button', { name: 'Retry Two-person original · Table demo' }).click();
+    const row = page.locator('[data-run-status]').filter({ hasText: 'Two-person original · Table demo' });
+    await expect(row).toHaveAttribute('data-run-status', 'running');
+    await expect(row).toHaveAttribute('data-run-status', 'done', { timeout: 5000 });
+    await page.getByRole('status').getByRole('button', { name: 'View' }).click();
+    await expect(page.getByRole('dialog')).toContainText('Two-person original · Table demo');
+  });
 });

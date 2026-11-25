@@ -80,4 +80,15 @@ test.describe('profile (Profile.dc.html)', () => {
     const t2 = (await page.getByRole('tab', { name: /Templates/ }).boundingBox())!;
     expect(Math.abs((await page.locator('[role="tablist"] [aria-hidden="true"]').boundingBox())!.x - t2.x)).toBeLessThanOrEqual(1);
   });
+
+  test('published works open the result viewer; templates go to Templates', async ({ page }) => {
+    await page.goto('/u/alex');
+    await page.locator('[data-work]').first().click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.getByRole('tab', { name: /Templates/ }).click();
+    await page.locator('[data-work]').first().click();
+    await expect(page).toHaveURL(/\/templates$/);
+  });
 });

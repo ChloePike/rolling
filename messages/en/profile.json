@@ -6,5 +6,6 @@
   "profile.tabs": "Profile",
   "profile.tab.published": "Published",
   "profile.tab.template": "Templates",
-  "profile.empty": "Nothing here yet."
+  "profile.empty": "Nothing here yet.",
+  "profile.downloaded": "Download started."
 }

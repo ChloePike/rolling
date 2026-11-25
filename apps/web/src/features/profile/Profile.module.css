@@ -24,7 +24,7 @@
 .count{font-size:12px;font-weight:500;color:var(--c-text-4)}
 
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
-.work{display:flex;flex-direction:column;gap:8px;border-radius:12px}
+.work{display:flex;flex-direction:column;gap:8px;border-radius:12px;border:0;padding:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
 .thumb{
   aspect-ratio:9/16;border-radius:12px;position:relative;
   transition:box-shadow var(--m-fast) var(--m-ease-standard);
