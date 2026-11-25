@@ -13,7 +13,7 @@ import { personalWorkspaceId } from "../src/auth/workspace";
 import { projectRoom } from "../src/lib/access";
 import { syncModels } from "../src/models/sync";
 import { setGatewayFetchForTests } from "../src/runs/provider";
-import { rateAsset, setSafetyLlmForTests } from "../src/safety/service";
+import { agentSafetyGate, rateAsset, setSafetyLlmForTests } from "../src/safety/service";
 
 const BASE = "https://example.com";
 const DAY = 86_400_000;
@@ -386,5 +386,15 @@ describe("safety: upload rating hook (media.process)", () => {
     const id = await uploaded(ws, user);
     safety.image = "error";
     expect(await rateAsset(env, id)).toEqual({ rating: null, blocked: false });
+  });
+});
+
+describe("safety: agent gate (M6 hook)", () => {
+  it("blocks a hard-limit brief and logs it with stage agent; benign briefs pass", async () => {
+    const { user, ws } = await member("sa");
+    const gate = await agentSafetyGate(env, { userId: user, workspaceId: ws });
+    expect((await gate.checkBrief({ text: "a nude schoolgirl", mature: false })).verdict).toBe("block");
+    expect((await gate.checkBrief({ text: "portrait of a senior CEO", mature: false })).verdict).toBe("allow");
+    expect((await events(ws)).map((e) => [e.stage, e.verdict])).toEqual([["agent", "block"]]);
   });
 });

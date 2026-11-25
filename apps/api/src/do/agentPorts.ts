@@ -8,6 +8,7 @@ import type { PlanId } from "@rolling/core/pricing/config";
 import { projectRoom } from "../lib/access";
 import { loadCatalog } from "../models/catalog";
 import { canvasIdFor, type RoomCaller } from "./ProjectRoom";
+import { agentSafetyGate } from "../safety/service";
 
 /** Who the turn runs for. Resolved by the Worker from the auth context; the DO trusts it. */
 export interface AgentCaller {
@@ -124,6 +125,8 @@ export async function agentPorts(env: Env, caller: AgentCaller): Promise<AgentPo
       },
     },
     models: catalogModelsPort(catalog),
+    // D-005 hard limits on briefs and proposals (core/safety).
+    safety: await agentSafetyGate(env, caller),
     account: {
       async get() {
         return {

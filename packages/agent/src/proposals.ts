@@ -11,6 +11,7 @@ import { applyGraphOps } from '@rolling/core/project';
 import { applyOps as applyTimelineOps, clipEnd, edlDuration, findClip, type Clip, type Edl, type TimelineOp } from '@rolling/core/timeline';
 import type { z } from 'zod/v4';
 import { planAllowsResolution } from '@rolling/core/pricing/config';
+import { MATURE_REQUIRED_MESSAGE, SAFETY_BLOCKED_MESSAGE, type SafetyGate } from '@rolling/core/safety';
 import { bestAllowedResolution, creditsForSpec, specFromParams, specProblems, type GenSpec } from './capabilities';
 import { layoutNewNodes } from './layout';
 import type { AccountSnapshot, AssetItem, ModelsPort } from './ports';
@@ -560,18 +561,68 @@ export async function runPropose(name: ProposeToolName, rawArgs: unknown, ctx: P
   if (name === 'propose.plan') hoistPlanSeconds(decoded);
   const parsed = SCHEMAS[name].safeParse(decoded);
   if (!parsed.success) return fail(`invalid input: ${issueText(parsed.error)}`);
+  let result: ProposeResult;
   try {
     switch (name) {
       case 'propose.plan':
-        return await proposePlan(parsed.data as z.infer<typeof ProposePlanInput>, ctx);
+        result = await proposePlan(parsed.data as z.infer<typeof ProposePlanInput>, ctx);
+        break;
       case 'propose.graphPatch':
-        return await proposeGraphPatch(parsed.data as z.infer<typeof ProposeGraphPatchInput>, ctx);
+        result = await proposeGraphPatch(parsed.data as z.infer<typeof ProposeGraphPatchInput>, ctx);
+        break;
       case 'propose.timelinePatch':
-        return await proposeTimelinePatch(parsed.data as z.infer<typeof ProposeTimelinePatchInput>, ctx);
+        result = await proposeTimelinePatch(parsed.data as z.infer<typeof ProposeTimelinePatchInput>, ctx);
+        break;
       case 'propose.fields':
-        return await proposeFields(parsed.data as z.infer<typeof ProposeFieldsInput>, ctx);
+        result = await proposeFields(parsed.data as z.infer<typeof ProposeFieldsInput>, ctx);
+        break;
     }
   } catch (err) {
     return fail(`validation failed: ${err instanceof Error ? err.message : String(err)}`);
   }
+  if (!result.ok || !ctx.ports.safety) return result;
+  const problem = await safetyProblem(result.proposal, ctx.ports.safety, ctx.account.matureAllowed);
+  return problem ? fail(problem) : result;
+}
+
+const PROMPT_KEYS = new Set(['prompt', 'visual']);
+
+/** Generation prompts in a proposal body: `prompt` / `visual` strings anywhere (plan shots, node params, tool fields). */
+export function proposalPrompts(body: unknown): { prompts: string[]; negative: string[] } {
+  const prompts = new Set<string>();
+  const negative = new Set<string>();
+  const walk = (v: unknown, depth: number) => {
+    if (depth > 12 || v === null || typeof v !== 'object') return;
+    if (Array.isArray(v)) return v.forEach((x) => walk(x, depth + 1));
+    for (const [k, x] of Object.entries(v)) {
+      if (typeof x === 'string' && x.trim()) {
+        if (PROMPT_KEYS.has(k)) prompts.add(x.trim());
+        else if (k === 'negativePrompt') negative.add(x.trim());
+      } else walk(x, depth + 1);
+    }
+  };
+  walk(body, 0);
+  return { prompts: [...prompts].slice(0, 40), negative: [...negative].slice(0, 10) };
+}
+
+/**
+ * D-005 gate over a valid proposal. A hard-limit hit makes it invalid with a
+ * neutral reason so the model rewrites it; explicit prompts on a non-mature
+ * turn get the mature-content reason.
+ */
+async function safetyProblem(p: Proposal, gate: SafetyGate, mature: boolean): Promise<string | null> {
+  const { prompts, negative } = proposalPrompts(p.body);
+  if (prompts.length === 0) return null;
+  let v;
+  try {
+    v = await gate.checkProposal({ mature, prompts: prompts.map((prompt, i) => ({ prompt, ...(i === 0 && negative.length && { negativePrompt: negative.join('; ') }) })) });
+  } catch {
+    if (!mature) return null;
+    v = { verdict: 'block' as const, reasons: [{ code: 'SAFETY_UNAVAILABLE' as const, detail: 'gate error' }], checks: [] };
+  }
+  if (v.verdict !== 'block') return null;
+  if (v.reasons.every((r) => r.code === 'MATURE_REQUIRED')) {
+    return `content rules: ${MATURE_REQUIRED_MESSAGE} Rewrite the prompts without explicit content, or tell the user how to turn on mature content.`;
+  }
+  return `content rules: ${SAFETY_BLOCKED_MESSAGE} Rewrite the affected prompts so they stay within the content rules, or tell the user it can't be made. Do not describe the rules in detail.`;
 }

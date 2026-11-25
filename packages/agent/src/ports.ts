@@ -8,6 +8,7 @@ import type { CatalogModel, ListingModel, PriceRequest } from '@rolling/core';
 import type { PlanId } from '@rolling/core/pricing/config';
 import type { GraphState } from '@rolling/core/graph';
 import type { Edl } from '@rolling/core/timeline';
+import type { SafetyGate } from '@rolling/core/safety';
 
 export interface CanvasPort {
   /** Current graph of a project, or null when it does not exist / is not readable. */
@@ -92,4 +93,10 @@ export interface AgentPorts {
   account: AccountPort;
   templates: TemplatesPort;
   timeline: TimelinePort;
+  /**
+   * D-005 hard limits (core/safety): checks the user's brief at the start of a
+   * turn and every proposal's generation prompts. AgentSession always wires it;
+   * the generation pipeline checks again before anything runs.
+   */
+  safety?: SafetyGate;
 }

@@ -271,4 +271,16 @@ describe('quickCheck and SafetyGate', () => {
     expect(p.reasons[0]!.code).toBe('MINOR_SEXUAL');
     expect(seen).toEqual(['brief:allow', 'proposal:block']);
   });
+
+  it('gate uses only the free rules on non-mature turns and asks for mature content on explicit proposals', async () => {
+    const f = fakeLlm({ text: text({}) });
+    const gate = createSafetyGate(deps(f.llm));
+    expect((await gate.checkBrief({ text: 'a product video for sneakers', mature: false })).verdict).toBe('allow');
+    const p = await gate.checkProposal({ mature: false, prompts: [{ prompt: 'shot 1: an nsfw scene' }] });
+    expect(p.reasons.map((r) => r.code)).toEqual(['MATURE_REQUIRED']);
+    expect(f.calls).toHaveLength(0);
+    // Mature proposals: one classifier call for all prompts.
+    await gate.checkProposal({ mature: true, prompts: [{ prompt: 'shot 1' }, { prompt: 'shot 2' }, { prompt: 'shot 3' }] });
+    expect(f.calls).toHaveLength(1);
+  });
 });

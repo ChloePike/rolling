@@ -9,6 +9,7 @@
  *   ends when the model stops calling tools, after a proposal, after 8 tool calls, or on cancel.
  */
 import type { ChatMessage, ChatUsage, LlmProvider, ToolCall } from '@rolling/core';
+import { SAFETY_BLOCKED_MESSAGE, type ReferenceSource, type SafetyReference } from '@rolling/core/safety';
 import { buildContext, type ThreadState, type TurnInput } from './context';
 import type { AccountSnapshot, AgentPorts } from './ports';
 import { isProposeTool, runPropose } from './proposals';
@@ -72,6 +73,12 @@ export interface TurnResult {
 
 class Canceled extends Error {}
 
+function referenceSource(source: string): ReferenceSource {
+  if (source === 'generated' || source === 'character' || source === 'public') return source;
+  if (source === 'builtin') return 'public';
+  return 'upload';
+}
+
 function parseArgs(raw: string): { ok: true; value: unknown } | { ok: false; error: string } {
   if (!raw.trim()) return { ok: true, value: {} };
   try {
@@ -110,6 +117,23 @@ export async function runTurn(opts: RunTurnOptions): Promise<TurnResult> {
   let llmCalls = 0;
   let retries = 0;
   let textOnly = false;
+
+  // D-005: the brief and its `@` references go through the safety gate first.
+  let blocked = false;
+  if (opts.ports.safety) {
+    const references: SafetyReference[] = ctx.refs.map((r) => ({
+      kind: r.kind,
+      source: referenceSource(r.source),
+      caption: [r.name, r.description].filter(Boolean).join(': '),
+    }));
+    try {
+      const v = await opts.ports.safety.checkBrief({ text: input.text, references, mature: account.matureAllowed });
+      blocked = v.verdict === 'block';
+    } catch {
+      // A gate failure on a mature turn fails closed.
+      blocked = account.matureAllowed;
+    }
+  }
 
   const addUsage = (u: ChatUsage) => {
     usage.promptTokens += u.promptTokens;
@@ -168,8 +192,14 @@ export async function runTurn(opts: RunTurnOptions): Promise<TurnResult> {
     }
   };
 
+  if (blocked) {
+    reason = 'safety_blocked';
+    text = SAFETY_BLOCKED_MESSAGE;
+    emit({ type: 'agent.delta', ...base, delta: text });
+  }
+
   try {
-    for (;;) {
+    for (; !blocked; ) {
       const res = await call();
       if (!res.toolCalls.length || textOnly) {
         if (textOnly && reason === 'completed') reason = 'max_tool_calls';

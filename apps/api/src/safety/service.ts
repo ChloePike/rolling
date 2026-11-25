@@ -21,6 +21,8 @@ import {
   type SafetyEvent,
   type SafetyVerdict,
   type VerdictCache,
+  createSafetyGate,
+  type SafetyGate,
 } from "@rolling/core/safety";
 import { newId } from "@rolling/core/ids";
 import { loadCatalog } from "../models/catalog";
@@ -219,4 +221,15 @@ export async function rateAsset(env: Env, assetId: string): Promise<{ rating: st
     await logSafety(env, { id: `${assetId}:upload`, workspaceId: row.workspace_id, userId: row.created_by, stage: "upload", verdict });
   }
   return { rating: rating?.rating ?? null, blocked };
+}
+
+/**
+ * The agent harness gate (M6): briefs at the start of each turn, proposals'
+ * generation prompts before they are shown. Blocks and outages are logged
+ * with stage `agent`.
+ */
+export async function agentSafetyGate(env: Env, caller: { userId: string; workspaceId: string }): Promise<SafetyGate> {
+  return createSafetyGate(await safetyDeps(env), async (verdict, _what, excerpt) => {
+    if (shouldLog(verdict)) await logSafety(env, { workspaceId: caller.workspaceId, userId: caller.userId, stage: "agent", verdict, prompt: excerpt });
+  });
 }

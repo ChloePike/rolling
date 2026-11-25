@@ -137,4 +137,5 @@ export type AgentEvent =
   | { type: 'agent.done'; threadId: string; turnId: string; messageId: string; reason: TurnEndReason; proposalId: string | null }
   | { type: 'agent.error'; threadId: string; turnId: string; code: string; message: string };
 
-export type TurnEndReason = 'completed' | 'proposal' | 'max_tool_calls' | 'canceled' | 'error' | 'invalid_proposal';
+/** `safety_blocked`: the brief hit a D-005 hard limit; the turn answers with the neutral content-rules message. */
+export type TurnEndReason = 'completed' | 'proposal' | 'max_tool_calls' | 'canceled' | 'error' | 'invalid_proposal' | 'safety_blocked';
