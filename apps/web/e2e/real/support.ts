@@ -28,17 +28,36 @@ async function latestCode(request: APIRequestContext, email: string, after: numb
   throw new Error(`No sign-in code for ${email}`);
 }
 
+/**
+ * Session cookies per email, reused across tests in this worker: a new code can only be sent
+ * every 30 s (resend cooldown), so signing in again for every test would stall.
+ */
+const sessions = new Map<string, Awaited<ReturnType<ReturnType<Page['context']>['cookies']>>>();
+
 /** Email-code sign-in through the API (session cookie lands in the page's context). */
 export async function signIn(page: Page, email: string, baseURL: string) {
+  const cached = sessions.get(email);
+  if (cached) {
+    await page.context().addCookies(cached);
+    if ((await page.request.get('/api/me')).status() === 200) return;
+  }
   // Better Auth checks Origin on cookie-bearing POSTs.
   const origin = new URL(baseURL).origin;
   const req = page.request;
-  const started = Date.now();
-  const send = await req.post('/api/auth/email-otp/send-verification-otp', { data: { email, type: 'sign-in' }, headers: { origin } });
-  expect([200, 429]).toContain(send.status());
+  let started = Date.now();
+  let send = await req.post('/api/auth/email-otp/send-verification-otp', { data: { email, type: 'sign-in' }, headers: { origin } });
+  if (send.status() === 429) {
+    // Still in the resend cooldown: wait it out, then ask for a fresh code.
+    const body = (await send.json().catch(() => ({}))) as { error?: { data?: { retryAfter?: number } } };
+    await new Promise((res) => setTimeout(res, ((body.error?.data?.retryAfter ?? 30) + 1) * 1000));
+    started = Date.now();
+    send = await req.post('/api/auth/email-otp/send-verification-otp', { data: { email, type: 'sign-in' }, headers: { origin } });
+  }
+  expect(send.status(), await send.text()).toBe(200);
   const otp = await latestCode(req, email, started);
   const res = await req.post('/api/auth/sign-in/email-otp', { data: { email, otp }, headers: { origin } });
   expect(res.status(), await res.text()).toBe(200);
+  sessions.set(email, await page.context().cookies());
 }
 
 /** Center of a node's port (in/out) on screen. */
