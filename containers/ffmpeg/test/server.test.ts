@@ -21,7 +21,21 @@ describe("ffmpeg container server", () => {
     expect(await res.json()).toMatchObject({ ok: true });
   });
 
-  it.each(["/render", "/probe", "/thumb", "/waveform"])("stubs %s with 501", async (path) => {
+  it.each(["/probe", "/thumb", "/waveform"])("%s validates its input", async (path) => {
+    const res = await fetch(`${base}${path}`, { method: "POST", body: JSON.stringify({ url: "file:///etc/passwd" }) });
+    expect(res.status).toBe(400);
+    expect((await fetch(`${base}${path}`)).status).toBe(405);
+  });
+
+  it("computes waveform peaks", async () => {
+    const { peaks } = await import("../src/server.ts");
+    const pcm = Buffer.alloc(8);
+    pcm.writeInt16LE(16384, 0);
+    pcm.writeInt16LE(-32768, 6);
+    expect(peaks(pcm, 2)).toEqual([0.5, 1]);
+  });
+
+  it.each(["/render"])("stubs %s with 501", async (path) => {
     const res = await fetch(`${base}${path}`, { method: "POST" });
     expect(res.status).toBe(501);
     expect(await res.json()).toMatchObject({ error: { code: "NOT_IMPLEMENTED" } });

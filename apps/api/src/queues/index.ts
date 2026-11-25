@@ -5,10 +5,11 @@
 import { z } from "zod";
 import { handleNotifyEmail, NotifyEmailMessage } from "../auth/email";
 import { handleLedgerMirror, LedgerMirrorMessage } from "./ledgerMirror";
+import { handleMediaProcess, MediaProcessMessage } from "./mediaProcess";
 
 export { NotifyEmailMessage };
 
-export const MediaProcessMessage = z.object({ assetId: z.string(), r2Key: z.string(), kind: z.string() });
+export { MediaProcessMessage };
 export { LedgerMirrorMessage };
 
 type Handler = (batch: MessageBatch<unknown>, env: Env) => Promise<void>;
@@ -30,7 +31,7 @@ function stubConsumer(name: string, schema: z.ZodTypeAny): Handler {
 }
 
 export const queueHandlers: Record<string, Handler> = {
-  "media-process": stubConsumer("media-process", MediaProcessMessage),
+  "media-process": handleMediaProcess,
   "ledger-mirror": handleLedgerMirror,
   "notify-email": handleNotifyEmail,
 };

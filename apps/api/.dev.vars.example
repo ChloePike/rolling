@@ -4,6 +4,8 @@
 # logged instead of sent, and Google / Apple sign-in are hidden until configured.
 
 HYPEROUTER_API_KEY=
+# Standard Webhooks secret (whsec_...) of the Hyperouter webhook endpoint pointing at /api/hooks/hyperouter.
+HYPEROUTER_WEBHOOK_SECRET=
 
 # Better Auth: 32+ random bytes (e.g. `openssl rand -base64 32`). Required outside development.
 BETTER_AUTH_SECRET=
@@ -36,3 +38,9 @@ STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 # Optional: pin the API version; unset uses the account default.
 STRIPE_API_VERSION=
+
+# Media (M3, D-008): HMAC key for signed private media URLs. Required outside development
+# (development falls back to a fixed dev key). Generate with `openssl rand -base64 32`.
+MEDIA_SIGNING_KEY=
+# Skip the FFmpeg container in media processing when Docker/containers are not running locally.
+MEDIA_CONTAINER=off

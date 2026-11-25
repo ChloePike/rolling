@@ -34,6 +34,12 @@ interface RollingSecrets {
   TEST_INBOX_TOKEN?: string;
   /** `off` silences the development email log (not a secret; optional). */
   EMAIL_LOG?: string;
+  // Media (M3, D-008). HMAC key for signed private media URLs; required outside development.
+  MEDIA_SIGNING_KEY?: string;
+  /** Origin of the private media host (e.g. `https://media.<domain>`); empty = this Worker's `/media/*` route. Not a secret. */
+  PRIVATE_MEDIA_BASE_URL?: string;
+  /** `off` skips the FFmpeg container in media processing (tests, local dev without Docker). Not a secret. */
+  MEDIA_CONTAINER?: string;
   // Billing (M2). Stripe secret key (sk_live_/sk_test_/rk_) and webhook signing secret (whsec_).
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;

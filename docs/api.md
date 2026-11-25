@@ -181,12 +181,71 @@ Roles: owner (members, invites, limits, billing), editor (create and edit), view
 With the var `EMAIL_PROVIDER=test-inbox` (refused in production) emails are stored in D1 for 24 h instead of sent. `GET /api/test/inbox?to=<email>&limit=10` with `authorization: Bearer <TEST_INBOX_TOKEN>` → `{ messages: [{ to, subject, text, code, template, sentAt }] }`, newest first; `401` bad token; `404` when the provider is not `test-inbox`.
 
 ## Projects and graph
-| GET | `/api/projects` | recent first |
-| POST | `/api/projects` | `{ title, fromTemplateId? }` |
-| GET | `/api/projects/:id` | canvas, nodes, edges, revision |
-| POST | `/api/projects/:id/patch` | `{ baseRevision, ops: GraphOp[] }` → `{ revision }` (same ops the agent proposes; also accepted over the WebSocket) |
-| GET | `/api/projects/:id/ws` | WebSocket to ProjectRoom: snapshot, then `graph.patched`, `node.version`, `job.progress`, `job.done`, `job.failed`, `timeline.patched`, `credits.changed`, `proposal.created`, `agent.delta`; client sends patches `{ baseRevision, ops }` |
-| GET | `/api/nodes/:id/versions` | history; `POST /api/nodes/:id/active` `{ versionId }` |
+
+Every project belongs to a workspace. Reads need membership of that workspace (any role); writes need `editor` or `owner`. Missing and foreign projects both answer `404 NOT_FOUND`. Graph state lives in the `ProjectRoom` Durable Object; D1 `projects` is the index, updated by ProjectRoom after commits (debounced ~2 s: title, `updated_at`, `node_count`, thumbnail — never a mature output).
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/projects` | `?first=1..100 (24)&after=<cursor>` → `{ items: Project[], nextCursor }`, current workspace, recently updated first. GraphQL: `projects(first, after) { edges { cursor node { id workspaceId title kind nodeCount updatedAt createdBy thumbUrl } } pageInfo }` |
+| POST | `/api/projects` | `{ title?, fromTemplateId? }` → `201 { project }`. A template's `graph` (`{ ops }` or `{ nodes, edges, groups }`) is applied as revision 1 with fresh ids |
+| GET | `/api/projects/:id` | `{ project, role, canEdit, snapshot }` (snapshot as on the WebSocket) |
+| PATCH | `/api/projects/:id` | `{ title }` → `{ project }` |
+| DELETE | `/api/projects/:id` | deletes the room, the index row and revokes share links; open sockets get `error { code: PROJECT_DELETED }` and close `4410` |
+| POST | `/api/projects/:id/patch` | `{ baseRevision, ops: GraphOp[], origin?: "user"\|"agent" }` → `{ revision, ops, idMap, statuses }`. `409 CONFLICT` `data.snapshot` when `baseRevision` is stale; `422 VALIDATION_FAILED` `data.refusal` (`{ code, message, opIndex, data }`) when an op is refused |
+| POST | `/api/projects/:id/undo`, `/redo` | the caller's own last patch → `{ revision, ops, statuses }`; `409` `data.reason: NOTHING_TO_UNDO \| NOTHING_TO_REDO` |
+| GET | `/api/projects/:id/ws` | WebSocket to ProjectRoom (below) |
+| GET | `/api/nodes/:id/versions?projectId=` | `{ nodeId, activeVersionId, versions: [{ id, n, assetId, inputDigest, model, jobId, createdAt, active, stale, mature, url, thumbUrl }] }`, newest first. `stale` = made with inputs that differ from the node's current inputs. `url` is null for mature outputs the viewer may not see |
+| POST | `/api/nodes/:id/active` | `{ projectId, versionId }` → `{ version, statuses }`; broadcasts `node.version` |
+
+`Project`: `{ id, workspaceId, title, kind, nodeCount, updatedAt, createdBy, thumbUrl }` (times are epoch ms).
+
+**GraphOp** (`@rolling/core/graph` `LocalOp` plus node flags; validated by `@rolling/core/project`): `addNode { tempId, kind, title, params, position? }`, `updateNode { nodeId, params, title? }` (a param set to `null` is removed), `moveNode { nodeId, position }`, `connect { from, to, edgeId? }`, `disconnect { edgeId }`, `removeNode { nodeId }`, `group { nodeIds, title, groupId? }`, `ungroup { groupId }`, `setBypass { nodeId, bypass }`, `setCollapsed { nodeId, collapsed }`.
+- Ids: `addNode.tempId` starting with `node_` is kept as the node id (client-chosen, must be unique, else `DUPLICATE_ID`); any other temp id gets a fresh `node_…` id and can be referenced by later ops of the same patch. `edgeId` must start with `edge_`, `groupId` with `grp_`; both are generated when absent.
+- Patches are atomic: the first refused op refuses the whole patch. Refusal codes: `NODE_NOT_FOUND`, `EDGE_NOT_FOUND`, `PORT_NOT_FOUND`, `PORT_TYPE_MISMATCH`, `SELF_CONNECTION`, `DUPLICATE_EDGE`, `CYCLE`, `PORT_FULL`, `DUPLICATE_ID`, `EMPTY_GROUP`, `INVALID_OP` (schema), `TOO_LARGE` (params > 32 KB, > 2000 nodes). `message` is a human-readable English reason (e.g. “Image nodes don’t take audio input.”).
+- Nodes added without `position` are laid out left to right by dependency, to the right of the existing graph; the broadcast ops carry the final positions.
+- The server returns and broadcasts **normalized ops** (final ids, positions); clients apply those.
+- Staleness: each node has an input digest (kind, params, and for each input its upstream's active version, digest and bypass flag). A version records the digest it was made with; `status` is derived: `done` when the active version matches, `outdated` (“Input changed”) when not, `idle` without a version; `queued`/`generating`/`failed` are runtime states set by jobs. Changed statuses come back as `statuses: { nodeId: status }`.
+- Bypass/collapse are node columns (`bypass`, `collapsed` as 0/1 in snapshot rows). A bypassed node passes through its first input of its own output type; otherwise its dependents are blocked in run plans.
+
+### ProjectRoom WebSocket (`/api/projects/:id/ws`)
+
+Envelope `{ type, id, payload }` both ways. Auth: session cookie (dev header `x-dev-user` / `?devUser=` in development); optional `?workspaceId=`. Not signed in → `401`, not a member → `404` (HTTP, before the upgrade). Viewers get a read-only socket (`hello.canEdit = false`; writes answer `error { code: FORBIDDEN }`). A raw `ping` text frame is answered `pong` without waking the room.
+
+Server → client, on connect: `hello { actor, canEdit }`, then `snapshot`:
+```ts
+{ projectId, workspaceId, title, revision,
+  canvases: [{ id: 'cnv_…', title, viewport }],
+  nodes: [{ id, canvas_id, kind, title, params /* JSON string */, x, y, group_id, active_version_id, status,
+            created_by: 'user'|'agent', updated_at, bypass: 0|1, collapsed: 0|1,
+            version_n?, version_total?, asset_id? /* active version */ }],
+  edges: [{ id, canvas_id, from_node, from_port, to_node, to_port, ord, pinned_version_id }],
+  groups: [{ id, canvas_id, title, color }],
+  timeline: { canvasId, revision, edl } | null }
+```
+
+| Client → server | Payload | Reply (same `id`) |
+|---|---|---|
+| `patch` | `{ baseRevision, ops, origin? }` | `ack { revision, idMap, statuses }` · `conflict { snapshot }` · `error { code: <refusal code>, message, data: refusal }` |
+| `undo` / `redo` | `{}` | `ack { revision, ops, statuses }` (apply `ops`) · `error { code: NOTHING_TO_UNDO \| NOTHING_TO_REDO }` |
+| `timeline.patch` | `{ canvasId?, baseRevision, ops: TimelineOp[] }` | `ack { revision, canvasId }` · `conflict { timeline: { canvasId, revision, edl } }` · `error { code: TIMELINE_INVALID, message }` |
+| `snapshot` | `null` | `snapshot` |
+| `ping` | `null` | `pong` |
+
+Server → other sockets: `graph.patched { revision, ops, actor: 'user'|'agent', userId, kind?: 'undo'|'redo', statuses? }`, `node.version { nodeId, version: { id, n, total, assetId, active, stale, createdAt }, statuses }`, `timeline.patched { canvasId, revision, ops, actor, userId }` (after `reassemble`: `ops: null, edl`), `job.progress { jobId, nodeId, progress, status }`, `job.failed { jobId, nodeId, refunded, reason }`, plus anything trusted code sends through `ProjectRoom.broadcast` (`job.done`, `credits.changed`, `proposal.created`, `agent.delta`). Unknown types → `error { code: UNKNOWN_TYPE }`; bad JSON → `error { code: BAD_MESSAGE }`.
+
+### ProjectRoom RPC (server-side callers: runs, workflows, agent)
+
+Get the stub with `projectRoom(env, projectId)` (`apps/api/src/lib/access.ts`). `caller = { userId, workspaceId, canEdit }`; the room re-checks the workspace on every call and returns `{ ok: false, code, message }` errors (`lib/room.ts` `unwrap`/`orFail` map them to REST errors).
+- `applyPatch(caller, { baseRevision, ops, origin? })` → `{ ok, revision, ops, idMap, statuses }` (broadcasts `graph.patched`; `origin: 'agent'` marks created nodes as agent-made)
+- `undo(caller)`, `redo(caller)`
+- `getSnapshot(caller)`, `getGraph(caller)` → `{ state: GraphState, assets: { nodeId: assetId } }`
+- `planRun(caller, { scope: 'node'|'selection'|'all'|'upTo'|'from', nodeIds? })` → `{ ok, revision, items: [{ nodeId, kind, title, action: 'run'|'reuse'|'blocked'|'bypassed'|'none', reason?, message?, model, params, inputDigest, inputs: [{ port, nodeId, assetId, pending }], dependsOn }] }` in dependency order. Pricing is the quote route's job.
+- `inputDigest(caller, nodeId)` → `{ ok, digest }`
+- `addVersion({ nodeId, assetId, inputDigest, model?, jobId?, output? })` → new active version; broadcasts `node.version`
+- `markRunning({ nodeId, jobId, progress?, status?: 'queued'|'generating' })` → broadcasts `job.progress`
+- `markFailed({ nodeId, jobId, refunded, reason })` → status `failed`, broadcasts `job.failed`
+- `broadcast(type, payload)` → fan-out of any `ServerMessageType`
+- `listVersions`, `setActiveVersion`, `getTimeline`, `patchTimeline`, `reassembleTimeline`, `setTitle`, `destroy`, `init`, `flushIndex`
 
 ## Runs
 | POST | `/api/runs/quote` | `{ projectId, scope: node|selection|all, nodeIds? }` or `{ promptSpec }` from a tool page → `{ quoteId, items: [{ nodeId, action: run|reuse|blocked|none, model, credits, reason? }], total, balanceAfter, expiresAt }` |
@@ -195,12 +254,32 @@ With the var `EMAIL_PROVIDER=test-inbox` (refused in production) emails are stor
 | GET | `/api/runs` | Activity list: filters status, project, model, date |
 
 ## Assets and libraries
-| POST | `/api/assets/upload-url` | `{ filename, contentType, size }` → signed PUT URL + assetId |
-| POST | `/api/assets/:id/complete` | triggers probe, thumbnail, waveform |
-| GET | `/api/assets` | `?scope=mine|team|builtin|public|all&kind=&q=` (powers the `@` picker) |
+
+Uploads go through the Worker into R2 multipart uploads (no S3 presigning). Bytes are served only through signed media URLs (D-008), never from `/api`.
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/api/assets/uploads` | `{ filename, contentType, size, projectId?, name? }` → `201 { assetId, uploadId, partSize, parts, kind }`. Limits: images ≤ 30 MB (jpeg, png, webp, gif, avif, heic), video ≤ 2 GB (mp4, quicktime, webm), audio ≤ 200 MB (mpeg, mp4/m4a, aac, wav, ogg, webm, flac). `413` / `415` `VALIDATION_FAILED` with `data.reason: TOO_LARGE \| UNSUPPORTED_TYPE`, `maxBytes`, `limits`. Editors and owners only |
+| PUT | `/api/assets/uploads/:assetId/parts/:n` | raw bytes, `Content-Length` required; every part but the last is exactly `partSize` (10 MiB) → `{ partNumber, etag }`. Parts may go in parallel. Only the uploader |
+| POST | `/api/assets/uploads/:assetId/complete` | `{ parts: [{ partNumber, etag }] }` → `{ asset }` (`status: processing`); queues `media.process` |
+| DELETE | `/api/assets/uploads/:assetId` | aborts an open upload |
+| GET | `/api/assets` | `?scope=mine\|team\|builtin\|public\|all (all)&kind=image\|video\|audio\|text&q=&first=1..100 (48)&after=` → `{ items: Asset[], nextCursor }`, newest first; `q` is full-text (prefix match on name and tags). GraphQL: `assets(scope: MINE\|TEAM\|BUILTIN\|PUBLIC\|ALL, kind, q, first, after)` |
+| GET | `/api/assets/:id` | `{ asset }` (own workspace, builtin or public) |
+| DELETE | `/api/assets/:id` | removes the row, search entry and R2 objects (editor+) |
+| GET | `/api/media/private/:assetId` | signed-in convenience: `302` to a signed URL; never carries bytes |
+| GET | `/media/<key>?exp=&ws=&sig=` | signed private media (this Worker until the media hostname exists). `Range` supported. `403 { reason: invalid }`, `410 { reason: expired }` |
 | GET | `/api/public-library` | `?category=&sub=&q=` with license |
-| GET/POST | `/api/characters`, `/api/voices` | voice clone: `POST /api/voices/clone` `{ sampleAssetId }` (async job) |
+| GET | `/api/characters` | `{ items: [{ id, name, meta, coverAssetId, coverUrl, versions: [{ n, assetIds, createdAt }], createdAt, createdBy }] }` |
+| POST | `/api/characters` | `{ name, coverAssetId?, referenceAssetIds?, meta? }` → `201 { character }`; `DELETE /api/characters/:id` |
+| GET | `/api/voices` | builtin + workspace voices `{ items: [{ id, name, language, kind: builtin\|cloned, status, sampleAssetId, sampleUrl }] }` |
+| POST | `/api/voices` (alias `/api/voices/clone`) | `{ name, sampleAssetId, language? }` → `202 { voice }` with `status: pending` (voice provider is an open decision). `NO_PLAN` without a plan; `403 data.reason: PLAN_FEATURE, requiredPlan: plus` on Starter; `DELETE /api/voices/:id` (cloned only) |
 | GET | `/api/templates` | |
+
+`Asset`: `{ id, kind, source: mine|team|builtin|public|generated, name, status: processing|ready|failed, mature, size, contentType, license, projectId, createdBy, createdAt, url, thumbUrl, waveformUrl, meta: { width?, height?, durationSec?, processing?: queued|pending|done, tags? } }`.
+- Scopes: `mine` = my uploads and generations in the current workspace; `team` = the whole workspace; `builtin`; `public` (public library, never mature); `all` = workspace + builtin + public.
+- D-005: mature assets are listed and signed only for viewers allowed to see them (`AuthContext.matureAllowed`); mature public-library items never appear.
+- `media.process`: images get a 512 px WebP thumbnail through Cloudflare Images (fallback: the original); video/audio are probed, thumbnailed and waveformed by the FFmpeg container from a signed URL. Without a container (`MEDIA_CONTAINER=off`, tests, local dev) the asset becomes `ready` with `meta.processing: pending`.
+- Signed URL token: `sig = base64url(HMAC-SHA256(MEDIA_SIGNING_KEY, "v1\n" + key + "\n" + exp + "\n" + ws))`, `exp` in epoch seconds (default lifetime 1 h, max 7 d). Workspace media lives under `ws/<workspaceId>/…` and is only valid with that `ws`; `ws=_` signs `builtin/` and `public/` keys. Code: `@rolling/core/media` (`signMediaKey`, `verifyMediaSignature`), `apps/api/src/lib/mediaUrls.ts` (`signMediaUrl(env, key, { workspaceId, expiresIn })`).
 
 ## Agent
 | POST | `/api/agent/threads` | `{ projectId?, surface: home|canvas|editor|tool, skill? }` |
@@ -209,10 +288,24 @@ With the var `EMAIL_PROVIDER=test-inbox` (refused in production) emails are stor
 | POST | `/api/agent/proposals/:id/discard` | |
 
 ## Editor
-| GET | `/api/canvases/:id/timeline` | EDL + revision (assembled on first open) |
-| POST | `/api/canvases/:id/timeline/patch` | `{ baseRevision, ops: TimelineOp[] }` |
-| POST | `/api/canvases/:id/timeline/reassemble` | rebuild from script, keeps manual trims where shots match |
+
+One canvas per project: `canvasId = "cnv_" + <project ULID>` (from `snapshot.canvases[0].id`). Access as for the project.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/canvases/:id/timeline` | `{ canvasId, revision, edl }`. Assembled on first open: the script node's `params.rows` (`{ n, visual, line?, seconds, nodeId? }`, `selected: false` rows skipped) become shots in order, each mapped to its `nodeId` or else to the video nodes left to right; a row's `line` becomes a caption; an audio node with an asset becomes the voiceover (`params.role: 'music'` → music). Without a script: the video nodes feeding a render node, else all video nodes left to right |
+| POST | `/api/canvases/:id/timeline/patch` | `{ baseRevision, ops: TimelineOp[] }` → `{ canvasId, revision, edl, ops }`; `409 CONFLICT data.timeline`; `422 VALIDATION_FAILED data.reason: TIMELINE_INVALID` (overlap, too short, unknown clip). Broadcasts `timeline.patched`. Also over the socket as `timeline.patch` |
+| POST | `/api/canvases/:id/timeline/reassemble` | rebuild from the graph, keeps manual trims (`in`/`out`) of shots whose node is still there → `{ canvasId, revision, edl }` |
 | POST | `/api/canvases/:id/export` | `{ preset: mp4_1080p }` → ExportWorkflow; result on the project WebSocket |
 
+`TimelineOp` and the EDL are `@rolling/core/timeline` (`trim`, `move`, `split`, `remove`, `setGain`, `setCaption`, `replaceShot { clipId, nodeId, assetId? }`); ops in a patch are all-or-nothing and only the final timeline is validated.
+
 ## Sharing
-| POST | `/api/projects/:id/share` | `{ allowDownload }` → snapshot link; `DELETE` to stop sharing |
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/api/projects/:id/share` | `{ allowDownload? (false) }` → `201 { shareId, url, apiUrl, allowDownload, createdAt }` (editor+). Writes a JSON snapshot of the graph to R2 (`shares/<shareId>.json`). Re-sharing refreshes the snapshot and keeps the same link. `url` is `<PUBLIC_APP_URL>/share/<shareId>` (SPA route) |
+| DELETE | `/api/projects/:id/share` | revokes the project's links and deletes their snapshots → `{ ok, revoked }` |
+| GET | `/api/share/:shareId` | public, no auth → `{ shareId, title, revision, createdAt, allowDownload, nodes: [{ id, kind, title, params, position, groupId, media: { kind, url, thumbUrl, downloadUrl } \| null }], edges, groups }`; `404` when missing or revoked. URLs are signed for 1 h at read time; `downloadUrl` only when downloads are allowed |
+
+D-005: a share never includes mature outputs. At share time nodes are dropped (with their edges) when their output asset is mature, their model is mature, `params.mature` is true, or an asset node references a mature asset; mature and foreign asset ids are scrubbed from the remaining params. At read time every asset is re-checked and newly mature ones lose their media.

@@ -17,6 +17,9 @@ import { models } from "./routes/models";
 import { realtime } from "./routes/realtime";
 import { workspace } from "./routes/workspace";
 import { testInbox } from "./routes/testInbox";
+import { projects, nodes, canvases } from "./routes/projects";
+import { assets, characters, voices } from "./routes/assets";
+import { privateMedia, share, signedMedia } from "./routes/signedMedia";
 
 export { ProjectRoom } from "./do/ProjectRoom";
 export { UserHub } from "./do/UserHub";
@@ -39,6 +42,14 @@ const api = new Hono<AppEnv>()
   .route("/billing", billing)
   .route("/stripe", stripeWebhook)
   .route("/test", testInbox)
+  .route("/projects", projects)
+  .route("/nodes", nodes)
+  .route("/canvases", canvases)
+  .route("/share", share)
+  .route("/assets", assets)
+  .route("/characters", characters)
+  .route("/voices", voices)
+  .route("/media/private", privateMedia)
   .route("/media", media)
   .route("/models", models)
   .route("/", realtime)
@@ -47,6 +58,8 @@ const api = new Hono<AppEnv>()
   );
 
 app.route("/api", api);
+// Signed private media (D-008); moves to the media hostname once it exists.
+app.route("/", signedMedia);
 
 app.notFound((c) => {
   if (c.req.path === "/api" || c.req.path.startsWith("/api/")) {
