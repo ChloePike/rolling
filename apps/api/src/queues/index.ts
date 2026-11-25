@@ -4,11 +4,12 @@
  */
 import { z } from "zod";
 import { handleNotifyEmail, NotifyEmailMessage } from "../auth/email";
+import { handleLedgerMirror, LedgerMirrorMessage } from "./ledgerMirror";
 
 export { NotifyEmailMessage };
 
 export const MediaProcessMessage = z.object({ assetId: z.string(), r2Key: z.string(), kind: z.string() });
-export const LedgerMirrorMessage = z.object({ workspaceId: z.string(), lineIds: z.array(z.string()) });
+export { LedgerMirrorMessage };
 
 type Handler = (batch: MessageBatch<unknown>, env: Env) => Promise<void>;
 
@@ -30,7 +31,7 @@ function stubConsumer(name: string, schema: z.ZodTypeAny): Handler {
 
 export const queueHandlers: Record<string, Handler> = {
   "media-process": stubConsumer("media-process", MediaProcessMessage),
-  "ledger-mirror": stubConsumer("ledger-mirror", LedgerMirrorMessage),
+  "ledger-mirror": handleLedgerMirror,
   "notify-email": handleNotifyEmail,
 };
 

@@ -34,6 +34,13 @@ interface RollingSecrets {
   TEST_INBOX_TOKEN?: string;
   /** `off` silences the development email log (not a secret; optional). */
   EMAIL_LOG?: string;
+  // Billing (M2). Stripe secret key (sk_live_/sk_test_/rk_) and webhook signing secret (whsec_).
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
+  /** Optional: pin a Stripe API version (e.g. "2025-09-30.clover"); unset = the account default. */
+  STRIPE_API_VERSION?: string;
+  /** Optional: Stripe API origin override (tests, stripe-mock). */
+  STRIPE_API_BASE?: string;
 }
 
 declare global {

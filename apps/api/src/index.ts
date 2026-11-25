@@ -8,6 +8,8 @@ import { serveSpaFromR2 } from "./lib/r2Static";
 import { handleQueue } from "./queues";
 import { handleScheduled } from "./scheduled";
 import { authRoutes } from "./routes/auth";
+import { billing } from "./routes/billing";
+import { stripeWebhook } from "./routes/stripe";
 import { health } from "./routes/health";
 import { me } from "./routes/me";
 import { media } from "./routes/media";
@@ -34,6 +36,8 @@ const api = new Hono<AppEnv>()
   .route("/auth", authRoutes)
   .route("/me", me)
   .route("/workspace", workspace)
+  .route("/billing", billing)
+  .route("/stripe", stripeWebhook)
   .route("/test", testInbox)
   .route("/media", media)
   .route("/models", models)

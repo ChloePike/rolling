@@ -10,6 +10,7 @@ import { publicMediaUrl } from "../routes/media";
 import type { SessionUser } from "../lib/session";
 import type { AuthContext } from "../auth/context";
 import { listPublicModels } from "../models/catalog";
+import { billingResolvers, billingTypeDefs } from "./billing";
 
 export interface GraphQLContext {
   env: Env;
@@ -192,6 +193,7 @@ const resolvers = {
     },
     models: (_: unknown, args: { kind?: "IMAGE" | "VIDEO" | "CHAT" | null }, ctx: GraphQLContext) =>
       listPublicModels(ctx.env, ctx.user, args.kind ? (args.kind.toLowerCase() as "image" | "video" | "chat") : null),
+    ...billingResolvers,
   },
   Model: {
     kind: (m: { kind: string }) => m.kind.toUpperCase(),
@@ -208,7 +210,7 @@ const resolvers = {
 };
 
 export const yoga = createYoga<GraphQLContext>({
-  schema: createSchema<GraphQLContext>({ typeDefs, resolvers }),
+  schema: createSchema<GraphQLContext>({ typeDefs: [typeDefs, billingTypeDefs], resolvers }),
   graphqlEndpoint: "/api/graphql",
   landingPage: false,
   graphiql: (_req, ctx) => ctx.env.ENVIRONMENT === "development",
