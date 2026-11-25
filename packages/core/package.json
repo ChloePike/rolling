@@ -10,6 +10,7 @@
     "./billing": "./src/billing/index.ts",
     "./project": "./src/project/index.ts",
     "./media": "./src/media/index.ts",
+    "./generation": "./src/generation/index.ts",
     "./*": "./src/*.ts"
   },
   "scripts": {

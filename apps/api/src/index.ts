@@ -14,6 +14,8 @@ import { health } from "./routes/health";
 import { me } from "./routes/me";
 import { media } from "./routes/media";
 import { models } from "./routes/models";
+import { runs } from "./routes/runs";
+import { hooks } from "./routes/hooks";
 import { realtime } from "./routes/realtime";
 import { workspace } from "./routes/workspace";
 import { testInbox } from "./routes/testInbox";
@@ -52,6 +54,8 @@ const api = new Hono<AppEnv>()
   .route("/media/private", privateMedia)
   .route("/media", media)
   .route("/models", models)
+  .route("/runs", runs)
+  .route("/hooks", hooks)
   .route("/", realtime)
   .on(["GET", "POST"], "/graphql", async (c) =>
     yoga.fetch(c.req.raw, { env: c.env, user: c.get("user"), auth: c.get("auth") }),

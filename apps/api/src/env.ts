@@ -17,6 +17,8 @@ export interface AppEnv {
 // Set with `wrangler secret put <NAME> [--env <env>]` (`.dev.vars` locally; see `.dev.vars.example`).
 interface RollingSecrets {
   HYPEROUTER_API_KEY?: string;
+  /** Hyperouter webhook signing secret (`whsec_...`, Standard Webhooks) for `POST /api/hooks/hyperouter` (M4). */
+  HYPEROUTER_WEBHOOK_SECRET?: string;
   // Auth (M1). BETTER_AUTH_SECRET is required outside development.
   BETTER_AUTH_SECRET?: string;
   GOOGLE_CLIENT_ID?: string;
