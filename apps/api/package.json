@@ -10,7 +10,8 @@
     "cf-typegen": "wrangler types",
     "db:migrate:local": "wrangler d1 migrations apply rolling-dev --local",
     "db:migrate:staging": "wrangler d1 migrations apply rolling-staging --remote --env staging",
-    "stripe:sync": "tsx scripts/stripe-sync.ts"
+    "stripe:sync": "tsx scripts/stripe-sync.ts",
+    "margin:report": "tsx scripts/margin-report.ts"
   },
   "dependencies": {
     "@cloudflare/containers": "^0.0.30",

@@ -3,7 +3,10 @@
  * media re-queue for uploads left `processing: pending`, and the nightly
  * ledger reconcile.
  */
-import { env } from "cloudflare:test";
+import { env, runInDurableObject } from "cloudflare:test";
+import { lineFromRow } from "../src/do/creditStore";
+import { reconcileLedgers, reconcileWorkspace } from "../src/ops/reconcile";
+import { writeLedgerLines } from "../src/queues/ledgerMirror";
 import { describe, expect, it } from "vitest";
 import { requeuePendingMedia } from "../src/queues/mediaProcess";
 import { advanceStalledRuns, STALLED_PENDING_MS } from "../src/runs/service";
@@ -57,5 +60,28 @@ describe("media re-queue (cron)", () => {
     expect(await requeuePendingMedia(env, { reachable: async () => false })).toEqual({ requeued: 0 });
     const sent = await requeuePendingMedia(env, { reachable: async () => true });
     expect(sent.requeued).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("nightly ledger reconcile", () => {
+  it("matches the DO against the D1 mirror and reports mismatches", async () => {
+    const ws = uid("ws_rec");
+    const stub = env.CREDITS.get(env.CREDITS.idFromName(ws));
+    const out = await stub.purchase(1200, "pi_rec", `topup:${ws}`);
+    expect(out.ok).toBe(true);
+    const lines = await runInDurableObject(stub, (_i, state) =>
+      state.storage.sql.exec("SELECT * FROM ledger ORDER BY created_at, id").toArray().map((r) => lineFromRow(r as Record<string, SqlStorageValue>)),
+    );
+    await writeLedgerLines(env, { workspaceId: ws, lines: lines.map(({ idemKey: _k, ...l }) => l) });
+    const cutoff = Date.now() + 1;
+    expect(await reconcileWorkspace(env, ws, cutoff)).toMatchObject({ status: "ok", doLines: lines.length, d1Lines: lines.length, diff: { plan: 0, purchased: 0, held: 0 } });
+
+    // A line the DO never wrote: mirror mismatch.
+    await env.DB.prepare("INSERT INTO ledger_lines (id, workspace_id, user_id, kind, bucket, amount, run_id, job_id, stripe_ref, created_at) VALUES (?, ?, NULL, 'adjust', 'purchased', 5, NULL, NULL, NULL, ?)")
+      .bind(`led_bogus_${ws}`, ws, Date.now() - 60_000)
+      .run();
+    expect(await reconcileWorkspace(env, ws, Date.now() + 1)).toMatchObject({ status: "mirror_mismatch", diff: { purchased: -5 } });
+    const nightly = await reconcileLedgers(env, Date.now() + 11 * 60_000);
+    expect(nightly.mismatches.map((m) => m.workspaceId)).toContain(ws);
   });
 });

@@ -19,11 +19,12 @@
   ],
   "workers_dev": true,
   // Crons (apps/api/src/scheduled.ts), repeated in each env: model catalog sync + upload cleanup every 6 hours;
-  // safety-net sweep every 5 minutes (stalled runs, uploads left processing: pending).
+  // safety-net sweep every 5 minutes (stalled runs, uploads left processing: pending); nightly ledger reconcile 03:17 UTC.
   "triggers": {
     "crons": [
       "0 */6 * * *",
-      "*/5 * * * *"
+      "*/5 * * * *",
+      "17 3 * * *"
     ]
   },
   "observability": {
@@ -209,7 +210,8 @@
       "triggers": {
         "crons": [
           "0 */6 * * *",
-          "*/5 * * * *"
+          "*/5 * * * *",
+          "17 3 * * *"
         ]
       },
       "vars": {
@@ -363,7 +365,8 @@
       "triggers": {
         "crons": [
           "0 */6 * * *",
-          "*/5 * * * *"
+          "*/5 * * * *",
+          "17 3 * * *"
         ]
       },
       "vars": {

@@ -118,11 +118,26 @@ export class CreditAccount extends DurableObject<Env> {
   }
 
   /** Recomputes balances from the ledger (nightly reconcile, tests). */
-  async audit(): Promise<{ balance: Balance; fromLines: ReturnType<typeof reconcile>; ok: boolean; unmirrored: number }> {
+  /**
+   * Balance vs. the DO's own lines. With `before` (epoch ms), also the totals
+   * and count of lines created before it, for the nightly reconcile against
+   * the D1 mirror (lines newer than the cutoff may still be in the queue).
+   */
+  async audit(before?: number): Promise<{
+    balance: Balance;
+    fromLines: ReturnType<typeof reconcile>;
+    ok: boolean;
+    unmirrored: number;
+    before?: { cutoff: number; lines: number; totals: ReturnType<typeof reconcile> };
+  }> {
     const balance = this.ledger.balance();
-    const fromLines = reconcile(this.store.allLines());
+    const all = this.store.allLines();
+    const fromLines = reconcile(all);
     const ok = fromLines.plan === balance.plan && fromLines.purchased === balance.purchased && fromLines.held === balance.held;
-    return { balance, fromLines, ok, unmirrored: this.store.unmirroredLines(10_000).length };
+    const out = { balance, fromLines, ok, unmirrored: this.store.unmirroredLines(10_000).length };
+    if (before === undefined) return out;
+    const older = all.filter((l) => l.createdAt < before);
+    return { ...out, before: { cutoff: before, lines: older.length, totals: reconcile(older) } };
   }
 
   // --- ledger operations -----------------------------------------------------
