@@ -357,11 +357,58 @@ Uploads are only visible to their uploader. They expire 7 days after creation (R
 - `media.process`: images get a 512 px WebP thumbnail through Cloudflare Images (fallback: the original); video/audio are probed, thumbnailed and waveformed by the FFmpeg container from a signed URL. Without a container (`MEDIA_CONTAINER=off`, tests, local dev) the asset becomes `ready` with `meta.processing: pending`.
 - Signed URL token: `sig = base64url(HMAC-SHA256(MEDIA_SIGNING_KEY, "v1\n" + key + "\n" + exp + "\n" + ws))`, `exp` in epoch seconds (default lifetime 1 h, max 7 d). Workspace media lives under `ws/<workspaceId>/…` and is only valid with that `ws`; `ws=_` signs `builtin/` and `public/` keys. Code: `@rolling/core/media` (`signMediaKey`, `verifyMediaSignature`), `apps/api/src/lib/mediaUrls.ts` (`signMediaUrl(env, key, { workspaceId, expiresIn })`).
 
-## Agent
-| POST | `/api/agent/threads` | `{ projectId?, surface: home|canvas|editor|tool, skill? }` |
-| POST | `/api/agent/threads/:id/messages` | `{ text, refs: assetIds[], selection?: nodeIds[] }` → streamed response (text/event-stream from the AgentSession DO) of `text`, `tool`, `proposal`; also mirrored on the project WebSocket |
-| POST | `/api/agent/proposals/:id/apply` | applies as the user; returns new revision; for `plan` proposals `{ optionIndex }` creates nodes |
-| POST | `/api/agent/proposals/:id/discard` | |
+## Agent (M6)
+
+Members only: every route that runs or applies agent work returns `402 NO_PLAN` without an active plan (D-007). Agent turns are free; a per-workspace daily turn limit (placeholder: Starter 150, Plus 400, Pro 1,500 per UTC day; non-DeepSeek LLMs count 10 turns each until D-009's open item is decided) returns `429 RATE_LIMITED` with `data: { limit, used, resetsAt }`. Proposals never spend credits or change anything until Apply.
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/api/agent/threads` | `{ projectId?, surface: home\|canvas\|editor\|tool, skill?: tv-ad\|product-showcase\|storyboard\|ai-comic\|brand-kit, tool?: quick\|remix\|avatar\|character }` → `201 { thread: Thread }`. canvas/editor need `projectId`; tool needs `tool`. |
+| GET | `/api/agent/threads` | `?projectId=&first=` → `{ items: [{ id, projectId, surface, skill, title, updatedAt }] }` (recent first) |
+| GET | `/api/agent/threads/:id` | `{ thread: Thread }` |
+| POST | `/api/agent/threads/:id/messages` | `{ text, refs?: assetIds[], selection?: nodeIds[], llm?: publicLlmId }` → runs one turn and answers when it ends: `{ turnId, messageId, text, reason, proposal: Proposal \| null, error: { code, message } \| null, llm }`. Events stream over the sockets while it runs (below). `409 CONFLICT` while another turn runs in the thread. `llm` is a public id from `/api/models` chat list (D-009; default `deepseek-v4.1-flash`) and is remembered per thread. |
+| POST | `/api/agent/threads/:id/cancel` | `{ turnId? }` → `{ ok, canceled }`. Partial text stays; no proposal is created. |
+| GET | `/api/agent/threads/:id/ws` | Thread socket: `hello { threadId, running }`, then this thread's events; client may send `cancel` and `ping`. |
+| POST | `/api/agent/proposals/:id/apply` | `{ optionIndex?, title? }` (plan only). Applies as the user (editor role). Returns `{ ok, proposalId, kind, projectId?, canvasId?, revision?, idMap?, fields? }`. `plan`: Home threads create a project (`title` or the option title) and the thread moves to it (surface `canvas`); canvas threads add the nodes to their project. `graphPatch`: exactly the stored ops go to `ProjectRoom.applyPatch` with `origin: "agent"`. `timelinePatch`: `ProjectRoom.patchTimeline`. `fields`: returns the fields to put in the form. `409 CONFLICT` with `data.status` when the proposal is not `proposed` or became `stale`. |
+| POST | `/api/agent/proposals/:id/discard` | → `{ ok: true }` |
+
+`reason` is one of `completed`, `proposal`, `max_tool_calls`, `invalid_proposal` (three invalid proposals; the text explains), `canceled`, `error`.
+
+**Events** (WS envelope `{ type, id, payload }`). Canvas and editor threads publish on the project socket (`/api/projects/:id/ws`, via `ProjectRoom.broadcast`); Home and tool threads on the user socket (`/api/ws`, via `UserHub.broadcast`); every thread also on its own socket. Every payload has `threadId`.
+
+| type | payload |
+|---|---|
+| `agent.delta` | `{ threadId, turnId, delta }` (text, batched ~60 ms) |
+| `agent.tool` | `{ threadId, turnId, name, status: started\|ok\|error, error? }` (e.g. "Checking models") |
+| `proposal.created` | `{ threadId, turnId, proposal: Proposal }` |
+| `proposal.updated` | `{ threadId, proposalId, status: applied\|discarded\|stale, reason? }` |
+| `agent.done` | `{ threadId, turnId, messageId, reason, proposalId }` |
+| `agent.error` | `{ threadId, turnId, code, message }` |
+
+```ts
+interface Thread {
+  id: string; workspaceId: string; projectId: string | null; canvasId: string | null;
+  surface: 'home' | 'canvas' | 'editor' | 'tool'; skill: string | null; tool: string | null; llm: string | null;
+  messages: { id: string; role: 'user' | 'assistant'; content: string; createdAt: number; proposalId?: string }[];
+  proposals: Proposal[];
+}
+interface Proposal {
+  id: string; kind: 'plan' | 'graphPatch' | 'timelinePatch' | 'fields'; status: 'proposed' | 'applied' | 'discarded' | 'stale';
+  baseRevision: number | null; summary: string; createdAt: number;
+  estimate: { credits: number; items: { ref, model, kind: 'video' | 'image', seconds?, resolution?, credits }[]; applyIsFree: true; balanceAfter: number; needsConfirm: boolean };
+  risks: ({ code: 'over_balance', data: { credits, available } } | { code: 'needs_confirm', data: { credits, threshold } } | { code: 'unpriced', data: { refs } } | { code: 'removes_user_nodes', data: { nodeIds } })[];
+  body:
+    | { kind: 'plan'; seconds: number; refs: string[]; options: { title; ratio; resolution; seconds; estimate: Estimate; ops: GraphOp[];
+        shots: { n, title, seconds, visual, line?, model, mode: 't2v' | 'i2v', resolution, credits }[] }[] }
+    | { kind: 'graphPatch'; projectId; ops: GraphOp[]; touched: { added: tempIds[], updated: nodeIds[], removed: nodeIds[], edges: number } }
+    | { kind: 'timelinePatch'; canvasId; ops: TimelineOp[]; highlights: { clipId, kind: 'remove' | 'change' }[]; durationBefore; durationAfter }
+    | { kind: 'fields'; tool: 'quick' | 'remix' | 'avatar' | 'character'; fields: Record<string, unknown> };
+}
+```
+
+Plan options build, per shot, an image keyframe (`kind: image`, default image model, `mode: edit` when `@` images are referenced, which are added as `asset` nodes wired to `refs`) and a video node (`params: { prompt, model, mode, seconds, resolution, ratio, line? }`, `frame` from the keyframe for i2v), plus one `script` node (`params.rows: [{ n, title, visual, line?, seconds }]`) feeding every keyframe's `prompt`. Node `params.model` holds gateway model ids from the catalog. Plan proposals' plan `estimate` is the cheapest option's; each option carries its own. Estimates are the credits the later runs would cost (the run quote is authoritative).
+
+Field schemas (`propose.fields`): `quick { kind: video|image, prompt, model?, seconds?, ratio?, resolution?, audio?, count? }`, `remix { sourceAssetId?, prompt, keep?, model?, strength?: subtle|balanced|strong }`, `avatar { script, look?, characterId?, voiceId?, background?, ratio? }`, `character { name, look, outfit?, personality?, style? }`.
 
 ## Editor
 

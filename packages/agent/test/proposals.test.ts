@@ -260,3 +260,15 @@ describe('plan length and budget checks', () => {
     if (!res.ok) expect(res.error).toMatch(/every option costs more than the available 800 credits/);
   });
 });
+
+describe('suggestSplit', () => {
+  it('finds whole-second splits that fit the model range', async () => {
+    const { suggestSplit } = await import('../src/proposals');
+    const seedance = { min: 4, max: 15 };
+    expect(suggestSplit(6, [seedance], 2)).toEqual([6]);
+    expect(suggestSplit(10, [seedance], 3)).toEqual([5, 5]);
+    expect(suggestSplit(30, [seedance], 8)).toEqual([5, 5, 4, 4, 4, 4, 4]);
+    expect(suggestSplit(6, [{ min: 2, max: 30 }], 3)).toEqual([2, 2, 2]);
+    expect(suggestSplit(3, [seedance], 1)).toBeNull();
+  });
+});

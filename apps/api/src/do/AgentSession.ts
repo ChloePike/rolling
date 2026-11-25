@@ -27,6 +27,7 @@ import type { ServerMessageType } from "@rolling/core/graph";
 import { newId } from "@rolling/core/ids";
 import { agentMigrations } from "@rolling/db/do/agent";
 import { migrateDurableObject } from "@rolling/db/do/migrate";
+import { projectRoom } from "../lib/access";
 import { hyperouterClient } from "../runs/provider";
 import { agentPorts, roomCallerOf, type AgentCaller } from "./agentPorts";
 import { canvasIdFor } from "./ProjectRoom";
@@ -593,7 +594,8 @@ export class AgentSession extends DurableObject<Env> {
   // ---------------------------------------------------------------- storage
 
   private room(projectId: string): RoomApi {
-    return this.env.PROJECT.get(this.env.PROJECT.idFromName(projectId)) as unknown as RoomApi;
+    // The typed stub (M3); RoomApi is the subset the agent uses, kept loose on results.
+    return projectRoom(this.env, projectId) as unknown as RoomApi;
   }
 
   private attachProject(projectId: string): void {

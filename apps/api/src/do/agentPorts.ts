@@ -5,6 +5,7 @@
  */
 import { catalogModelsPort, type AccountSnapshot, type AgentPorts, type AssetItem, type AssetKind } from "@rolling/agent";
 import type { PlanId } from "@rolling/core/pricing/config";
+import { projectRoom } from "../lib/access";
 import { loadCatalog } from "../models/catalog";
 import { canvasIdFor, type RoomCaller } from "./ProjectRoom";
 
@@ -25,11 +26,7 @@ export function roomCallerOf(caller: AgentCaller): RoomCaller {
 }
 
 function room(env: Env, projectId: string) {
-  return env.PROJECT.get(env.PROJECT.idFromName(projectId));
-}
-
-function isError(v: unknown): boolean {
-  return typeof v === "object" && v !== null && (v as { ok?: unknown }).ok === false;
+  return projectRoom(env, projectId);
 }
 
 function parseMeta(raw: string | null | undefined): Record<string, unknown> {
@@ -76,7 +73,7 @@ export async function agentPorts(env: Env, caller: AgentCaller): Promise<AgentPo
     canvas: {
       async getGraph(projectId) {
         const res = await room(env, projectId).getGraph(rc);
-        return isError(res) ? null : (res as unknown as { state: never; assets: Record<string, string> });
+        return "state" in res ? { state: res.state, assets: res.assets } : null;
       },
     },
     timeline: {
@@ -84,9 +81,7 @@ export async function agentPorts(env: Env, caller: AgentCaller): Promise<AgentPo
         const projectId = /^cnv_[A-Za-z0-9]+$/.test(canvasId) ? `prj_${canvasId.slice(4)}` : null;
         if (!projectId) return null;
         const res = await room(env, projectId).getTimeline(rc, canvasId);
-        if (isError(res)) return null;
-        const t = (res as unknown as { timeline: { revision: number; edl: never } }).timeline;
-        return { revision: t.revision, edl: t.edl };
+        return res.ok ? { revision: res.timeline.revision, edl: res.timeline.edl } : null;
       },
     },
     assets: {

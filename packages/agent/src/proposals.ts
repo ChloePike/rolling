@@ -165,6 +165,25 @@ export function planOps(option: PlanOptionOut, refs: readonly AssetItem[], keyfr
   return ops;
 }
 
+/**
+ * Whole-second shot lengths that add up to `target` and fit every model's
+ * range, using as close to `preferred` shots as possible. Null when none fit.
+ */
+export function suggestSplit(target: number, ranges: readonly { min: number; max: number; allowed?: number[] }[], preferred: number): number[] | null {
+  if (!ranges.length || !Number.isFinite(target) || target <= 0) return null;
+  const min = Math.max(...ranges.map((r) => r.min));
+  const max = Math.min(...ranges.map((r) => r.max));
+  const total = Math.round(target);
+  if (min > max || ranges.some((r) => r.allowed)) return null;
+  const candidates = Array.from({ length: 12 }, (_, i) => i + 1).sort((a, b) => Math.abs(a - preferred) - Math.abs(b - preferred) || b - a);
+  for (const n of candidates) {
+    if (n * min > total || n * max < total) continue;
+    const base = Math.floor(total / n);
+    return Array.from({ length: n }, (_, i) => base + (i < total - base * n ? 1 : 0));
+  }
+  return null;
+}
+
 /** Cheapest general video model for a total length (lowest allowed resolution), for budget hints. */
 export function cheapestVideo(models: ModelsPort, account: AccountSnapshot, seconds: number): { model: string; resolution: string | null; credits: number } | null {
   let best: { model: string; resolution: string | null; credits: number } | null = null;
@@ -270,7 +289,16 @@ async function proposePlan(args: z.infer<typeof ProposePlanInput>, ctx: ProposeC
       );
     }
   }
-  if (problems.length) return fail(`invalid plan: ${problems.slice(0, 6).join(' | ')}`);
+  if (problems.length) {
+    // Models are bad at this arithmetic: name a split that fits each failing option's models.
+    const hints: string[] = [];
+    args.options.forEach((opt, oi) => {
+      if (!problems.some((p) => p.startsWith(`options[${oi}]`))) return;
+      const split = suggestSplit(args.seconds, opt.shots.map((sh) => models.get(sh.model)?.seconds).filter((x): x is NonNullable<typeof x> => !!x), opt.shots.length);
+      if (split) hints.push(`options[${oi}] could use ${split.length} shot${split.length > 1 ? 's' : ''} of ${split.join(' + ')} seconds`);
+    });
+    return fail(`invalid plan: ${problems.slice(0, 6).join(' | ')}${hints.length ? `. Suggestion: ${hints.join('; ')}` : ''}`);
+  }
   const body: PlanBody = { kind: 'plan', seconds: args.seconds, options, refs: refs.map((r) => r.id) };
   const cheapest = options.reduce((a, b) => (b.estimate.credits < a.estimate.credits ? b : a));
   const summary = args.summary?.trim() || `${options.length} options, ${options.map((o) => o.title).join(' / ')}`;
