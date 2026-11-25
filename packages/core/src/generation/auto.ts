@@ -12,7 +12,7 @@ import { resolveChatModel } from '../models/chat';
 import type { CatalogModel, ChatMessage, LlmProvider } from '../models/types';
 import { planAllowsResolution, type PlanId } from '../pricing/config';
 
-export const AUTO_CLASSIFIER_TIMEOUT_MS = 2000;
+export const AUTO_CLASSIFIER_TIMEOUT_MS = 4000;
 /** Public chat id of the classifier model (cheapest DeepSeek V4.1 Flash route). */
 export const AUTO_CLASSIFIER_CHAT_MODEL = 'deepseek-v4.1-flash';
 

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fixtureCatalog } from '../models/__fixtures__/catalog';
 import type { ChatEvent, ChatRequest, LlmProvider } from '../models/types';
-import { autoCandidates, chooseModel, llmClassifier, type Classify } from './auto';
+import { AUTO_CLASSIFIER_TIMEOUT_MS, autoCandidates, chooseModel, llmClassifier, type Classify } from './auto';
 
 const request = { kind: 'video' as const, mode: 't2v' as const, prompt: 'A cat on a skateboard', seconds: 5, resolution: '480p' };
 const candidates = autoCandidates(fixtureCatalog, request, 'plus');
@@ -66,7 +66,7 @@ describe('chooseModel (D-009)', () => {
           });
         }),
     });
-    await vi.advanceTimersByTimeAsync(2000);
+    await vi.advanceTimersByTimeAsync(AUTO_CLASSIFIER_TIMEOUT_MS);
     const r = await pending;
     vi.useRealTimers();
     expect(r).toMatchObject({ via: 'fallback', fallbackReason: 'timeout' });
