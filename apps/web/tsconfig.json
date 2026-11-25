@@ -12,6 +12,9 @@
       "node"
     ],
     "paths": {
+      "@/*": [
+        "./src/*"
+      ],
       "@messages/*": [
         "../../messages/*"
       ]
