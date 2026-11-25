@@ -63,6 +63,15 @@ export interface AssetRow {
   mature: number;
   size: number | null;
   content_type: string | null;
+  /** D-005 content rating (migration 0009); absent when the query did not select it. */
+  rating?: string | null;
+}
+
+/** D-005 content rating of an asset, or null when unrated. */
+export type AssetRating = "safe" | "suggestive" | "explicit";
+
+function ratingOf(v: unknown): AssetRating | null {
+  return v === "safe" || v === "suggestive" || v === "explicit" ? v : null;
 }
 
 export function assetMeta(row: Pick<AssetRow, "meta">): Record<string, unknown> {
@@ -81,6 +90,8 @@ export interface AssetView {
   name: string;
   status: AssetRow["status"];
   mature: boolean;
+  /** D-005 content rating (`safe | suggestive | explicit`), null when unrated. Blur `suggestive`/`explicit` in lists; `mature` follows it. */
+  rating: AssetRating | null;
   size: number | null;
   contentType: string | null;
   license: string | null;
@@ -112,6 +123,7 @@ export async function assetView(env: Env, row: AssetRow, viewer: { mayViewMature
     name: row.name,
     status: row.status,
     mature,
+    rating: ratingOf(row.rating),
     size: row.size,
     contentType: row.content_type,
     license: row.license,

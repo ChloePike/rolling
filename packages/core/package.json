@@ -12,6 +12,7 @@
     "./media": "./src/media/index.ts",
     "./generation": "./src/generation/index.ts",
     "./safety": "./src/safety/index.ts",
+    "./templates": "./src/templates/index.ts",
     "./*": "./src/*.ts"
   },
   "scripts": {

@@ -326,6 +326,8 @@ Auth: signed in (dev header in development), role editor+ in the workspace. Quot
 | POST | `/api/runs` | `{ quoteId, options?: { forceFailure?: true \| itemRefs[] } }` → `201 { runId, status }`. Same quote again → the same run. Errors: `NO_PLAN` (402), `INSUFFICIENT_CREDITS` (402, `{ needed, balance }`), `QUOTE_EXPIRED` (409), `MEMBER_LIMIT_REACHED` (403, `{ limit, used, needed }`), `NOT_FOUND`, `CONFLICT` (nothing to run). |
 | POST | `/api/runs/:id/cancel` | → `{ runId, refunded, canceled }`: pending items stop, running jobs are terminated and their holds released (refund). |
 | GET | `/api/runs` | Activity. Query: `status=queued\|running\|done\|partial\|failed\|canceled`, `projectId`, `model`, `from`, `to` (epoch ms), `first` (≤100, default 30), `after` (cursor). → `{ stats, runs: RunView[], nextCursor }` |
+| GET | `/api/runs/:id` | → `{ run: RunView }`; `404 NOT_FOUND` for unknown and other workspaces' runs. GraphQL: `run(id)` |
+| POST | `/api/runs/:id/retry` | no body. Re-quotes the `failed` / `canceled` / `skipped` items of a finished run with the same request (tool runs: the stored `promptSpec`, only those item refs, later items use the earlier run's outputs; canvas runs: `scope: 'selection'` over those nodes as they are now) → `QuoteResponse & { retryOf }`. The client confirms it like any quote (`needsConfirm`, paywalls, plan caps); `POST /api/runs { quoteId }` starts it and the new run has `retryOf`. `409 CONFLICT` `data.reason: RUNNING \| NOTHING_TO_RETRY \| NOT_RETRYABLE \| NODES_REMOVED`. Open to non-members like quotes (the start answers `NO_PLAN`) |
 
 ```ts
 type QuoteResponse = {
@@ -354,11 +356,27 @@ type QuoteResponse = {
 }
 
 type PromptSpec = {
-  kind: 'image' | 'video'; model?: string /* id, display name or 'auto' (default) */; prompt?: string; title?: string
+  kind: 'image' | 'video' | 'remix' | 'avatar' | 'character'
+  model?: string /* id, display name or 'auto' (default) */; prompt?: string; title?: string
   seconds?: number; resolution?: string; ratio?: string; audio?: boolean; n?: number
   negativePrompt?: string; seed?: number; mature?: boolean; refsMode?: boolean
-  inputs?: { firstFrameAssetId?, lastFrameAssetId?, referenceAssetIds?: string[], inputAssetIds?: string[], audioAssetId? }
+  shots?: Array<{ prompt?: string; seconds?: number; frameAssetId?: string; startSec?: number }>   // remix, ≤ 12
+  name?: string                                    // character: saved under this name
+  views?: Array<'body' | 'face'>                   // character, default both
+  inputs?: { firstFrameAssetId?, lastFrameAssetId?, referenceAssetIds?: string[], inputAssetIds?: string[], audioAssetId?,
+             photoAssetId? /* avatar */, videoAssetId? /* remix */ }
 }
+// Items per kind (ref → what it makes); plan caps (D-006), mature routing and identity rules (D-005), safety pre-checks and Auto (D-009) apply per item:
+// - image | video → one item `spec`.
+// - avatar → `avatar`: video on a lip-sync model (Auto → `lumina/wan2.7-i2v-spicy`, D-009; a model without lip sync → `unsupported`):
+//   the photo is the first frame, `audioAssetId` (an uploaded audio asset; TTS is open → `missing_input` “Upload a voice track.”) goes to `audio_url`,
+//   `audio: true`, seconds = the track length (clamped to the model range). Mature avatars take only platform pictures
+//   (generated, Characters, public library) → else `identity_requires_platform_assets`.
+// - remix → `shot-1…shot-N` (one per `shots[]`, default one): refs-mode video with the reference video (`videoAssetId`, required),
+//   the shot's `frameAssetId` and `referenceAssetIds` (new characters/outfits) as references; seconds = shot.seconds ?? seconds ?? clip length / N.
+//   Models without reference-video input get the clip's poster frame as a picture.
+// - character → `body` (full figure, 3:4) then `face` (1:1 close-up made from the body output, `dependsOn: ['body']`), image generations or edits
+//   with `referenceAssetIds`. When the run ends with at least one picture, it is saved to Characters (`RunView.characterId`; a retry adds a version).
 
 type RunView = {
   id; ref /* 'T-xxxxx' */; name; source: 'canvas' | 'quickCreate'; projectId; projectTitle
@@ -369,6 +387,10 @@ type RunView = {
   quoted; spent; refunded; error: string | null; createdAt; finishedAt
   items: Array<{ ref, nodeId, title, kind, model, modelName, status: 'pending'|'running'|'succeeded'|'failed'|'skipped'|'canceled',
                  jobId, progress, credits, spent, refunded, assetId, error, errorCode }>
+  request: { promptSpec: PromptSpec } | { scope, nodeIds? } | null   // the normalized request it was quoted from (null before migration 0015)
+  tool: 'quick' | 'remix' | 'avatar' | 'character' | null           // tool runs (`quick` = image/video); null for canvas runs
+  retryOf: string | null; characterId: string | null
+  retryable: boolean               // failed/canceled/skipped items can be re-quoted with POST /api/runs/:id/retry
 }
 // stats: { usedThisMonth, usedLastMonth, running, successRate /* 0..1 | null, 7 days */, runsLast7Days, refundedThisMonth }
 ```
@@ -444,13 +466,39 @@ Uploads are only visible to their uploader. They expire 7 days after creation (R
 | POST | `/api/characters` | `{ name, coverAssetId?, referenceAssetIds?, meta? }` → `201 { character }`; `DELETE /api/characters/:id` |
 | GET | `/api/voices` | builtin + workspace voices `{ items: [{ id, name, language, kind: builtin\|cloned, status, sampleAssetId, sampleUrl }] }` |
 | POST | `/api/voices` (alias `/api/voices/clone`) | `{ name, sampleAssetId, language? }` → `202 { voice }` with `status: pending` (voice provider is an open decision). `NO_PLAN` without a plan; `403 data.reason: PLAN_FEATURE, requiredPlan: plus` on Starter; `DELETE /api/voices/:id` (cloned only) |
-| GET | `/api/templates` | |
+| GET | `/api/templates` | see Templates below |
 
-`Asset`: `{ id, kind, source: mine|team|builtin|public|generated, name, status: processing|ready|failed, mature, size, contentType, license, projectId, createdBy, createdAt, url, thumbUrl, waveformUrl, meta: { width?, height?, durationSec?, processing?: queued|pending|done, tags? } }`.
+`Asset`: `{ id, kind, source: mine|team|builtin|public|generated, name, status: processing|ready|failed, mature, rating: safe|suggestive|explicit|null (D-005; GraphQL `Asset.rating`; blur `suggestive`/`explicit`), size, contentType, license, projectId, createdBy, createdAt, url, thumbUrl, waveformUrl, meta: { width?, height?, durationSec?, processing?: queued|pending|done, tags? } }`.
 - Scopes: `mine` = my uploads and generations in the current workspace; `team` = the whole workspace; `builtin`; `public` (public library, never mature); `all` = workspace + builtin + public.
 - D-005: mature assets are listed and signed only for viewers allowed to see them (`AuthContext.matureAllowed`); mature public-library items never appear.
 - `media.process`: images get a 512 px WebP thumbnail through Cloudflare Images (fallback: the original); video/audio are probed, thumbnailed and waveformed by the FFmpeg container from a signed URL. Without a container (`MEDIA_CONTAINER=off`, tests, local dev) the asset becomes `ready` with `meta.processing: pending`.
 - Signed URL token: `sig = base64url(HMAC-SHA256(MEDIA_SIGNING_KEY, "v1\n" + key + "\n" + exp + "\n" + ws))`, `exp` in epoch seconds (default lifetime 1 h, max 7 d). Workspace media lives under `ws/<workspaceId>/…` and is only valid with that `ws`; `ws=_` signs `builtin/` and `public/` keys. Code: `@rolling/core/media` (`signMediaKey`, `verifyMediaSignature`), `apps/api/src/lib/mediaUrls.ts` (`signMediaUrl(env, key, { workspaceId, expiresIn })`).
+
+## Templates
+
+Built-in templates (D1 seed migration 0016, generated from `@rolling/core/templates` `BUILTIN_TEMPLATES` by `apps/api/scripts/seed-templates.ts`; every model id is a real catalog id and every setting fits Starter) and workspace-private templates saved from a canvas selection. A template is a canvas graph (`{ nodes, edges, groups }`) plus **slots**: every asset node (a picture, clip or voice track to supply, `param: 'assetId'`) and every text/script node (`param: 'text'`), keyed by node id. Implementation: `apps/api/src/routes/templates.ts`, `@rolling/core/templates`.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/templates` | `?category=&q=&first=1..100 (60)` → `{ items: TemplateSummary[], featured: TemplateSummary[], total }`, built-ins and this workspace's, most used first. GraphQL: `templates(category, q, first)` |
+| GET | `/api/templates/:id` | `{ template: TemplateSummary & { graph } }`; GraphQL `template(id) { … graph /* JSON string */ }` |
+| POST | `/api/templates` | "Save selection as template": `{ projectId, nodeIds (1..200), title, category?, description? }` → `201 { template }`. Editors; the selected nodes, the edges between them and wholly selected groups, moved to the origin, without versions or run state; slots inferred (asset ids stay as slot defaults). Workspace-private |
+| DELETE | `/api/templates/:id` | own workspace templates only (built-ins → 404) |
+| POST | `/api/projects` | `{ title?, fromTemplateId, slots?: { [slotId]: { assetId } \| { text } } }` → `201 { project }` titled like the template; the filled graph is revision 1. Nothing is quoted or spent. `422 VALIDATION_FAILED data.slot` for an unknown slot, a fill of the wrong kind, or an asset that is not ready / not usable here / of the wrong media (mature assets only for allowed viewers). Filled asset nodes record the asset's `source` (D-005 provenance) |
+
+```ts
+type TemplateSummary = {
+  id; name; description: string | null; category: 'product'|'explainer'|'drama'|'holiday'|'venue'|'outfit'|'comic'|'talking' | null
+  source: 'builtin' | 'workspace'
+  durationSec; ratio /* '9:16' */; coverAspect /* '9/16' */; roles; hasLines; tags: string[]; featured; uses; nodeCount
+  skill: string | null              // agent skill it matches (Home inspiration)
+  coverUrl: string | null           // never a mature asset (D-005)
+  slots: Array<{ id, kind: 'image'|'video'|'audio'|'text', label, param: 'assetId'|'text', required, default? }>
+  createdAt
+}
+```
+
+Built-ins: `tpl_tv_ad_15s` (TV ad, 15 s), `tpl_product_showcase`, `tpl_talking_head` (lip sync, `lumina/wan2.7-i2v-spicy`), `tpl_comic_page`, `tpl_character_sheet`, `tpl_storyboard`, `tpl_holiday_greeting`, `tpl_outfit_try_on`.
 
 ## Agent (M6)
 

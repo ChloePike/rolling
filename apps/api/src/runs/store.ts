@@ -11,6 +11,7 @@ export interface QuoteRow {
   created_by: string | null;
   scope: string | null;
   created_at: number | null;
+  request: string | null;
 }
 
 export type RunStatus = "queued" | "running" | "succeeded" | "partial" | "failed" | "canceled";
@@ -32,6 +33,10 @@ export interface RunRow {
   options: string;
   updated_at: number | null;
   finished_at: number | null;
+  request: string | null;
+  retry_of: string | null;
+  tool: string | null;
+  character_id: string | null;
 }
 
 export type ItemStatus = "pending" | "running" | "succeeded" | "failed" | "skipped" | "canceled";

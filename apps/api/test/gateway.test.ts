@@ -244,3 +244,33 @@ describe("gateway hibernation", () => {
     expect(await runInDurableObject(room, (_i, state) => state.storage.sql.exec("SELECT COUNT(*) AS c FROM hub_subscribers").one().c)).toBe(0);
   });
 });
+
+describe("gateway: replies after the socket closed", () => {
+  it("does not send() to a closed socket (unsubscribe racing a closing tab) and keeps the hub working", async () => {
+    const alice = user("gwc");
+    const projectId = await createProject(alice);
+    const a = await gateway(alice);
+    expect((await a.request("subscribe", { channel: "project", projectId })).type).toBe("subscribed");
+    // Unsubscribe and close at once: the hub answers after its await, when the socket is gone.
+    a.ws.send(JSON.stringify({ type: "unsubscribe", id: "u1", payload: { projectId } }));
+    a.ws.close();
+    await new Promise((r) => setTimeout(r, 200));
+
+    // The guard itself: a closed socket is skipped, a socket whose send throws does not throw out.
+    const hub = env.USER_HUB.get(env.USER_HUB.idFromName(alice));
+    const result = await runInDurableObject(hub, (instance) => {
+      const send = (instance as unknown as { send(ws: unknown, m: string): boolean }).send.bind(instance);
+      let calls = 0;
+      const closed = { readyState: WebSocket.CLOSED, send: () => calls++ };
+      const throwing = { readyState: WebSocket.OPEN, send: () => { throw new TypeError("Can't call WebSocket send() after close()."); } };
+      return { closed: send(closed, "x"), throwing: send(throwing, "x"), calls };
+    });
+    expect(result).toEqual({ closed: false, throwing: false, calls: 0 });
+
+    // A new connection of the same user works normally.
+    const b = await gateway(alice);
+    expect((await b.request("subscribe", { channel: "project", projectId })).type).toBe("subscribed");
+    expect((await b.request("unsubscribe", { projectId })).type).toBe("unsubscribed");
+    b.ws.close();
+  });
+});

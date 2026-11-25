@@ -4,3 +4,4 @@ export * from './spec';
 export * from './auto';
 export * from './plan';
 export * from './request';
+export * from './specPlan';

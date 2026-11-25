@@ -16,16 +16,21 @@ import { hash64, stableStringify } from '../project/digest';
 import type { PlanItem as StructuralItem } from '../project/plan';
 import { lowestPlanFor, planAllowsResolution } from '../pricing/config';
 import { autoCandidates, chooseModel, fitRequest, type Classify } from './auto';
-import { cleanPrompt, findModel, imageSizeFor, isAuto, modelRefOf, settingsOf, textOfNode, usesSize, type NodeSettings, type PromptSpec } from './spec';
+import { cleanPrompt, findModel, imageSizeFor, isAuto, modelRefOf, settingsOf, textOfNode, usesSize, type NodeSettings } from './spec';
 import type { BlockCode, GenInput, GenSpec, PlanContext, PlanItem, RunPlan } from './types';
 
 const GENERATIVE = new Set<string>(['image', 'video']);
+
+/** Provenance of every image input, in input order (D-005): outputs of nodes and items are generated. */
+export function imageOriginsOf(inputs: readonly GenInput[]): ImageSource[] {
+  return inputs.filter((i) => i.media === 'image').map((i) => ('assetId' in i.from ? i.from.origin : 'node' in i.from || 'item' in i.from ? 'generated' : 'upload'));
+}
 
 export class PlanInputError extends Error {
   override readonly name = 'PlanInputError';
 }
 
-type Blocked = { code: BlockCode; reason: string; lowestPlan?: PlanItem['lowestPlan'] };
+export type Blocked = { code: BlockCode; reason: string; lowestPlan?: PlanItem['lowestPlan'] };
 
 export interface BuildSpecInput {
   kind: 'image' | 'video';
@@ -63,7 +68,8 @@ function autoRequestOf(spec: Pick<GenSpec, 'kind' | 'mode' | 'inputs' | 'mature'
     ...(spec.ratio !== undefined && { ratio: spec.ratio }),
     ...(spec.audio !== undefined && { audio: spec.audio }),
     ...(spec.n !== undefined && { n: spec.n }),
-    referenceImages: count('reference'),
+    referenceImages: spec.inputs.filter((i) => i.role === 'reference' && i.media === 'image').length,
+    referenceVideos: spec.inputs.filter((i) => i.role === 'reference' && i.media === 'video').length,
     referenceAudios: count('audio'),
     inputImages: count('edit'),
     ...(spec.mature && { mature: true }),
@@ -74,6 +80,7 @@ function autoRequestOf(spec: Pick<GenSpec, 'kind' | 'mode' | 'inputs' | 'mature'
 export function priceRequestOf(spec: GenSpec, model: CatalogModel): PriceRequest {
   const fitted = fitRequest(model, autoRequestOf({ ...spec }));
   const images = spec.inputs.filter((i) => i.media === 'image').length;
+  const videos = spec.inputs.filter((i) => i.media === 'video' && i.role === 'reference').length;
   const size = usesSize(model) ? imageSizeFor(spec.resolution, spec.ratio) : null;
   return {
     ...(size && { size }),
@@ -82,7 +89,8 @@ export function priceRequestOf(spec: GenSpec, model: CatalogModel): PriceRequest
     ...(fitted.audio !== undefined && { audio: fitted.audio }),
     ...(fitted.n !== undefined && { n: fitted.n }),
     inputImages: images,
-    referenceVideos: 0,
+    referenceVideos: videos,
+    ...(videos > 0 && spec.inputVideoMs !== undefined && { inputVideoMs: spec.inputVideoMs }),
   };
 }
 
@@ -287,7 +295,7 @@ export async function planRun(input: PlanGraphInput): Promise<RunPlan> {
       prompt,
       settings,
       inputs,
-      imageOrigins: inputs.filter((i) => i.media === 'image').map((i) => ('node' in i.from ? 'generated' : 'assetId' in i.from ? i.from.origin : 'upload')),
+      imageOrigins: imageOriginsOf(inputs),
       catalog,
       ctx,
       classify: input.classify ?? null,
@@ -317,85 +325,4 @@ export async function planRun(input: PlanGraphInput): Promise<RunPlan> {
 /** Hash of a node's kind and params: an edit after the quote changes it. */
 export function paramsHash(node: Pick<GraphNode, 'kind' | 'params'>): string {
   return hash64(stableStringify({ k: node.kind, p: node.params }));
-}
-
-export interface PlanSpecInput {
-  spec: PromptSpec;
-  catalog: Catalog;
-  ctx: PlanContext;
-  classify?: Classify | null;
-  /** Source of every input asset (D-005 provenance). Unknown assets block the item. */
-  assetOrigins: ReadonlyMap<string, { origin: ImageSource; media: 'image' | 'video' | 'audio' }>;
-}
-
-/** Plans a tool page run: one item, ref `spec`, no graph. */
-export async function planPromptSpec(input: PlanSpecInput): Promise<RunPlan> {
-  const { spec } = input;
-  const base = { ref: 'spec', nodeId: null, title: spec.title ?? (spec.kind === 'video' ? 'Video' : 'Image'), kind: spec.kind, dependsOn: [], model: null, modelName: null };
-  const inputs: GenInput[] = [];
-  const add = (assetId: string | undefined, role: GenInput['role']): Blocked | null => {
-    if (!assetId) return null;
-    const a = input.assetOrigins.get(assetId);
-    if (!a) return { code: 'missing_input', reason: 'An input file is not available.' };
-    inputs.push({ role, media: a.media, from: { assetId, origin: a.origin } });
-    return null;
-  };
-  const i = spec.inputs;
-  const problems = [
-    add(i.firstFrameAssetId, spec.refsMode ? 'reference' : 'frame'),
-    add(i.lastFrameAssetId, spec.refsMode ? 'reference' : 'frame'),
-    ...(i.referenceAssetIds ?? []).map((a) => add(a, 'reference')),
-    ...(i.inputAssetIds ?? []).map((a) => add(a, spec.kind === 'image' ? 'edit' : 'reference')),
-    add(i.audioAssetId, 'audio'),
-  ].filter((p): p is Blocked => p !== null);
-  if (problems[0]) return { items: [{ ...base, action: 'blocked', ...problems[0] }] };
-  const settings: NodeSettings = {
-    ...(spec.seconds !== undefined && { seconds: spec.seconds }),
-    ...(spec.resolution !== undefined && { resolution: spec.resolution }),
-    ...(spec.ratio !== undefined && { ratio: spec.ratio }),
-    ...(spec.audio !== undefined && { audio: spec.audio }),
-    ...(spec.n !== undefined && spec.n > 1 && { n: spec.n }),
-    ...(spec.negativePrompt !== undefined && { negativePrompt: spec.negativePrompt }),
-    ...(spec.seed !== undefined && { seed: spec.seed }),
-    mature: spec.mature === true,
-    refsMode: spec.refsMode === true,
-  };
-  const built = await buildSpec({
-    kind: spec.kind,
-    modelRef: spec.model,
-    prompt: spec.prompt,
-    settings,
-    inputs,
-    imageOrigins: inputs.filter((x) => x.media === 'image').map((x) => ('assetId' in x.from ? x.from.origin : 'generated')),
-    catalog: input.catalog,
-    ctx: input.ctx,
-    classify: input.classify ?? null,
-  });
-  if (!built.ok) {
-    return {
-      items: [
-        {
-          ...base,
-          ...(built.model && { model: built.model.id, modelName: built.model.displayName }),
-          action: 'blocked',
-          code: built.code,
-          reason: built.reason,
-          ...(built.lowestPlan !== undefined && { lowestPlan: built.lowestPlan }),
-        },
-      ],
-    };
-  }
-  return {
-    items: [
-      {
-        ...base,
-        action: 'run',
-        model: built.model.id,
-        modelName: built.model.displayName,
-        ...(built.autoVia && { autoVia: built.autoVia }),
-        spec: built.spec,
-        priceRequest: built.priceRequest,
-      },
-    ],
-  };
 }

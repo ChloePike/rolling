@@ -9,7 +9,7 @@
  * The start route checks the balance for the whole run first.
  */
 import type { LedgerErrorCode } from "@rolling/core/credits";
-import { planPromptSpec, planRun, type PlanItem, type PromptSpec, type RunScope } from "@rolling/core/generation";
+import { planPromptSpec, planRun, specAssetIds, specTitle, type PlanItem, type PromptSpec, type RunScope, type SpecAsset } from "@rolling/core/generation";
 import { newId } from "@rolling/core/ids";
 import type { ImageSource } from "@rolling/core";
 import type { AuthContext } from "../auth/context";
@@ -65,8 +65,8 @@ export interface QuoteResponse {
 }
 
 export type QuoteRequest =
-  | { projectId: string; scope: RunScope; nodeIds?: string[]; caller: RoomCaller; matureAllowed: boolean }
-  | { promptSpec: PromptSpec; projectId?: string | null };
+  | { projectId: string; scope: RunScope; nodeIds?: string[]; caller: RoomCaller; matureAllowed: boolean; retryOf?: string }
+  | { promptSpec: PromptSpec; projectId?: string | null; onlyRefs?: string[]; priorAssets?: Record<string, string>; retryOf?: string };
 
 function toResponseItem(i: StoredQuoteItem): QuoteResponseItem {
   return {
@@ -92,36 +92,53 @@ const LEDGER_BLOCK: Record<string, { code: string; reason: string }> = {
   resolution_locked: { code: "resolution_locked", reason: "This resolution needs a higher plan." },
 };
 
-async function assetOrigins(env: Env, workspaceId: string, spec: PromptSpec) {
-  const ids = [
-    spec.inputs.firstFrameAssetId,
-    spec.inputs.lastFrameAssetId,
-    spec.inputs.audioAssetId,
-    ...(spec.inputs.referenceAssetIds ?? []),
-    ...(spec.inputs.inputAssetIds ?? []),
-  ].filter((x): x is string => !!x);
-  const out = new Map<string, { origin: ImageSource; media: "image" | "video" | "audio" }>();
+async function assetOrigins(env: Env, workspaceId: string, spec: PromptSpec): Promise<Map<string, SpecAsset>> {
+  const ids = specAssetIds(spec);
+  const out = new Map<string, SpecAsset>();
   if (ids.length === 0) return out;
   const rows = await env.DB.prepare(
-    `SELECT id, kind, source, workspace_id FROM assets WHERE id IN (${ids.map(() => "?").join(",")}) AND (workspace_id = ? OR workspace_id IS NULL) AND status = 'ready'`,
+    `SELECT id, kind, source, workspace_id, meta FROM assets WHERE id IN (${ids.map(() => "?").join(",")}) AND (workspace_id = ? OR workspace_id IS NULL) AND status = 'ready'`,
   )
     .bind(...ids, workspaceId)
-    .all<{ id: string; kind: string; source: string; workspace_id: string | null }>();
+    .all<{ id: string; kind: string; source: string; workspace_id: string | null; meta: string | null }>();
   for (const r of rows.results) {
     if (r.kind !== "image" && r.kind !== "video" && r.kind !== "audio") continue;
     const origin: ImageSource = r.source === "generated" || r.source === "public" || r.source === "builtin" ? r.source : r.source === "team" ? "team" : "upload";
-    out.set(r.id, { origin, media: r.kind });
+    const meta = parseJson<{ durationSec?: unknown; thumbKey?: unknown }>(r.meta, {});
+    out.set(r.id, {
+      origin,
+      media: r.kind,
+      ...(typeof meta.durationSec === "number" && meta.durationSec > 0 && { durationSec: meta.durationSec }),
+      ...(r.kind === "video" && typeof meta.thumbKey === "string" && { poster: true }),
+    });
   }
   // Saved Characters count as platform assets (D-005).
-  const chars = await env.DB.prepare(`SELECT cover_asset_id FROM characters WHERE workspace_id = ? AND cover_asset_id IN (${ids.map(() => "?").join(",")})`)
-    .bind(workspaceId, ...ids)
-    .all<{ cover_asset_id: string }>();
+  const chars = await env.DB.prepare(`SELECT cover_asset_id, versions FROM characters WHERE workspace_id = ?`)
+    .bind(workspaceId)
+    .all<{ cover_asset_id: string | null; versions: string }>();
+  const characterAssets = new Set<string>();
   for (const c of chars.results) {
-    const a = out.get(c.cover_asset_id);
-    if (a) out.set(c.cover_asset_id, { ...a, origin: "character" });
+    if (c.cover_asset_id) characterAssets.add(c.cover_asset_id);
+    for (const v of parseJson<Array<{ assetIds?: unknown }>>(c.versions, [])) {
+      if (Array.isArray(v.assetIds)) for (const a of v.assetIds) if (typeof a === "string") characterAssets.add(a);
+    }
+  }
+  for (const id of ids) {
+    const a = out.get(id);
+    if (a && a.media === "image" && characterAssets.has(id)) out.set(id, { ...a, origin: "character" });
   }
   return out;
 }
+
+/** Tool of a spec run, for Activity and the tool feeds. */
+export function toolOf(spec: PromptSpec): "quick" | "remix" | "avatar" | "character" {
+  return spec.kind === "remix" || spec.kind === "avatar" || spec.kind === "character" ? spec.kind : "quick";
+}
+
+/** The normalized request a quote/run was made from (`quotes.request`, `runs.request`). */
+export type RunRequestRecord =
+  | { promptSpec: PromptSpec; onlyRefs?: string[]; priorAssets?: Record<string, string>; retryOf?: string }
+  | { scope: RunScope; nodeIds?: string[]; retryOf?: string };
 
 /** Plans and prices a run; stores the quote (10 minutes, D-006 CreditAccount TTL). */
 export async function quoteRun(env: Env, auth: AuthContext, req: QuoteRequest): Promise<QuoteResponse> {
@@ -130,13 +147,31 @@ export async function quoteRun(env: Env, auth: AuthContext, req: QuoteRequest): 
   let items: PlanItem[];
   let projectId: string | null = null;
   let scope: string;
+  let record: RunRequestRecord;
   if ("promptSpec" in req) {
     scope = "spec";
     projectId = req.projectId ?? null;
+    record = {
+      promptSpec: req.promptSpec,
+      ...(req.onlyRefs && { onlyRefs: req.onlyRefs }),
+      ...(req.priorAssets && Object.keys(req.priorAssets).length > 0 && { priorAssets: req.priorAssets }),
+      ...(req.retryOf && { retryOf: req.retryOf }),
+    };
     const origins = await assetOrigins(env, auth.workspaceId, req.promptSpec);
-    items = (await planPromptSpec({ spec: req.promptSpec, catalog, ctx: { plan: auth.plan, matureAllowed: auth.matureAllowed }, classify, assetOrigins: origins })).items;
+    items = (
+      await planPromptSpec({
+        spec: req.promptSpec,
+        catalog,
+        ctx: { plan: auth.plan, matureAllowed: auth.matureAllowed },
+        classify,
+        assetOrigins: origins,
+        ...(req.onlyRefs && { onlyRefs: req.onlyRefs }),
+        ...(req.priorAssets && { priorAssets: req.priorAssets }),
+      })
+    ).items;
   } else {
     scope = req.scope;
+    record = { scope: req.scope, ...(req.nodeIds && { nodeIds: req.nodeIds }), ...(req.retryOf && { retryOf: req.retryOf }) };
     projectId = req.projectId;
     const room = ports(env).room(req.projectId);
     const [structural, graph] = await Promise.all([room.planRun(req.caller, { scope: req.scope, ...(req.nodeIds && { nodeIds: req.nodeIds }) }), room.getGraph(req.caller)]);
@@ -181,8 +216,8 @@ export async function quoteRun(env: Env, auth: AuthContext, req: QuoteRequest): 
   }
   const total = stored.reduce((s, i) => s + (i.action === "run" ? i.credits : 0), 0);
   if (quoteId) {
-    await env.DB.prepare("INSERT INTO quotes (id, workspace_id, project_id, items, total, expires_at, created_by, scope, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-      .bind(quoteId, auth.workspaceId, projectId, JSON.stringify(stored), total, expiresAt, auth.userId, scope, Date.now())
+    await env.DB.prepare("INSERT INTO quotes (id, workspace_id, project_id, items, total, expires_at, created_by, scope, created_at, request) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .bind(quoteId, auth.workspaceId, projectId, JSON.stringify(stored), total, expiresAt, auth.userId, scope, Date.now(), JSON.stringify(record))
       .run();
   }
   const confirmThreshold = auth.prefs.confirmThreshold;
@@ -217,11 +252,29 @@ export async function startRun(env: Env, auth: AuthContext, quoteId: string, raw
   const options: RunOptions = env.ENVIRONMENT === "production" ? {} : rawOptions;
   const runId = newId("run");
   const first = items[0]!;
-  const title = items.length === 1 ? first.title : `${first.title} +${items.length - 1}`;
+  const record = parseJson<RunRequestRecord | null>(quote.request, null);
+  const spec = record && "promptSpec" in record ? record.promptSpec : null;
+  const title = spec && items.length > 1 ? specTitle(spec) : items.length === 1 ? first.title : `${first.title} +${items.length - 1}`;
   const statements = [
     env.DB.prepare(
-      "INSERT INTO runs (id, workspace_id, project_id, quote_id, scope, status, created_by, created_at, title, source, credits_quoted, options, updated_at) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?)",
-    ).bind(runId, auth.workspaceId, quote.project_id, quoteId, quote.scope ?? "node", auth.userId, now, title, quote.scope === "spec" ? "quickCreate" : "canvas", total, JSON.stringify(options), now),
+      "INSERT INTO runs (id, workspace_id, project_id, quote_id, scope, status, created_by, created_at, title, source, credits_quoted, options, updated_at, request, retry_of, tool) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    ).bind(
+      runId,
+      auth.workspaceId,
+      quote.project_id,
+      quoteId,
+      quote.scope ?? "node",
+      auth.userId,
+      now,
+      title,
+      quote.scope === "spec" ? "quickCreate" : "canvas",
+      total,
+      JSON.stringify(options),
+      now,
+      quote.request,
+      record?.retryOf ?? null,
+      spec ? toolOf(spec) : null,
+    ),
     ...items.map((i, ord) =>
       env.DB.prepare(
         "INSERT INTO run_items (run_id, ref, node_id, title, kind, model, spec, price_request, params_hash, depends_on, credits, status, ord, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)",
@@ -312,6 +365,13 @@ export async function advanceRun(env: Env, runId: string): Promise<AdvanceResult
     await pushCredits(env, run, held.value.balance);
   }
   if (changed || items.every((i) => i.status !== "pending")) await refreshRun(env.DB, runId);
+  if (run.tool === "character") {
+    try {
+      if (await saveCharacterOf(env, runId)) changed = true;
+    } catch (err) {
+      console.error(JSON.stringify({ msg: "runs: character save failed", runId, error: String(err) }));
+    }
+  }
   if (changed) await quietly("activity", () => p.hub(run.created_by).broadcast("activity.updated", { runId }));
   return out;
 }
@@ -420,4 +480,96 @@ export async function cancelRun(env: Env, auth: AuthContext, runId: string): Pro
   await quietly("activity", () => p.hub(run.created_by).broadcast("activity.updated", { runId }));
   await advanceWorkspace(env, run.workspace_id, runId);
   return { runId, refunded, canceled };
+}
+
+const RETRY_ITEM = new Set(["failed", "canceled", "skipped"]);
+
+/**
+ * `POST /api/runs/:id/retry`: quotes the failed, canceled and skipped items of
+ * a finished run again with the same request (tool `promptSpec` or canvas
+ * nodes), so the client confirms a fresh quote (threshold, paywalls and plan
+ * caps apply as for any quote). Items that succeeded are not run again; a
+ * tool run's later items use their outputs (`priorAssets`).
+ */
+export async function retryRun(
+  env: Env,
+  auth: AuthContext,
+  runId: string,
+  canvas: (projectId: string) => Promise<{ caller: RoomCaller; matureAllowed: boolean }>,
+): Promise<QuoteResponse & { retryOf: string }> {
+  const run = await getRun(env.DB, runId);
+  if (!run || run.workspace_id !== auth.workspaceId) throw new ApiError(404, "NOT_FOUND", "Run not found", { runId });
+  if (run.status === "queued" || run.status === "running") throw new ApiError(409, "CONFLICT", "The run is still running", { runId, reason: "RUNNING" });
+  const items = await getItems(env.DB, runId);
+  const again = items.filter((i) => RETRY_ITEM.has(i.status));
+  if (again.length === 0) throw new ApiError(409, "CONFLICT", "Nothing to retry in this run", { runId, reason: "NOTHING_TO_RETRY" });
+  const record = parseJson<RunRequestRecord | null>(run.request, null);
+
+  if (record && "promptSpec" in record) {
+    const jobs = (await env.DB.prepare("SELECT item_ref, asset_id FROM jobs WHERE run_id = ? AND status = 'succeeded' AND asset_id IS NOT NULL").bind(runId).all<{ item_ref: string; asset_id: string }>()).results;
+    const priorAssets: Record<string, string> = { ...(record.priorAssets ?? {}) };
+    for (const j of jobs) priorAssets[j.item_ref] = j.asset_id;
+    const q = await quoteRun(env, auth, { promptSpec: record.promptSpec, projectId: run.project_id, onlyRefs: again.map((i) => i.ref), priorAssets, retryOf: runId });
+    return { ...q, retryOf: runId };
+  }
+  if (!run.project_id || run.source !== "canvas") throw new ApiError(409, "CONFLICT", "This run can't be retried", { runId, reason: "NOT_RETRYABLE" });
+  const access = await canvas(run.project_id);
+  const graph = await ports(env).room(run.project_id).getGraph(access.caller);
+  if (isRoomError(graph)) roomFailure(graph);
+  const nodeIds = again.map((i) => i.node_id).filter((id): id is string => !!id && graph.state.nodes.some((n) => n.id === id));
+  if (nodeIds.length === 0) throw new ApiError(409, "CONFLICT", "The nodes of this run were removed", { runId, reason: "NODES_REMOVED" });
+  const q = await quoteRun(env, auth, { projectId: run.project_id, scope: "selection", nodeIds, caller: access.caller, matureAllowed: access.matureAllowed, retryOf: runId });
+  return { ...q, retryOf: runId };
+}
+
+/** Deterministic Character id of a character run (saving twice is a no-op). */
+export function characterIdFor(runId: string): string {
+  return `chr_${runId.replace(/^run_/, "")}`;
+}
+
+/**
+ * Character runs: once every item is final and at least one picture was made,
+ * the pictures are saved to the workspace's Characters (cover = the face, else
+ * the full body). Idempotent; a retry run completes the set with the earlier
+ * run's pictures.
+ */
+export async function saveCharacterOf(env: Env, runId: string): Promise<string | null> {
+  const run = await getRun(env.DB, runId);
+  if (!run || run.tool !== "character" || run.character_id) return null;
+  const items = await getItems(env.DB, runId);
+  if (items.some((i) => i.status === "pending" || i.status === "running")) return null;
+  const record = parseJson<RunRequestRecord | null>(run.request, null);
+  if (!record || !("promptSpec" in record)) return null;
+  const jobs = (await env.DB.prepare("SELECT item_ref, asset_id FROM jobs WHERE run_id = ? AND status = 'succeeded' AND asset_id IS NOT NULL").bind(runId).all<{ item_ref: string; asset_id: string }>()).results;
+  if (jobs.length === 0) return null;
+  const byRef: Record<string, string> = { ...(record.priorAssets ?? {}) };
+  for (const j of jobs) byRef[j.item_ref] = j.asset_id;
+  const assetIds = ["body", "face"].map((r) => byRef[r]).filter((x): x is string => !!x);
+  const spec = record.promptSpec;
+  // A retry adds a version to the Character its run saved (if it saved one).
+  const previous = record.retryOf ? await getRun(env.DB, record.retryOf) : null;
+  const id = previous?.character_id ?? characterIdFor(runId);
+  const now = Date.now();
+  const existing = await env.DB.prepare("SELECT versions FROM characters WHERE id = ? AND workspace_id = ?").bind(id, run.workspace_id).first<{ versions: string }>();
+  if (existing) {
+    // A retry of the same character: add the completed set as a new version.
+    const versions = parseJson<Array<{ n: number; assetIds: string[]; createdAt: number }>>(existing.versions, []);
+    versions.push({ n: versions.length + 1, assetIds, createdAt: now });
+    await env.DB.prepare("UPDATE characters SET versions = ?, cover_asset_id = ? WHERE id = ?").bind(JSON.stringify(versions), byRef.face ?? byRef.body ?? null, id).run();
+  } else {
+    await env.DB.prepare("INSERT OR IGNORE INTO characters (id, workspace_id, name, meta, cover_asset_id, versions, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .bind(
+        id,
+        run.workspace_id,
+        (spec.name ?? spec.title ?? "Character").slice(0, 80),
+        JSON.stringify({ prompt: spec.prompt, runId, bodyAssetId: byRef.body ?? null, faceAssetId: byRef.face ?? null }),
+        byRef.face ?? byRef.body ?? null,
+        JSON.stringify([{ n: 1, assetIds, createdAt: now }]),
+        now,
+        run.created_by,
+      )
+      .run();
+  }
+  await env.DB.prepare("UPDATE runs SET character_id = ? WHERE id = ?").bind(id, runId).run();
+  return id;
 }

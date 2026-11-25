@@ -16,6 +16,7 @@ import { me } from "./routes/me";
 import { media } from "./routes/media";
 import { models } from "./routes/models";
 import { runs } from "./routes/runs";
+import { templates } from "./routes/templates";
 import { agent } from "./routes/agent";
 import { hooks } from "./routes/hooks";
 import { realtime } from "./routes/realtime";
@@ -66,6 +67,7 @@ const api = new Hono<AppEnv>()
   .route("/media", media)
   .route("/models", models)
   .route("/runs", runs)
+  .route("/templates", templates)
   .route("/media/avatar", avatars)
   .route("/profiles", profiles)
   .route("/feedback", feedback)

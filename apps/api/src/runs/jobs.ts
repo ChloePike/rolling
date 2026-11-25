@@ -110,6 +110,17 @@ async function assetUrl(env: Env, ctx: JobContext, assetId: string): Promise<{ u
   return { url: url.startsWith("http") ? url : new URL(url, env.PUBLIC_APP_URL).toString(), origin, key: row.r2_key, name: row.name };
 }
 
+/** The poster frame (thumbnail) of a video asset as a signed picture URL (Remix on models without reference-video input). */
+async function posterUrl(env: Env, ctx: JobContext, assetId: string): Promise<{ url: string; origin: ImageSource; key: string; name: string } | null> {
+  const row = await env.DB.prepare("SELECT workspace_id, meta, status, name, source FROM assets WHERE id = ?").bind(assetId).first<{ workspace_id: string | null; meta: string | null; status: string; name: string; source: string }>();
+  if (!row || row.status !== "ready" || row.workspace_id !== ctx.workspaceId) return null;
+  const key = parseJson<{ thumbKey?: unknown }>(row.meta, {}).thumbKey;
+  if (typeof key !== "string" || !keyBelongsTo(key, ctx.workspaceId)) return null;
+  const url = await signMediaUrl(env, key, { workspaceId: ctx.workspaceId, expiresIn: SIGNED_INPUT_TTL, absolute: true });
+  const origin: ImageSource = row.source === "generated" ? "generated" : row.source === "team" ? "team" : "upload";
+  return { url: url.startsWith("http") ? url : new URL(url, env.PUBLIC_APP_URL).toString(), origin, key, name: `${row.name} (poster)` };
+}
+
 export interface Prepared {
   request: GenerateRequest;
   /** Digest the new version records: current inputs, or a stale marker when the node changed after the quote. */
@@ -143,11 +154,19 @@ export async function prepareJob(env: Env, ctx: JobContext, modelId: string): Pr
     if ("node" in input.from) {
       assetId = activeAssets[input.from.node];
       if (!assetId) fail("input_missing", "An input has no output yet.");
+    } else if ("item" in input.from) {
+      // Another item of this run (a character's face from its full body): its stored output.
+      const row = await env.DB.prepare("SELECT asset_id FROM jobs WHERE run_id = ? AND item_ref = ? AND status = 'succeeded' AND asset_id IS NOT NULL ORDER BY created_at DESC LIMIT 1")
+        .bind(ctx.runId, input.from.item)
+        .first<{ asset_id: string }>();
+      if (!row) fail("input_missing", "An input has no output yet.");
+      assetId = row!.asset_id;
     } else if ("assetId" in input.from) assetId = input.from.assetId;
     else continue;
-    const a = await assetUrl(env, ctx, assetId!);
+    const poster = "assetId" in input.from && input.from.poster === true;
+    const a = poster ? await posterUrl(env, ctx, assetId!) : await assetUrl(env, ctx, assetId!);
     if (!a) fail("input_missing", "An input file is not available.");
-    const origin: ImageSource = "node" in input.from ? "generated" : (input.from as { origin: ImageSource }).origin;
+    const origin: ImageSource = "node" in input.from || "item" in input.from ? "generated" : (input.from as { origin: ImageSource }).origin;
     resolved.push({ input, url: a.url, origin });
     const ref: SafetyReference = { kind: input.media, source: referenceSource(origin), caption: a.name };
     // Mature runs: image references go to the vision check as inline pictures (the gateway can't reach private media).

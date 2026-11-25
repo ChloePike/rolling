@@ -1,5 +1,5 @@
 /**
- * Runs (M4, docs/api.md → Runs): quote, start, cancel, Activity list.
+ * Runs (M4, docs/api.md → Runs): quote, start, cancel, retry, Activity list and single read.
  * Thin handlers; logic in `../runs/service.ts` and `@rolling/core/generation`.
  */
 import { Hono } from "hono";
@@ -10,8 +10,8 @@ import type { AppEnv } from "../env";
 import { projectAccess, roomCaller } from "../lib/access";
 import { ApiError } from "../lib/errors";
 import { validate } from "../lib/validate";
-import { cancelRun, quoteRun, startRun } from "../runs/service";
-import { listRuns, RunsFilter } from "../runs/activity";
+import { cancelRun, quoteRun, retryRun, startRun } from "../runs/service";
+import { getRunView, listRuns, RunsFilter } from "../runs/activity";
 
 const Id = z.string().min(1).max(80);
 
@@ -68,7 +68,23 @@ export const runs = new Hono<AppEnv>()
     const auth = requireRole(c, "editor");
     return c.json(await cancelRun(c.env, auth, c.req.valid("param").id));
   })
+  .post("/:id/retry", validate("param", z.object({ id: Id })), async (c) => {
+    // Like a quote: open to non-members (the start answers NO_PLAN); the client confirms the fresh quote.
+    const auth = requireRole(c, "editor");
+    return c.json(
+      await retryRun(c.env, auth, c.req.valid("param").id, async (projectId) => {
+        const access = await projectAccess(c, auth, projectId, "editor");
+        return { caller: roomCaller(auth, access), matureAllowed: access.matureAllowed };
+      }),
+    );
+  })
   .get("/", validate("query", RunsFilter), async (c) => {
     const auth = requireUser(c);
     return c.json(await listRuns(c.env, auth.workspaceId, c.req.valid("query")));
+  })
+  .get("/:id", validate("param", z.object({ id: Id })), async (c) => {
+    const auth = requireUser(c);
+    const run = await getRunView(c.env, auth.workspaceId, c.req.valid("param").id);
+    if (!run) throw new ApiError(404, "NOT_FOUND", "Run not found");
+    return c.json({ run });
   });

@@ -288,6 +288,8 @@ export const quotes = sqliteTable("quotes", {
   createdBy: text("created_by"),
   scope: text("scope"),
   createdAt: integer("created_at"),
+  /** 0015: the normalized request (`{ promptSpec, onlyRefs?, priorAssets?, retryOf? }` or `{ scope, nodeIds?, retryOf? }`). */
+  request: text("request"),
 });
 
 export const runStatuses = ["queued", "running", "succeeded", "partial", "failed", "canceled"] as const;
@@ -313,6 +315,11 @@ export const runs = sqliteTable(
     options: text("options").notNull().default("{}"),
     updatedAt: integer("updated_at"),
     finishedAt: integer("finished_at"),
+    // 0015: the request it was quoted from, retries, tool and saved Character.
+    request: text("request"),
+    retryOf: text("retry_of"),
+    tool: text("tool"),
+    characterId: text("character_id"),
   },
   (t) => [
     index("runs_ws").on(t.workspaceId, sql`${t.createdAt} DESC`),
@@ -590,6 +597,7 @@ export const voices = sqliteTable(
 
 export const templates = sqliteTable("templates", {
   id: text("id").primaryKey(),
+  /** Null for built-in templates; a workspace id for "save selection as template" (workspace-private). */
   workspaceId: text("workspace_id"),
   title: text("title").notNull(),
   category: text("category"),
@@ -599,7 +607,12 @@ export const templates = sqliteTable("templates", {
   uses: integer("uses").notNull().default(0),
   /** Migration 0013: author (public profile lists global templates they authored). */
   createdBy: text("created_by"),
-});
+  /** 0015: listing fields (`meta`: durationSec, ratio, roles, hasLines, tags, featured, nodeCount). */
+  description: text("description"),
+  meta: text("meta").notNull().default("{}"),
+  createdAt: integer("created_at").notNull().default(0),
+  updatedAt: integer("updated_at").notNull().default(0),
+}, (t) => [index("templates_ws").on(t.workspaceId, t.category, sql`${t.uses} DESC`)]);
 
 export const shareLinks = sqliteTable("share_links", {
   id: text("id").primaryKey(),

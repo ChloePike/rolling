@@ -7,6 +7,7 @@ import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { newId } from "@rolling/core/ids";
 import { templateOps } from "@rolling/core/project";
+import { fillSlots, SlotFillError, SlotFillSchema, type SlotFills, type TemplateGraph } from "@rolling/core/templates";
 import type { AppEnv } from "../env";
 import { projectAccess, projectRoom, requireAuth, requireEditor, roomCaller, type AuthContext, type ProjectRow } from "../lib/access";
 import { ApiError } from "../lib/errors";
@@ -94,6 +95,44 @@ const PatchBody = z.object({
   origin: z.enum(["user", "agent"]).optional(),
 });
 
+/**
+ * Writes slot fills into a template graph. Asset fills must be ready assets the
+ * workspace can use (own, builtin or public; mature ones only for allowed
+ * viewers, D-005); asset nodes record the asset's source for D-005 provenance.
+ */
+async function fillTemplateSlots(env: Env, workspaceId: string, matureAllowed: boolean, graph: TemplateGraph, fills: SlotFills): Promise<TemplateGraph> {
+  let filled: TemplateGraph;
+  try {
+    filled = fillSlots(graph, fills);
+  } catch (err) {
+    if (err instanceof SlotFillError) throw new ApiError(422, "VALIDATION_FAILED", err.message, { slot: err.slotId });
+    throw err;
+  }
+  const assetIds = Object.entries(fills).flatMap(([slot, f]) => ("assetId" in f ? [[slot, f.assetId] as const] : []));
+  if (assetIds.length === 0) return filled;
+  const rows = await env.DB.prepare(
+    `SELECT id, kind, source, mature, status FROM assets WHERE id IN (${assetIds.map(() => "?").join(",")}) AND (workspace_id = ? OR workspace_id IS NULL)`,
+  )
+    .bind(...assetIds.map(([, id]) => id), workspaceId)
+    .all<{ id: string; kind: string; source: string; mature: number; status: string }>();
+  const byId = new Map(rows.results.map((r) => [r.id, r]));
+  for (const [slot, id] of assetIds) {
+    const a = byId.get(id);
+    if (!a || a.status !== "ready" || (a.mature && !matureAllowed)) throw new ApiError(422, "VALIDATION_FAILED", "A slot file is not available", { slot, assetId: id });
+    const node = filled.nodes.find((n) => n.id === slot);
+    const media = typeof node?.params.media === "string" ? node.params.media : "image";
+    if (a.kind !== media) throw new ApiError(422, "VALIDATION_FAILED", `This slot takes ${media === "audio" ? "an audio file" : media === "video" ? "a video" : "a picture"}`, { slot, assetId: id });
+  }
+  return {
+    ...filled,
+    nodes: filled.nodes.map((n) => {
+      const a = assetIds.find(([slot]) => slot === n.id);
+      const row = a ? byId.get(a[1]) : undefined;
+      return row ? { ...n, params: { ...n.params, source: row.source === "mine" ? "upload" : row.source } } : n;
+    }),
+  };
+}
+
 export const projects = new Hono<AppEnv>()
   .get("/", validate("query", z.object({ first: z.coerce.number().int().min(1).max(100).default(24), after: z.string().max(200).optional() })), async (c) => {
     const auth = await requireAuth(c);
@@ -101,21 +140,30 @@ export const projects = new Hono<AppEnv>()
     const page = await listProjects(c.env, auth.workspaceId, first, after);
     return c.json({ items: page.items, nextCursor: page.hasNextPage ? page.endCursor : null });
   })
-  .post("/", validate("json", z.object({ title: Title.default("Untitled project"), fromTemplateId: Id.optional() })), async (c) => {
+  .post("/", validate("json", z.object({ title: Title.optional(), fromTemplateId: Id.optional(), slots: SlotFillSchema.optional() })), async (c) => {
     const auth = await requireAuth(c);
     requireEditor(auth);
-    const { title, fromTemplateId } = c.req.valid("json");
+    const body = c.req.valid("json");
+    const { fromTemplateId } = body;
+    let title = body.title ?? "Untitled project";
     let ops: ReturnType<typeof templateOps> = [];
     if (fromTemplateId) {
-      const tpl = await c.env.DB.prepare("SELECT graph FROM templates WHERE id = ? AND (workspace_id IS NULL OR workspace_id = ?)")
+      // Templates (docs/api.md → Templates): the graph with its slots filled becomes revision 1. Nothing is spent.
+      const tpl = await c.env.DB.prepare("SELECT title, graph FROM templates WHERE id = ? AND (workspace_id IS NULL OR workspace_id = ?)")
         .bind(fromTemplateId, auth.workspaceId)
-        .first<{ graph: string }>();
+        .first<{ title: string; graph: string }>();
       if (!tpl) throw new ApiError(404, "NOT_FOUND", "Template not found", { templateId: fromTemplateId });
+      if (!body.title) title = tpl.title.slice(0, 200);
+      let graph: TemplateGraph;
       try {
-        ops = templateOps(JSON.parse(tpl.graph));
+        graph = JSON.parse(tpl.graph) as TemplateGraph;
       } catch {
         throw new ApiError(422, "VALIDATION_FAILED", "Template graph is not readable", { templateId: fromTemplateId });
       }
+      if (body.slots && Array.isArray(graph.nodes)) graph = await fillTemplateSlots(c.env, auth.workspaceId, auth.matureAllowed, graph, body.slots);
+      ops = templateOps(graph);
+    } else if (body.slots) {
+      throw new ApiError(400, "VALIDATION_FAILED", "slots needs fromTemplateId");
     }
     const id = newId("project");
     const now = Date.now();

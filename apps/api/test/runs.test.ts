@@ -655,3 +655,164 @@ describe("runs: GraphQL", () => {
     expect(body.data.runs.stats.refundedThisMonth).toBe(q.total);
   });
 });
+
+/** A ready media asset (an upload) with optional meta (durationSec, thumbKey). */
+async function mediaAsset(ws: string, user: string, kind: "image" | "video" | "audio", meta: Record<string, unknown> = {}): Promise<string> {
+  const id = `ast_${crypto.randomUUID().replace(/-/g, "").slice(0, 26)}`;
+  const ext = kind === "image" ? "png" : kind === "video" ? "mp4" : "mp3";
+  const key = `ws/${ws}/uploads/${id}.${ext}`;
+  await env.MEDIA.put(key, kind === "image" ? PNG : MP4, { httpMetadata: { contentType: kind === "image" ? "image/png" : kind === "video" ? "video/mp4" : "audio/mpeg" } });
+  await env.DB.prepare(
+    "INSERT INTO assets (id, workspace_id, kind, source, name, r2_key, meta, created_by, created_at, status, mature) VALUES (?, ?, ?, 'mine', ?, ?, ?, ?, ?, 'ready', 0)",
+  )
+    .bind(id, ws, kind, `${kind} upload`, key, JSON.stringify(meta), user, Date.now())
+    .run();
+  return id;
+}
+
+async function runView(user: string, runId: string): Promise<any> {
+  const res = await api(user, `/api/runs/${runId}`);
+  expect(res.status, await res.clone().text()).toBe(200);
+  return ((await res.json()) as { run: any }).run;
+}
+
+describe("runs: tool specs (remix, avatar, character)", () => {
+  it("avatar: a lip-sync run on lumina/wan2.7-i2v-spicy with the photo as first frame and the voice track as audio_url", async () => {
+    const { user, ws } = await member("avatar");
+    const photo = await imageAsset(ws, user);
+    const voice = await mediaAsset(ws, user, "audio", { durationSec: 6.4 });
+    const q = await quote(user, { promptSpec: { kind: "avatar", resolution: "720p", inputs: { photoAssetId: photo, audioAssetId: voice } } });
+    expect(q.items).toEqual([expect.objectContaining({ ref: "avatar", action: "run", model: "lumina/wan2.7-i2v-spicy" })]);
+    const { runId } = (await (await start(user, q.quoteId)).json()) as { runId: string };
+    expect((await finalRun(runId)).status).toBe("succeeded");
+    expect(fake.jobs[0]!.body).toMatchObject({ model: "lumina/wan2.7-i2v-spicy", seconds: 7, audio: true, audio_url: expect.stringContaining(voice) });
+    expect(JSON.stringify(fake.jobs[0]!.body)).toContain(photo);
+    const view = await runView(user, runId);
+    expect(view).toMatchObject({ id: runId, tool: "avatar", status: "done", request: { promptSpec: { kind: "avatar", inputs: { photoAssetId: photo, audioAssetId: voice } } } });
+
+    // Without an uploaded voice track nothing runs.
+    const none = await quote(user, { promptSpec: { kind: "avatar", inputs: { photoAssetId: photo } } });
+    expect(none).toMatchObject({ quoteId: null, items: [{ action: "blocked", code: "missing_input", reason: "Upload a voice track." }] });
+  });
+
+  it("remix: one refs-mode video per shot with the reference video and the new looks", async () => {
+    const { user, ws } = await member("remix");
+    const clip = await mediaAsset(ws, user, "video", { durationSec: 10 });
+    const look = await imageAsset(ws, user);
+    const q = await quote(user, {
+      promptSpec: { kind: "remix", model: "Seedance 2.0 Mini", prompt: "Two friends in streetwear", resolution: "480p", ratio: "16:9", shots: [{ prompt: "They walk in" }, { prompt: "They wave" }], inputs: { videoAssetId: clip, referenceAssetIds: [look] } },
+    });
+    expect(q.items.map((i: any) => [i.ref, i.action])).toEqual([["shot-1", "run"], ["shot-2", "run"]]);
+    const { runId } = (await (await start(user, q.quoteId)).json()) as { runId: string };
+    expect((await finalRun(runId)).status).toBe("succeeded");
+    expect(fake.jobs).toHaveLength(2);
+    for (const j of fake.jobs) {
+      expect(j.body).toMatchObject({ model: "bytedance/seedance-2.0-mini", seconds: 5 });
+      expect(JSON.stringify(j.body)).toContain(clip);
+      expect(JSON.stringify(j.body)).toContain(look);
+    }
+    const view = await runView(user, runId);
+    expect(view).toMatchObject({ name: "Remix", tool: "remix", items: [{ ref: "shot-1", status: "succeeded" }, { ref: "shot-2", status: "succeeded" }] });
+  });
+
+  it("character: full body, then the face from it, saved to Characters on success", async () => {
+    const { user, ws } = await member("chara");
+    const ref = await imageAsset(ws, user);
+    const q = await quote(user, { promptSpec: { kind: "character", name: "Mira", prompt: "A cyclist in a yellow jacket", resolution: "2K", inputs: { referenceAssetIds: [ref] } } });
+    expect(q.items.map((i: any) => [i.ref, i.action, i.dependsOn])).toEqual([["body", "run", []], ["face", "run", ["body"]]]);
+    const { runId } = (await (await start(user, q.quoteId)).json()) as { runId: string };
+    expect((await finalRun(runId)).status).toBe("succeeded");
+    const [body, face] = fake.jobs;
+    expect(JSON.stringify(body!.body)).toContain(ref);
+    // The face is made from the stored full-body output (after it finished).
+    expect(JSON.stringify(face!.body)).toMatch(/\/gen\/job_[^/]+\/0\.png/);
+    const view = await waitFor("character saved", async () => {
+      const v = await runView(user, runId);
+      return v.characterId ? v : null;
+    });
+    const chars = (await (await api(user, "/api/characters")).json()) as any;
+    const saved = chars.items.find((c: any) => c.id === view.characterId);
+    expect(saved).toMatchObject({ name: "Mira" });
+    expect(saved.versions).toHaveLength(1);
+    expect(saved.versions[0].assetIds).toHaveLength(2);
+    expect(saved.coverAssetId).toBe(saved.versions[0].assetIds[1]);
+  });
+});
+
+describe("runs: retry and single read", () => {
+  it("GET /api/runs/:id returns the run with its request; unknown and foreign runs are 404", async () => {
+    const { user } = await member("one");
+    const q = await quote(user, { promptSpec: { kind: "image", model: "Seedream 5.0 Lite", prompt: "A lemon", resolution: "2K" } });
+    const { runId } = (await (await start(user, q.quoteId)).json()) as { runId: string };
+    await finalRun(runId);
+    const view = await runView(user, runId);
+    expect(view).toMatchObject({ id: runId, tool: "quick", retryable: false, request: { promptSpec: { kind: "image", prompt: "A lemon", model: "Seedream 5.0 Lite" } } });
+    expect((await api(user, "/api/runs/run_nope")).status).toBe(404);
+    const other = await member("two");
+    expect((await api(other.user, `/api/runs/${runId}`)).status).toBe(404);
+    // Nothing failed: nothing to retry.
+    const res = await api(user, `/api/runs/${runId}/retry`, { method: "POST" });
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as any).error.data.reason).toBe("NOTHING_TO_RETRY");
+  });
+
+  it("retries a failed tool run with the same spec: a fresh quote the client confirms, linked to the first run", async () => {
+    const { user, ws } = await member("retryspec");
+    const photo = await imageAsset(ws, user);
+    const voice = await mediaAsset(ws, user, "audio", { durationSec: 3 });
+    const spec = { kind: "avatar", prompt: "Hello there", inputs: { photoAssetId: photo, audioAssetId: voice } };
+    const q = await quote(user, { promptSpec: spec });
+    const { runId } = (await (await start(user, q.quoteId, { forceFailure: true })).json()) as { runId: string };
+    expect((await finalRun(runId)).status).toBe("failed");
+    expect(await runView(user, runId)).toMatchObject({ retryable: true });
+
+    const res = await api(user, `/api/runs/${runId}/retry`, { method: "POST" });
+    expect(res.status, await res.clone().text()).toBe(200);
+    const retry = (await res.json()) as any;
+    expect(retry).toMatchObject({ retryOf: runId, total: q.total, items: [{ ref: "avatar", action: "run" }], needsConfirm: q.total >= 300 });
+    expect(retry.quoteId).not.toBe(q.quoteId);
+    const started = (await (await start(user, retry.quoteId)).json()) as { runId: string };
+    expect((await finalRun(started.runId)).status).toBe("succeeded");
+    expect(await runView(user, started.runId)).toMatchObject({ retryOf: runId, tool: "avatar", request: { promptSpec: { prompt: "Hello there" } } });
+    expect(fake.jobs[0]!.body).toMatchObject({ prompt: "Hello there", model: "lumina/wan2.7-i2v-spicy" });
+  });
+
+  it("retries only the failed nodes of a canvas run", async () => {
+    const { user, ws } = await member("retrycanvas");
+    const { id, ids } = await project(user, ws, [
+      { kind: "image", title: "A", params: KEYFRAME },
+      { kind: "image", title: "B", params: { ...KEYFRAME, prompt: "Other" } },
+    ], []);
+    const q = await quote(user, { projectId: id, scope: "all" });
+    const { runId } = (await (await start(user, q.quoteId, { forceFailure: [ids.B] })).json()) as { runId: string };
+    expect((await finalRun(runId)).status).toBe("partial");
+    const view = await runView(user, runId);
+    expect(view).toMatchObject({ status: "partial", retryable: true, request: { scope: "all" } });
+    const retry = (await (await api(user, `/api/runs/${runId}/retry`, { method: "POST" })).json()) as any;
+    expect(retry.items.filter((i: any) => i.action === "run").map((i: any) => i.nodeId)).toEqual([ids.B]);
+    const started = (await (await start(user, retry.quoteId)).json()) as { runId: string };
+    expect((await finalRun(started.runId)).status).toBe("succeeded");
+    expect(await runView(user, started.runId)).toMatchObject({ retryOf: runId, request: { scope: "selection", nodeIds: [ids.B] } });
+  });
+
+  it("a character whose face failed: the retry makes only the face from the earlier body and adds it to the Character", async () => {
+    const { user } = await member("retrychar");
+    const q = await quote(user, { promptSpec: { kind: "character", name: "Ola", prompt: "A tall baker", resolution: "2K" } });
+    const { runId } = (await (await start(user, q.quoteId, { forceFailure: ["face"] })).json()) as { runId: string };
+    expect((await finalRun(runId)).status).toBe("partial");
+    const first = await waitFor("saved", async () => ((await runView(user, runId)).characterId ? runView(user, runId) : null));
+    const bodyAsset = first.items.find((i: any) => i.ref === "body").assetId;
+    const retry = (await (await api(user, `/api/runs/${runId}/retry`, { method: "POST" })).json()) as any;
+    expect(retry.items.map((i: any) => [i.ref, i.action])).toEqual([["face", "run"]]);
+    fake.reset();
+    const started = (await (await start(user, retry.quoteId)).json()) as { runId: string };
+    expect((await finalRun(started.runId)).status).toBe("succeeded");
+    expect(JSON.stringify(fake.jobs[0]!.body)).toMatch(/\/gen\/job_[^/]+\/0\.png/);
+    const second = await waitFor("saved", async () => ((await runView(user, started.runId)).characterId ? runView(user, started.runId) : null));
+    expect(second.characterId).toBe(first.characterId);
+    const chars = (await (await api(user, "/api/characters")).json()) as any;
+    const saved = chars.items.find((c: any) => c.id === first.characterId);
+    expect(saved.versions.map((v: any) => v.assetIds.length)).toEqual([1, 2]);
+    expect(saved.versions[1].assetIds[0]).toBe(bodyAsset);
+  });
+});

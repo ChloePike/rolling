@@ -108,9 +108,35 @@ export function settingsOf(kind: 'image' | 'video', params: Record<string, unkno
   };
 }
 
-/** Tool page request (Quick create, Motion, ...) without a graph. */
+/** Tool kinds beyond a plain image or video (docs/api.md → Runs → PromptSpec). */
+export const TOOL_SPEC_KINDS = ['remix', 'avatar', 'character'] as const;
+export type ToolSpecKind = (typeof TOOL_SPEC_KINDS)[number];
+
+const AssetRef = z.string().min(1).max(64);
+
+/** One shot of a Remix: what happens in it and how long it is. */
+export const RemixShotSchema = z.object({
+  prompt: z.string().max(2000).default(''),
+  seconds: z.number().int().positive().max(30).optional(),
+  /** A frame of the reference video for this shot (an image asset), used as a composition reference. */
+  frameAssetId: AssetRef.optional(),
+  /** Where the shot starts in the reference video (seconds), for the prompt. */
+  startSec: z.number().nonnegative().max(3600).optional(),
+});
+export type RemixShot = z.infer<typeof RemixShotSchema>;
+
+/**
+ * Tool page request (Quick Create, Remix, Avatar, Characters, Home) without a graph.
+ * - `image` / `video`: one generation.
+ * - `remix`: a reference video (`inputs.videoAssetId`) recreated shot by shot with new
+ *   characters/outfits (`inputs.referenceAssetIds`); one video item per `shots[]` entry.
+ * - `avatar`: a photo (`inputs.photoAssetId`) speaks an uploaded voice track
+ *   (`inputs.audioAssetId`) on a lip-sync model (default `lumina/wan2.7-i2v-spicy`, D-009).
+ * - `character`: a consistent character (`name`): a full-body picture, then a face
+ *   close-up made from it, with optional reference pictures; saved to Characters on success.
+ */
 export const PromptSpecSchema = z.object({
-  kind: z.enum(['image', 'video']),
+  kind: z.enum(['image', 'video', ...TOOL_SPEC_KINDS]),
   model: z.string().min(1).max(128).default(AUTO_MODEL),
   prompt: z.string().max(8000).default(''),
   title: z.string().max(200).optional(),
@@ -124,17 +150,43 @@ export const PromptSpecSchema = z.object({
   mature: z.boolean().optional(),
   /** Reference-mode video: images as references, not frames. */
   refsMode: z.boolean().optional(),
+  /** Remix: the shots to recreate (default one shot over the whole clip). */
+  shots: z.array(RemixShotSchema).max(12).optional(),
+  /** Character: the name it is saved under in Characters. */
+  name: z.string().max(80).optional(),
+  /** Character: which pictures to make (default both). */
+  views: z.array(z.enum(['body', 'face'])).min(1).max(2).optional(),
   inputs: z
     .object({
-      firstFrameAssetId: z.string().max(64).optional(),
-      lastFrameAssetId: z.string().max(64).optional(),
-      referenceAssetIds: z.array(z.string().max(64)).max(9).optional(),
-      inputAssetIds: z.array(z.string().max(64)).max(10).optional(),
-      audioAssetId: z.string().max(64).optional(),
+      firstFrameAssetId: AssetRef.optional(),
+      lastFrameAssetId: AssetRef.optional(),
+      referenceAssetIds: z.array(AssetRef).max(9).optional(),
+      inputAssetIds: z.array(AssetRef).max(10).optional(),
+      audioAssetId: AssetRef.optional(),
+      /** Avatar: the picture that speaks. */
+      photoAssetId: AssetRef.optional(),
+      /** Remix: the reference video. */
+      videoAssetId: AssetRef.optional(),
     })
     .default({}),
 });
 export type PromptSpec = z.infer<typeof PromptSpecSchema>;
+
+/** Every asset id a spec refers to (inputs and shot frames), deduplicated. */
+export function specAssetIds(spec: PromptSpec): string[] {
+  const i = spec.inputs;
+  const ids = [
+    i.firstFrameAssetId,
+    i.lastFrameAssetId,
+    i.audioAssetId,
+    i.photoAssetId,
+    i.videoAssetId,
+    ...(i.referenceAssetIds ?? []),
+    ...(i.inputAssetIds ?? []),
+    ...(spec.shots ?? []).map((s) => s.frameAssetId),
+  ].filter((x): x is string => typeof x === 'string' && x !== '');
+  return [...new Set(ids)];
+}
 
 /** Image models priced and sized by `size` (no resolution list): resolution label + ratio → `WxH`. */
 export function usesSize(model: Pick<CatalogModel, 'kind' | 'resolutions' | 'params'>): boolean {

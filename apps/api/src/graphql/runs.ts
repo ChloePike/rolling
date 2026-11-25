@@ -1,12 +1,14 @@
 /** GraphQL read field for Activity (M4): `runs(filter, first, after)`. Merged into the schema in `./index.ts`. */
 import { GraphQLError } from "graphql";
-import { listRuns, RunsFilter } from "../runs/activity";
+import { getRunView, listRuns, RunsFilter, type RunView } from "../runs/activity";
 import type { GraphQLContext } from "./index";
 
 export const runsTypeDefs = /* GraphQL */ `
   extend type Query {
     "Runs of the current workspace for Activity, newest first, with cost and refunds (signed in)."
     runs(filter: RunsFilter, first: Int = 30, after: String): RunConnection!
+    "One run of the current workspace (signed in)."
+    run(id: ID!): Run
   }
 
   input RunsFilter {
@@ -60,6 +62,17 @@ export const runsTypeDefs = /* GraphQL */ `
     createdAt: Float!
     finishedAt: Float
     items: [RunItem!]!
+    "quick (image/video), remix, avatar or character for tool runs; null for canvas runs."
+    tool: String
+    "The normalized promptSpec of a tool run, as JSON (null for canvas runs)."
+    promptSpec: String
+    "Canvas runs: the scope and nodes quoted."
+    scope: String
+    nodeIds: [ID!]
+    retryOf: ID
+    characterId: ID
+    "Failed, canceled or skipped items can be quoted again (POST /api/runs/:id/retry)."
+    retryable: Boolean!
   }
 
   type RunItem {
@@ -81,7 +94,20 @@ export const runsTypeDefs = /* GraphQL */ `
   }
 `;
 
+/** Field resolvers of `Run` (request split into GraphQL fields). */
+export const runFieldResolvers = {
+  Run: {
+    promptSpec: (r: RunView) => (r.request && "promptSpec" in r.request ? JSON.stringify(r.request.promptSpec) : null),
+    scope: (r: RunView) => (r.request && "scope" in r.request ? r.request.scope : null),
+    nodeIds: (r: RunView) => (r.request && "scope" in r.request ? (r.request.nodeIds ?? null) : null),
+  },
+};
+
 export const runsResolvers = {
+  run: async (_: unknown, args: { id: string }, ctx: GraphQLContext) => {
+    if (!ctx.auth) throw new GraphQLError("Sign in required", { extensions: { code: "UNAUTHENTICATED" } });
+    return getRunView(ctx.env, ctx.auth.workspaceId, args.id);
+  },
   runs: async (
     _: unknown,
     args: { filter?: Record<string, unknown> | null; first?: number | null; after?: string | null },

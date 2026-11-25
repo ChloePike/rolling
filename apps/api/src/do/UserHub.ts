@@ -71,7 +71,7 @@ export class UserHub extends DurableObject<Env> {
     if (raw === "ping") return;
     const parsed = parseEnvelope(raw);
     if (!parsed.ok) {
-      ws.send(envelope("error", { code: parsed.code, message: parsed.message }, parsed.id));
+      this.send(ws, envelope("error", { code: parsed.code, message: parsed.message }, parsed.id));
       return;
     }
     const msg = parsed.message;
@@ -82,7 +82,7 @@ export class UserHub extends DurableObject<Env> {
     }
     switch (msg.type) {
       case "ping":
-        ws.send(envelope("pong", null, msg.id));
+        this.send(ws, envelope("pong", null, msg.id));
         return;
       case "subscribe":
         return this.subscribe(ws, state, msg.id, msg.payload);
@@ -95,7 +95,7 @@ export class UserHub extends DurableObject<Env> {
       case "timeline.patch":
         return this.forward(ws, state, msg.type, msg.id, msg.payload);
       default:
-        ws.send(envelope("error", { code: "UNKNOWN_TYPE", message: `Unknown message type: ${msg.type}` }, msg.id));
+        this.send(ws, envelope("error", { code: "UNKNOWN_TYPE", message: `Unknown message type: ${msg.type}` }, msg.id));
     }
   }
 
@@ -189,7 +189,7 @@ export class UserHub extends DurableObject<Env> {
       return this.fail(ws, id, projectId, res.code, res.message);
     }
     const { ok: _ok, ...body } = res;
-    ws.send(channelEnvelope("subscribed", { ...body, canEdit: access.canEdit }, { channel: "project", projectId, seq: res.seq }, id));
+    this.send(ws, channelEnvelope("subscribed", { ...body, canEdit: access.canEdit }, { channel: "project", projectId, seq: res.seq }, id));
   }
 
   private async unsubscribe(ws: WebSocket, state: SocketState, id: string, raw: unknown): Promise<void> {
@@ -201,7 +201,7 @@ export class UserHub extends DurableObject<Env> {
       ws.serializeAttachment(state);
       await this.releaseProjects(ws, state.userId, [projectId]);
     }
-    ws.send(channelEnvelope("unsubscribed", { projectId }, { channel: "project", projectId }, id));
+    this.send(ws, channelEnvelope("unsubscribed", { projectId }, { channel: "project", projectId }, id));
   }
 
   /** Commands for a subscribed project, run in ProjectRoom as the user. */
@@ -235,7 +235,7 @@ export class UserHub extends DurableObject<Env> {
       case "snapshot": {
         const snap = await room.getSnapshot(caller);
         if ("ok" in snap && snap.ok === false) return this.fail(ws, id, projectId, snap.code, snap.message);
-        ws.send(channelEnvelope("snapshot", snap, route, id));
+        this.send(ws, channelEnvelope("snapshot", snap, route, id));
         return;
       }
       case "patch": {
@@ -249,8 +249,8 @@ export class UserHub extends DurableObject<Env> {
       }
       case "timeline.patch": {
         const result = await room.patchTimeline(caller, { canvasId: payload!.canvasId, baseRevision: payload!.baseRevision, ops: payload!.ops });
-        if (result.ok) ws.send(channelEnvelope("ack", { revision: result.timeline.revision, canvasId: result.timeline.canvasId }, route, id));
-        else if (result.code === "CONFLICT") ws.send(channelEnvelope("conflict", { timeline: result.timeline }, route, id));
+        if (result.ok) this.send(ws, channelEnvelope("ack", { revision: result.timeline.revision, canvasId: result.timeline.canvasId }, route, id));
+        else if (result.code === "CONFLICT") this.send(ws, channelEnvelope("conflict", { timeline: result.timeline }, route, id));
         else this.fail(ws, id, projectId, result.code, result.message);
         return;
       }
@@ -261,7 +261,7 @@ export class UserHub extends DurableObject<Env> {
   private reply(ws: WebSocket, id: string, projectId: string, result: PatchOk | RoomError, withOps: boolean): void {
     const route = { channel: "project" as const, projectId };
     if (result.ok) {
-      ws.send(
+      this.send(ws, 
         channelEnvelope(
           "ack",
           withOps ? { revision: result.revision, ops: result.ops, statuses: result.statuses } : { revision: result.revision, idMap: result.idMap, statuses: result.statuses },
@@ -272,16 +272,31 @@ export class UserHub extends DurableObject<Env> {
       return;
     }
     if (result.code === "CONFLICT") {
-      ws.send(channelEnvelope("conflict", { snapshot: result.snapshot ?? null }, route, id));
+      this.send(ws, channelEnvelope("conflict", { snapshot: result.snapshot ?? null }, route, id));
       return;
     }
     const code = result.refusal?.code ?? result.code;
-    ws.send(channelEnvelope("error", { projectId, code, message: result.message, ...(result.refusal ? { data: result.refusal } : {}) }, route, id));
+    this.send(ws, channelEnvelope("error", { projectId, code, message: result.message, ...(result.refusal ? { data: result.refusal } : {}) }, route, id));
   }
 
   /** Per-subscription error (the connection stays open). */
+  /**
+   * Sends to one socket unless it has closed meanwhile (a reply after an await,
+   * e.g. `unsubscribed` while the tab was closing): never throws.
+   */
+  private send(ws: WebSocket, message: string): boolean {
+    if (ws.readyState !== WebSocket.OPEN) return false;
+    try {
+      ws.send(message);
+      return true;
+    } catch {
+      // Closed between the check and the send.
+      return false;
+    }
+  }
+
   private fail(ws: WebSocket, id: string, projectId: string | null, code: string, message: string): void {
-    ws.send(
+    this.send(ws, 
       projectId
         ? channelEnvelope("error", { projectId, code, message }, { channel: "project", projectId }, id)
         : envelope("error", { code, message }, id),

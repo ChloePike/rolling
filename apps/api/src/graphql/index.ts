@@ -12,7 +12,8 @@ import type { AuthContext } from "../auth/context";
 import { listPublicModels } from "../models/catalog";
 import { billingResolvers, billingTypeDefs } from "./billing";
 import { projectsResolvers, projectsTypeDefs } from "./projects";
-import { runsResolvers, runsTypeDefs } from "./runs";
+import { runFieldResolvers, runsResolvers, runsTypeDefs } from "./runs";
+import { templatesResolvers, templatesTypeDefs } from "./templates";
 
 export interface GraphQLContext {
   env: Env;
@@ -198,7 +199,9 @@ const resolvers = {
     ...billingResolvers,
     ...projectsResolvers,
     ...runsResolvers,
+    ...templatesResolvers,
   },
+  ...runFieldResolvers,
   Model: {
     kind: (m: { kind: string }) => m.kind.toUpperCase(),
   },
@@ -214,7 +217,7 @@ const resolvers = {
 };
 
 export const yoga = createYoga<GraphQLContext>({
-  schema: createSchema<GraphQLContext>({ typeDefs: [typeDefs, billingTypeDefs, projectsTypeDefs, runsTypeDefs], resolvers }),
+  schema: createSchema<GraphQLContext>({ typeDefs: [typeDefs, billingTypeDefs, projectsTypeDefs, runsTypeDefs, templatesTypeDefs], resolvers }),
   graphqlEndpoint: "/api/graphql",
   landingPage: false,
   graphiql: (_req, ctx) => ctx.env.ENVIRONMENT === "development",

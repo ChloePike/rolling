@@ -70,6 +70,8 @@ export const projectsTypeDefs = /* GraphQL */ `
     "processing, ready or failed."
     status: String!
     mature: Boolean!
+    "D-005 content rating: safe, suggestive or explicit; null when unrated. Clients blur suggestive and explicit."
+    rating: String
     size: Float
     contentType: String
     license: String

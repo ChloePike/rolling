@@ -1,7 +1,7 @@
 /** Activity (M4): runs with cost and refunds, for `GET /api/runs` and GraphQL `runs`. */
 import { z } from "zod";
 import { MODEL_OVERLAY } from "@rolling/core";
-import { itemSpec, paramsSummary, type RunRow, type JobRow, type RunItemRow } from "./store";
+import { itemSpec, paramsSummary, parseJson, type RunRow, type JobRow, type RunItemRow } from "./store";
 
 export const RunsFilter = z.object({
   status: z.enum(["queued", "running", "done", "partial", "failed", "canceled"]).optional(),
@@ -59,6 +59,16 @@ export interface RunView {
   createdAt: number;
   finishedAt: number | null;
   items: RunItemView[];
+  /** The normalized request it was quoted from: a tool `promptSpec` or a canvas scope (null for runs before 0015). */
+  request: { promptSpec: unknown } | { scope: string; nodeIds?: string[] } | null;
+  /** Tool of a spec run (`quick` = image/video), null for canvas runs. */
+  tool: "quick" | "remix" | "avatar" | "character" | null;
+  /** The run this one retried. */
+  retryOf: string | null;
+  /** Character runs: the Character saved from the outputs. */
+  characterId: string | null;
+  /** Failed, canceled or skipped items can be quoted again (`POST /api/runs/:id/retry`). */
+  retryable: boolean;
 }
 
 export interface ActivityStats {
@@ -129,6 +139,91 @@ export async function activityStats(env: Env, workspaceId: string, now = Date.no
   };
 }
 
+
+type RunRowWithProject = RunRow & { project_title: string | null };
+
+const TOOLS = new Set(["quick", "remix", "avatar", "character"]);
+
+function requestOf(raw: string | null): RunView["request"] {
+  const v = parseJson<Record<string, unknown> | null>(raw, null);
+  if (!v) return null;
+  if ("promptSpec" in v) return { promptSpec: v.promptSpec };
+  if (typeof v.scope === "string") return { scope: v.scope, ...(Array.isArray(v.nodeIds) && { nodeIds: v.nodeIds as string[] }) };
+  return null;
+}
+
+/** One run as Activity shows it. */
+export function toRunView(r: RunRowWithProject, rows: RunItemRow[], jobs: ReadonlyMap<string, JobRow>): RunView {
+  const its = rows.map((i): RunItemView => {
+    const job = i.job_id ? jobs.get(i.job_id) : undefined;
+    return {
+      ref: i.ref,
+      nodeId: i.node_id,
+      title: i.title,
+      kind: i.kind,
+      model: job?.model ?? i.model,
+      modelName: modelName(job?.model ?? i.model),
+      status: i.status,
+      jobId: i.job_id,
+      progress: job?.progress ?? null,
+      credits: i.credits,
+      spent: job?.cost_actual ?? null,
+      refunded: job && job.refunded > 0 ? job.cost_quote : 0,
+      assetId: job?.asset_id ?? null,
+      error: job?.error_message ?? i.error_message,
+      errorCode: job?.error_code ?? i.error_code,
+    };
+  });
+  const status = activityStatus(r.status);
+  const firstRow = rows[0];
+  const first = its[0];
+  let settings = "";
+  try {
+    settings = firstRow ? paramsSummary(itemSpec(firstRow)) : "";
+  } catch {
+    settings = "";
+  }
+  const summary = first ? [first.modelName, settings].filter((x) => x !== "").join(" · ") : "";
+  return {
+    id: r.id,
+    ref: `T-${r.id.slice(-5)}`,
+    name: r.title ?? "Run",
+    source: r.source,
+    projectId: r.project_id,
+    projectTitle: r.project_title,
+    params: summary,
+    status,
+    progress: status === "running" || status === "queued" ? (its.length ? its.reduce((s, i) => s + (i.status === "succeeded" ? 1 : i.status === "running" ? (i.progress ?? 0) : 0), 0) / its.length : 0) : null,
+    credits: status === "running" || status === "queued" ? r.credits_quoted : r.credits_spent,
+    quoted: r.credits_quoted,
+    spent: r.credits_spent,
+    refunded: r.credits_refunded,
+    error: its.find((i) => i.status === "failed")?.error ?? null,
+    createdAt: r.created_at,
+    finishedAt: r.finished_at,
+    items: its,
+    request: requestOf(r.request),
+    tool: r.tool && TOOLS.has(r.tool) ? (r.tool as RunView["tool"]) : r.source === "quickCreate" ? "quick" : null,
+    retryOf: r.retry_of,
+    characterId: r.character_id,
+    retryable:
+      (status === "failed" || status === "partial" || status === "canceled") &&
+      its.some((i) => i.status === "failed" || i.status === "canceled" || i.status === "skipped") &&
+      (r.request !== null || r.source === "canvas"),
+  };
+}
+
+/** `GET /api/runs/:id`: one run of the workspace, or null. */
+export async function getRunView(env: Env, workspaceId: string, runId: string): Promise<RunView | null> {
+  const r = await env.DB.prepare("SELECT r.*, p.title AS project_title FROM runs r LEFT JOIN projects p ON p.id = r.project_id WHERE r.id = ? AND r.workspace_id = ?")
+    .bind(runId, workspaceId)
+    .first<RunRowWithProject>();
+  if (!r) return null;
+  const rows = (await env.DB.prepare("SELECT * FROM run_items WHERE run_id = ? ORDER BY ord").bind(runId).all<RunItemRow>()).results;
+  const jobs = new Map((await env.DB.prepare("SELECT * FROM jobs WHERE run_id = ?").bind(runId).all<JobRow>()).results.map((j) => [j.id, j]));
+  return toRunView(r, rows, jobs);
+}
+
 export async function listRuns(env: Env, workspaceId: string, filter: RunsFilter): Promise<{ stats: ActivityStats; runs: RunView[]; nextCursor: string | null }> {
   const where: string[] = ["r.workspace_id = ?"];
   const binds: unknown[] = [workspaceId];
@@ -177,57 +272,7 @@ export async function listRuns(env: Env, workspaceId: string, filter: RunsFilter
     }
     for (const j of (await env.DB.prepare(`SELECT * FROM jobs WHERE run_id IN (${marks})`).bind(...ids).all<JobRow>()).results) jobs.set(j.id, j);
   }
-  const runs = page.map((r): RunView => {
-    const its = (items.get(r.id) ?? []).map((i): RunItemView => {
-      const job = i.job_id ? jobs.get(i.job_id) : undefined;
-      return {
-        ref: i.ref,
-        nodeId: i.node_id,
-        title: i.title,
-        kind: i.kind,
-        model: job?.model ?? i.model,
-        modelName: modelName(job?.model ?? i.model),
-        status: i.status,
-        jobId: i.job_id,
-        progress: job?.progress ?? null,
-        credits: i.credits,
-        spent: job?.cost_actual ?? null,
-        refunded: job && job.refunded > 0 ? job.cost_quote : 0,
-        assetId: job?.asset_id ?? null,
-        error: job?.error_message ?? i.error_message,
-        errorCode: job?.error_code ?? i.error_code,
-      };
-    });
-    const status = activityStatus(r.status);
-    const firstRow = items.get(r.id)?.[0];
-    const first = its[0];
-    let settings = "";
-    try {
-      settings = firstRow ? paramsSummary(itemSpec(firstRow)) : "";
-    } catch {
-      settings = "";
-    }
-    const summary = first ? [first.modelName, settings].filter((x) => x !== "").join(" · ") : "";
-    return {
-      id: r.id,
-      ref: `T-${r.id.slice(-5)}`,
-      name: r.title ?? "Run",
-      source: r.source,
-      projectId: r.project_id,
-      projectTitle: r.project_title,
-      params: summary,
-      status,
-      progress: status === "running" || status === "queued" ? (its.length ? its.reduce((s, i) => s + (i.status === "succeeded" ? 1 : i.status === "running" ? (i.progress ?? 0) : 0), 0) / its.length : 0) : null,
-      credits: status === "running" || status === "queued" ? r.credits_quoted : r.credits_spent,
-      quoted: r.credits_quoted,
-      spent: r.credits_spent,
-      refunded: r.credits_refunded,
-      error: its.find((i) => i.status === "failed")?.error ?? null,
-      createdAt: r.created_at,
-      finishedAt: r.finished_at,
-      items: its,
-    };
-  });
+  const runs = page.map((r) => toRunView(r, items.get(r.id) ?? [], jobs));
   const last = page[page.length - 1];
   return {
     stats: await activityStats(env, workspaceId),

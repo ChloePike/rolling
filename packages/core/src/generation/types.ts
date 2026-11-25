@@ -32,7 +32,10 @@ export type BlockCode =
 /** Where one generation input comes from. Upstream node outputs resolve to their active asset when the job starts. */
 export type InputSource =
   | { node: string }
-  | { assetId: string; origin: ImageSource }
+  /** `poster`: the video asset's poster frame (its thumbnail) as a picture. */
+  | { assetId: string; origin: ImageSource; poster?: true }
+  /** The output of another item of the same run (tool specs, e.g. a character's face from its full-body picture). */
+  | { item: string }
   | { text: string };
 
 export type InputRole = 'prompt' | 'frame' | 'reference' | 'edit' | 'audio';
@@ -64,6 +67,8 @@ export interface GenSpec {
   mature: boolean;
   /** Media inputs (frames, references, edit inputs, audio), resolved to signed URLs in `prepare`. */
   inputs: GenInput[];
+  /** Total length of the reference videos in ms, when known (priced by models that meter input video). */
+  inputVideoMs?: number;
 }
 
 export interface PlanItem {
