@@ -17,6 +17,7 @@ Decisions made after the original spec. Where this file disagrees with `PRD.md`,
   - DeepSeek V4.1 Flash 1017 → cheapest of `-1017` / `-1017-us`; mature turns (D-005) route to `deepseek-v4.1-flash-cyber`.
   - Claude Sonnet 5.5, Claude Haiku 5.5, Claude Opus 5.5, GPT-6 Astra, GPT-6.1 Sol, Grok 4.6, GLM 5.3 → their gateway models.
   - An entry is listed only while one of its gateway models is in the synced catalog.
+- **Wan 3.0 is served through Berry.** `lumina/berry-1.0*` is the same model, capabilities and price as `alibaba/wan3.0*`; users see “Wan 3.0 / Turbo / Pro / Pro Turbo” (Wan icon) and calls go to the Berry ids; the `alibaba/wan3.0*` ids are hidden.
 - **Auto model selection uses an LLM classifier.** For generation runs with model “Auto”, the backend asks DeepSeek V4.1 Flash (cheapest route) to pick a model from the candidates that satisfy the request’s capabilities, the plan’s resolution cap (D-006) and mature routing (D-005), given the prompt, references, mode and length. Output is a Zod-validated model id from that candidate list; anything else, a timeout (2 s) or an error falls back to the deterministic `pickAuto` (cheapest capable model). The classifier is free to the user and runs before the quote, so the quote shows the chosen model.
 - **Open:** premium agent LLMs (Opus, Astra, Sonnet, GPT-6.1 Sol) cost up to ~60× DeepSeek per turn while agent turns are free for members (D-007). Either meter agent turns on non-default LLMs in credits (3× token cost, D-006) or limit them by plan. Decide before M6 ships.
 

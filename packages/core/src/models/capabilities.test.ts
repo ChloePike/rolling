@@ -15,10 +15,10 @@ import type { GenerateRequest } from './types';
 describe('pickAuto over the catalog', () => {
   it('picks the cheapest video model that fits', () => {
     expect(pickAuto(fixtureCatalog, { kind: 'video', mode: 't2v' })?.id).toBe('bytedance/seedance-2.0-mini');
-    expect(pickAuto(fixtureCatalog, { kind: 'video', mode: 't2v', seconds: 20 })?.id).toBe('alibaba/wan3.0');
-    expect(pickAuto(fixtureCatalog, { kind: 'video', mode: 't2v', resolution: '1080p' })?.id).toBe('alibaba/wan3.0');
+    expect(pickAuto(fixtureCatalog, { kind: 'video', mode: 't2v', seconds: 20 })?.id).toBe('lumina/berry-1.0');
+    expect(pickAuto(fixtureCatalog, { kind: 'video', mode: 't2v', resolution: '1080p' })?.id).toBe('lumina/berry-1.0');
     expect(pickAuto(fixtureCatalog, { kind: 'video', mode: 't2v', resolution: '2K' })?.id).toBe('minimax/minimax-h3');
-    expect(pickAuto(fixtureCatalog, { kind: 'video', mode: 'refs', referenceImages: 10 })?.id).toBe('alibaba/wan3.0');
+    expect(pickAuto(fixtureCatalog, { kind: 'video', mode: 'refs', referenceImages: 10 })?.id).toBe('lumina/berry-1.0');
     expect(pickAuto(fixtureCatalog, { kind: 'video', mode: 't2v', audio: true, resolution: '720p' })?.id).toBe(
       'bytedance/seedance-2.0-mini',
     );
@@ -35,7 +35,7 @@ describe('pickAuto over the catalog', () => {
     // Only grok-imagine-video lists `extend`, and it has no overlay entry (not Auto).
     expect(pickAuto(fixtureCatalog, { kind: 'video', mode: 'extend' })).toBeNull();
     const hidden = new Catalog(fixtureCatalog.models.map((x) => (x.id === 'bytedance/seedance-2.0-mini' ? { ...x, hidden: true } : x)));
-    expect(pickAuto(hidden, { kind: 'video', mode: 't2v' })?.id).toBe('alibaba/wan3.0');
+    expect(pickAuto(hidden, { kind: 'video', mode: 't2v' })?.id).toBe('lumina/berry-1.0');
   });
 
   it('routes mature runs only to mature models', () => {

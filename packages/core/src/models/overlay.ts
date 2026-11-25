@@ -46,7 +46,15 @@ export const MODEL_OVERLAY: ModelOverlay = {
   // ---------------------------------------------------------------- video
   'bytedance/seedance-2.5': { placement: 'featured', displayName: 'Seedance 2.5', tags: ['launch', 'audio'], default: true, auto: true },
   'minimax/minimax-h3': { placement: 'featured', displayName: 'MiniMax H3', tags: ['launch'], auto: true },
-  'alibaba/wan3.0': { placement: 'featured', displayName: 'Wan 3.0', tags: ['launch', 'audio', 'long'], auto: true },
+  // Wan 3.0 is offered through the Berry routes (same model, capabilities and price; owner decision D-009).
+  // Users see "Wan 3.0"; the gateway call goes to lumina/berry-*. The alibaba/* ids stay hidden.
+  'lumina/berry-1.0': { placement: 'featured', displayName: 'Wan 3.0', tags: ['launch', 'audio', 'long'], auto: true },
+  'lumina/berry-1.0-turbo': { placement: 'featured', displayName: 'Wan 3.0 Turbo', tags: ['fast'] },
+  'lumina/berry-1.0-pro': { placement: 'more', displayName: 'Wan 3.0 Pro', tags: ['4K'] },
+  'lumina/berry-1.0-pro-turbo': { placement: 'more', displayName: 'Wan 3.0 Pro Turbo', tags: ['4K', 'fast'] },
+  'alibaba/wan3.0': { hidden: true, displayName: 'Wan 3.0 (direct)', notes: 'Served via lumina/berry-1.0.' },
+  'alibaba/wan3.0-pro': { hidden: true, displayName: 'Wan 3.0 Pro (direct)', notes: 'Served via lumina/berry-1.0-pro.' },
+  'alibaba/wan3.0-pro-turbo': { hidden: true, displayName: 'Wan 3.0 Pro Turbo (direct)', notes: 'Served via lumina/berry-1.0-pro-turbo.' },
   'bytedance/seedance-2.0-mini': { placement: 'featured',
     displayName: 'Seedance 2.0 Mini',
     tags: ['fast', 'cheap'],
@@ -56,7 +64,7 @@ export const MODEL_OVERLAY: ModelOverlay = {
   },
   'bytedance/seedance-2.0-fast': { placement: 'featured', displayName: 'Seedance 2.0 Fast', tags: ['fast'], auto: true, substituteFor: 'wan-2.2' },
   'bytedance/seedance-2.5-flash': { placement: 'featured', displayName: 'Seedance 2.5 Flash', tags: ['fast'] },
-  'alibaba/wan3.0-turbo': { placement: 'featured', displayName: 'Wan 3.0 Turbo', tags: ['fast'] },
+  'alibaba/wan3.0-turbo': { hidden: true, displayName: 'Wan 3.0 Turbo (direct)', notes: 'Served via lumina/berry-1.0-turbo.' },
   'lumina/wan2.7-i2v-spicy': {
     displayName: 'Wan 2.7 I2V (lip sync)',
     tags: ['avatar', 'lip-sync'],
