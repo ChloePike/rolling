@@ -491,6 +491,49 @@ export const publicItems = sqliteTable(
 export const assetSearchSql = (query: string, limit = 50) =>
   sql`SELECT id FROM asset_search WHERE asset_search MATCH ${query} ORDER BY rank LIMIT ${limit}`;
 
+/** D-011 (migration 0010): resumable multipart uploads and the parts received so far. */
+export const uploadStatuses = ["uploading", "complete", "aborted", "expired"] as const;
+
+export const uploads = sqliteTable(
+  "uploads",
+  {
+    assetId: text("asset_id").primaryKey(),
+    workspaceId: text("workspace_id").notNull(),
+    userId: text("user_id").notNull(),
+    /** Client hash of name + size + lastModified + first/last 1 MB; resumes an unexpired upload. */
+    fingerprint: text("fingerprint"),
+    uploadId: text("upload_id").notNull(),
+    r2Key: text("r2_key").notNull(),
+    size: integer("size").notNull(),
+    partSize: integer("part_size").notNull(),
+    partCount: integer("part_count").notNull(),
+    contentType: text("content_type").notNull(),
+    status: text("status", { enum: uploadStatuses }).notNull().default("uploading"),
+    createdAt: integer("created_at").notNull(),
+    expiresAt: integer("expires_at").notNull(),
+    completedAt: integer("completed_at"),
+  },
+  (t) => [
+    index("uploads_fingerprint").on(t.workspaceId, t.userId, t.fingerprint, t.status),
+    index("uploads_expiry").on(t.status, t.expiresAt),
+    check("uploads_status_check", sql`${t.status} IN ('uploading','complete','aborted','expired')`),
+  ],
+);
+
+export const uploadParts = sqliteTable(
+  "upload_parts",
+  {
+    assetId: text("asset_id")
+      .notNull()
+      .references(() => uploads.assetId, { onDelete: "cascade" }),
+    n: integer("n").notNull(),
+    size: integer("size").notNull(),
+    etag: text("etag").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.assetId, t.n] })],
+);
+
 export const characters = sqliteTable(
   "characters",
   {
@@ -551,7 +594,27 @@ export const agentThreads = sqliteTable("agent_threads", {
   skill: text("skill"),
   title: text("title"),
   updatedAt: integer("updated_at").notNull(),
-});
+  /** Migration 0008. */
+  createdBy: text("created_by"),
+}, (t) => [index("agent_threads_ws").on(t.workspaceId, t.updatedAt)]);
+
+/** M6: proposal id -> thread, for the apply/discard routes (migration 0008). */
+export const agentProposals = sqliteTable("agent_proposals", {
+  id: text("id").primaryKey(),
+  threadId: text("thread_id").notNull(),
+  workspaceId: text("workspace_id").notNull(),
+  projectId: text("project_id"),
+  kind: text("kind").notNull(),
+  status: text("status").notNull().default("proposed"),
+  createdAt: integer("created_at").notNull(),
+}, (t) => [index("agent_proposals_thread").on(t.threadId)]);
+
+/** M6: agent turns per workspace per UTC day (D-007 abuse limit, migration 0008). */
+export const agentUsage = sqliteTable("agent_usage", {
+  workspaceId: text("workspace_id").notNull(),
+  day: text("day").notNull(),
+  turns: integer("turns").notNull().default(0),
+}, (t) => [primaryKey({ columns: [t.workspaceId, t.day] })]);
 
 /** D-002: model catalog synced from the gateway listing (migration 0002). */
 export const modelKinds = ["image", "video", "chat"] as const;
