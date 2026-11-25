@@ -489,6 +489,19 @@ test.describe('header interactions', () => {
     await expect(settings(page)).toHaveCount(0);
   });
 
+  test('settings lists: rows stagger in; reduced motion keeps them still', async ({ page }) => {
+    await openApp(page, 1440);
+    await openSettings(page);
+    await row(page, 'Currency').click();
+    const delays = await settings(page).getByRole('menuitemradio').evaluateAll((els) => els.slice(0, 8).map((el) => getComputedStyle(el).animationDelay));
+    expect(delays).toEqual(['0s', '0.03s', '0.06s', '0.09s', '0.12s', '0.15s', '0.15s', '0.15s']);
+    await page.keyboard.press('Escape');
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await row(page, 'Language').click();
+    const t = await settings(page).getByRole('menuitemradio').first().evaluate((el) => getComputedStyle(el).transform);
+    expect(['none', 'matrix(1, 0, 0, 1, 0, 0)']).toContain(t);
+  });
+
   test('credits: Top up runs the mock checkout, the balance increases and a toast confirms', async ({ page }) => {
     await openApp(page, 1440);
     await page.getByRole('button', { name: /Credit balance/ }).click();
