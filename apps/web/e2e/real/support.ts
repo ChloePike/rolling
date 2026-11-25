@@ -6,14 +6,21 @@ import { expect, type APIRequestContext, type Page } from '@playwright/test';
  * - `TEST_INBOX_TOKEN` — bearer token of `GET /api/test/inbox` (`EMAIL_PROVIDER=test-inbox`).
  * - `PW_MEMBER_EMAIL` — a test account with an active plan (steps 1, 5–9 spend credits / use the agent).
  * - `PW_PRODUCT_PHOTO` — optional path of the `@` product photo for step 1.
- * - `PW_GENERATE=1` — run the generation steps (6–8). They need a real or fake Hyperouter behind the
- *   Worker; the API has no fake gateway seam, so they are for staging only.
+ * - `PW_GENERATE=1` — run the generation steps (6–8). They need a gateway behind the Worker: staging's
+ *   Hyperouter, or locally (`PW_REAL_LOCAL=1`) the fake one (`apps/api/scripts/fake-hyperouter.mjs`),
+ *   where they run by default.
+ * - `PW_REAL_LOCAL=1` — local defaults: inbox token `e2e-local`, member `e2e-member@rolling.local`
+ *   (given a plan through `POST /api/test/plan`), generation on.
  */
+const LOCAL = process.env.PW_REAL_LOCAL === '1';
 export const env = {
-  inboxToken: process.env.TEST_INBOX_TOKEN ?? '',
-  memberEmail: process.env.PW_MEMBER_EMAIL ?? '',
+  local: LOCAL,
+  inboxToken: process.env.TEST_INBOX_TOKEN ?? (LOCAL ? 'e2e-local' : ''),
+  memberEmail: process.env.PW_MEMBER_EMAIL ?? (LOCAL ? 'e2e-member@rolling.local' : ''),
   productPhoto: process.env.PW_PRODUCT_PHOTO ?? '',
-  generate: process.env.PW_GENERATE === '1',
+  generate: process.env.PW_GENERATE === '1' || (LOCAL && process.env.PW_GENERATE !== '0'),
+  /** Give the member account an active plan and credits through the test route (local and staging test accounts). */
+  grantPlan: process.env.PW_GRANT_PLAN === '1' || (LOCAL && process.env.PW_GRANT_PLAN !== '0'),
   /** The FFmpeg container answers behind the Worker (staging, or `wrangler dev --enable-containers` with media URLs reachable from Docker). */
   exportRender: process.env.PW_EXPORT === '1',
 };
@@ -60,6 +67,12 @@ export async function signIn(page: Page, email: string, baseURL: string) {
   const res = await req.post('/api/auth/sign-in/email-otp', { data: { email, otp }, headers: { origin } });
   expect(res.status(), await res.text()).toBe(200);
   sessions.set(email, await page.context().cookies());
+}
+
+/** Active plan and credits for the signed-in test account (`POST /api/test/plan`, test inbox token). */
+export async function ensureMember(page: Page, planId = 'plus', extraCredits = 50_000) {
+  const r = await page.request.post('/api/test/plan', { data: { planId, extraCredits }, headers: { authorization: `Bearer ${env.inboxToken}` } });
+  expect(r.status(), await r.text()).toBe(200);
 }
 
 /** Center of a node's port (in/out) on screen. */

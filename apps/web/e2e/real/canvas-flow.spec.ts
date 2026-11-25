@@ -1,14 +1,16 @@
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { dragWire, env, nodesByKind, portCenter, signIn } from './support';
+import { dragWire, ensureMember, env, nodesByKind, portCenter, signIn } from './support';
 
 /**
  * docs/canvas-flow.md steps 1–9 against the real backend (no mocks):
  *   PW_BASE_URL=https://<staging> TEST_INBOX_TOKEN=… PW_MEMBER_EMAIL=… [PW_GENERATE=1] \
  *     pnpm --filter @rolling/web exec playwright test --project=real
  * Every step also survives a reload and is checked from a second tab.
- * Generation steps (6–8) need PW_GENERATE=1 (a gateway behind the Worker: staging).
+ * Generation steps (6–8) need PW_GENERATE=1 (a gateway behind the Worker: staging). Locally
+ * (`PW_REAL_LOCAL=1`) everything runs against the fake Hyperouter: `pnpm --filter @rolling/web exec
+ * playwright test --project=real real/canvas-flow` (the config starts the fake gateway, wrangler dev and the SPA).
  * Step 11 (export) also needs PW_EXPORT=1: the FFmpeg container behind the Worker.
  */
 
@@ -25,8 +27,13 @@ async function openCanvas(page: Page, id: string, query = '') {
   await expect(page.getByTestId('sync-status')).toHaveAttribute('data-status', 'saved', { timeout: 30_000 });
 }
 
+let granted = false;
 test.beforeEach(async ({ page, baseURL }) => {
   await signIn(page, env.memberEmail, baseURL!);
+  if (env.grantPlan && !granted) {
+    await ensureMember(page);
+    granted = true;
+  }
 });
 
 test('1–2: Home agent brief with the TV ad skill and an @ product photo → plan options → Build on canvas opens the project', async ({ page }) => {
@@ -136,8 +143,8 @@ test('5: Run all quotes run / reuse / blocked rows with credits and the balance 
 
 test('6–7: confirm → keyframes then videos generate with real progress; credits settle live; a forced failure refunds with Retry', async ({ page, context }) => {
   test.skip(!projectId, 'needs step 1–2');
-  test.skip(!env.generate, 'Generation runs against staging only (PW_GENERATE=1); the API has no fake gateway seam');
-  test.setTimeout(20 * 60_000);
+  test.skip(!env.generate, 'Generation needs a gateway: staging (PW_GENERATE=1) or the local fake (PW_REAL_LOCAL=1)');
+  test.setTimeout(env.local ? 4 * 60_000 : 20 * 60_000);
   await openCanvas(page, projectId);
   const watcher = await context.newPage();
   await openCanvas(watcher, projectId);
@@ -157,18 +164,18 @@ test('6–7: confirm → keyframes then videos generate with real progress; cred
   // Forced failure (staging/development): the node fails, says it was refunded, Retry quotes again.
   await openCanvas(page, projectId, '?forceFailure=1');
   await page.getByTestId(`node-${image!.id}`).click({ button: 'right' });
-  await page.getByRole('menuitem', { name: /^Run this node|^Run$|^Generate/ }).first().click();
+  await page.getByRole('menuitem', { name: /^Run node|^Run this node|^Run$|^Generate/ }).first().click();
   const confirm = page.getByRole('dialog', { name: 'Confirm', exact: true });
   if (await confirm.isVisible().catch(() => false)) await confirm.getByRole('button', { name: /credits/ }).click();
   await expect(page.getByTestId(`node-${image!.id}`)).toHaveAttribute('data-status', 'failed', { timeout: 120_000 });
-  await expect(page.getByTestId(`node-${image!.id}`)).toContainText(/Refunded [\d,]+ credits/);
+  await expect(page.getByTestId(`node-${image!.id}`)).toContainText(/Refunded [\d,]+ credits|[\d,]+ credits refunded/i);
   await expect(page.getByRole('button', { name: 'Retry' }).first()).toBeVisible();
 });
 
 test('8: an upstream prompt change marks downstream “Input changed”; a new run adds a version; switch the active version', async ({ page }) => {
   test.skip(!projectId, 'needs step 1–2');
   test.skip(!env.generate, 'needs generated versions (PW_GENERATE=1)');
-  test.setTimeout(10 * 60_000);
+  test.setTimeout(env.local ? 3 * 60_000 : 10 * 60_000);
   await openCanvas(page, projectId);
   const [image] = await nodesByKind(page, 'image');
   const videos = await nodesByKind(page, 'video');

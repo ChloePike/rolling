@@ -437,6 +437,8 @@ Live events (D-003):
 
 Provider webhooks: `POST /api/hooks/hyperouter` (no session). Standard Webhooks signature with `HYPEROUTER_WEBHOOK_SECRET` (`whsec_…`); bad signature → 401, stale timestamp → 401, malformed → 400; deduped on `webhook-id` (`{ ok: true, duplicate: true }`). The job's status is fetched from the gateway and sent to the job's GenerateWorkflow as `provider-done`; the workflow also polls (backoff from 3 s for images / 10 s for video up to 60 s), so a missed webhook only delays a job.
 
+Local real end-to-end (no gateway account): `apps/api/scripts/fake-hyperouter.mjs` (node, no deps) serves `GET /v1/models` (the catalog fixture), async images and videos with fixture PNG/MP4 outputs (`Idempotency-Key` honoured, finished after `FAKE_HR_DELAY_MS`, a prompt with `[fail]` fails), streaming chat with scripted agent turns (`propose.plan`, `canvas.get` → `propose.graphPatch`, `timeline.get` → `propose.timelinePatch`, `propose.fields`) and valid classifier JSON, and Standard-Webhooks-signed callbacks to `FAKE_HR_WEBHOOK_URL`. The Worker uses it when `HYPEROUTER_BASE_URL` points at it. `PW_REAL_LOCAL=1` (apps/web/playwright.config.ts) starts it with `wrangler dev` (state in `apps/api/.wrangler/e2e-real`) and the real-mode SPA; the member test account gets a plan through `POST /api/test/plan`.
+
 ## Assets and libraries
 
 Uploads are resumable and chunked and go **directly from the browser to R2** with presigned URLs (D-011); the Worker never carries upload bytes. Downloads are resumable (`Range`). Bytes are served only through signed media URLs (D-008), never from `/api`.

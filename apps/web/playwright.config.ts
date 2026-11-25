@@ -19,14 +19,22 @@ const OUT_DIR = `dist-e2e/${PORT}`;
 /**
  * `real` project (docs/canvas-flow.md against a real backend, no mocks):
  * - `PW_BASE_URL=https://<staging>` runs it against a deployed Worker (no local server);
- * - `PW_REAL_LOCAL=1` starts `wrangler dev` (ENVIRONMENT=development, test inbox) on `PW_REAL_API_PORT` and the
- *   real-mode SPA on `PW_REAL_PORT` (set `TEST_INBOX_TOKEN`; generation and agent steps skip without a gateway).
+ * - `PW_REAL_LOCAL=1` starts the fake Hyperouter (`apps/api/scripts/fake-hyperouter.mjs`, no deps) on
+ *   `PW_FAKE_HR_PORT`, `wrangler dev` (ENVIRONMENT=development, test inbox, `HYPEROUTER_BASE_URL` → the fake,
+ *   its webhooks signed with a local secret) on `PW_REAL_API_PORT` and the real-mode SPA on `PW_REAL_PORT`.
+ *   Everything runs locally: the agent answers the golden briefs with scripted proposals and generations
+ *   finish in seconds with fixture media. `TEST_INBOX_TOKEN` defaults to `e2e-local`; the member account
+ *   (`PW_MEMBER_EMAIL`, default `e2e-member@rolling.local`) gets a plan through `POST /api/test/plan`.
  * The default `chromium` project runs every other spec on the mocks (`VITE_API_MODE=mock`).
  */
 const REAL_BASE = process.env.PW_BASE_URL;
 const REAL_LOCAL = process.env.PW_REAL_LOCAL === '1';
 const REAL_PORT = Number(process.env.PW_REAL_PORT ?? 4797);
 const REAL_API_PORT = Number(process.env.PW_REAL_API_PORT ?? 8797);
+const FAKE_HR_PORT = Number(process.env.PW_FAKE_HR_PORT ?? 8799);
+/** Standard Webhooks secret shared by the fake gateway and the local Worker (not a real secret). */
+const FAKE_HR_WEBHOOK_SECRET = `whsec_${Buffer.from('rolling-fake-hyperouter-webhook-key!').toString('base64')}`;
+const INBOX_TOKEN = process.env.TEST_INBOX_TOKEN ?? 'e2e-local';
 const realBaseURL = REAL_BASE ?? `http://localhost:${REAL_PORT}`;
 const onlyReal = !!REAL_BASE || REAL_LOCAL;
 
@@ -52,8 +60,19 @@ export default defineConfig({
     ? REAL_LOCAL
       ? [
           {
-            // The Worker on wrangler dev: development identity, test inbox for email-code sign-in, local D1 (migrated first).
-            command: `cd ../api && pnpm exec wrangler d1 migrations apply rolling-dev --local && pnpm exec wrangler dev --port ${REAL_API_PORT} --var ENVIRONMENT:development --var EMAIL_PROVIDER:test-inbox --var TEST_INBOX_TOKEN:${process.env.TEST_INBOX_TOKEN ?? 'e2e-local'} --var PUBLIC_APP_URL:http://localhost:${REAL_PORT}`,
+            // Fake Hyperouter (models, images, videos, chat, signed webhooks to the Worker).
+            command: `FAKE_HR_WEBHOOK_URL=http://localhost:${REAL_API_PORT}/api/hooks/hyperouter FAKE_HR_WEBHOOK_SECRET=${FAKE_HR_WEBHOOK_SECRET} FAKE_HR_QUIET=1 node ../api/scripts/fake-hyperouter.mjs --port ${FAKE_HR_PORT}`,
+            url: `http://localhost:${FAKE_HR_PORT}/health`,
+            reuseExistingServer: !process.env.CI,
+            timeout: 30_000,
+          },
+          {
+            // The Worker on wrangler dev: development identity, test inbox for email-code sign-in, local D1 (migrated first),
+            // the fake gateway. State lives in apps/api/.wrangler/e2e-real (not the `pnpm dev` state); the first catalog read syncs from the fake.
+            command:
+              `cd ../api && pnpm exec wrangler d1 migrations apply rolling-dev --local --persist-to .wrangler/e2e-real && pnpm exec wrangler dev --port ${REAL_API_PORT} --persist-to .wrangler/e2e-real --var ENVIRONMENT:development ` +
+              `--var EMAIL_PROVIDER:test-inbox --var TEST_INBOX_TOKEN:${INBOX_TOKEN} --var PUBLIC_APP_URL:http://localhost:${REAL_PORT} ` +
+              `--var HYPEROUTER_BASE_URL:http://localhost:${FAKE_HR_PORT}/v1 --var HYPEROUTER_API_KEY:sk-hr-fake-local --var HYPEROUTER_WEBHOOK_SECRET:${FAKE_HR_WEBHOOK_SECRET} --var MEDIA_CONTAINER:off`,
             url: `http://localhost:${REAL_API_PORT}/api/health`,
             reuseExistingServer: !process.env.CI,
             timeout: 240_000,
