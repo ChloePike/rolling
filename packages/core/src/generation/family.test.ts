@@ -11,7 +11,7 @@ describe('same-family fallbacks', () => {
 
   it('offers capable siblings of the same family, cheapest first, never another family', () => {
     const chosen = fixtureCatalog.get('bytedance/seedream-5.0-lite')!;
-    const out = familyFallbacks(fixtureCatalog, chosen, { kind: 'image', mode: 't2i', prompt: 'a bottle', ratio: '9:16' }, 'starter');
+    const out = familyFallbacks(fixtureCatalog, chosen, { kind: 'image', mode: 't2i', ratio: '9:16' }, 'starter');
     expect(out.length).toBeGreaterThan(0);
     expect(out.every((m) => m.id.startsWith('bytedance/seedream-') && m.id !== chosen.id)).toBe(true);
   });
