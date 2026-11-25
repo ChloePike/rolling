@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { IntlProvider } from 'react-intl';
-import en from '@messages/en.json';
+import { englishMessages as en } from './messages';
 import { browserLocales, DEFAULT_LOCALE, readLocalePreference, resolveLocale } from './locale';
 import { loadMessages, type Messages } from './messages';
 
