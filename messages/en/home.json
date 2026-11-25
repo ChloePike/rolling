@@ -9,7 +9,7 @@
   "home.placeholder.image": "Describe the image. Upload a reference and @ it. Type / for commands",
   "home.placeholder.video": "Describe the shot and camera move. Add a first frame if you have one. Type / for commands",
   "home.placeholder.avatar": "Write what you want to say, or just the key points. It becomes a full script. Type / for commands",
-  "home.cost.planningFree": "Planning is free",
+  "home.cost.planningFree": "Planning uses no credits",
   "home.pill.autoModel": "Auto model",
   "home.pill.firstFrame": "First frame",
   "home.pill.imageSize": "{res} · {n, plural, one {# image} other {# images}}",

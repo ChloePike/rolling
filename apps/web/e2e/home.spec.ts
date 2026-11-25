@@ -25,7 +25,8 @@ const MAX_DIFF = 0.01;
 
 async function openDesign(page: Page, props: Record<string, unknown> = {}) {
   await page.setViewportSize({ width: W, height: H });
-  await page.setContent(buildDesignPage('Main.dc.html', props));
+  // D-007: the agent is members-only, so the cost line no longer says planning is free.
+  await page.setContent(buildDesignPage('Main.dc.html', props, [['Planning is free', 'Planning uses no credits']]));
   await page.waitForFunction(() => (window as unknown as { __DC_READY__?: boolean }).__DC_READY__ === true);
   await page.evaluate(() => document.fonts.ready);
 }
@@ -91,7 +92,7 @@ async function measure(page: Page, extra: Record<string, string> = {}) {
   }
   out.modelPill = await box(page.locator('button:has-text("DeepSeek")').first());
   out.lastPill = await box(page.locator('button:has-text("15s")').first());
-  out.cost = await box(page.getByText('Planning is free').first());
+  out.cost = await box(page.getByText(/Planning (is free|uses no credits)/).first());
   return out;
 }
 
@@ -179,7 +180,7 @@ test.describe('home interactions', () => {
     await openApp(page);
     const tabs = page.getByRole('tablist', { name: 'Creation mode' }).getByRole('tab');
     await expect(tabs).toHaveText(['Agent', 'Image', 'Video', 'Avatar']);
-    await expect(page.getByTestId('prompt-cost')).toHaveText('Planning is free');
+    await expect(page.getByTestId('prompt-cost')).toHaveText('Planning uses no credits');
     await tabs.nth(2).click();
     await expect(tabs.nth(2)).toHaveAttribute('aria-selected', 'true');
     await expect(page.locator('textarea')).toHaveAttribute('placeholder', /Describe the shot and camera move/);

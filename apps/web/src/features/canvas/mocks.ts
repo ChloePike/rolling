@@ -175,7 +175,8 @@ export const MOCK_AGENT = {
   plan: {
     id: 'prop_01JDCANVASPLAN0000000000',
     title: 'Option A · Riverside at dawn',
-    estimate: 26,
+    // Seedance 2.5 at 720p (4s + 5s + 3s) plus three Seedream keyframes, D-006 credits.
+    estimate: 866,
     shots: [
       { n: 1, title: 'Hero shot', seconds: 4, visual: 'Riverside rock, push-in at dawn', tone: '#3DF08C' },
       { n: 2, title: 'Cap pop', seconds: 5, visual: 'Hand close-up, bubbles rising', tone: '#4D9CFF' },
