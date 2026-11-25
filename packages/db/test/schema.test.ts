@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { getTableConfig, type SQLiteTable } from "drizzle-orm/sqlite-core";
 import { describe, expect, it } from "vitest";
@@ -61,8 +61,12 @@ function fakeStorage(db: DatabaseSync): MigratableStorage {
 describe("D1 migration", () => {
   it("matches the Drizzle schema", () => {
     const db = new DatabaseSync(":memory:");
-    db.exec(readFileSync(new URL("../migrations/d1/0001_init.sql", import.meta.url), "utf8"));
+    const dir = new URL("../migrations/d1/", import.meta.url);
+    const files = readdirSync(dir).filter((f) => f.endsWith(".sql")).sort();
+    expect(files).toEqual(["0001_init.sql", "0002_models.sql"]);
+    for (const f of files) db.exec(readFileSync(new URL(f, dir), "utf8"));
     expectSchemaMatches(db, tablesOf(d1));
+    expect(columnsIn(db, "models")).toEqual(["data", "hidden", "id", "kind", "mature", "price", "synced_at"]);
     expect(columnsIn(db, "user_prefs")).toContain("mature_content");
     expect(columnsIn(db, "workspaces")).toContain("mature_allowed");
   });

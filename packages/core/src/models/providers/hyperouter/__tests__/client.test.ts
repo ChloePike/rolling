@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { fixtureModel } from '../../../__fixtures__/catalog';
 import { HyperouterClient, HyperouterError, parseRetryAfter } from '../client';
 import { createHyperouterGenerationProvider } from '../provider';
 import { errorJson, json, mockFetch } from './mock-fetch';
@@ -7,7 +8,7 @@ const videoReq = { kind: 'video' as const, mode: 't2v' as const, prompt: 'A ligh
 
 async function submitExpectingError(responses: Response[]): Promise<{ err: HyperouterError; calls: ReturnType<typeof mockFetch>['calls'] }> {
   const { client, calls } = mockFetch(responses);
-  const provider = createHyperouterGenerationProvider('seedance-2.0-mini', client);
+  const provider = createHyperouterGenerationProvider(fixtureModel('bytedance/seedance-2.0-mini'), client);
   const err = await provider.submit(videoReq, 'job_01').then(
     () => {
       throw new Error('expected an error');
@@ -108,7 +109,7 @@ describe('HyperouterClient error mapping', () => {
     it('a repeat with the same key returns the first job', async () => {
       const video = { id: 'vid_1', status: 'queued', progress: 0 };
       const { client, calls } = mockFetch([json(video), json(video)]);
-      const provider = createHyperouterGenerationProvider('seedance-2.0-mini', client);
+      const provider = createHyperouterGenerationProvider(fixtureModel('bytedance/seedance-2.0-mini'), client);
       const a = await provider.submit(videoReq, 'job_same');
       const b = await provider.submit(videoReq, 'job_same');
       expect(a.externalId).toBe(b.externalId);
@@ -131,14 +132,14 @@ describe('HyperouterClient error mapping', () => {
 
   it('refuses a submit without an idempotency key', async () => {
     const { client, calls } = mockFetch([]);
-    const provider = createHyperouterGenerationProvider('seedance-2.0-mini', client);
+    const provider = createHyperouterGenerationProvider(fixtureModel('bytedance/seedance-2.0-mini'), client);
     await expect(provider.submit(videoReq, '')).rejects.toThrow(/idempotency key/);
     expect(calls).toHaveLength(0);
   });
 
   it('sends auth and idempotency headers', async () => {
     const { client, calls } = mockFetch([json({ id: 'vid_1', status: 'queued' })]);
-    await createHyperouterGenerationProvider('seedance-2.0-mini', client).submit(videoReq, 'job_hdr');
+    await createHyperouterGenerationProvider(fixtureModel('bytedance/seedance-2.0-mini'), client).submit(videoReq, 'job_hdr');
     expect(calls[0]?.headers.authorization).toBe('Bearer sk-hr-v1-test');
     expect(calls[0]?.headers['idempotency-key']).toBe('job_hdr');
   });

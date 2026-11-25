@@ -1,5 +1,7 @@
 export * from './types';
 export * from './errors';
 export * from './capabilities';
+export * from './catalog';
+export * from './overlay';
 export * from './poll';
 export * as hyperouter from './providers/hyperouter';

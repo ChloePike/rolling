@@ -1,4 +1,4 @@
-import type { GenerateRequest, JobOutput, JobState, JobStatus, ModelCapabilities } from '../../types';
+import type { GenerateRequest, JobOutput, JobState, JobStatus, CatalogModel } from '../../types';
 import { errorFromResponse, type HyperouterClient } from './client';
 import { HYPEROUTER_DEFAULTS, HYPEROUTER_PATHS } from './config';
 import { jobErrorFrom } from './job-errors';
@@ -21,7 +21,7 @@ export interface HyperouterVideo {
 
 export interface VideoCreateBody {
   model: string;
-  prompt: string;
+  prompt?: string;
   seconds?: number;
   resolution?: string;
   ratio?: string;
@@ -40,8 +40,10 @@ export interface VideoCreateBody {
 }
 
 /** Maps a GenerateRequest to the gateway body. Assumes `validateRequest` passed. */
-export function buildVideoBody(cap: ModelCapabilities, req: GenerateRequest, moderation: 'auto' | 'low'): VideoCreateBody {
-  const body: VideoCreateBody = { ...req.extra, model: cap.providerModelId, prompt: req.prompt, moderation };
+export function buildVideoBody(cap: CatalogModel, req: GenerateRequest, moderation: 'auto' | 'low'): VideoCreateBody {
+  const body: VideoCreateBody = { ...req.extra, model: cap.providerModelId, moderation };
+  // Swap models take no prompt; send it only where the listing accepts one.
+  if (cap.acceptedParams.includes('prompt')) body.prompt = req.prompt;
   if (req.seconds !== undefined) body.seconds = req.seconds;
   if (req.resolution !== undefined) body.resolution = req.resolution;
   if (req.ratio !== undefined) body.ratio = req.ratio;

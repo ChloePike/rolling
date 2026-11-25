@@ -19,7 +19,7 @@ export const HYPEROUTER_PATHS = {
     `/v1/videos/${encodeURIComponent(id)}/content?variant=${variant}`,
 } as const;
 
-/** Provider model ids used by Rolling. Keep in sync with `../../capabilities.ts`. */
+/** Provider model ids referenced in code. The available set comes from the live listing (`../../catalog.ts`). */
 export const HYPEROUTER_MODEL_IDS = {
   chat: {
     agent: 'deepseek/deepseek-v4.1-flash',

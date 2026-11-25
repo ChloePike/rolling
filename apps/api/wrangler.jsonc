@@ -18,6 +18,12 @@
     "nodejs_compat"
   ],
   "workers_dev": true,
+  // Model catalog sync (D-002): every 6 hours. Repeated in each env.
+  "triggers": {
+    "crons": [
+      "0 */6 * * *"
+    ]
+  },
   "observability": {
     "enabled": true,
     "logs": {
@@ -179,6 +185,11 @@
   "env": {
     "staging": {
       "name": "rolling-api-staging",
+      "triggers": {
+        "crons": [
+          "0 */6 * * *"
+        ]
+      },
       "vars": {
         "ENVIRONMENT": "staging",
         "APP_NAME": "Rolling",
@@ -309,6 +320,11 @@
     },
     "production": {
       "name": "rolling-api",
+      "triggers": {
+        "crons": [
+          "0 */6 * * *"
+        ]
+      },
       "vars": {
         "ENVIRONMENT": "production",
         "APP_NAME": "Rolling",

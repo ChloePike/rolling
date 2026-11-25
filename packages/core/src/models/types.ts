@@ -9,6 +9,13 @@
 
 export type GenerationKind = 'video' | 'image' | 'avatar' | 'speech';
 
+/**
+ * Where an input picture came from. Platform assets (D-005) are `generated`
+ * (made on Rolling), `character` (a saved Character) and `public` (public library).
+ */
+export type ImageSource = 'generated' | 'character' | 'public' | 'upload' | 'mine' | 'team' | 'builtin';
+export const PLATFORM_IMAGE_SOURCES: readonly ImageSource[] = ['generated', 'character', 'public'];
+
 /** Video modes: text, first frame, first + last frame, reference media, extend a finished clip. */
 export type VideoMode = 't2v' | 'i2v' | 'first_last_frame' | 'refs' | 'extend';
 /** Image modes: text to image, edit / reference images. */
@@ -17,77 +24,129 @@ export type ImageMode = 't2i' | 'edit';
 export type SpecialMode = 'face_swap' | 'head_swap' | 'motion_transfer' | 'lip_sync';
 export type GenerationMode = VideoMode | ImageMode | SpecialMode;
 
-/** Where a capabilities entry stands relative to the PRD launch list (D-002). */
-export type ModelStatus =
-  /** PRD launch model, available on the gateway. */
-  | 'launch'
-  /** Stands in for a PRD model that the gateway does not list (`substituteFor`). Needs product confirmation. */
-  | 'substitute'
-  /** Listed on the gateway, not part of the launch set; tracked for evaluation only. */
-  | 'candidate';
+/** Catalog kinds as the gateway listing reports them. */
+export type CatalogKind = 'image' | 'video' | 'chat';
 
-export interface PriceBasis {
-  /** `per_second` of output video or `per_image`. */
-  unit: 'per_second' | 'per_image';
-  /** USD per unit, keyed by resolution (`'default'` when the price does not depend on it). */
-  usd: Record<string, number>;
-  /** Where the number came from, e.g. `GET /v1/models 2026-11-25`. */
-  source: string;
+/**
+ * One price line from the listing (`prices[]`): USD per unit of `meter`,
+ * applying when every entry of `conditions` matches the request. The most
+ * specific matching line (most conditions) wins for a meter.
+ */
+export interface PriceRule {
+  /** e.g. `video_second`, `image`, `input_image`, `input_video_ms`, `prompt`. */
+  meter: string;
+  /** e.g. `{ resolution: '720p', video_input: true }`, `{ min_pixels: 2601124 }`, `{ input_images: 2 }`. */
+  conditions: Record<string, string | number | boolean>;
+  usd: number;
+  minUnits: number;
+  unitStep: number;
 }
 
-export interface ModelCapabilities {
-  /** Our stable key, e.g. `seedance-2.5`. Used in graphs, quotes and the ledger. */
-  key: string;
-  /** Display name. */
-  label: string;
-  kind: GenerationKind;
-  provider: 'hyperouter';
-  /** Model id at the provider, e.g. `bytedance/seedance-2.5`. */
-  providerModelId: string;
-  status: ModelStatus;
-  /** PRD model this entry substitutes for (D-002), e.g. `wan-2.2`. */
-  substituteFor?: string;
-  /** Key into `pricing/config.ts` CREDIT_PRICES. Absent = not sellable yet. */
-  creditKey?: string;
-  modes: GenerationMode[];
-  /** Video length bounds in whole seconds, or a fixed list of allowed values. */
+/**
+ * D-005 routing class for mature runs:
+ * - `never`: mature runs are refused (normal models, face/head swap).
+ * - `platform_assets_only`: identity-driven model in the mature family; a mature
+ *   run is allowed only when every input image is a platform asset.
+ * - `allowed`: mature runs go here with `moderation: "low"`.
+ */
+export type MatureRouting = 'never' | 'platform_assets_only' | 'allowed';
+
+/**
+ * Technical facts about a model, derived from one `GET /v1/models` entry
+ * (`./catalog.ts`). Nothing here is hand-maintained: the listing wins.
+ */
+export interface ListingModel {
+  /** Gateway model id, e.g. `bytedance/seedance-2.5`. Our stable key everywhere (graphs, quotes, ledger). */
+  id: string;
+  /** Listing `name`. */
+  name: string;
+  kind: CatalogKind;
+  /** What the model can do, derived from its parameter schema. */
+  operations: GenerationMode[];
+  /** Listing operations we could not map to a GenerationMode (e.g. video `edit`). */
+  unmappedOperations: string[];
+  /** Video length in whole seconds, or a fixed list of allowed values. Absent = set by an input clip. */
   seconds?: { min: number; max: number; allowed?: number[] };
-  /** Allowed `resolution` values; first is the provider default. Empty = model picks / uses `size`. */
+  defaultSeconds?: number;
+  /** Allowed `resolution` values in listing order. Empty = model picks / uses `size`. */
   resolutions: string[];
+  defaultResolution?: string;
+  /** Default `size` (`WxH`) when the listing states one. */
+  defaultSize?: string;
   /** Allowed `ratio` values. Empty = not supported. */
   ratios: string[];
-  /** Model can make sound. */
+  /** Model can make sound (`audio` parameter). */
   audio: boolean;
-  /** Lip sync to an uploaded audio track. */
-  lipSync?: boolean;
-  maxReferenceImages?: number;
-  maxReferenceVideos?: number;
-  maxReferenceAudios?: number;
+  /** Lip sync to an uploaded audio track (`audio_url`). */
+  lipSync: boolean;
+  /** Video reference limits (0 = not accepted). */
+  maxReferenceImages: number;
+  maxReferenceVideos: number;
+  maxReferenceAudios: number;
   /** Image models: input pictures accepted by edits. */
-  maxInputImages?: number;
-  /** Images per request. */
-  maxImagesPerRequest?: number;
-  /** Optional shared parameters the gateway accepts for this model (others are refused with 400). */
+  minInputImages: number;
+  maxInputImages: number;
+  /** Needs an input picture (photo-driven i2v). */
+  inputImageRequired: boolean;
+  /** Images per request (`n` maximum). */
+  maxImagesPerRequest: number;
+  /** Shared optional parameters we map from GenerateRequest. */
   params: { seed: boolean; negativePrompt: boolean; promptExtend: boolean; size: boolean };
+  /** Every parameter name the gateway accepts for this model (schema, supported and extra). */
+  acceptedParams: string[];
+  /** Parameters the schema marks required. */
+  requiredParams: string[];
+  /** Mutually exclusive parameter groups (`param_schema.exclusive`). */
+  exclusive: string[][][];
+  /** Parameter dependencies (`param_schema.needs`): key needs one of the values. */
+  needs: Record<string, string[]>;
+  /** The listing accepts a `moderation` parameter (vendor screening opt-out). */
+  supportsModeration: boolean;
+  responseModes: string[];
+  price: PriceRule[];
+  /** Listing fields or values the parser saw but could not map. For logs and the sync diff. */
+  unmapped: string[];
+}
+
+/** Product-only fields (`./overlay.ts`) merged over a ListingModel. */
+export interface ModelProductFields {
+  displayName: string;
+  tags: string[];
+  /** Default model for its kind (one per kind). */
+  default: boolean;
+  /** Not offered in the picker. */
+  hidden: boolean;
+  /** Considered by Auto selection. */
+  auto: boolean;
   /**
-   * D-005: only models with `mature: true` may receive mature runs, and only those
-   * runs send `moderation: "low"`. Default false until confirmed with the provider.
+   * D-005: may receive mature runs with `moderation: "low"` without asset checks.
+   * True for the `lumina/*-spicy` family and models that accept `moderation`,
+   * except identity-driven models.
    */
   mature: boolean;
-  /** Why `mature` has its value (evidence or what is pending). */
-  matureNote?: string;
+  /** Adult-oriented model (the spicy family): listed only to callers allowed to see mature content. */
+  matureOnly: boolean;
+  /** See MatureRouting. Face/head swap is always `never`. */
+  matureRouting: MatureRouting;
   /**
    * Model operates on a real person's face or likeness (face/head swap, photo-driven
-   * avatars). Such models must pass the identity safety checks in `core/safety`
-   * and can never be routed for mature runs, whatever `mature` says.
+   * i2v and lip sync). Must pass the identity checks in `core/safety`; never picked by Auto.
    */
-  requiresIdentitySafety?: boolean;
-  /** Pricing basis in USD at the gateway. */
-  price: PriceBasis;
-  /** Considered by `pickAuto`. */
-  autoEligible: boolean;
+  requiresIdentitySafety: boolean;
+  /** PRD model this one stands in for (D-002), e.g. `wan-2.2`. */
+  substituteFor?: string;
   notes?: string;
 }
+
+/** A model in the merged catalog: listing ∪ overlay. */
+export interface CatalogModel extends ListingModel, ModelProductFields {
+  provider: 'hyperouter';
+  /** Same as `id`; kept for the provider adapter. */
+  providerModelId: string;
+}
+
+/** @deprecated Use CatalogModel. */
+export type ModelCapabilities = CatalogModel;
 
 // ---------------------------------------------------------------------------
 // Generation
@@ -119,8 +178,13 @@ export interface GenerateRequest {
   inputImageUrls?: string[];
   /** Lip sync audio track (https URL). */
   audioUrl?: string;
-  /** Mature run (D-005). Routed only to `mature: true` models. */
+  /** Mature run (D-005). Routed only to mature-routable models. */
   mature?: boolean;
+  /**
+   * Provenance of every input picture in the request (frames, reference images,
+   * edit inputs), in any order. Required for mature runs on identity-driven models (D-005).
+   */
+  imageSources?: ImageSource[];
   /** Fallback provider model ids tried by the gateway, in order. */
   fallbackModelIds?: string[];
   /** Model-specific fields passed through as-is. */
@@ -170,10 +234,10 @@ export interface WebhookResult {
 }
 
 export interface GenerationProvider {
-  /** Our model key, e.g. `seedance-2.5`. */
+  /** Catalog model id, e.g. `bytedance/seedance-2.5`. */
   id: string;
   kind: GenerationKind;
-  capabilities: ModelCapabilities;
+  capabilities: CatalogModel;
   /** Starts a job. `idempotencyKey` is required (our job id). */
   submit(req: GenerateRequest, idempotencyKey: string): Promise<{ externalId: string }>;
   status(externalId: string): Promise<JobStatus>;

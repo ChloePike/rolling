@@ -1,6 +1,6 @@
-import { getCapabilities, moderationFor, validateRequest } from '../../capabilities';
+import { moderationFor, validateRequest } from '../../capabilities';
 import { InvalidGenerateRequestError } from '../../errors';
-import type { GenerateRequest, GenerationProvider, JobOutput, JobStatus, ModelCapabilities, WebhookResult } from '../../types';
+import type { CatalogModel, GenerateRequest, GenerationProvider, JobOutput, JobStatus, WebhookResult } from '../../types';
 import { HyperouterClient } from './client';
 import type { HyperouterConfig } from './config';
 import { buildImageBody, createImage, generationToJobStatus, getGeneration } from './image';
@@ -13,10 +13,10 @@ function requireKey(idempotencyKey: string): void {
   }
 }
 
-function prepare(cap: ModelCapabilities, req: GenerateRequest): 'auto' | 'low' {
+function prepare(cap: CatalogModel, req: GenerateRequest): 'auto' | 'low' {
   const problems = validateRequest(cap, req);
-  if (problems.length) throw new InvalidGenerateRequestError(cap.key, problems);
-  return moderationFor(cap, req.mature);
+  if (problems.length) throw new InvalidGenerateRequestError(cap.id, problems);
+  return moderationFor(cap, req.mature, req);
 }
 
 /** Image models (`/v1/images/*` with `Prefer: respond-async`, polled via `/v1/generations/{id}`). */
@@ -27,11 +27,11 @@ export class HyperouterImageProvider implements GenerationProvider {
   private readonly immediate = new Map<string, JobStatus>();
 
   constructor(
-    readonly capabilities: ModelCapabilities,
+    readonly capabilities: CatalogModel,
     private readonly client: HyperouterClient,
     private readonly webhookSecret?: string,
   ) {
-    this.id = capabilities.key;
+    this.id = capabilities.id;
   }
 
   async submit(req: GenerateRequest, idempotencyKey: string): Promise<{ externalId: string }> {
@@ -56,15 +56,14 @@ export class HyperouterImageProvider implements GenerationProvider {
 /** Video models (`POST /v1/videos`, polled via `GET /v1/videos/{id}`, content via `/content` redirect). */
 export class HyperouterVideoProvider implements GenerationProvider {
   readonly id: string;
-  readonly kind: 'video' | 'avatar';
+  readonly kind = 'video' as const;
 
   constructor(
-    readonly capabilities: ModelCapabilities,
+    readonly capabilities: CatalogModel,
     private readonly client: HyperouterClient,
     private readonly webhookSecret?: string,
   ) {
-    this.id = capabilities.key;
-    this.kind = capabilities.kind === 'avatar' ? 'avatar' : 'video';
+    this.id = capabilities.id;
   }
 
   async submit(req: GenerateRequest, idempotencyKey: string): Promise<{ externalId: string }> {
@@ -119,17 +118,16 @@ export async function handleHyperouterWebhook(
   return { eventId: webhookId, eventType: event.type, externalId, status };
 }
 
-/** Builds the provider for a capabilities key, e.g. `seedance-2.0-mini`. */
+/** Builds the provider for a catalog model (`Catalog.get(id)`). */
 export function createHyperouterGenerationProvider(
-  modelKey: string,
+  model: CatalogModel,
   config: HyperouterConfig | HyperouterClient,
   webhookSecret?: string,
 ): GenerationProvider {
-  const cap = getCapabilities(modelKey);
-  if (!cap) throw new Error(`Unknown model key: ${modelKey}`);
+  if (model.kind === 'chat') throw new Error(`Not a generation model: ${model.id}`);
   const client = config instanceof HyperouterClient ? config : new HyperouterClient(config);
   const secret = webhookSecret ?? (config instanceof HyperouterClient ? undefined : config.webhookSecret);
-  return cap.kind === 'image'
-    ? new HyperouterImageProvider(cap, client, secret)
-    : new HyperouterVideoProvider(cap, client, secret);
+  return model.kind === 'image'
+    ? new HyperouterImageProvider(model, client, secret)
+    : new HyperouterVideoProvider(model, client, secret);
 }

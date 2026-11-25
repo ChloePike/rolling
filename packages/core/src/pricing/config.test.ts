@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { getCapabilities, MODEL_CAPABILITIES } from '../models/capabilities';
+import { fixtureModel as m } from '../models/__fixtures__/catalog';
 import {
-  CREDIT_PRICES,
   creditsFor,
   creditsForAll,
+  creditsForUsd,
   DEFAULT_CONFIRM_THRESHOLD_CREDITS,
+  MARKUP,
   PLANS,
   PRICE_PLACEHOLDER,
   UnpricedModelError,
+  USD_PER_CREDIT,
 } from './config';
 
 describe('pricing placeholders', () => {
@@ -17,40 +19,46 @@ describe('pricing placeholders', () => {
     expect(PLANS.studio.monthlyCredits).toBe(10000);
     expect(PLANS.pro.priceMonthlyUsd).toBe(PRICE_PLACEHOLDER);
     expect(DEFAULT_CONFIRM_THRESHOLD_CREDITS).toBe(20);
-    expect(CREDIT_PRICES['seedance-2.5'].credits).toBe(8);
+    expect(MARKUP).toBe(1);
+    expect(USD_PER_CREDIT).toBe(0.15);
+  });
+});
+
+describe('creditsFor follows live cost (D-002)', () => {
+  it('keeps the PRD anchor: Seedance 2.5, 720p, 5 s = 8 credits', () => {
+    expect(creditsFor(m('bytedance/seedance-2.5'), { resolution: '720p', seconds: 5 })).toBe(8);
   });
 
-  it('prices video per started 5 seconds', () => {
-    expect(creditsFor({ creditKey: 'seedance-2.5', kind: 'video', seconds: 5 })).toBe(8);
-    expect(creditsFor({ creditKey: 'seedance-2.5', kind: 'video', seconds: 10 })).toBe(16);
-    expect(creditsFor({ creditKey: 'seedance-2.5', kind: 'video', seconds: 6 })).toBe(16);
-    expect(creditsFor({ creditKey: 'minimax-h3', kind: 'video', seconds: 5 })).toBe(6);
-    expect(creditsFor({ creditKey: 'wan-3.0', kind: 'video', seconds: 30 })).toBe(42);
-    expect(creditsFor({ creditKey: 'wan-2.2', kind: 'video', seconds: 4 })).toBe(2);
+  it('prices per resolution and length', () => {
+    const s = m('bytedance/seedance-2.5');
+    expect(creditsFor(s, { resolution: '480p', seconds: 5 })).toBe(4);
+    expect(creditsFor(s, { resolution: '1080p', seconds: 5 })).toBe(19);
+    expect(creditsFor(s, { resolution: '720p', seconds: 15 })).toBe(24);
+    expect(creditsFor(m('alibaba/wan3.0'), { resolution: '1080p', seconds: 30 })).toBe(40);
+    expect(creditsFor(m('minimax/minimax-h3'), { resolution: '2K', seconds: 5 })).toBe(5);
   });
 
-  it('prices images per image', () => {
-    expect(creditsFor({ creditKey: 'seedream-5.0-pro', kind: 'image' })).toBe(3);
-    expect(creditsFor({ creditKey: 'seedream-5.0-lite', kind: 'image', count: 4 })).toBe(4);
-    expect(creditsFor({ creditKey: 'wan-2.7-image', kind: 'image', count: 2 })).toBe(4);
+  it('prices images per image, at least one credit', () => {
+    expect(creditsFor(m('bytedance/seedream-5.0-lite'))).toBe(1);
+    expect(creditsFor(m('qwen/qwen-image-2.0'), { n: 6 })).toBe(2);
     expect(
       creditsForAll([
-        { creditKey: 'seedream-5.0-lite', kind: 'image' },
-        { creditKey: 'seedance-2.5', kind: 'video', seconds: 5 },
+        { model: m('bytedance/seedream-5.0-lite') },
+        { model: m('bytedance/seedance-2.5'), request: { resolution: '720p', seconds: 5 } },
       ]),
     ).toBe(9);
   });
 
-  it('refuses unpriced models and bad inputs', () => {
-    expect(() => creditsFor({ creditKey: 'seedance-2.5-flash', kind: 'video', seconds: 5 })).toThrow(UnpricedModelError);
-    expect(() => creditsFor({ creditKey: 'seedance-2.5', kind: 'image' })).toThrow(TypeError);
-    expect(() => creditsFor({ creditKey: 'seedance-2.5', kind: 'video', seconds: 0 })).toThrow(RangeError);
+  it('rounds float noise before the ceiling', () => {
+    expect(creditsForUsd(1.2)).toBe(8);
+    expect(creditsForUsd(0)).toBe(0);
+    expect(() => creditsForUsd(-1)).toThrow(RangeError);
   });
 
-  it('every capability creditKey has a price', () => {
-    for (const cap of MODEL_CAPABILITIES) {
-      if (cap.creditKey) expect(Object.keys(CREDIT_PRICES)).toContain(cap.creditKey);
-    }
-    expect(getCapabilities('seedance-2.0-mini')?.creditKey).toBe('wan-2.2');
+  it('refuses unpriceable requests and bad inputs', () => {
+    expect(() => creditsFor(m('bytedance/seedance-2.5'), { resolution: '4K', seconds: 5 })).toThrow(UnpricedModelError);
+    expect(() => creditsFor(m('deepseek/deepseek-v4.1-flash'))).toThrow(UnpricedModelError);
+    expect(() => creditsFor(m('bytedance/seedance-2.5'), { seconds: 0 })).toThrow(RangeError);
+    expect(() => creditsFor(m('bytedance/seedream-5.0-lite'), { n: 1.5 })).toThrow(RangeError);
   });
 });

@@ -322,6 +322,31 @@ export const agentThreads = sqliteTable("agent_threads", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+/** D-002: model catalog synced from the gateway listing (migration 0002). */
+export const modelKinds = ["image", "video", "chat"] as const;
+
+export const models = sqliteTable(
+  "models",
+  {
+    /** Gateway model id, e.g. `bytedance/seedance-2.5`. */
+    id: text("id").primaryKey(),
+    kind: text("kind", { enum: modelKinds }).notNull(),
+    /** JSON: parsed listing model (technical fields, no price). */
+    data: text("data").notNull(),
+    /** JSON: price rules from the listing. */
+    price: text("price").notNull(),
+    hidden: integer("hidden", { mode: "boolean" }).notNull().default(false),
+    mature: integer("mature", { mode: "boolean" }).notNull().default(false),
+    /** Last sync that saw the model in the listing (epoch ms). */
+    syncedAt: integer("synced_at").notNull(),
+  },
+  (t) => [
+    index("models_kind").on(t.kind),
+    index("models_synced").on(t.syncedAt),
+    check("models_kind_check", sql`${t.kind} IN ('image','video','chat')`),
+  ],
+);
+
 export type Workspace = typeof workspaces.$inferSelect;
 export type UserPrefs = typeof userPrefs.$inferSelect;
 export type Project = typeof projects.$inferSelect;
@@ -329,3 +354,5 @@ export type Run = typeof runs.$inferSelect;
 export type Job = typeof jobs.$inferSelect;
 export type Asset = typeof assets.$inferSelect;
 export type PublicItem = typeof publicItems.$inferSelect;
+export type ModelRow = typeof models.$inferSelect;
+export type NewModelRow = typeof models.$inferInsert;

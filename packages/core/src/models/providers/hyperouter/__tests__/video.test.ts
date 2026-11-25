@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { fixtureModel } from '../../../__fixtures__/catalog';
 import { pollUntilDone } from '../../../poll';
 import { createHyperouterGenerationProvider } from '../provider';
 import { errorJson, json, mockFetch, redirect } from './mock-fetch';
@@ -15,7 +16,7 @@ describe('Hyperouter video provider', () => {
       redirect('https://media.example/v.mp4?sig=1'),
       redirect('https://media.example/v.jpg?sig=1'),
     ]);
-    const provider = createHyperouterGenerationProvider('seedance-2.0-mini', client);
+    const provider = createHyperouterGenerationProvider(fixtureModel('bytedance/seedance-2.0-mini'), client);
     const { externalId } = await provider.submit(
       { kind: 'video', mode: 't2v', prompt: 'A paper boat on a river', seconds: 5, resolution: '480p', ratio: '16:9', audio: false },
       'job_vid',
@@ -55,7 +56,7 @@ describe('Hyperouter video provider', () => {
       json({ ...base, status: 'completed', progress: 100, usage: { cost: 0.1, seconds: 5 } }),
       errorJson(404, { code: 'not_found' }),
     ]);
-    const status = await createHyperouterGenerationProvider('seedance-2.0-mini', client).status('vid_1');
+    const status = await createHyperouterGenerationProvider(fixtureModel('bytedance/seedance-2.0-mini'), client).status('vid_1');
     expect(status.state).toBe('running');
     expect(status.outputs).toEqual([]);
   });
@@ -66,7 +67,7 @@ describe('Hyperouter video provider', () => {
       redirect('https://media.example/v.mp4'),
       errorJson(404, { code: 'not_found' }),
     ]);
-    const status = await createHyperouterGenerationProvider('seedance-2.0-mini', client).status('vid_1');
+    const status = await createHyperouterGenerationProvider(fixtureModel('bytedance/seedance-2.0-mini'), client).status('vid_1');
     expect(status.state).toBe('succeeded');
     expect(status.outputs.map((o) => o.kind)).toEqual(['video']);
   });
@@ -81,7 +82,7 @@ describe('Hyperouter video provider', () => {
         error: { code: 'content_rejected', message: 'The request was rejected by a content safety filter.' },
       }),
     ]);
-    const status = await createHyperouterGenerationProvider('seedance-2.0-mini', client).status('vid_1');
+    const status = await createHyperouterGenerationProvider(fixtureModel('bytedance/seedance-2.0-mini'), client).status('vid_1');
     expect(status).toMatchObject({
       state: 'failed',
       costUsd: null,
@@ -94,13 +95,13 @@ describe('Hyperouter video provider', () => {
     const { client } = mockFetch([
       json({ ...base, status: 'failed', progress: 10, usage: null, error: { code: 'upstream_error', message: 'Provider: boom' } }),
     ]);
-    const status = await createHyperouterGenerationProvider('seedance-2.0-mini', client).status('vid_1');
+    const status = await createHyperouterGenerationProvider(fixtureModel('bytedance/seedance-2.0-mini'), client).status('vid_1');
     expect(status.error).toMatchObject({ code: 'upstream_error', retryable: true, refundable: true });
   });
 
   it('maps keyframes and references', async () => {
     const { client, calls } = mockFetch([json({ ...base, status: 'queued' }), json({ ...base, id: 'vid_2', status: 'queued' })]);
-    const provider = createHyperouterGenerationProvider('seedance-2.5', client);
+    const provider = createHyperouterGenerationProvider(fixtureModel('bytedance/seedance-2.5'), client);
     await provider.submit(
       {
         kind: 'video',
@@ -121,13 +122,13 @@ describe('Hyperouter video provider', () => {
 
   it('refuses keyframes combined with reference media and out-of-range seconds', async () => {
     const { client, calls } = mockFetch([]);
-    const provider = createHyperouterGenerationProvider('seedance-2.5', client);
+    const provider = createHyperouterGenerationProvider(fixtureModel('bytedance/seedance-2.5'), client);
     await expect(
       provider.submit(
         { kind: 'video', mode: 'i2v', prompt: 'p', firstFrameUrl: 'https://x/a.png', referenceImageUrls: ['https://x/r.png'] },
         'job_c',
       ),
-    ).rejects.toThrow(/keyframes/);
+    ).rejects.toThrow(/first_frame cannot be combined with reference_images/);
     await expect(provider.submit({ kind: 'video', mode: 't2v', prompt: 'p', seconds: 30 }, 'job_d')).rejects.toThrow(/seconds/);
     expect(calls).toHaveLength(0);
   });

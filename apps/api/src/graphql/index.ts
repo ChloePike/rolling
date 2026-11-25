@@ -7,6 +7,7 @@ import { GraphQLError } from "graphql";
 import type { PublicItem } from "@rolling/db/d1";
 import { encodeCursor, listPublicItems } from "@rolling/db/queries/publicItems";
 import type { SessionUser } from "../lib/session";
+import { listPublicModels } from "../models/catalog";
 
 export interface GraphQLContext {
   env: Env;
@@ -17,6 +18,58 @@ const typeDefs = /* GraphQL */ `
   type Query {
     health: Health!
     publicItems(category: String, q: String, first: Int = 24, after: String): PublicItemConnection!
+    "Synced model catalog (D-002). Mature-only models only for callers allowed to see them (D-005)."
+    models(kind: ModelKind): [Model!]!
+  }
+
+  enum ModelKind {
+    IMAGE
+    VIDEO
+    CHAT
+  }
+
+  type Model {
+    id: ID!
+    kind: ModelKind!
+    name: String!
+    tags: [String!]!
+    default: Boolean!
+    auto: Boolean!
+    mature: Boolean!
+    matureOnly: Boolean!
+    requiresIdentitySafety: Boolean!
+    substituteFor: String
+    operations: [String!]!
+    seconds: SecondsRange
+    defaultSeconds: Int
+    resolutions: [String!]!
+    defaultResolution: String
+    ratios: [String!]!
+    audio: Boolean!
+    lipSync: Boolean!
+    limits: ModelLimits!
+    credits: [CreditSample!]!
+  }
+
+  type SecondsRange {
+    min: Int!
+    max: Int!
+    allowed: [Int!]
+  }
+
+  type ModelLimits {
+    referenceImages: Int!
+    referenceVideos: Int!
+    referenceAudios: Int!
+    inputImages: Int!
+    imagesPerRequest: Int!
+  }
+
+  "Indicative credits for 5 s of video (or the model default) or one image, per resolution."
+  type CreditSample {
+    resolution: String
+    seconds: Int
+    credits: Int!
   }
 
   type Health {
@@ -85,6 +138,11 @@ const resolvers = {
         pageInfo: { hasNextPage: page.hasNextPage, endCursor: page.endCursor },
       };
     },
+    models: (_: unknown, args: { kind?: "IMAGE" | "VIDEO" | "CHAT" | null }, ctx: GraphQLContext) =>
+      listPublicModels(ctx.env, ctx.user, args.kind ? (args.kind.toLowerCase() as "image" | "video" | "chat") : null),
+  },
+  Model: {
+    kind: (m: { kind: string }) => m.kind.toUpperCase(),
   },
   PublicItem: {
     license: (item: PublicItem) => licenseEnum[item.license],

@@ -5,3 +5,16 @@ export interface AppEnv {
   Bindings: Env;
   Variables: { user: SessionUser | null };
 }
+
+// Secrets are not in wrangler.jsonc, so `wrangler types` does not see them.
+// Set with `wrangler secret put HYPEROUTER_API_KEY [--env <env>]` (`.dev.vars` locally).
+declare global {
+  interface Env {
+    HYPEROUTER_API_KEY?: string;
+  }
+  namespace Cloudflare {
+    interface Env {
+      HYPEROUTER_API_KEY?: string;
+    }
+  }
+}

@@ -3,7 +3,7 @@
  *
  *   pnpm --dir packages/core exec tsx ../../scripts/spike/run.ts [--no-paid] [--no-chat]
  *
- * 1. GET /v1/models and diff against packages/core capabilities (ids, prices).
+ * 1. GET /v1/models, build the catalog (listing + overlay) and report overlay ids, prices and credits.
  * 2. One image (Seedream 5.0 Lite, async) and one 5 s video (Seedance 2.0 Mini,
  *    480p), polled to completion: cost, latency, output URLs.
  * 3. One streamed chat call to DeepSeek with one tool (`pricing.estimate`).
@@ -15,7 +15,9 @@ import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { newId } from '../../packages/core/src/ids';
-import { MODEL_CAPABILITIES, estimateUsd } from '../../packages/core/src/models/capabilities';
+import { estimateUsd } from '../../packages/core/src/models/capabilities';
+import { Catalog } from '../../packages/core/src/models/catalog';
+import { MODEL_OVERLAY } from '../../packages/core/src/models/overlay';
 import { pollUntilDone } from '../../packages/core/src/models/poll';
 import {
   HyperouterClient,
@@ -34,16 +36,7 @@ const client = new HyperouterClient({ apiKey });
 const here = dirname(fileURLToPath(import.meta.url));
 const startedAt = new Date().toISOString();
 
-interface LiveModel {
-  id: string;
-  name: string;
-  kind: 'chat' | 'image' | 'video';
-  pricing: Record<string, string>;
-  response_modes?: string[];
-  supported_parameters?: string[];
-  operations?: string[];
-  prices?: { meter: string; conditions: Record<string, unknown>; usd: string }[];
-}
+let liveCatalog: Catalog | null = null;
 
 const report: string[] = [];
 const log = (line = '') => {
@@ -57,9 +50,9 @@ function fmtUsd(n: number | null | undefined): string {
 // ---------------------------------------------------------------- 1. models
 async function modelsDiff(): Promise<{ ok: boolean; section: string }> {
   const t0 = Date.now();
-  let live: LiveModel[];
+  let raw: unknown;
   try {
-    live = (await client.json<{ data: LiveModel[] }>('/v1/models')).data.data;
+    raw = (await client.json<unknown>('/v1/models')).data;
   } catch (e) {
     const err = e as HyperouterError;
     return {
@@ -67,60 +60,43 @@ async function modelsDiff(): Promise<{ ok: boolean; section: string }> {
       section: `## Models\n\nGET /v1/models failed: ${err.status} ${err.code} — ${err.message}. Real calls stopped.\n`,
     };
   }
-  log(`GET /v1/models: ${live.length} models in ${Date.now() - t0} ms`);
-  const byId = new Map(live.map((m) => [m.id, m]));
-  const ours = new Set(MODEL_CAPABILITIES.map((m) => m.providerModelId));
-  const lines: string[] = [`## Models diff (GET /v1/models, ${live.length} models)\n`];
-
-  lines.push('| Key | Provider id | Status | In /v1/models | Our USD basis | Live prices (meter, conditions → USD) |');
-  lines.push('|---|---|---|---|---|---|');
-  for (const cap of MODEL_CAPABILITIES) {
-    const m = byId.get(cap.providerModelId);
-    const basis = Object.entries(cap.price.usd)
-      .map(([k, v]) => `${k} ${v}`)
+  const { catalog, skipped } = Catalog.fromListing(raw);
+  liveCatalog = catalog;
+  log(`GET /v1/models: ${catalog.size} models in ${Date.now() - t0} ms`);
+  const lines: string[] = [`## Models (GET /v1/models, ${catalog.size} parsed, ${skipped.length} skipped)\n`];
+  lines.push('| Id | Name | Flags | Credits (5 s per resolution, or per image) |');
+  lines.push('|---|---|---|---|');
+  for (const m of catalog.models) {
+    if (m.kind === 'chat') continue;
+    const res = m.resolutions.length ? m.resolutions : [undefined];
+    const credits = res
+      .map((r) => {
+        try {
+          return `${r ?? 'default'} ${creditsFor(m, { ...(r && { resolution: r }), ...(m.kind === 'video' && { seconds: 5 }), ...(!m.operations.includes('t2i') && m.kind === 'image' && { inputImages: Math.max(1, m.minInputImages) }) })}`;
+        } catch {
+          return `${r ?? 'default'} n/a`;
+        }
+      })
       .join(', ');
-    const livePrices = m?.prices
-      ? m.prices
-          .filter((p) => p.meter === 'image' || p.meter === 'video_second')
-          .map((p) => `${p.meter} ${JSON.stringify(p.conditions)} → ${p.usd}`)
-          .join('<br>')
-      : '—';
-    lines.push(
-      `| ${cap.key} | \`${cap.providerModelId}\` | ${cap.status}${cap.substituteFor ? ` (for ${cap.substituteFor})` : ''} | ${m ? 'yes' : '**missing**'} | ${basis} | ${livePrices} |`,
-    );
-    // Price drift: every basis entry should appear among live prices without video input.
-    if (m?.prices) {
-      for (const [res, usd] of Object.entries(cap.price.usd)) {
-        const match = m.prices.some(
-          (p) =>
-            (p.meter === 'image' || p.meter === 'video_second') &&
-            Number(p.usd) === usd &&
-            !p.conditions.video_input &&
-            (res === 'default' || res === '2K' || p.conditions.resolution === res || p.conditions.resolution === undefined),
-        );
-        if (!match) lines.push(`|  | WARN price drift | | | ${res} ${usd} not found live | |`);
-      }
-    }
+    const flags = [
+      m.default && 'default',
+      m.auto && 'auto',
+      m.matureRouting !== 'never' && `mature:${m.matureRouting}`,
+      m.requiresIdentitySafety && 'identity',
+      m.substituteFor && `for ${m.substituteFor}`,
+      !(m.id in MODEL_OVERLAY) && 'new',
+    ].filter(Boolean);
+    lines.push(`| \`${m.id}\` | ${m.displayName} | ${flags.join(', ')} | ${credits} |`);
   }
-
-  const missingLaunch = MODEL_CAPABILITIES.filter((c) => !byId.has(c.providerModelId)).map((c) => c.providerModelId);
-  const agent = byId.get('deepseek/deepseek-v4.1-flash');
+  const missing = Object.keys(MODEL_OVERLAY).filter((id) => !catalog.get(id));
   lines.push('');
-  lines.push(`Missing from /v1/models: ${missingLaunch.length ? missingLaunch.map((i) => `\`${i}\``).join(', ') : 'none'}.`);
-  lines.push(
-    `Agent LLM \`deepseek/deepseek-v4.1-flash\`: ${agent ? `listed, modes ${agent.response_modes?.join('/')}, tools ${agent.supported_parameters?.includes('tools') ? 'yes' : 'no'}, prompt $${agent.pricing.prompt}/tok, completion $${agent.pricing.completion}/tok` : '**missing**'}.`,
-  );
-  const newIds = live.filter((m) => m.kind !== 'chat' && !ours.has(m.id));
+  lines.push(`Overlay ids missing from the listing: ${missing.length ? missing.map((i) => `\`${i}\``).join(', ') : 'none'}.`);
+  lines.push(`Skipped: ${skipped.length ? skipped.map((x) => `\`${x.id}\` (${x.reason})`).join(', ') : 'none'}.`);
+  const unmapped = catalog.models.filter((m) => m.unmapped.length || m.unmappedOperations.length);
   lines.push('');
-  lines.push(`Image/video ids on the gateway that are not in capabilities (${newIds.length}):`);
+  lines.push(`Unmapped listing fields (${unmapped.length} models):`);
   lines.push('');
-  for (const m of newIds) {
-    const price = m.kind === 'image' ? `${m.pricing.image}/image` : `from ${m.pricing.video_second}/s`;
-    lines.push(`- \`${m.id}\` (${m.kind}, ${price}${m.operations?.length ? `, operations ${m.operations.join('/')}` : ''})`);
-  }
-  const chatIds = live.filter((m) => m.kind === 'chat').map((m) => `\`${m.id}\``);
-  lines.push('');
-  lines.push(`Chat ids (${chatIds.length}): ${chatIds.join(', ')}.`);
+  for (const m of unmapped) lines.push(`- \`${m.id}\`: ${[...m.unmapped, ...m.unmappedOperations.map((o) => `operation:${o}`)].join(', ')}`);
   return { ok: true, section: `${lines.join('\n')}\n` };
 }
 
@@ -141,11 +117,13 @@ interface GenResult {
 
 async function runGeneration(
   label: string,
-  modelKey: string,
+  modelId: string,
   req: Parameters<ReturnType<typeof createHyperouterGenerationProvider>['submit']>[0],
   pollMs: number,
 ): Promise<GenResult> {
-  const provider = createHyperouterGenerationProvider(modelKey, client);
+  const model = liveCatalog?.get(modelId);
+  if (!model) throw new Error(`Model ${modelId} is not in the live listing.`);
+  const provider = createHyperouterGenerationProvider(model, client);
   const cap = provider.capabilities;
   const idempotencyKey = newId('job');
   const result: GenResult = {
@@ -154,11 +132,7 @@ async function runGeneration(
     idempotencyKey,
     states: [],
     estimateUsd: estimateUsd(cap, req),
-    credits: creditsFor(
-      req.kind === 'video'
-        ? { creditKey: cap.creditKey!, kind: 'video', seconds: req.seconds ?? 5 }
-        : { creditKey: cap.creditKey!, kind: 'image' },
-    ),
+    credits: creditsFor(cap, req),
   };
   const t0 = Date.now();
   try {
@@ -194,7 +168,7 @@ function genSection(r: GenResult): string {
     `- Idempotency-Key: \`${r.idempotencyKey}\``,
     `- External id: \`${r.externalId ?? 'n/a'}\``,
     `- Result: ${r.error ? `**error** ${r.error}` : f ? `${f.state}${f.error ? ` (${f.error.code}: ${f.error.message})` : ''}` : 'n/a'}`,
-    `- Cost (usage.cost): ${fmtUsd(f?.costUsd)} — our estimate ${fmtUsd(r.estimateUsd)}; placeholder credits ${r.credits}`,
+    `- Cost (usage.cost): ${fmtUsd(f?.costUsd)} — our estimate ${fmtUsd(r.estimateUsd)}; credits ${r.credits}`,
     `- Latency: submit ${r.submitMs ?? 'n/a'} ms, total to final status ${r.totalMs != null ? `${(r.totalMs / 1000).toFixed(1)} s` : 'n/a'}`,
     `- Status trail: ${r.states.join(' → ') || 'n/a'}`,
     `- Outputs (signed, expire):`,
@@ -305,13 +279,13 @@ async function main() {
     const [image, video] = await Promise.all([
       runGeneration(
         'Image — Seedream 5.0 Lite (async)',
-        'seedream-5.0-lite',
+        'bytedance/seedream-5.0-lite',
         { kind: 'image', mode: 't2i', prompt: 'A red vintage bicycle leaning on a white wall, morning light, photo' },
         2000,
       ),
       runGeneration(
         'Video — Seedance 2.0 Mini, 5 s, 480p',
-        'seedance-2.0-mini',
+        'bytedance/seedance-2.0-mini',
         {
           kind: 'video',
           mode: 't2v',

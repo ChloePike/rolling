@@ -1,4 +1,4 @@
-import type { GenerateRequest, JobState, JobStatus, ModelCapabilities } from '../../types';
+import type { GenerateRequest, JobState, JobStatus, CatalogModel } from '../../types';
 import type { HyperouterClient } from './client';
 import { HYPEROUTER_PATHS } from './config';
 import { jobErrorFrom, toEpochMs } from './job-errors';
@@ -43,7 +43,7 @@ export interface ImageCreateBody {
 }
 
 /** Maps a GenerateRequest to the gateway body. Assumes `validateRequest` passed. */
-export function buildImageBody(cap: ModelCapabilities, req: GenerateRequest, moderation: 'auto' | 'low'): ImageCreateBody {
+export function buildImageBody(cap: CatalogModel, req: GenerateRequest, moderation: 'auto' | 'low'): ImageCreateBody {
   const body: ImageCreateBody = { ...req.extra, model: cap.providerModelId, moderation };
   const promptless = req.mode === 'face_swap' || req.mode === 'head_swap';
   if (!promptless) body.prompt = req.prompt;

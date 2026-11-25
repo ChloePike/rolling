@@ -6,8 +6,10 @@ import { ApiError, errorResponse } from "./lib/errors";
 import { getSessionUser } from "./lib/session";
 import { serveSpaFromR2 } from "./lib/r2Static";
 import { handleQueue } from "./queues";
+import { handleScheduled } from "./scheduled";
 import { health } from "./routes/health";
 import { me } from "./routes/me";
+import { models } from "./routes/models";
 import { realtime } from "./routes/realtime";
 
 export { ProjectRoom } from "./do/ProjectRoom";
@@ -24,6 +26,7 @@ export const app = new Hono<AppEnv>();
 const api = new Hono<AppEnv>()
   .route("/health", health)
   .route("/me", me)
+  .route("/models", models)
   .route("/", realtime)
   .on(["GET", "POST"], "/graphql", async (c) =>
     yoga.fetch(c.req.raw, { env: c.env, user: await getSessionUser(c) }),
@@ -56,4 +59,5 @@ export type ApiRoutes = typeof api;
 export default {
   fetch: app.fetch,
   queue: handleQueue,
+  scheduled: handleScheduled,
 } satisfies ExportedHandler<Env>;

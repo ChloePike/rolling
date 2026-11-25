@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { fixtureModel } from '../../../__fixtures__/catalog';
 import { InvalidGenerateRequestError } from '../../../errors';
 import { MatureRoutingError } from '../../../capabilities';
 import { createHyperouterGenerationProvider } from '../provider';
@@ -21,7 +22,7 @@ describe('Hyperouter image provider', () => {
         },
       }),
     ]);
-    const provider = createHyperouterGenerationProvider('seedream-5.0-lite', client);
+    const provider = createHyperouterGenerationProvider(fixtureModel('bytedance/seedream-5.0-lite'), client);
     const { externalId } = await provider.submit({ kind: 'image', mode: 't2i', prompt: 'A red bicycle' }, 'job_img');
     expect(externalId).toBe('gen_1');
 
@@ -50,7 +51,7 @@ describe('Hyperouter image provider', () => {
     const { client, calls } = mockFetch([
       json({ id: 'gen_2', created: 1, data: [{ url: 'https://cdn.example/a.png' }], usage: { cost: 0.018 } }),
     ]);
-    const provider = createHyperouterGenerationProvider('seedream-5.0-flash', client);
+    const provider = createHyperouterGenerationProvider(fixtureModel('bytedance/seedream-5.0-flash'), client);
     const { externalId } = await provider.submit({ kind: 'image', mode: 't2i', prompt: 'x' }, 'job_sync');
     const status = await provider.status(externalId);
     expect(status.state).toBe('succeeded');
@@ -60,7 +61,7 @@ describe('Hyperouter image provider', () => {
 
   it('sends edits to /v1/images/edits with images', async () => {
     const { client, calls } = mockFetch([json({ id: 'gen_3', status: 'queued' }, 202)]);
-    const provider = createHyperouterGenerationProvider('qwen-image-2.0', client);
+    const provider = createHyperouterGenerationProvider(fixtureModel('qwen/qwen-image-2.0'), client);
     await provider.submit(
       { kind: 'image', mode: 'edit', prompt: 'make it night', inputImageUrls: ['https://x.example/p.png'], seed: 4 },
       'job_edit',
@@ -82,7 +83,7 @@ describe('Hyperouter image provider', () => {
         },
       }),
     ]);
-    const status = await createHyperouterGenerationProvider('seedream-5.0-lite', client).status('gen_4');
+    const status = await createHyperouterGenerationProvider(fixtureModel('bytedance/seedream-5.0-lite'), client).status('gen_4');
     expect(status.state).toBe('failed');
     expect(status.error).toEqual({
       code: 'content_rejected',
@@ -94,7 +95,7 @@ describe('Hyperouter image provider', () => {
 
   it('refuses parameters the model does not take, before any call', async () => {
     const { client, calls } = mockFetch([]);
-    const provider = createHyperouterGenerationProvider('seedream-5.0-lite', client);
+    const provider = createHyperouterGenerationProvider(fixtureModel('bytedance/seedream-5.0-lite'), client);
     await expect(provider.submit({ kind: 'image', mode: 't2i', prompt: 'x', seed: 1 }, 'job_x')).rejects.toBeInstanceOf(
       InvalidGenerateRequestError,
     );
@@ -103,7 +104,7 @@ describe('Hyperouter image provider', () => {
 
   it('never routes a mature run to a non-mature model', async () => {
     const { client, calls } = mockFetch([]);
-    const provider = createHyperouterGenerationProvider('seedream-5.0-lite', client);
+    const provider = createHyperouterGenerationProvider(fixtureModel('bytedance/seedream-5.0-lite'), client);
     await expect(
       provider.submit({ kind: 'image', mode: 't2i', prompt: 'x', mature: true }, 'job_m'),
     ).rejects.toBeInstanceOf(InvalidGenerateRequestError);
@@ -112,7 +113,7 @@ describe('Hyperouter image provider', () => {
 
   it('surfaces 402 on create', async () => {
     const { client } = mockFetch([errorJson(402, { code: 'insufficient_credits' })]);
-    const provider = createHyperouterGenerationProvider('seedream-5.0-lite', client);
+    const provider = createHyperouterGenerationProvider(fixtureModel('bytedance/seedream-5.0-lite'), client);
     await expect(provider.submit({ kind: 'image', mode: 't2i', prompt: 'x' }, 'job_402')).rejects.toMatchObject({
       code: 'insufficient_credits',
       retryable: false,
