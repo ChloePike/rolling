@@ -5,16 +5,18 @@
  * render job in the background (render.ts, graph.ts):
  * `POST /render` job → 202 state; `GET /render/:id` → state;
  * `GET /render/:id/file` → the MP4 when the job had no `putUrl`;
- * `DELETE /render/:id`.
+ * `DELETE /render/:id`. /frames and /scenes (Remix shots, frames.ts): PNG
+ * frames at given times PUT to presigned URLs, and detected scene cuts.
  * Must stay erasable TypeScript (no enums/namespaces) so Node can strip types.
  */
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { execFile } from "node:child_process";
 import { createReadStream } from "node:fs";
 import { Renderer, RenderError, validateJob } from "./render.ts";
+import { endFrameArgs, FramesError, frameArgs, isPng, parseSceneCuts, sceneArgs, validateFrames } from "./frames.ts";
 
 const PORT = Number(process.env.PORT ?? 8080);
-const MEDIA_ROUTES = new Set(["/probe", "/thumb", "/waveform"]);
+const MEDIA_ROUTES = new Set(["/probe", "/thumb", "/waveform", "/frames", "/scenes"]);
 const MAX_OUTPUT = 64 * 1024 * 1024;
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
@@ -59,6 +61,53 @@ function run(cmd: string, args: string[], timeout = 120_000): Promise<Buffer> {
       else resolve(stdout);
     });
   });
+}
+
+/** Runs a command for its log (stderr), e.g. ffmpeg filters that report through `showinfo`. */
+function runLog(cmd: string, args: string[], timeout = 120_000): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(cmd, args, { timeout, maxBuffer: MAX_OUTPUT, encoding: "utf8" }, (err, _stdout, stderr) => {
+      if (err) reject(new Error(`${cmd} failed: ${String(stderr).slice(-500) || err.message}`));
+      else resolve(String(stderr));
+    });
+  });
+}
+
+/** One PNG at `at`; a time at or past the end falls back to the last second of the clip. */
+async function framePng(url: string, at: number, width: number | null): Promise<Buffer> {
+  for (const args of [frameArgs(url, at, width), endFrameArgs(url, 1, width), endFrameArgs(url, 3, width), frameArgs(url, 0, width)]) {
+    const png = await run("ffmpeg", args);
+    if (isPng(png)) return png;
+  }
+  throw new FramesError("NO_FRAME", "No frame at that time");
+}
+
+async function putPng(url: string, png: Buffer): Promise<void> {
+  const res = await fetch(url, { method: "PUT", body: new Uint8Array(png), headers: { "content-type": "image/png", "content-length": String(png.length) } });
+  if (!res.ok) throw new FramesError("upload_failed", `Storage answered ${res.status}`);
+}
+
+async function frames(body: Record<string, unknown>, res: ServerResponse): Promise<void> {
+  let req;
+  try {
+    req = validateFrames(body);
+  } catch (err) {
+    if (err instanceof FramesError) return sendJson(res, 400, { error: { code: err.code, message: err.message, data: {} } });
+    throw err;
+  }
+  if (!req.puts) {
+    const png = await framePng(req.url, req.times[0]!, req.width);
+    res.writeHead(200, { "content-type": "image/png", "content-length": png.length });
+    res.end(png);
+    return;
+  }
+  const out: { at: number; size: number; uploaded: boolean }[] = [];
+  for (const [i, at] of req.times.entries()) {
+    const png = await framePng(req.url, at, req.width);
+    await putPng(req.puts[i]!, png);
+    out.push({ at, size: png.length, uploaded: true });
+  }
+  sendJson(res, 200, { frames: out });
 }
 
 function num(v: unknown, fallback: number, min: number, max: number): number {
@@ -106,6 +155,13 @@ async function media(path: string, body: Record<string, unknown>, res: ServerRes
   }
   if (path === "/probe") {
     sendJson(res, 200, await probe(url));
+    return;
+  }
+  if (path === "/frames") return frames(body, res);
+  if (path === "/scenes") {
+    const threshold = num(body.threshold, 0.3, 0.05, 0.95);
+    const max = Math.round(num(body.max, 50, 1, 50));
+    sendJson(res, 200, { threshold, cuts: parseSceneCuts(await runLog("ffmpeg", sceneArgs(url, threshold), 300_000), max) });
     return;
   }
   if (path === "/thumb") {

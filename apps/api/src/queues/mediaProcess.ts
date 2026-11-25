@@ -3,7 +3,8 @@
  *
  * - Images: Cloudflare Images (`IMAGES`) for dimensions and a 512px WebP thumbnail;
  *   if the binding fails, the original serves as its own thumbnail.
- * - Video / audio: the FfmpegRenderer container (`/probe`, `/thumb`, `/waveform`),
+ * - Video / audio: the FfmpegRenderer container (`/probe`, `/thumb`, `/waveform`,
+ *   and `/scenes` for videos: `meta.sceneCuts`, proposed Remix shot boundaries),
  *   fed a short-lived signed URL of the object. If the container is not
  *   reachable (local dev without Docker, tests), the asset becomes `ready` with
  *   `meta.processing = "pending"` so it is usable; a later re-queue fills in
@@ -24,7 +25,7 @@ export type MediaProcessMessage = z.infer<typeof MediaProcessMessage>;
 const THUMB_WIDTH = 512;
 const CONTAINER_TIMEOUT_MS = 60_000;
 
-class ContainerUnavailable extends Error {}
+export class ContainerUnavailable extends Error {}
 
 function dirOf(key: string): string {
   return key.slice(0, key.lastIndexOf("/"));
@@ -50,7 +51,8 @@ async function processImage(env: Env, row: AssetRow, meta: Record<string, unknow
   }
 }
 
-async function container(env: Env, path: string, body: unknown): Promise<Response> {
+/** POSTs JSON to the FFmpeg container; `ContainerUnavailable` when it is off, unreachable or not deployed. */
+export async function container(env: Env, path: string, body: unknown): Promise<Response> {
   if (env.MEDIA_CONTAINER === "off") throw new ContainerUnavailable("MEDIA_CONTAINER=off");
   let res: Response;
   try {
@@ -81,6 +83,14 @@ async function processAv(env: Env, row: AssetRow, meta: Record<string, unknown>)
     const thumbKey = `${dir}/thumb.jpg`;
     await env.MEDIA.put(thumbKey, await thumb.arrayBuffer(), { httpMetadata: { contentType: thumb.headers.get("content-type") ?? "image/jpeg" } });
     next.thumbKey = thumbKey;
+    // Scene cuts propose Remix shot boundaries; cheap at 320 px, and optional.
+    try {
+      const scenes = (await (await container(env, "/scenes", { url, threshold: 0.3 })).json()) as { cuts?: unknown };
+      if (Array.isArray(scenes.cuts)) next.sceneCuts = scenes.cuts.filter((c): c is number => typeof c === "number" && Number.isFinite(c)).slice(0, 50);
+    } catch (err) {
+      if (err instanceof ContainerUnavailable) throw err;
+      console.warn(JSON.stringify({ msg: "media-process: scene detection failed", assetId: row.id, error: String(err) }));
+    }
   }
   if (row.kind === "audio" || probe.hasAudio) {
     const wave = await container(env, "/waveform", { url, points: 400 });

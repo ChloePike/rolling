@@ -373,8 +373,12 @@ type PromptSpec = {
 //   `audio: true`, seconds = the track length (clamped to the model range). Mature avatars take only platform pictures
 //   (generated, Characters, public library) → else `identity_requires_platform_assets`.
 // - remix → `shot-1…shot-N` (one per `shots[]`, default one): refs-mode video with the reference video (`videoAssetId`, required),
-//   the shot's `frameAssetId` and `referenceAssetIds` (new characters/outfits) as references; seconds = shot.seconds ?? seconds ?? clip length / N.
-//   Models without reference-video input get the clip's poster frame as a picture.
+//   the shot's `frameAssetId` and `referenceAssetIds` (new characters/outfits) as references; seconds = shot.seconds ?? seconds ?? the shot's segment.
+//   Shot starts: `startSec` when the user set any; else the video's detected scene cuts (`meta.sceneCuts`, found by the FFmpeg container's
+//   `/scenes` when the upload was processed) when there are enough; else an even split. A shot without `frameAssetId` gets the reference
+//   video's frame at its start as a picture (extracted in `prepare` by the container's `/frames`, PUT to a presigned R2 URL,
+//   `ws/<ws>/frames/<assetId>/<ms>.png`, reused); container unreachable → the poster frame, else the frame is left out.
+//   Models without reference-video input get that frame (or the poster) in place of the video.
 // - character → `body` (full figure, 3:4) then `face` (1:1 close-up made from the body output, `dependsOn: ['body']`), image generations or edits
 //   with `referenceAssetIds`. When the run ends with at least one picture, it is saved to Characters (`RunView.characterId`; a retry adds a version).
 
@@ -471,10 +475,10 @@ Uploads are only visible to their uploader. They expire 7 days after creation (R
 | POST | `/api/voices` (alias `/api/voices/clone`) | `{ name, sampleAssetId, language? }` → `202 { voice }` with `status: pending` (voice provider is an open decision). `NO_PLAN` without a plan; `403 data.reason: PLAN_FEATURE, requiredPlan: plus` on Starter; `DELETE /api/voices/:id` (cloned only) |
 | GET | `/api/templates` | see Templates below |
 
-`Asset`: `{ id, kind, source: mine|team|builtin|public|generated, name, status: processing|ready|failed, mature, rating: safe|suggestive|explicit|null (D-005; GraphQL `Asset.rating`; blur `suggestive`/`explicit`), size, contentType, license, projectId, createdBy, createdAt, url, thumbUrl, waveformUrl, meta: { width?, height?, durationSec?, processing?: queued|pending|done, tags? } }`.
+`Asset`: `{ id, kind, source: mine|team|builtin|public|generated, name, status: processing|ready|failed, mature, rating: safe|suggestive|explicit|null (D-005; GraphQL `Asset.rating`; blur `suggestive`/`explicit`), size, contentType, license, projectId, createdBy, createdAt, url, thumbUrl, waveformUrl, meta: { width?, height?, durationSec?, processing?: queued|pending|done, tags?, sceneCuts? /* video: detected cuts in seconds */ } }`.
 - Scopes: `mine` = my uploads and generations in the current workspace; `team` = the whole workspace; `builtin`; `public` (public library, never mature); `all` = workspace + builtin + public.
 - D-005: mature assets are listed and signed only for viewers allowed to see them (`AuthContext.matureAllowed`); mature public-library items never appear.
-- `media.process`: images get a 512 px WebP thumbnail through Cloudflare Images (fallback: the original); video/audio are probed, thumbnailed and waveformed by the FFmpeg container from a signed URL. Without a container (`MEDIA_CONTAINER=off`, tests, local dev) the asset becomes `ready` with `meta.processing: pending`.
+- `media.process`: images get a 512 px WebP thumbnail through Cloudflare Images (fallback: the original); video/audio are probed, thumbnailed and waveformed by the FFmpeg container from a signed URL; videos also get scene cuts (`/scenes`, `select='gt(scene,0.3)'` at 320 px). Without a container (`MEDIA_CONTAINER=off`, tests, local dev) the asset becomes `ready` with `meta.processing: pending`.
 - Signed URL token: `sig = base64url(HMAC-SHA256(MEDIA_SIGNING_KEY, "v1\n" + key + "\n" + exp + "\n" + ws))`, `exp` in epoch seconds (default lifetime 1 h, max 7 d). Workspace media lives under `ws/<workspaceId>/…` and is only valid with that `ws`; `ws=_` signs `builtin/` and `public/` keys. Code: `@rolling/core/media` (`signMediaKey`, `verifyMediaSignature`), `apps/api/src/lib/mediaUrls.ts` (`signMediaUrl(env, key, { workspaceId, expiresIn })`).
 
 ## Templates

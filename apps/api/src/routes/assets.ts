@@ -164,6 +164,11 @@ export const assets = new Hono<AppEnv>()
     }
     const keys = [row.r2_key, meta.thumbKey, meta.waveformKey].filter((k): k is string => typeof k === "string" && k.startsWith(`ws/${row.workspace_id}/`));
     await c.env.MEDIA.delete(keys);
+    // Remix shot frames extracted from a video (runs/frames.ts).
+    if (row.kind === "video" && row.workspace_id) {
+      const frames = await c.env.MEDIA.list({ prefix: `ws/${row.workspace_id}/frames/${row.id}/`, limit: 1000 });
+      if (frames.objects.length) await c.env.MEDIA.delete(frames.objects.map((o) => o.key));
+    }
     await c.env.DB.batch([c.env.DB.prepare("DELETE FROM asset_search WHERE id = ?").bind(row.id), c.env.DB.prepare("DELETE FROM assets WHERE id = ?").bind(row.id)]);
     return c.json({ ok: true });
   });

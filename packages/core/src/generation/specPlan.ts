@@ -38,6 +38,48 @@ export interface SpecAsset {
   durationDeclared?: boolean;
   /** Video has a poster frame (thumbnail) that can stand in as a picture. */
   poster?: boolean;
+  /** Video: scene cuts found when it was processed (seconds, ascending). */
+  sceneCuts?: number[];
+}
+
+/** Where each Remix shot starts in the reference video and how long it runs there. */
+export interface ShotTime {
+  /** Seconds from the start of the reference video, when known. */
+  start?: number;
+  /** Length of the shot's segment of the reference video, when known. */
+  length?: number;
+  /** `start` came from the user, a detected scene cut, or an even split. */
+  via?: 'user' | 'scene' | 'even';
+}
+
+/** Cuts closer than this to each other or to the clip's ends are ignored. */
+const MIN_SEGMENT_SEC = 0.5;
+
+/**
+ * Shot boundaries in the reference video. Explicit `startSec` wins; otherwise,
+ * when the clip has enough detected scene cuts, the first `n - 1` cuts are the
+ * boundaries (the user has not set them); else the clip is split evenly.
+ */
+export function remixShotTimes(shots: ReadonlyArray<{ startSec?: number | undefined }>, total?: number, sceneCuts: readonly number[] = []): ShotTime[] {
+  const n = shots.length;
+  const cuts = [...sceneCuts]
+    .filter((c) => Number.isFinite(c) && c >= MIN_SEGMENT_SEC && (total === undefined || c <= total - MIN_SEGMENT_SEC))
+    .sort((a, b) => a - b)
+    .filter((c, i, all) => i === 0 || c - all[i - 1]! >= MIN_SEGMENT_SEC);
+  const userSet = shots.some((s) => s.startSec !== undefined);
+  const useCuts = !userSet && n > 1 && cuts.length >= n - 1;
+  const starts: ShotTime[] = shots.map((s, i) => {
+    if (s.startSec !== undefined) return { start: s.startSec, via: 'user' };
+    if (i === 0) return { start: 0, via: useCuts ? 'scene' : 'even' };
+    if (useCuts) return { start: cuts[i - 1]!, via: 'scene' };
+    if (!userSet && total !== undefined && total > 0) return { start: Math.round(((total * i) / n) * 100) / 100, via: 'even' };
+    return {};
+  });
+  return starts.map((t, i) => {
+    if (t.start === undefined) return t;
+    const next = starts.slice(i + 1).find((x) => x.start !== undefined && x.start > t.start!)?.start ?? total;
+    return next !== undefined && next > t.start ? { ...t, length: Math.round((next - t.start) * 100) / 100 } : t;
+  });
 }
 
 export interface PlanSpecInput {
@@ -214,6 +256,8 @@ async function planAvatar(input: PlanSpecInput): Promise<RunPlan> {
   return { items: [{ ...(await planOne(input, base, 'video', model.id, prompt, settings, inputs, declared)), modelName: model.displayName }] };
 }
 
+const round1 = (n: number) => Math.round(n * 10) / 10;
+
 const REMIX_DIRECTION =
   'Recreate the reference video with the characters and outfits from the reference pictures. Keep its camera moves, framing, actions and timing.';
 
@@ -231,7 +275,9 @@ async function planRemix(input: PlanSpecInput): Promise<RunPlan> {
   }
   const items: PlanItem[] = [];
   const total = !isBlock(video) ? video.a.durationSec : undefined;
+  const times = remixShotTimes(shots, total, !isBlock(video) ? video.a.sceneCuts : []);
   for (const [i, shot] of shots.entries()) {
+    const time = times[i]!;
     const ref = `shot-${i + 1}`;
     if (input.onlyRefs && !input.onlyRefs.includes(ref)) continue;
     const base: Base = { ref, nodeId: null, title: shots.length > 1 ? `${title} · Shot ${i + 1}` : title, kind: 'video', dependsOn: [], model: null, modelName: null };
@@ -244,6 +290,13 @@ async function planRemix(input: PlanSpecInput): Promise<RunPlan> {
       continue;
     }
     const inputs: GenInput[] = [{ role: 'reference', media: 'video', from: { assetId: video.id, origin: video.a.origin } }];
+    // The shot's own frame: the user's picture, else the reference video's frame at the shot start (made in `prepare`).
+    const frameAt = time.start ?? 0;
+    const videoFrame: GenInput = {
+      role: 'reference',
+      media: 'image',
+      from: { assetId: video.id, origin: video.a.origin, frameAt, ...(video.a.poster && { poster: true as const }) },
+    };
     if (shot.frameAssetId) {
       const f = asset(input, shot.frameAssetId, 'image', '');
       if (isBlock(f)) {
@@ -251,23 +304,25 @@ async function planRemix(input: PlanSpecInput): Promise<RunPlan> {
         continue;
       }
       inputs.push({ role: 'reference', media: 'image', from: { assetId: f.id, origin: f.a.origin } });
-    }
+    } else inputs.push({ ...videoFrame, from: { ...videoFrame.from, optional: true } as GenInput['from'] });
     inputs.push(...refs);
     const line = shot.prompt.trim();
-    const where = shot.startSec !== undefined ? ` (from ${shot.startSec}s in the reference video)` : '';
+    const where = time.start !== undefined && (time.via !== 'even' || shots.length > 1) ? ` (from ${round1(time.start)}s in the reference video)` : '';
     const prompt = [REMIX_DIRECTION, spec.prompt.trim(), line ? `Shot ${i + 1}${where}: ${line}` : shots.length > 1 ? `Shot ${i + 1} of ${shots.length}${where}.` : '']
       .filter((p) => p !== '')
       .join('\n\n');
     const evenSplit = total !== undefined && total > 0 ? Math.max(1, Math.round(total / shots.length)) : undefined;
-    const seconds = shot.seconds ?? spec.seconds ?? evenSplit;
+    const segment = time.via === 'scene' && time.length !== undefined ? Math.max(1, Math.round(time.length)) : evenSplit;
+    const seconds = shot.seconds ?? spec.seconds ?? segment;
     const settings = settingsOfSpec(spec, { refsMode: true, ...(seconds !== undefined && { seconds }) });
     delete settings.n;
     const inputVideoMs = total !== undefined ? Math.round(total * 1000) : undefined;
     const declared = video.a.durationDeclared && total !== undefined ? { declaredDurations: { [video.id]: total } } : {};
     let item = await planOne(input, base, 'video', spec.model, prompt, settings, inputs, { ...(inputVideoMs !== undefined && { inputVideoMs }), ...declared });
-    // Models without reference-video input: the clip's poster frame stands in as a picture.
-    if (item.action === 'blocked' && (item.code === 'no_capable_model' || item.code === 'unsupported') && video.a.poster) {
-      const framed: GenInput[] = [{ role: 'reference', media: 'image', from: { assetId: video.id, origin: video.a.origin, poster: true } }, ...inputs.slice(1)];
+    // Models without reference-video input: the clip's frame at the shot start (or its poster) stands in as a picture.
+    if (item.action === 'blocked' && (item.code === 'no_capable_model' || item.code === 'unsupported')) {
+      const rest = inputs.slice(1).filter((x) => !('assetId' in x.from && x.from.assetId === video.id));
+      const framed: GenInput[] = [videoFrame, ...rest];
       const second = await planOne(input, base, 'video', spec.model, prompt, settings, framed, declared);
       if (second.action === 'run') item = second;
     }

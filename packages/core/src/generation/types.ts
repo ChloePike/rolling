@@ -32,8 +32,13 @@ export type BlockCode =
 /** Where one generation input comes from. Upstream node outputs resolve to their active asset when the job starts. */
 export type InputSource =
   | { node: string }
-  /** `poster`: the video asset's poster frame (its thumbnail) as a picture. */
-  | { assetId: string; origin: ImageSource; poster?: true }
+  /**
+   * `poster`: the video asset's poster frame (its thumbnail) as a picture.
+   * `frameAt`: the video's frame at that second as a picture (extracted by the
+   * FFmpeg container in `prepare`; falls back to the poster when `poster` is
+   * set). `optional`: dropped from the request when no picture can be made.
+   */
+  | { assetId: string; origin: ImageSource; poster?: true; frameAt?: number; optional?: true }
   /** The output of another item of the same run (tool specs, e.g. a character's face from its full-body picture). */
   | { item: string }
   | { text: string };

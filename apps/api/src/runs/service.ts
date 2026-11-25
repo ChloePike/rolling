@@ -112,7 +112,8 @@ async function assetOrigins(env: Env, workspaceId: string, userId: string, spec:
   for (const r of rows.results) {
     if (r.kind !== "image" && r.kind !== "video" && r.kind !== "audio") continue;
     const origin: ImageSource = r.source === "generated" || r.source === "public" || r.source === "builtin" ? r.source : r.source === "team" ? "team" : "upload";
-    const meta = parseJson<{ durationSec?: unknown; durationSource?: unknown; thumbKey?: unknown }>(r.meta, {});
+    const meta = parseJson<{ durationSec?: unknown; durationSource?: unknown; thumbKey?: unknown; sceneCuts?: unknown }>(r.meta, {});
+    const cuts = Array.isArray(meta.sceneCuts) ? meta.sceneCuts.filter((c): c is number => typeof c === "number") : [];
     const hasDuration = typeof meta.durationSec === "number" && meta.durationSec > 0;
     out.set(r.id, {
       origin,
@@ -120,6 +121,7 @@ async function assetOrigins(env: Env, workspaceId: string, userId: string, spec:
       ...(hasDuration && { durationSec: meta.durationSec as number }),
       ...(hasDuration && meta.durationSource === "declared" && { durationDeclared: true }),
       ...(r.kind === "video" && typeof meta.thumbKey === "string" && { poster: true }),
+      ...(r.kind === "video" && cuts.length > 0 && { sceneCuts: cuts }),
     });
   }
   // Saved Characters count as platform assets (D-005).

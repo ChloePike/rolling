@@ -3,7 +3,7 @@ import { fixtureCatalog } from '../models/__fixtures__/catalog';
 import { validateRequest } from '../models/capabilities';
 import { buildGenerateRequest, type ResolvedInput } from './request';
 import { PromptSpecSchema, specAssetIds } from './spec';
-import { AVATAR_MODEL, planPromptSpec, type SpecAsset } from './specPlan';
+import { AVATAR_MODEL, planPromptSpec, remixShotTimes, type SpecAsset } from './specPlan';
 import type { PlanContext, PlanItem } from './types';
 
 const PLUS: PlanContext = { plan: 'plus', matureAllowed: false };
@@ -17,6 +17,7 @@ const assets = new Map<string, SpecAsset>([
   ['ast_clip', { origin: 'upload', media: 'video', durationSec: 12, poster: true }],
   ['ast_outfit', { origin: 'public', media: 'image' }],
   ['ast_frame', { origin: 'upload', media: 'image' }],
+  ['ast_cuts', { origin: 'upload', media: 'video', durationSec: 12, poster: true, sceneCuts: [3.2, 7.9, 11.9] }],
 ]);
 
 const spec = (raw: unknown) => PromptSpecSchema.parse(raw);
@@ -124,6 +125,55 @@ describe('tool specs: remix', () => {
       onlyRefs: ['shot-2'],
     });
     expect(retry.items.map((i) => [i.ref, i.action])).toEqual([['shot-2', 'run']]);
+  });
+
+  it('gives shots without a frame picture their own frame of the reference video at the shot start', async () => {
+    const plan = await planPromptSpec({
+      spec: spec({ kind: 'remix', resolution: '480p', shots: [{ prompt: 'a', frameAssetId: 'ast_frame' }, { prompt: 'b' }, { prompt: 'c', startSec: 9 }], inputs: { videoAssetId: 'ast_clip' } }),
+      catalog: fixtureCatalog,
+      ctx: PLUS,
+      assetOrigins: assets,
+    });
+    const [one, two, three] = plan.items as [PlanItem, PlanItem, PlanItem];
+    expect(one.spec!.inputs.map((i) => i.from)).toEqual([
+      { assetId: 'ast_clip', origin: 'upload' },
+      { assetId: 'ast_frame', origin: 'upload' },
+    ]);
+    // A user-set start on one shot: the others without one have no known start, so their frame is the clip's first one.
+    expect(two.spec!.inputs[1]!.from).toEqual({ assetId: 'ast_clip', origin: 'upload', frameAt: 0, poster: true, optional: true });
+    expect(three.spec!.inputs[1]!.from).toMatchObject({ assetId: 'ast_clip', frameAt: 9, optional: true });
+    expect(three.spec!.prompt).toContain('Shot 3 (from 9s in the reference video): c');
+    const { req, problems } = request(three);
+    expect(problems).toEqual([]);
+    expect(req.referenceImageUrls).toEqual(['https://media.test/1.png']);
+  });
+
+  it('uses detected scene cuts as shot boundaries when the user set none', async () => {
+    const plan = await planPromptSpec({
+      spec: spec({ kind: 'remix', resolution: '480p', shots: [{ prompt: 'a' }, { prompt: 'b' }, { prompt: 'c' }], inputs: { videoAssetId: 'ast_cuts' } }),
+      catalog: fixtureCatalog,
+      ctx: PLUS,
+      assetOrigins: assets,
+    });
+    expect(plan.items.map((i) => (i.spec!.inputs[1]!.from as { frameAt?: number }).frameAt)).toEqual([0, 3.2, 7.9]);
+    expect(plan.items.map((i) => i.spec!.seconds)).toEqual([3, 5, 4]);
+    expect(plan.items[1]!.spec!.prompt).toContain('Shot 2 (from 3.2s in the reference video): b');
+  });
+
+  it('remixShotTimes: user starts win, then scene cuts, then an even split', () => {
+    expect(remixShotTimes([{}, {}], 10)).toEqual([
+      { start: 0, length: 5, via: 'even' },
+      { start: 5, length: 5, via: 'even' },
+    ]);
+    expect(remixShotTimes([{}, {}, {}], 12, [0.2, 4, 4.1, 8])).toEqual([
+      { start: 0, length: 4, via: 'scene' },
+      { start: 4, length: 4, via: 'scene' },
+      { start: 8, length: 4, via: 'scene' },
+    ]);
+    // Too few cuts: even split.
+    expect(remixShotTimes([{}, {}, {}], 9, [4]).map((t) => t.start)).toEqual([0, 3, 6]);
+    expect(remixShotTimes([{ startSec: 2 }, {}], 10)).toEqual([{ start: 2, length: 8, via: 'user' }, {}]);
+    expect(remixShotTimes([{}], undefined)).toEqual([{ start: 0, via: 'even' }]);
   });
 
   it('uses the poster frame when the chosen model takes no reference video', async () => {

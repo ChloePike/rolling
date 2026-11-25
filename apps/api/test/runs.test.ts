@@ -10,6 +10,8 @@ import { personalWorkspaceId } from "../src/auth/workspace";
 import { projectRoom } from "../src/lib/access";
 import { syncModels } from "../src/models/sync";
 import { setGatewayFetchForTests } from "../src/runs/provider";
+import { setFramesContainerForTests } from "../src/runs/frames";
+import { ContainerUnavailable } from "../src/queues/mediaProcess";
 
 const BASE = "https://example.com";
 const DAY = 86_400_000;
@@ -749,6 +751,49 @@ describe("runs: tool specs (remix, avatar, character)", () => {
     }
     const view = await runView(user, runId);
     expect(view).toMatchObject({ name: "Remix", tool: "remix", items: [{ ref: "shot-1", status: "succeeded" }, { ref: "shot-2", status: "succeeded" }] });
+  });
+
+  it("remix: shots without a frame get the reference video's frame at their start (scene cuts), else the poster", async () => {
+    const { user, ws } = await member("remixframes");
+    const clip = await mediaAsset(ws, user, "video", { durationSec: 10, sceneCuts: [4] });
+    const calls: any[] = [];
+    setFramesContainerForTests(async (_env, path, body) => {
+      calls.push({ path, body });
+      return new Response(PNG, { headers: { "content-type": "image/png" } });
+    });
+    try {
+      const q = await quote(user, { promptSpec: { kind: "remix", model: "Seedance 2.0 Mini", resolution: "480p", ratio: "16:9", shots: [{ prompt: "a" }, { prompt: "b" }], inputs: { videoAssetId: clip } } });
+      expect(q.items.map((i: any) => i.action)).toEqual(["run", "run"]);
+      const { runId } = (await (await start(user, q.quoteId)).json()) as { runId: string };
+      expect((await finalRun(runId)).status).toBe("succeeded");
+      expect(calls.map((c) => [c.path, c.body.times]).sort()).toEqual([["/frames", [0]], ["/frames", [4]]]);
+      const dir = `ws/${ws}/frames/${clip}`;
+      expect(await env.MEDIA.head(`${dir}/0.png`)).not.toBeNull();
+      expect(await env.MEDIA.head(`${dir}/4000.png`)).not.toBeNull();
+      const bodies = fake.jobs.map((j) => JSON.stringify(j.body));
+      expect(bodies.some((b) => b.includes(`frames/${clip}/0.png`))).toBe(true);
+      expect(bodies.some((b) => b.includes(`frames/${clip}/4000.png`))).toBe(true);
+      expect(fake.jobs.map((j) => j.body.seconds).sort()).toEqual([4, 6]);
+
+      // Container down: the poster stands in; without a poster the frame is left out.
+      setFramesContainerForTests(async () => {
+        throw new ContainerUnavailable("off");
+      });
+      const posterKey = `ws/${ws}/uploads/poster-${clip}.jpg`;
+      await env.MEDIA.put(posterKey, PNG);
+      const withPoster = await mediaAsset(ws, user, "video", { durationSec: 6, thumbKey: posterKey });
+      const bare = await mediaAsset(ws, user, "video", { durationSec: 6 });
+      fake.reset();
+      for (const v of [withPoster, bare]) {
+        const q2 = await quote(user, { promptSpec: { kind: "remix", model: "Seedance 2.0 Mini", resolution: "480p", ratio: "16:9", inputs: { videoAssetId: v } } });
+        const { runId: r2 } = (await (await start(user, q2.quoteId)).json()) as { runId: string };
+        expect((await finalRun(r2)).status).toBe("succeeded");
+      }
+      expect(JSON.stringify(fake.jobs[0]!.body)).toContain(`poster-${clip}.jpg`);
+      expect(JSON.stringify(fake.jobs[1]!.body)).not.toContain(".png");
+    } finally {
+      setFramesContainerForTests(null);
+    }
   });
 
   it("character: full body, then the face from it, saved to Characters on success", async () => {

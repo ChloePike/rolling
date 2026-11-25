@@ -102,7 +102,7 @@ export interface AssetView {
   url: string | null;
   thumbUrl: string | null;
   waveformUrl: string | null;
-  meta: { width?: number; height?: number; durationSec?: number; processing?: string; tags?: string[] };
+  meta: { width?: number; height?: number; durationSec?: number; processing?: string; tags?: string[]; sceneCuts?: number[] };
 }
 
 export async function assetView(env: Env, row: AssetRow, viewer: { mayViewMature: boolean }): Promise<AssetView> {
@@ -139,6 +139,7 @@ export async function assetView(env: Env, row: AssetRow, viewer: { mayViewMature
       durationSec: pick<number>("durationSec", "number"),
       processing: pick<string>("processing", "string"),
       tags: Array.isArray(meta.tags) ? (meta.tags as unknown[]).filter((t): t is string => typeof t === "string") : undefined,
+      sceneCuts: Array.isArray(meta.sceneCuts) ? (meta.sceneCuts as unknown[]).filter((t): t is number => typeof t === "number") : undefined,
     },
   };
 }

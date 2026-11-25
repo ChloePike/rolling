@@ -19,6 +19,7 @@ import { isMatureRating, type SafetyOutput, type SafetyReference } from "@rollin
 import { jobPostCheck, jobPreCheck, referenceSource } from "../safety/pipeline";
 import { pictureDataUrl, r2Picture, sha256OfBytes } from "../safety/service";
 import { getItem, getJob, getRun, parseJson, refreshRun, type RunOptions } from "./store";
+import { ensureFrame } from "./frames";
 
 export interface GenerateParams {
   jobId: string;
@@ -122,6 +123,19 @@ async function posterUrl(env: Env, ctx: JobContext, assetId: string): Promise<{ 
   return { url: url.startsWith("http") ? url : new URL(url, env.PUBLIC_APP_URL).toString(), origin, key, name: `${row.name} (poster)` };
 }
 
+/** The reference video's frame at `atSec` as a signed picture URL (Remix shots without their own frame). */
+async function videoFrameUrl(env: Env, ctx: JobContext, assetId: string, atSec: number): Promise<{ url: string; origin: ImageSource; key: string; name: string } | null> {
+  const row = await env.DB.prepare("SELECT r2_key, workspace_id, status, name, source, kind FROM assets WHERE id = ?")
+    .bind(assetId)
+    .first<{ r2_key: string; workspace_id: string | null; status: string; name: string; source: string; kind: string }>();
+  if (!row || row.kind !== "video" || (row.status !== "ready" && row.status !== "processing") || row.workspace_id !== ctx.workspaceId) return null;
+  const key = await ensureFrame(env, { id: assetId, r2_key: row.r2_key, workspace_id: row.workspace_id }, atSec);
+  if (!key) return null;
+  const url = await signMediaUrl(env, key, { workspaceId: ctx.workspaceId, expiresIn: SIGNED_INPUT_TTL, absolute: true });
+  const origin: ImageSource = row.source === "generated" ? "generated" : row.source === "team" ? "team" : "upload";
+  return { url: url.startsWith("http") ? url : new URL(url, env.PUBLIC_APP_URL).toString(), origin, key, name: `${row.name} (frame at ${Math.round(atSec * 10) / 10}s)` };
+}
+
 /** How much longer than the browser-reported length a probed file may be before the quote no longer holds. */
 export function durationOverrun(declaredSec: number, probedSec: number): boolean {
   return probedSec > declaredSec + Math.max(1, declaredSec * 0.1);
@@ -189,8 +203,13 @@ export async function prepareJob(env: Env, ctx: JobContext, modelId: string): Pr
       assetId = row!.asset_id;
     } else if ("assetId" in input.from) assetId = input.from.assetId;
     else continue;
-    const poster = "assetId" in input.from && input.from.poster === true;
-    const a = poster ? await posterUrl(env, ctx, assetId!) : await assetUrl(env, ctx, assetId!);
+    const from = "assetId" in input.from ? input.from : null;
+    let a: Awaited<ReturnType<typeof assetUrl>>;
+    if (from?.frameAt !== undefined) {
+      // Remix: the shot's frame of the reference video, else its poster; optional frames are dropped.
+      a = (await videoFrameUrl(env, ctx, assetId!, from.frameAt)) ?? (from.poster ? await posterUrl(env, ctx, assetId!) : null);
+      if (!a && from.optional) continue;
+    } else a = from?.poster ? await posterUrl(env, ctx, assetId!) : await assetUrl(env, ctx, assetId!);
     if (!a) fail("input_missing", "An input file is not available.");
     const origin: ImageSource = "node" in input.from || "item" in input.from ? "generated" : (input.from as { origin: ImageSource }).origin;
     resolved.push({ input, url: a.url, origin });
