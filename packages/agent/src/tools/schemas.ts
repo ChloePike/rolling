@@ -111,6 +111,15 @@ export const AgentTimelineOp = z.discriminatedUnion('op', [
   z.object({ op: z.literal('setGain'), clipId: ClipId, gainDb: z.number().min(-96).max(24) }),
   z.object({ op: z.literal('setCaption'), clipId: ClipId, text: z.string().max(2000) }),
   z.object({ op: z.literal('replaceShot'), clipId: ClipId, nodeId: Id }),
+  // Effects the editor supports (core TimelineOpSchema). Not offered to the agent: insert,
+  // setFormat and replaceEdl (no media insertion or whole-cut rewrites from a chat turn).
+  z.object({ op: z.literal('setSpeed'), clipId: ClipId, speed: z.number().min(0.25).max(4), reverse: z.boolean().optional() }),
+  z.object({ op: z.literal('setFade'), clipId: ClipId, fadeIn: z.number().min(0).max(600) }),
+  z.object({
+    op: z.literal('setTransition'),
+    clipId: ClipId,
+    transition: z.object({ type: z.literal('dissolve'), dur: z.number().gt(0).max(10) }).nullable(),
+  }),
 ]);
 
 export const ProposeTimelinePatchInput = z.object({
