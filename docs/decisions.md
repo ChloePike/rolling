@@ -2,6 +2,24 @@
 
 Decisions made after the original spec. Where this file disagrees with `PRD.md`, `architecture.md`, `api.md` or `harness.md`, this file wins. Newest first.
 
+## D-006 — Pricing: credits are the product, plans are the entry ticket (2026-11-25)
+
+Owner decisions: gross margin ≥ 50%; revenue comes mainly from credit purchases; plans exist to unlock membership (which is also the age gate, D-005). The Hyperouter 5.5% top-up fee is ignored. Values live in `packages/core/pricing/config.ts`; tests enforce the margin floor.
+
+- **Credit unit:** 1 credit = $0.01 retail. `credits = ceil(gatewayUsd × 3.0 ÷ 0.01)` (3× markup on live list price, per resolution and length). Example: Seedance 2.5 720p 5 s = 347 credits.
+- **Plans (entry ticket, small grant, perks):**
+
+| Plan | Monthly | Yearly (−20%) | Credits/month | Pack discount | Jobs at once | Max res | Voice clone | Seats |
+|---|---|---|---|---|---|---|---|---|
+| Starter | $5 | $48 | 200 | 0% | 2 | 1080p | no | 1 |
+| Pro | $15 | $144 | 800 | 5% | 5 | 4K | yes | 1 |
+| Studio | $49 | $470 | 2,500 | 10% | 10 | 4K | yes | 10 |
+
+- **Packs (members only, never expire):** $10 → 1,000 · $25 → 2,600 · $50 → 5,500 · $100 → 11,500 · $250 → 28,500. The largest pack is capped so the largest member discount still clears 50%.
+- **Margin floor (all credits used, after card fees ~4.65% + $0.30 and 2% infra):** packs 50.4–57.5%, plans 70–76%. Real usage below 100% raises it.
+- **Confirm threshold** default becomes 300 credits (≈ $3), the PRD’s “20 credits” rescaled. **Auto top-up:** below 200 credits buy the $10 pack.
+- Supersedes the PRD placeholders for plan credits, plan prices, yearly discount, pack prices and per-model credit prices.
+
 ## D-005 — Adult (18+) content is allowed (2026-11-25)
 
 The platform allows 18+ creation for paying members. This replaces the PRD line “compliance/moderation work beyond what providers enforce” being out of scope.

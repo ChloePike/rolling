@@ -20,15 +20,16 @@ export type Placeholder = typeof PRICE_PLACEHOLDER | typeof DISCOUNT_PLACEHOLDER
  * listing, per (resolution, seconds, audio, input conditions), so every model
  * and resolution is priced without a hand-kept table.
  *
- * Both numbers are PLACEHOLDERS (open decision "per-model credit prices").
- * USD_PER_CREDIT is chosen so the PRD's anchor, Seedance 2.5 at 720p for 5 s =
- * 8 credits, still holds:
+ * Pricing model (owner decision 2026-11-25, see docs/decisions.md D-006):
+ * 1 credit = $0.01 retail and a 3.0× markup on gateway list price, which keeps
+ * gross margin ≥ 50% on every pack and plan even when every credit is used
+ * (after card fees and infrastructure). The Hyperouter top-up fee is ignored.
  *
- *   usdCost = 5 s × $0.23112/s = $1.1556
- *   credits = ceil(1.1556 × 1.0 ÷ 0.15) = ceil(7.704) = 8
+ *   Seedance 2.5, 720p, 5 s: usdCost = 5 × $0.23112 = $1.1556
+ *   credits = ceil(1.1556 × 3.0 ÷ 0.01) = ceil(346.68) = 347
  */
-export const MARKUP = 1.0;
-export const USD_PER_CREDIT = 0.15;
+export const MARKUP = 3.0;
+export const USD_PER_CREDIT = 0.01;
 
 export class UnpricedModelError extends Error {
   override readonly name = 'UnpricedModelError';
@@ -67,50 +68,98 @@ export function creditsForAll(items: readonly { model: ListingModel; request?: P
 
 export type PlanId = 'starter' | 'pro' | 'studio';
 
+/**
+ * Plans are the entry ticket (D-006): membership unlocks generating and buying
+ * packs, and includes a small monthly grant. Revenue comes mainly from packs.
+ * Tiers differ by perks and by a discount on packs, not by credit volume.
+ */
 export interface PlanConfig {
   id: PlanId;
   label: string;
-  /** Credits granted per billing period (placeholder). */
+  /** Included credits per month; expire at the next billing date (PRD rule 3). */
   monthlyCredits: number;
   priceMonthlyUsd: number | Placeholder;
   priceYearlyUsd: number | Placeholder;
   yearlyDiscount: number | Placeholder;
+  /** Discount on credit packs for members of this plan (0..1). */
+  packDiscount: number;
+  /** Generation jobs that may run at once per workspace. */
+  concurrentJobs: number;
+  /** Highest output resolution the plan may request. */
+  maxResolution: '1080p' | '4K';
+  voiceCloning: boolean;
+  /** Seats in a shared credit pool (1 = personal). */
+  seats: number;
 }
 
 export const PLANS: Record<PlanId, PlanConfig> = {
   starter: {
     id: 'starter',
     label: 'Starter',
-    monthlyCredits: 1000,
-    priceMonthlyUsd: PRICE_PLACEHOLDER,
-    priceYearlyUsd: PRICE_PLACEHOLDER,
-    yearlyDiscount: DISCOUNT_PLACEHOLDER,
+    monthlyCredits: 200,
+    priceMonthlyUsd: 5,
+    priceYearlyUsd: 48,
+    yearlyDiscount: 0.2,
+    packDiscount: 0,
+    concurrentJobs: 2,
+    maxResolution: '1080p',
+    voiceCloning: false,
+    seats: 1,
   },
   pro: {
     id: 'pro',
     label: 'Pro',
-    monthlyCredits: 3000,
-    priceMonthlyUsd: PRICE_PLACEHOLDER,
-    priceYearlyUsd: PRICE_PLACEHOLDER,
-    yearlyDiscount: DISCOUNT_PLACEHOLDER,
+    monthlyCredits: 800,
+    priceMonthlyUsd: 15,
+    priceYearlyUsd: 144,
+    yearlyDiscount: 0.2,
+    packDiscount: 0.05,
+    concurrentJobs: 5,
+    maxResolution: '4K',
+    voiceCloning: true,
+    seats: 1,
   },
   studio: {
     id: 'studio',
     label: 'Studio',
-    monthlyCredits: 10000,
-    priceMonthlyUsd: PRICE_PLACEHOLDER,
-    priceYearlyUsd: PRICE_PLACEHOLDER,
-    yearlyDiscount: DISCOUNT_PLACEHOLDER,
+    monthlyCredits: 2500,
+    priceMonthlyUsd: 49,
+    priceYearlyUsd: 470,
+    yearlyDiscount: 0.2,
+    packDiscount: 0.1,
+    concurrentJobs: 10,
+    maxResolution: '4K',
+    voiceCloning: true,
+    seats: 10,
   },
 };
 
-/** Credit packs (members only). Sizes and prices are open decisions. */
-export const CREDIT_PACKS: { credits: number; priceUsd: number | Placeholder }[] = [
-  { credits: 1000, priceUsd: PRICE_PLACEHOLDER },
+/**
+ * Credit packs (members only; purchased credits never expire). Larger packs
+ * carry bonus credits. Sizes are capped so that the largest pack with the
+ * largest member discount still keeps gross margin at or above 50%.
+ */
+export interface CreditPack {
+  id: string;
+  priceUsd: number;
+  credits: number;
+}
+
+export const CREDIT_PACKS: CreditPack[] = [
+  { id: 'pack_10', priceUsd: 10, credits: 1000 },
+  { id: 'pack_25', priceUsd: 25, credits: 2600 },
+  { id: 'pack_50', priceUsd: 50, credits: 5500 },
+  { id: 'pack_100', priceUsd: 100, credits: 11500 },
+  { id: 'pack_250', priceUsd: 250, credits: 28500 },
 ];
 
-/** Runs at or above this many credits show the confirm dialog (PRD rule 5). */
-export const DEFAULT_CONFIRM_THRESHOLD_CREDITS = 20;
+/** Price of a pack for a member of `plan`, in USD cents (rounded down to the cent). */
+export function packPriceCents(pack: CreditPack, plan: PlanId): number {
+  return Math.floor(pack.priceUsd * 100 * (1 - PLANS[plan].packDiscount));
+}
+
+/** Runs at or above this many credits show the confirm dialog (PRD rule 5; 300 ≈ $3, the old “20 credits” rescaled to $0.01 credits, D-006). */
+export const DEFAULT_CONFIRM_THRESHOLD_CREDITS = 300;
 
 /** Optional auto top-up: below `belowCredits`, buy `buyCredits` (PRD rule 6). */
-export const AUTO_TOP_UP = { belowCredits: 200, buyCredits: 1000 } as const;
+export const AUTO_TOP_UP = { belowCredits: 200, packId: 'pack_10' } as const;
