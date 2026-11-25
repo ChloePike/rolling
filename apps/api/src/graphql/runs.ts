@@ -1,0 +1,96 @@
+/** GraphQL read field for Activity (M4): `runs(filter, first, after)`. Merged into the schema in `./index.ts`. */
+import { GraphQLError } from "graphql";
+import { listRuns, RunsFilter } from "../runs/activity";
+import type { GraphQLContext } from "./index";
+
+export const runsTypeDefs = /* GraphQL */ `
+  extend type Query {
+    "Runs of the current workspace for Activity, newest first, with cost and refunds (signed in)."
+    runs(filter: RunsFilter, first: Int = 30, after: String): RunConnection!
+  }
+
+  input RunsFilter {
+    "queued, running, done, partial, failed or canceled."
+    status: String
+    projectId: ID
+    "Gateway model id."
+    model: String
+    "Epoch ms bounds on createdAt."
+    from: Float
+    to: Float
+  }
+
+  type RunConnection {
+    nodes: [Run!]!
+    stats: ActivityStats!
+    pageInfo: RunPageInfo!
+  }
+
+  type RunPageInfo {
+    hasNextPage: Boolean!
+    endCursor: String
+  }
+
+  type ActivityStats {
+    usedThisMonth: Int!
+    usedLastMonth: Int!
+    running: Int!
+    "0..1 over the last 7 days; null without finished jobs."
+    successRate: Float
+    runsLast7Days: Int!
+    refundedThisMonth: Int!
+  }
+
+  type Run {
+    id: ID!
+    ref: String!
+    name: String!
+    source: String!
+    projectId: ID
+    projectTitle: String
+    params: String!
+    status: String!
+    progress: Float
+    "Quoted credits while queued/running, charged credits after."
+    credits: Int!
+    quoted: Int!
+    spent: Int!
+    refunded: Int!
+    error: String
+    createdAt: Float!
+    finishedAt: Float
+    items: [RunItem!]!
+  }
+
+  type RunItem {
+    ref: String!
+    nodeId: ID
+    title: String
+    kind: String!
+    model: String!
+    modelName: String!
+    status: String!
+    jobId: ID
+    progress: Float
+    credits: Int!
+    spent: Int
+    refunded: Int!
+    assetId: ID
+    error: String
+    errorCode: String
+  }
+`;
+
+export const runsResolvers = {
+  runs: async (
+    _: unknown,
+    args: { filter?: Record<string, unknown> | null; first?: number | null; after?: string | null },
+    ctx: GraphQLContext,
+  ) => {
+    if (!ctx.auth) throw new GraphQLError("Sign in required", { extensions: { code: "UNAUTHENTICATED" } });
+    const parsed = RunsFilter.safeParse({ ...(args.filter ?? {}), first: args.first ?? 30, ...(args.after && { after: args.after }) });
+    if (!parsed.success) throw new GraphQLError("Invalid runs filter", { extensions: { code: "VALIDATION_FAILED" } });
+    const page = await listRuns(ctx.env, ctx.auth.workspaceId, parsed.data);
+    return { nodes: page.runs, stats: page.stats, pageInfo: { hasNextPage: page.nextCursor !== null, endCursor: page.nextCursor } };
+  },
+};

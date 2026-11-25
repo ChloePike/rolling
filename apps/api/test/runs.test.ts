@@ -581,3 +581,76 @@ describe("runs: webhooks", () => {
     expect(polls.length).toBeLessThanOrEqual(2);
   });
 });
+
+describe("runs: live events", () => {
+  async function socket(user: string, path: string): Promise<{ messages: { type: string; payload: any }[]; close: () => void }> {
+    const res = await api(user, path, { headers: { Upgrade: "websocket" } });
+    expect(res.status).toBe(101);
+    const ws = res.webSocket!;
+    const messages: { type: string; payload: any }[] = [];
+    ws.addEventListener("message", (e) => messages.push(JSON.parse(e.data as string)));
+    ws.accept();
+    return { messages, close: () => ws.close() };
+  }
+
+  it("pushes job.progress, node.version, job.done and credits.changed to the project and user sockets", async () => {
+    const { user, ws } = await member("live");
+    const { id, ids } = await project(user, ws, [{ kind: "video", title: "Shot", params: SHOT }], []);
+    fake.rules.push({ runningPolls: 1 });
+    await introspector.modifyAll(async (m) => {
+      await m.forceEventTimeout({ name: "wait-1-2" });
+    });
+    const room = await socket(user, `/api/projects/${id}/ws`);
+    const hub = await socket(user, "/api/ws");
+    const q = await quote(user, { projectId: id, scope: "node", nodeIds: [ids.Shot] });
+    const { runId } = (await (await start(user, q.quoteId)).json()) as { runId: string };
+    expect((await finalRun(runId)).status).toBe("succeeded");
+    const [job] = await jobsOf(runId);
+    await waitFor("done event", async () => room.messages.some((m) => m.type === "job.done"));
+    await waitFor("settle push", async () => room.messages.filter((m) => m.type === "credits.changed").length >= 2);
+    const types = room.messages.map((m) => m.type);
+    expect(types).toContain("job.progress");
+    expect(types).toContain("node.version");
+    const progress = room.messages.filter((m) => m.type === "job.progress" && m.payload.jobId === job.id).map((m) => m.payload.progress);
+    expect(progress).toContain(0.4);
+    const credit = room.messages.filter((m) => m.type === "credits.changed").map((m) => m.payload);
+    expect(credit.length).toBeGreaterThanOrEqual(2);
+    expect(credit.at(-1)).toMatchObject({ balance: await available(ws), held: 0 });
+    await waitFor("hub credits", async () => hub.messages.some((m) => m.type === "credits.changed"));
+    expect(hub.messages.some((m) => m.type === "activity.updated")).toBe(true);
+    room.close();
+    hub.close();
+  });
+
+  it("sends job.failed with the refunded credits the node shows", async () => {
+    const { user, ws } = await member("livefail");
+    const { id, ids } = await project(user, ws, [{ kind: "image", title: "Key", params: KEYFRAME }], []);
+    const room = await socket(user, `/api/projects/${id}/ws`);
+    const q = await quote(user, { projectId: id, scope: "node", nodeIds: [ids.Key] });
+    const { runId } = (await (await start(user, q.quoteId, { forceFailure: [ids.Key] })).json()) as { runId: string };
+    await finalRun(runId);
+    const failed = await waitFor("job.failed", async () => room.messages.find((m) => m.type === "job.failed"));
+    expect(failed.payload).toMatchObject({ nodeId: ids.Key, refunded: q.total, reason: expect.stringContaining("Forced failure") });
+    const snap = (await projectRoom(env, id).getSnapshot({ userId: user, workspaceId: ws, canEdit: true })) as any;
+    expect(snap.nodes.find((n: any) => n.id === ids.Key).status).toBe("failed");
+    room.close();
+  });
+});
+
+describe("runs: GraphQL", () => {
+  it("lists runs with cost and refunds for Activity", async () => {
+    const { user, ws } = await member("gql");
+    const { id, ids } = await project(user, ws, [{ kind: "image", title: "Key", params: KEYFRAME }], []);
+    const q = await quote(user, { projectId: id, scope: "node", nodeIds: [ids.Key] });
+    const { runId } = (await (await start(user, q.quoteId, { forceFailure: true })).json()) as { runId: string };
+    await finalRun(runId);
+    const res = await api(user, "/api/graphql", {
+      method: "POST",
+      json: { query: "{ runs(filter: { status: \"failed\" }, first: 5) { nodes { id status credits refunded items { status errorCode } } stats { refundedThisMonth } pageInfo { hasNextPage } } }" },
+    });
+    const body = (await res.json()) as any;
+    expect(body.errors).toBeUndefined();
+    expect(body.data.runs.nodes[0]).toMatchObject({ id: runId, status: "failed", credits: 0, refunded: q.total, items: [{ status: "failed", errorCode: "forced_failure" }] });
+    expect(body.data.runs.stats.refundedThisMonth).toBe(q.total);
+  });
+});
