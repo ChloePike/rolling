@@ -8,3 +8,4 @@ playwright-report/
 test-results/
 .DS_Store
 apps/api/wrangler.r2web.jsonc
+apps/web/e2e/__screens__/
