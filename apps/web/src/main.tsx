@@ -1,16 +1,13 @@
 import { ToastProvider } from '@rolling/ui';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { createRouter, RouterProvider } from '@tanstack/react-router';
 import { StrictMode, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { useIntl } from 'react-intl';
 import { I18nProvider } from '@/i18n/I18nProvider';
 import { routeTree } from '@/routeTree.gen';
+import { queryClient } from '@/lib/api/queryClient';
 import '@/styles/app.css';
-
-const queryClient = new QueryClient({
-  defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
-});
 
 const router = createRouter({
   routeTree,

@@ -81,3 +81,57 @@ describe('lib/prefs', () => {
     expect(formatPrice(intl, 10, 'EUR')).toBe('€9.20');
   });
 });
+
+describe('lib/prefs server sync', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.unstubAllGlobals();
+  });
+
+  it('maps client prefs to the PATCH body and back', async () => {
+    stubBrowser();
+    const prefs = await import('./index');
+    expect(prefs.toServerPatch({ defaultAspectRatio: '16:9', notifyWhenDone: false, notifyProductUpdates: true, theme: 'light' })).toEqual({
+      defaultRatio: '16:9',
+      theme: 'light',
+      notifications: { done: false, product: true },
+    });
+    expect(prefs.toServerPatch({ language: 'zh-HK' })).toEqual({ language: 'zh-HK' });
+    const p = prefs.fromServerPrefs({ language: 'ja', currency: 'JPY', creationMode: 'advanced', defaultRatio: '1:1', defaultModel: 'auto', confirmThreshold: 0, notifications: { done: true, low: false, renewal: true, product: false }, theme: 'dark', matureContent: true });
+    expect(p).toMatchObject({ language: 'ja', currency: 'JPY', defaultAspectRatio: '1:1', notifyCreditsLow: false, confirmThreshold: 0, theme: 'dark', matureContent: true });
+  });
+
+  it('writes optimistically, sends to the remote, and rolls back on a refusal', async () => {
+    stubBrowser();
+    const prefs = await import('./index');
+    const errors: unknown[] = [];
+    window.addEventListener(prefs.PREFS_ERROR_EVENT, (e) => errors.push((e as CustomEvent).detail));
+    const sent: unknown[] = [];
+    prefs.registerPrefsRemote(async (patch) => {
+      sent.push(patch);
+      if ('matureContent' in patch) throw Object.assign(new Error('NO_PLAN'), { code: 'NO_PLAN' });
+    });
+    await prefs.savePrefs({ theme: 'light' });
+    expect(prefs.getPrefs().theme).toBe('light');
+    const p = prefs.savePrefs({ matureContent: true });
+    expect(prefs.getPrefs().matureContent).toBe(true);
+    await expect(p).rejects.toThrow('NO_PLAN');
+    expect(prefs.getPrefs().matureContent).toBe(false);
+    expect(errors).toHaveLength(1);
+    expect(sent).toEqual([{ theme: 'light' }, { matureContent: true }]);
+    prefs.registerPrefsRemote(null);
+  });
+
+  it('server prefs apply live, except keys with a save in flight', async () => {
+    stubBrowser();
+    const prefs = await import('./index');
+    let release!: () => void;
+    prefs.registerPrefsRemote(() => new Promise<void>((r) => (release = r)));
+    const pending = prefs.savePrefs({ currency: 'GBP' });
+    prefs.applyServerPrefs({ language: 'en', currency: 'USD', creationMode: 'simple', defaultRatio: '9:16', defaultModel: 'auto', confirmThreshold: 300, notifications: { done: true, low: true, renewal: true, product: false }, theme: 'dark', matureContent: false });
+    expect(prefs.getPrefs()).toMatchObject({ currency: 'GBP', theme: 'dark' });
+    release();
+    await pending;
+    prefs.registerPrefsRemote(null);
+  });
+});

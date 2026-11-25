@@ -6,8 +6,14 @@ import { LOCALE_PREF_KEY } from '@/i18n/locale';
  * Client preferences: one shared state for the header settings popover,
  * Settings → Preferences, the prompt boxes and the run flow (interaction pass:
  * every place that shows a preference reads and writes the same value).
- * Stored in localStorage until `PATCH /api/me/prefs` lands; the server copy
- * wins once it exists.
+ *
+ * Signed in (real API), the server copy wins: `GET /api/me` and the
+ * `prefs.changed` socket message (other tabs and devices) are applied with
+ * `applyServerPrefs`, and every write goes to `PATCH /api/me/prefs` through the
+ * remote writer `lib/session` registers (optimistic: the local value changes
+ * at once and rolls back if the server refuses). localStorage stays as the
+ * pre-paint cache (the theme script in index.html) and the only store for
+ * signed-out visitors.
  *
  * API:
  * - `usePrefs()` / `getPrefs()` read everything, `usePref(key)` one value;
@@ -69,6 +75,12 @@ export interface Prefs {
   /** Default video model id, or "auto". */
   defaultModel: string;
   notifyWhenDone: boolean;
+  /** Email when credits run low (server `notifications.low`). */
+  notifyCreditsLow: boolean;
+  /** Email before the plan renews (server `notifications.renewal`). */
+  notifyPlanRenewal: boolean;
+  /** Product updates (server `notifications.product`). */
+  notifyProductUpdates: boolean;
   theme: ThemePref;
   /** Runs quoted below this many credits start without the run confirm (0 = always confirm). */
   confirmThreshold: number;
@@ -83,6 +95,9 @@ export const DEFAULT_PREFS: Prefs = {
   defaultAspectRatio: '9:16',
   defaultModel: 'auto',
   notifyWhenDone: true,
+  notifyCreditsLow: true,
+  notifyPlanRenewal: true,
+  notifyProductUpdates: false,
   theme: 'system',
   confirmThreshold: DEFAULT_CONFIRM_THRESHOLD_CREDITS,
   matureContent: false,
@@ -130,6 +145,9 @@ function parse(creationRaw: string | null, languageRaw: string | null, rest: str
     defaultAspectRatio: oneOf(ASPECT_RATIO_OPTIONS, o.defaultAspectRatio, DEFAULT_PREFS.defaultAspectRatio),
     defaultModel: typeof o.defaultModel === 'string' && o.defaultModel ? o.defaultModel : DEFAULT_PREFS.defaultModel,
     notifyWhenDone: typeof o.notifyWhenDone === 'boolean' ? o.notifyWhenDone : DEFAULT_PREFS.notifyWhenDone,
+    notifyCreditsLow: typeof o.notifyCreditsLow === 'boolean' ? o.notifyCreditsLow : DEFAULT_PREFS.notifyCreditsLow,
+    notifyPlanRenewal: typeof o.notifyPlanRenewal === 'boolean' ? o.notifyPlanRenewal : DEFAULT_PREFS.notifyPlanRenewal,
+    notifyProductUpdates: typeof o.notifyProductUpdates === 'boolean' ? o.notifyProductUpdates : DEFAULT_PREFS.notifyProductUpdates,
     theme: oneOf(THEME_OPTIONS, o.theme, DEFAULT_PREFS.theme),
     confirmThreshold: threshold,
     matureContent: o.matureContent === true,
@@ -153,8 +171,8 @@ export function getPrefs(): Prefs {
   return cache;
 }
 
-/** Writes some preferences and notifies every reader in this tab. */
-export function setPrefs(patch: Partial<Prefs>) {
+/** Writes the local cache and notifies every reader in this tab (no server call). */
+function writeLocal(patch: Partial<Prefs>) {
   const cur = getPrefs();
   const next = { ...cur, ...patch };
   if ('creationMode' in patch) write(CREATION_MODE_KEY, next.creationMode);
@@ -165,8 +183,144 @@ export function setPrefs(patch: Partial<Prefs>) {
   window.dispatchEvent(new CustomEvent(PREFS_EVENT, { detail: patch }));
 }
 
+/** Saves a patch on the server; resolves with what the server stored. Registered by lib/session while signed in. */
+export type PrefsRemote = (patch: Partial<Prefs>) => Promise<Partial<Prefs> | void>;
+let remote: PrefsRemote | null = null;
+
+/** lib/session: route writes to `PATCH /api/me/prefs` (null when signed out or in mock mode). */
+export function registerPrefsRemote(writer: PrefsRemote | null) {
+  remote = writer;
+}
+
+/** Fired on `window` when a server save fails and the local value was rolled back. */
+export const PREFS_ERROR_EVENT = 'rolling:prefs-error';
+export interface PrefsErrorDetail {
+  patch: Partial<Prefs>;
+  error: unknown;
+}
+
+/**
+ * Writes preferences: local at once, then the server when signed in. Rejects
+ * (after rolling back the keys it changed, unless another write changed them
+ * since) when the server refuses, e.g. `NO_PLAN` for mature content.
+ */
+const pending = new Map<keyof Prefs, number>();
+
+export async function savePrefs(patch: Partial<Prefs>): Promise<void> {
+  const before = getPrefs();
+  const keys = Object.keys(patch) as (keyof Prefs)[];
+  const prev: Partial<Prefs> = {};
+  for (const k of Object.keys(patch) as (keyof Prefs)[]) (prev as Record<string, unknown>)[k] = before[k];
+  writeLocal(patch);
+  if (!remote) return;
+  for (const k of keys) pending.set(k, (pending.get(k) ?? 0) + 1);
+  try {
+    const stored = await remote(patch);
+    if (stored && Object.keys(stored).length) writeLocal(stored);
+  } catch (error) {
+    const now = getPrefs();
+    const rollback: Partial<Prefs> = {};
+    for (const k of Object.keys(patch) as (keyof Prefs)[]) {
+      if (now[k] === patch[k]) (rollback as Record<string, unknown>)[k] = prev[k];
+    }
+    if (Object.keys(rollback).length) writeLocal(rollback);
+    window.dispatchEvent(new CustomEvent<PrefsErrorDetail>(PREFS_ERROR_EVENT, { detail: { patch, error } }));
+    throw error;
+  } finally {
+    for (const k of keys) {
+      const n = (pending.get(k) ?? 1) - 1;
+      if (n > 0) pending.set(k, n);
+      else pending.delete(k);
+    }
+  }
+}
+
+/** Writes some preferences and notifies every reader; server errors surface as `PREFS_ERROR_EVENT`. */
+export function setPrefs(patch: Partial<Prefs>) {
+  savePrefs(patch).catch(() => {
+    /* Rolled back; PREFS_ERROR_EVENT tells the UI. */
+  });
+}
+
 export function setPref<K extends keyof Prefs>(key: K, value: Prefs[K]) {
   setPrefs({ [key]: value } as Partial<Prefs>);
+}
+
+// Server shape (docs/api.md → Account) <-> client prefs.
+
+export interface ServerPrefsShape {
+  language: string;
+  currency: string;
+  creationMode: 'simple' | 'advanced';
+  defaultRatio: string;
+  defaultModel: string;
+  confirmThreshold: number;
+  notifications: { done: boolean; low: boolean; renewal: boolean; product: boolean };
+  theme: ThemePref;
+  matureContent: boolean;
+}
+
+export type ServerPrefsPatchShape = Partial<Omit<ServerPrefsShape, 'notifications'>> & { notifications?: Partial<ServerPrefsShape['notifications']> };
+
+/** Supported server language for a client tag (null = follow the browser). */
+export function serverLanguage(tag: string | null): string {
+  const pick = tag ?? (typeof navigator !== 'undefined' ? navigator.language : 'en');
+  return languageOption(pick)?.tag ?? 'en';
+}
+
+export function fromServerPrefs(p: ServerPrefsShape): Prefs {
+  return {
+    creationMode: p.creationMode === 'advanced' ? 'advanced' : 'simple',
+    language: p.language || null,
+    currency: oneOf(CURRENCY_OPTIONS, p.currency, DEFAULT_PREFS.currency),
+    defaultAspectRatio: oneOf(ASPECT_RATIO_OPTIONS, p.defaultRatio, DEFAULT_PREFS.defaultAspectRatio),
+    defaultModel: p.defaultModel || DEFAULT_PREFS.defaultModel,
+    notifyWhenDone: p.notifications?.done ?? DEFAULT_PREFS.notifyWhenDone,
+    notifyCreditsLow: p.notifications?.low ?? DEFAULT_PREFS.notifyCreditsLow,
+    notifyPlanRenewal: p.notifications?.renewal ?? DEFAULT_PREFS.notifyPlanRenewal,
+    notifyProductUpdates: p.notifications?.product ?? DEFAULT_PREFS.notifyProductUpdates,
+    theme: oneOf(THEME_OPTIONS, p.theme, DEFAULT_PREFS.theme),
+    confirmThreshold: typeof p.confirmThreshold === 'number' ? p.confirmThreshold : DEFAULT_PREFS.confirmThreshold,
+    matureContent: p.matureContent === true,
+  };
+}
+
+/** The `PATCH /api/me/prefs` body for a client patch (only the keys it changes). */
+export function toServerPatch(patch: Partial<Prefs>): ServerPrefsPatchShape {
+  const out: ServerPrefsPatchShape = {};
+  const notifications: Partial<ServerPrefsShape['notifications']> = {};
+  if (patch.creationMode !== undefined) out.creationMode = patch.creationMode;
+  if ('language' in patch) out.language = serverLanguage(patch.language ?? null);
+  if (patch.currency !== undefined) out.currency = patch.currency;
+  if (patch.defaultAspectRatio !== undefined) out.defaultRatio = patch.defaultAspectRatio;
+  if (patch.defaultModel !== undefined) out.defaultModel = patch.defaultModel;
+  if (patch.confirmThreshold !== undefined) out.confirmThreshold = Math.max(0, Math.min(100_000, Math.round(patch.confirmThreshold)));
+  if (patch.theme !== undefined) out.theme = patch.theme;
+  if (patch.matureContent !== undefined) out.matureContent = patch.matureContent;
+  if (patch.notifyWhenDone !== undefined) notifications.done = patch.notifyWhenDone;
+  if (patch.notifyCreditsLow !== undefined) notifications.low = patch.notifyCreditsLow;
+  if (patch.notifyPlanRenewal !== undefined) notifications.renewal = patch.notifyPlanRenewal;
+  if (patch.notifyProductUpdates !== undefined) notifications.product = patch.notifyProductUpdates;
+  if (Object.keys(notifications).length) out.notifications = notifications;
+  return out;
+}
+
+/**
+ * Applies the server's prefs (sign-in, `GET /api/me`, `prefs.changed`) to the
+ * local cache, changing only what differs. Keys with a save in flight keep the
+ * local (newer) value; the save's answer settles them.
+ */
+export function applyServerPrefs(p: ServerPrefsShape) {
+  const next = fromServerPrefs(p);
+  const cur = getPrefs();
+  const diff: Partial<Prefs> = {};
+  for (const k of Object.keys(next) as (keyof Prefs)[]) {
+    if (pending.has(k)) continue;
+    // "Follow the browser" stays when the server holds the language the browser resolves to.
+    if (k === 'language' && cur.language === null && next.language === serverLanguage(null)) continue;
+    if (next[k] !== cur[k]) (diff as Record<string, unknown>)[k] = next[k];
+  }
+  if (Object.keys(diff).length) writeLocal(diff);
 }
 
 function subscribe(onChange: () => void): () => void {
@@ -231,7 +385,7 @@ export { convertUsd, formatPrice, useFormatPrice, MOCK_USD_RATES } from './curre
 
 // D-010: apply the theme preference as soon as prefs load, and keep it applied.
 import { applyTheme as apply } from './theme';
-if (typeof window !== 'undefined') {
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
   apply(getPrefs().theme);
   window.addEventListener(PREFS_EVENT, () => apply(getPrefs().theme));
   window.addEventListener('storage', () => apply(getPrefs().theme));
