@@ -22,6 +22,9 @@ Better Auth on D1, mounted at `/api/auth/*`. The session cookie is `__Secure-rol
 | GET/POST | `/api/auth/callback/:provider` | OAuth return (Apple posts a form). Sets the session cookie and redirects (302) to `callbackURL`; on failure redirects to `errorCallbackURL` (default `/api/auth/error`) with `?error=<code>` |
 | GET | `/api/auth/get-session` | Better Auth session read (`{ session, user }` or `null`); prefer `/api/me` |
 | POST | `/api/auth/logout` | Ends the session (D1 row deleted, cookie cleared) → `{ ok: true }`; always 200 |
+| POST | `/api/auth/email-otp/request-email-change` | Signed in. `{ newEmail }` → `{ success: true }`; emails a 6-digit code (10 min) to the **new** address (nothing is sent when the address already has an account). `429 RATE_LIMITED` (30 s cooldown per address; 5 per minute per address + IP) |
+| POST | `/api/auth/email-otp/change-email` | Signed in. `{ newEmail, otp }` → `{ success: true }`; the account's email becomes `newEmail` (verified) and the session cookie is refreshed. `400 INVALID_CODE` / `CODE_EXPIRED`, `429 TOO_MANY_ATTEMPTS`, `409 CONFLICT data.reason: EMAIL_IN_USE` |
+| * | `/api/auth/delete-user`, `/api/auth/delete-user/*` | Closed (`404`): account deletion goes through `POST /api/me/delete` |
 
 Signed-out callers of member routes get `401 UNAUTHENTICATED`. The current workspace is the `x-workspace-id` header (WebSocket upgrades: `?workspaceId=`), validated against membership (`403 FORBIDDEN`, malformed `400 BAD_REQUEST`); without it, the user's personal workspace. Every `/api` route sees the same context `{ userId, workspaceId, role, plan, isMember, matureAllowed, prefs, memberships }` (REST, GraphQL context `auth`, WebSockets). In `ENVIRONMENT=development` only (local dev, tests), the `x-dev-user: <id>` header (or `?devUser=`) stands in for a session.
 
@@ -30,6 +33,9 @@ Signed-out callers of member routes get `401 UNAUTHENTICATED`. The current works
 |---|---|---|
 | GET | `/api/me` | See shape below. `private, no-store` |
 | PATCH | `/api/me/prefs` | Any subset of `{ language, currency, creationMode, defaultRatio, defaultModel, confirmThreshold, notifications, theme, matureContent }` → `{ prefs, matureAllowed }`. Unknown keys or an empty body → `400 VALIDATION_FAILED`. `matureContent: true` without an active plan → `402 NO_PLAN`. Pushes `prefs.changed { prefs }` to the user's sockets |
+| PATCH | `/api/me/profile` | Any subset of `{ name, handle, bio, avatarAssetId }` → `{ profile: { name, handle, bio, image } }`. `name` 1–80 chars; `handle` 3–30 of `a-z 0-9 _ .` (a leading `@` is dropped, stored lowercase); `bio` ≤ 160 (empty clears); unknown keys or an empty body → `400 VALIDATION_FAILED`. A handle taken by someone else (case-insensitive) or reserved (`admin`, `settings`, `api`, …) → `409 HANDLE_TAKEN`. `avatarAssetId`: an image asset the caller uploaded (assets upload pipeline) → rated now if unrated (D-005); anything but `safe` → `422 AVATAR_REJECTED data: { reason: "rating", rating }` (or `reason: "blocked"`), classifier down → `503 SAFETY_UNAVAILABLE`, someone else's asset → `404`; a 256 px WebP is stored under the personal workspace and `users.image` becomes `/api/media/avatar/<userId>?v=<version>`. `avatarAssetId: null` removes it |
+| POST | `/api/me/delete/send-code` | Emails a 6-digit code (10 min) to the account's address → `{ sent: true, email, expiresInMinutes, workspacesToDelete }`. `409 OWNER_OF_TEAM data: { workspaces: [{ id, name, members }] }` when the user owns a Team workspace with other members and no other owner (transfer ownership first). `429 RATE_LIMITED` (30 s cooldown) |
+| POST | `/api/me/delete` | `{ code }` → `{ ok: true }` and the session cookie cleared. Errors: `400 INVALID_CODE` (`data.attemptsLeft`), `400 CODE_EXPIRED`, `429 TOO_MANY_ATTEMPTS` (5 wrong codes; ask for a new one), `409 OWNER_OF_TEAM`, `502 INTERNAL` (Stripe cancel failed; nothing deleted). Effects below |
 
 `GET /api/me`:
 
@@ -53,9 +59,25 @@ Signed-out callers of member routes get `401 UNAUTHENTICATED`. The current works
 ```
 
 - `plan` when the workspace has an active plan (subscription `active`/`trialing`, period not over): `{ id: "starter"|"plus"|"pro"|"team", label, interval: "month"|"year", status, currentPeriodEnd, cancelAtPeriodEnd, perks: { monthlyCredits, topUpBonus, concurrentJobs, maxVideoResolution, maxImageResolution, voiceCloning, seats } }` (perks from `PLANS`, D-006; Team `monthlyCredits`, `concurrentJobs` and `seats` follow purchased seats, D-013).
+- `user.handle` (null until chosen) and `user.bio` (null when empty) drive the public profile `/u/:handle`; `user.image` is the avatar URL (`/api/media/avatar/…`, or a Google/Apple photo).
 - `isMember` = active plan (D-007). `matureAllowed` = member && `prefs.matureContent` && `workspace.matureAllowed` (D-005).
 - `balance` from `CreditAccount.balance()`; zeros until that RPC is available.
 - Prefs values: `language` ∈ en, ja, zh-TW, zh-HK, ko, id, th, vi, es, pt-BR, de, fr; `currency` ∈ USD, EUR, GBP, JPY, TWD, HKD, KRW, IDR, THB, VND, BRL; `creationMode` ∈ simple, advanced; `defaultRatio` ∈ 16:9, 9:16, 1:1, 4:5, 21:9; `theme` ∈ system, light, dark (D-010); `confirmThreshold` integer 0–100000 credits (0 = always confirm); `notifications` partial `{ done, low, renewal, product }` booleans, merged. Sign-up defaults: language and currency from `Accept-Language` (unsupported → en / USD), the rest as shown above.
+
+**Public profiles** (no session needed):
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/profiles/:handle` | Case-insensitive → `{ userId, name, handle, bio, avatarUrl, works: [{ shareId, title, url, coverUrl, kind: "image"\|"video", durationSec, createdAt }], templates: [{ id, title, category, coverUrl, uses }], isYou }`; `404` unknown. `works` = the user's active share links with `showOnProfile` whose cover asset is rated `safe` and not mature (re-checked on every read, D-005; covers without a rating are not listed); `templates` = global templates (`workspace_id` NULL) with `created_by` = the user and a safe preview. `coverUrl`s are signed for 1 h |
+| GET | `/api/media/avatar/:userId` | `302` to a signed URL (1 h) of the avatar image; `404` when none is set or its source has been rated mature since. `Cache-Control: public, max-age=300`. Never carries bytes (D-008) |
+
+**Account deletion** (`POST /api/me/delete`) runs Better Auth `deleteUser` with a one-time token; its `beforeDelete` hook (`apps/api/src/auth/deleteAccount.ts`): every owned workspace without another owner is removed — its live Stripe subscription is set to `cancel_at_period_end` (idempotency key `account-delete:<subId>`), the row is soft-deleted (`workspaces.deleted_at`, kept for webhooks and ledger history), members, pending invites, projects (share links revoked), assets, uploads, characters, voices, workspace templates and agent threads are deleted and `ws/<id>/` is queued in `r2_cleanup` (the 5-minute sweep cron deletes the objects); Team workspaces with another owner are just left. Then memberships elsewhere are removed, `ledger_lines.user_id`, `assets.created_by`, `share_links.created_by` (and `show_on_profile`), `templates.created_by`, `characters.created_by` and `feedback.user_id` are set to NULL, prefs and the avatar go, and Better Auth deletes the user, linked accounts and every session. `safety_events` rows are kept for review. The CreditAccount DO's own ledger keeps user ids (internal, per workspace).
+
+**Feedback:**
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/api/feedback` | Signed in. `{ message (1–5000), kind: "bug"\|"idea"\|"other" (default other), page? (≤ 500), includeDiagnostics? (false) }` → `201 { id, received: true }`. Stored in D1 `feedback`; diagnostics are collected server-side (user agent, country, workspace, role, plan, language, time). Emailed to `FEEDBACK_TO` when set. `429 RATE_LIMITED` after 10 per hour per user |
 
 WebSocket `/api/ws` (UserHub) is the global socket (D-014): one per browser, multiplexed by channel — see **Global WebSocket** below. It needs a session (refused with close code `4401` otherwise). User-channel messages: `hello`, `prefs.changed { prefs }`, `credits.changed`, `activity.updated`, `agent.allowance`, `notification`.
 
@@ -106,6 +128,7 @@ M2. All amounts in credits are integers (1 credit = $0.01 retail, D-006); money 
 | GET | `/api/billing/seats/preview?seats=N` | owner | Team (D-013): `{ seats, current, used, interval, prorationCents, renewalCents, periodEnd, addedMonthlyCredits }`. `prorationCents` estimates the charge now for added seats (Stripe invoices the exact amount); `renewalCents` = base + (seats − 1) × seat price. Not on Team → `402 TEAM_REQUIRED { currentPlan }` |
 | PATCH | `/api/billing/seats` | owner | Team (D-013): `{ seats }` (members incl. owner, 1..200) → `{ seats: { purchased, used }, granted, changed, balance? }`. Increase: Stripe `proration_behavior: always_invoice` + `payment_behavior: pending_if_incomplete` (charged now, applied only once paid; declined → `402 PAYMENT_FAILED`, seats unchanged); `granted` = prorated plan credits for the added seats. Decrease: `proration_behavior: none` (no refund; the next invoice charges fewer seats). Below seats in use → `409 SEATS_IN_USE { seats, used }`. Not on Team → `402 TEAM_REQUIRED { currentPlan }`. Optional `Idempotency-Key` header |
 | POST | `/api/billing/portal` | owner | `{ returnTo? }` → `{ url }` (Stripe customer portal: card, plan change, cancel, invoices). No Stripe customer yet → `402 NO_PLAN` |
+| GET | `/api/billing/payment-method` | owner | `{ paymentMethod: { id, type, brand, last4, expMonth, expYear, wallet } \| null }` — the Stripe customer's default payment method (else the live subscription's); null without a customer or card. Changes go through the portal |
 | PATCH | `/api/billing/auto-topup` | owner | `{ enabled, thresholdCredits? = 200, amountCents? = 1000 }` → `{ autoTopUp: { enabled, thresholdCredits, amountCents } }`. Enabling without a plan → `402 NO_PLAN`; amount outside $10–$10,000 → `400 VALIDATION_FAILED` |
 | GET | `/api/billing/ledger` | any member | `?first=1..100 (25)&after=<cursor>` → `{ lines: LedgerLine[], pageInfo: { hasNextPage, endCursor } }`, newest first |
 | GET | `/api/billing/invoices` | owner | `{ invoices: [{ id, number, createdAt, amountCents, currency, status, url, pdfUrl }] }` (Stripe invoices: plans and top-ups) |
@@ -208,7 +231,7 @@ All act on the current workspace (`x-workspace-id`, default personal). Only Team
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/api/workspace/members` | Any member → `{ members: [{ userId, name, email, image, role, monthlyCreditLimit, isYou }], invites: [{ id, email, role, invitedBy, createdAt, expiresAt }] (owners only; others get []), seats: { used, limit, team } }`. `limit` = purchased Team seats (1 without Team); `team` = the workspace is on Team |
-| POST | `/api/workspace/invites` | Owner. `{ email, role: "editor"\|"viewer" }` → `201 { invite }` and an email with the link `<PUBLIC_APP_URL>/invite/<token>` (valid 7 days). A new invite to the same address replaces the pending one. Errors: `402 TEAM_REQUIRED` (`data: { currentPlan }`, null without a plan) → open "Start Team to invite people"; `402 SEATS_REQUIRED` (`data: { seats, used, needed }`, `needed` = total seats this invite requires) → open "Add seats"; `409 CONFLICT` (already a member), `403 FORBIDDEN` (not owner) |
+| POST | `/api/workspace/invites` | Owner. `{ email, role: "editor"\|"viewer", monthlyCreditLimit?: integer ≥ 0 \| null }` → `201 { invite }` (`invite.monthlyCreditLimit`; applied to the member on accept) and an email with the link `<PUBLIC_APP_URL>/invite/<token>` (valid 7 days). A new invite to the same address replaces the pending one. Errors: `402 TEAM_REQUIRED` (`data: { currentPlan }`, null without a plan) → open "Start Team to invite people"; `402 SEATS_REQUIRED` (`data: { seats, used, needed }`, `needed` = total seats this invite requires) → open "Add seats"; `409 CONFLICT` (already a member), `403 FORBIDDEN` (not owner) |
 | GET | `/api/workspace/invites/lookup?token=` | No session needed → `{ workspace: { id, name }, inviterName, email, role, expiresAt, state: "pending"\|"accepted"\|"revoked"\|"expired" }`; `404` unknown token. For the `/invite/:token` screen |
 | POST | `/api/workspace/invites/accept` | Session required. `{ token }` → `{ workspace: { id, name, kind }, role }`. The signed-in email must match the invite (`403 FORBIDDEN`); used/expired/revoked → `409 CONFLICT` (`data.state`); the workspace left Team → `402 TEAM_REQUIRED`; no free seat → `402 SEATS_REQUIRED`. Then switch with `x-workspace-id` |
 | DELETE | `/api/workspace/invites/:id` | Owner; revokes a pending invite → `{ ok: true }` |
@@ -499,10 +522,14 @@ One canvas per project: `canvasId = "cnv_" + <project ULID>` (from `snapshot.can
 
 ## Sharing
 
+Share settings: `audience` (`link` = anyone with the link, default; `workspace` = signed-in members of the project's workspace), `allowDownload` (false), `showPrompt` (true; prompt fields — any `params` key containing "prompt" — are left out of the snapshot and the read when false), `showOnProfile` (false; "Publish to profile": the share's cover — first video, else first image — appears on the author's public profile when it is rated safe).
+
 | Method | Path | Notes |
 |---|---|---|
-| POST | `/api/projects/:id/share` | `{ allowDownload? (false) }` → `201 { shareId, url, apiUrl, allowDownload, createdAt }` (editor+). Writes a JSON snapshot of the graph to R2 (`shares/<shareId>.json`). Re-sharing refreshes the snapshot and keeps the same link. `url` is `<PUBLIC_APP_URL>/share/<shareId>` (SPA route) |
+| GET | `/api/projects/:id/share` | Any member → `{ enabled, shareId, url, snapshotAt, audience, allowDownload, showPrompt, showOnProfile }`; without an active link `enabled: false`, `shareId`/`url`/`snapshotAt` null and the default settings |
+| POST | `/api/projects/:id/share` | Editor+. Any subset of the settings → `201 { shareId, url, apiUrl, createdAt, audience, allowDownload, showPrompt, showOnProfile }`. Writes a JSON snapshot of the graph to R2 (`shares/<shareId>.json`). Re-sharing refreshes the snapshot (re-publish) and keeps the same link; settings not given keep their current values. `url` is `<PUBLIC_APP_URL>/share/<shareId>` (SPA route) |
+| PATCH | `/api/projects/:id/share` | Editor+. Settings toggles without re-publishing (same `snapshotAt`) → the `GET` shape. `404` without an active link; empty body → `400`. Turning `showPrompt` on takes effect at the next publish (the current snapshot has no prompts); turning it off hides them at once |
 | DELETE | `/api/projects/:id/share` | revokes the project's links and deletes their snapshots → `{ ok, revoked }` |
-| GET | `/api/share/:shareId` | public, no auth → `{ shareId, title, revision, createdAt, allowDownload, nodes: [{ id, kind, title, params, position, groupId, media: { kind, url, thumbUrl, downloadUrl } \| null }], edges, groups }`; `404` when missing or revoked. URLs are signed for 1 h at read time; `downloadUrl` only when downloads are allowed |
+| GET | `/api/share/:shareId` | `link`: public, no auth; `workspace`: only signed-in members of the project's workspace (others `404`) → `{ shareId, title, revision, createdAt, allowDownload, audience, showPrompt, nodes: [{ id, kind, title, params, position, groupId, media: { kind, url, thumbUrl, downloadUrl } \| null }], edges, groups }`; `404` when missing or revoked. URLs are signed for 1 h at read time; `downloadUrl` only when downloads are allowed |
 
 D-005: a share never includes mature outputs. At share time nodes are dropped (with their edges) when their output asset is mature, their model is mature, `params.mature` is true, or an asset node references a mature asset; mature and foreign asset ids are scrubbed from the remaining params. At read time every asset is re-checked and newly mature ones lose their media.

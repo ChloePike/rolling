@@ -24,6 +24,15 @@ describe('email templates', () => {
     expect(e.text).toContain('as a viewer');
     expect(() => renderEmail('sign-in-code', { code: 'abc', expiresInMinutes: 10 })).toThrow();
   });
+
+  it('renders the email-change and account-deletion codes and escapes feedback', () => {
+    expect(renderEmail('change-email-code', { code: '654321', expiresInMinutes: 10 }).text).toContain('654321');
+    expect(renderEmail('delete-account-code', { code: '111222', expiresInMinutes: 10 }).subject).toBe('Your Rolling account deletion code is 111222');
+    const f = renderEmail('feedback', { id: 'fbk_1', kind: 'bug', message: '<script>x</script> broke', page: '/home', userId: 'usr_1', userEmail: 'a@b.c', diagnostics: null });
+    expect(f.subject).toBe('[Rolling feedback] bug: <script>x</script> broke');
+    expect(f.html).toContain('&lt;script&gt;');
+    expect(f.text).toContain('Page: /home');
+  });
 });
 
 describe('ResendEmailProvider', () => {

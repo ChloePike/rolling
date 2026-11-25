@@ -27,6 +27,8 @@ import { assets, characters, voices } from "./routes/assets";
 import { uploads } from "./routes/uploads";
 import { privateMedia, share, signedMedia } from "./routes/signedMedia";
 
+import { avatars, profiles } from "./routes/profiles";
+import { feedback } from "./routes/feedback";
 export { ProjectRoom } from "./do/ProjectRoom";
 export { UserHub } from "./do/UserHub";
 export { CreditAccount } from "./do/CreditAccount";
@@ -61,6 +63,9 @@ const api = new Hono<AppEnv>()
   .route("/media", media)
   .route("/models", models)
   .route("/runs", runs)
+  .route("/media/avatar", avatars)
+  .route("/profiles", profiles)
+  .route("/feedback", feedback)
   .route("/agent", agent)
   .route("/hooks", hooks)
   .route("/", realtime)

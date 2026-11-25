@@ -14,6 +14,7 @@ import { appleClientSecret } from "@rolling/core/auth/appleSecret";
 import { newId, type IdKind } from "@rolling/core/ids";
 import { emailProviderName, enqueueEmail } from "./email";
 import { onUserCreated } from "./workspace";
+import { purgeAccount } from "./deleteAccount";
 
 /** Email code: 6 digits, valid 10 minutes, 5 tries per code. */
 export const OTP_LENGTH = 6;
@@ -94,6 +95,13 @@ async function buildAuth(env: Env) {
     user: {
       modelName: "users",
       fields: { emailVerified: "email_verified", createdAt: "created_at", updatedAt: "updated_at" },
+      // Reached only through `POST /api/me/delete` (emailed code → one-time token); `/api/auth/delete-user*` is blocked.
+      deleteUser: {
+        enabled: true,
+        beforeDelete: async (user) => {
+          await purgeAccount(env, user.id);
+        },
+      },
     },
     session: {
       modelName: "sessions",
@@ -136,8 +144,14 @@ async function buildAuth(env: Env) {
         expiresIn: OTP_TTL_SECONDS,
         allowedAttempts: OTP_ALLOWED_ATTEMPTS,
         storeOTP: "hashed",
+        // Email change: a code to the new address (`/api/auth/email-otp/request-email-change`, then `/change-email`).
+        changeEmail: { enabled: true },
         async sendVerificationOTP({ email, otp, type }) {
-          if (type !== "sign-in") return; // Only the sign-in flow is offered.
+          if (type === "change-email") {
+            await enqueueEmail(env, { to: email, template: "change-email-code", data: { code: otp, expiresInMinutes: OTP_TTL_SECONDS / 60 } });
+            return;
+          }
+          if (type !== "sign-in") return; // Only sign-in and email change are offered.
           await enqueueEmail(env, {
             to: email,
             template: "sign-in-code",

@@ -14,11 +14,15 @@ import { mediaUrlFor } from "../lib/mediaUrls";
 import { orFail, unwrap } from "../lib/room";
 import { validate } from "../lib/validate";
 import { projectIdForCanvas } from "../do/ProjectRoom";
-import { createShare, revokeShares } from "../lib/share";
+import { createShare, revokeShares, shareState, updateShareSettings } from "../lib/share";
 
 const Id = z.string().min(1).max(80).regex(/^[A-Za-z0-9_-]+$/);
 const IdParam = z.object({ id: Id });
 const Title = z.string().trim().min(1).max(120);
+const ShareSettingsBody = z
+  .object({ allowDownload: z.boolean(), showOnProfile: z.boolean(), showPrompt: z.boolean(), audience: z.enum(["link", "workspace"]) })
+  .partial()
+  .strict();
 
 export interface ProjectView {
   id: string;
@@ -166,12 +170,27 @@ export const projects = new Hono<AppEnv>()
     const result = unwrap(await room.redo(caller));
     return c.json({ revision: result.revision, ops: result.ops, statuses: result.statuses });
   })
-  .post("/:id/share", validate("param", IdParam), validate("json", z.object({ allowDownload: z.boolean().default(false) })), async (c) => {
+  .get("/:id/share", validate("param", IdParam), async (c) => {
+    const id = c.req.valid("param").id;
+    await access(c, id, "viewer");
+    c.header("cache-control", "private, no-store");
+    return c.json(await shareState(c.env, id));
+  })
+  /** Publishes (or re-publishes) the snapshot; settings not given keep their current values. */
+  .post("/:id/share", validate("param", IdParam), validate("json", ShareSettingsBody), async (c) => {
     const id = c.req.valid("param").id;
     const { auth, acc, caller, room } = await access(c, id, "editor");
     const graph = orFail(await room.getGraph(caller));
-    const share = await createShare(c.env, { project: acc.project, userId: auth.userId, allowDownload: c.req.valid("json").allowDownload, graph });
+    const share = await createShare(c.env, { project: acc.project, userId: auth.userId, settings: c.req.valid("json"), graph });
     return c.json(share, 201);
+  })
+  /** Toggles settings of the active link without re-publishing the snapshot. */
+  .patch("/:id/share", validate("param", IdParam), validate("json", ShareSettingsBody.refine((v) => Object.keys(v).length > 0, { message: "Nothing to update" })), async (c) => {
+    const id = c.req.valid("param").id;
+    const { auth } = await access(c, id, "editor");
+    const state = await updateShareSettings(c.env, id, auth.userId, c.req.valid("json"));
+    if (!state) throw new ApiError(404, "NOT_FOUND", "This project has no share link");
+    return c.json(state);
   })
   .delete("/:id/share", validate("param", IdParam), async (c) => {
     const id = c.req.valid("param").id;

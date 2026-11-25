@@ -92,6 +92,11 @@ export class FakeStripe {
       if (!c) return json({ error: { message: "No such customer", code: "resource_missing" } }, 404);
       return json({ id: c.id, object: "customer", invoice_settings: { default_payment_method: c.default_payment_method } });
     }
+    if (method === "GET" && (m = /^\/v1\/payment_methods\/([^/]+)$/.exec(p))) {
+      if (!m[1]!.startsWith("pm_card_")) return json({ error: { message: "No such payment method", code: "resource_missing" } }, 404);
+      const brand = m[1]!.slice("pm_card_".length) || "visa";
+      return json({ id: m[1], object: "payment_method", type: "card", card: { brand, last4: brand === "visa" ? "4242" : "4444", exp_month: 8, exp_year: 2030, wallet: null } });
+    }
     if (method === "POST" && p === "/v1/checkout/sessions") {
       const id = nextId("cs_test");
       const session = { id, object: "checkout.session", url: `https://checkout.stripe.test/${id}`, form };

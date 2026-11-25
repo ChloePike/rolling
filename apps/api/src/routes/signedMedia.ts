@@ -51,11 +51,13 @@ export const privateMedia = new Hono<AppEnv>().get("/:assetId", async (c) => {
   return c.redirect(signed, 302);
 });
 
-/** `GET /api/share/:id` — public, signed out. */
+/** `GET /api/share/:id` — public for `link` shares; `workspace` shares need a signed-in member (else 404). */
 export const share = new Hono<AppEnv>().get("/:id", async (c) => {
   const id = c.req.param("id");
   if (!/^shr_[A-Za-z0-9]+$/.test(id)) return errorResponse(c, 404, "NOT_FOUND", "Share link not found");
-  const doc = await readShare(c.env, id);
+  // Workspace-only links need a signed-in member (the auth middleware resolves the session when present).
+  const auth = c.get("auth");
+  const doc = await readShare(c.env, id, auth ? { memberOf: (ws) => auth.memberships.some((m) => m.workspaceId === ws) } : null);
   if (!doc) return errorResponse(c, 404, "NOT_FOUND", "Share link not found");
   c.header("cache-control", "no-store");
   return c.json(doc);

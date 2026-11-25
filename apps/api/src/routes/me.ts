@@ -1,8 +1,16 @@
 /**
- * Account (M1): `GET /api/me`, `PATCH /api/me/prefs`.
+ * Account (M1): `GET /api/me`, `PATCH /api/me/prefs`, `PATCH /api/me/profile`,
+ * and account deletion (`POST /api/me/delete/send-code`, `POST /api/me/delete`).
  */
 import { Hono } from "hono";
+import { z } from "zod";
 import { applyPrefsPatch, PrefsPatch, type Prefs } from "@rolling/core/auth/prefs";
+import { ProfilePatch } from "@rolling/core/auth/profile";
+import { getAuth } from "../auth/betterAuth";
+import { deletionPlan, deleteToken, DELETE_CODE_TTL_SECONDS, issueDeleteCode, verifyDeleteCode } from "../auth/deleteAccount";
+import { enqueueEmail } from "../auth/email";
+import { readProfileRow, updateProfile } from "../auth/profile";
+import { clientIp, limitOrThrow, sha256Hex } from "../auth/rateLimit";
 import { PLANS, planConcurrentJobs, planMonthlyCredits, type PlanId } from "@rolling/core/pricing/config";
 import type { AppEnv } from "../env";
 import { requireUser, type AuthContext } from "../auth/context";
@@ -68,7 +76,7 @@ function planView(sub: SubscriptionRow | null) {
 }
 
 export async function mePayload(env: Env, auth: AuthContext) {
-  const [sub, balance] = await Promise.all([
+  const [sub, balance, profile] = await Promise.all([
     auth.plan
       ? env.DB.prepare(
           `SELECT plan, interval, status, current_period_end, cancel_at_period_end, seats FROM subscriptions
@@ -79,9 +87,12 @@ export async function mePayload(env: Env, auth: AuthContext) {
           .first<SubscriptionRow>()
       : Promise.resolve(null),
     readBalance(env, auth.workspaceId),
+    readProfileRow(env, auth.userId).catch(() => null),
   ]);
+  const user = auth.user ?? { id: auth.userId, email: null, name: "", image: null, emailVerified: false };
   return {
-    user: auth.user ?? { id: auth.userId, email: null, name: "", image: null, emailVerified: false },
+    // `handle` (null until chosen) and `bio` (null when empty) for the public profile `/u/:handle`.
+    user: { ...user, handle: profile?.handle ?? null, bio: profile?.bio ?? null },
     workspace: auth.workspace,
     role: auth.role,
     monthlyCreditLimit: auth.monthlyCreditLimit,
@@ -139,4 +150,51 @@ export const me = new Hono<AppEnv>()
       }),
     );
     return c.json({ prefs, matureAllowed: auth.isMember && prefs.matureContent && auth.workspace.matureAllowed });
+  })
+  /** Name, handle, bio and avatar (`avatarAssetId`: the caller's uploaded image, rated safe; null removes it). */
+  .patch("/profile", validate("json", ProfilePatch), async (c) => {
+    const auth = requireUser(c);
+    if (!auth.user) throw new ApiError(401, "UNAUTHENTICATED", "Sign in required");
+    await limitOrThrow(c.env.RATE_LIMIT, `profile:${auth.userId}`);
+    const profile = await updateProfile(c.env, auth, c.req.valid("json"));
+    return c.json({ profile });
+  })
+  /**
+   * Account deletion, step 1: checks the account can go (OWNER_OF_TEAM) and
+   * emails a 6-digit code to the account's address (30 s resend cooldown).
+   */
+  .post("/delete/send-code", async (c) => {
+    const auth = requireUser(c);
+    if (!auth.user?.email) throw new ApiError(401, "UNAUTHENTICATED", "Sign in required");
+    await limitOrThrow(c.env.AUTH_RATE_LIMIT, `delete-code:${auth.userId}:${clientIp(c.req.raw)}`, "Too many codes requested. Try again in a minute.");
+    const plan = await deletionPlan(c.env, auth.userId);
+    const now = Date.now();
+    const key = await sha256Hex(`delete:${auth.userId}`);
+    const reserved = await c.env.DB.prepare(
+      `INSERT INTO auth_email_sends (email, last_sent_at) VALUES (?1, ?2)
+       ON CONFLICT (email) DO UPDATE SET last_sent_at = excluded.last_sent_at WHERE auth_email_sends.last_sent_at <= ?3 RETURNING last_sent_at`,
+    )
+      .bind(key, now, now - 30_000)
+      .first();
+    if (!reserved) throw new ApiError(429, "RATE_LIMITED", "Wait a moment before asking for another code", { retryAfter: 30 });
+    const code = await issueDeleteCode(c.env, auth.userId, now);
+    await enqueueEmail(c.env, { to: auth.user.email, template: "delete-account-code", data: { code, expiresInMinutes: DELETE_CODE_TTL_SECONDS / 60 } });
+    return c.json({ sent: true, email: auth.user.email, expiresInMinutes: DELETE_CODE_TTL_SECONDS / 60, workspacesToDelete: plan.remove.length });
+  })
+  /** Account deletion, step 2: `{ code }` → the account is deleted, the session cookie cleared. */
+  .post("/delete", validate("json", z.object({ code: z.string().trim().regex(/^\d{6}$/, "Code must be 6 digits") }).strict()), async (c) => {
+    const auth = requireUser(c);
+    if (!auth.user || !auth.sessionId) throw new ApiError(401, "UNAUTHENTICATED", "Sign in required");
+    await limitOrThrow(c.env.AUTH_RATE_LIMIT, `delete-verify:${auth.userId}:${clientIp(c.req.raw)}`, "Too many attempts. Try again in a minute.");
+    // Refuse before spending the code when a Team still needs a new owner.
+    await deletionPlan(c.env, auth.userId);
+    await verifyDeleteCode(c.env, auth.userId, c.req.valid("json").code);
+    const token = await deleteToken(c.env, auth.userId);
+    const betterAuth = await getAuth(c.env);
+    // Runs `beforeDelete` (purgeAccount), deletes the user, accounts and sessions, expires the cookie.
+    const { headers } = await betterAuth.api.deleteUser({ body: { token }, headers: c.req.raw.headers, returnHeaders: true });
+    const out = c.json({ ok: true });
+    for (const v of headers.getSetCookie()) out.headers.append("set-cookie", v);
+    c.set("authSetCookies", []);
+    return out;
   });

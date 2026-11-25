@@ -4,6 +4,7 @@ import { reconcileLedgers } from "./ops/reconcile";
 import { requeuePendingMedia } from "./queues/mediaProcess";
 import { cleanupExpiredUploads } from "./routes/uploads";
 import { advanceStalledRuns } from "./runs/service";
+import { runR2Cleanup } from "./auth/deleteAccount";
 
 /** Model catalog sync (D-002) and expired upload cleanup (D-011). */
 export const MODEL_SYNC_CRON = "0 */6 * * *";
@@ -30,6 +31,8 @@ export async function handleScheduled(controller: ScheduledController, env: Env,
     case SWEEP_CRON:
       run(ctx, "runs: stalled sweep", () => advanceStalledRuns(env));
       run(ctx, "media: requeue pending", () => requeuePendingMedia(env));
+      // Account deletion: private media of removed workspaces.
+      run(ctx, "r2: cleanup", () => runR2Cleanup(env));
       return;
     case RECONCILE_CRON:
       run(ctx, "ledger: reconcile", () => reconcileLedgers(env));

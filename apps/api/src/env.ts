@@ -55,6 +55,8 @@ interface RollingSecrets {
   STRIPE_API_VERSION?: string;
   /** Optional: Stripe API origin override (tests, stripe-mock). */
   STRIPE_API_BASE?: string;
+  /** Not a secret (var or secret): address that receives Help → Send feedback; empty = stored in D1 only. */
+  FEEDBACK_TO?: string;
 }
 
 declare global {

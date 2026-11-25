@@ -154,39 +154,141 @@ export async function buildShareDoc(
   };
 }
 
-export interface ShareInfo {
+export type ShareAudience = "link" | "workspace";
+
+export interface ShareSettings {
+  /** `link`: anyone with the link; `workspace`: signed-in members of the project's workspace. */
+  audience: ShareAudience;
+  allowDownload: boolean;
+  /** Prompts stay in the snapshot (and the public read) only when true. */
+  showPrompt: boolean;
+  /** "Publish to profile": the cover appears on the author's public profile (only when public-safe, D-005). */
+  showOnProfile: boolean;
+}
+
+export const DEFAULT_SHARE_SETTINGS: ShareSettings = { audience: "link", allowDownload: false, showPrompt: true, showOnProfile: false };
+
+export interface ShareInfo extends ShareSettings {
   shareId: string;
   url: string;
   apiUrl: string;
-  allowDownload: boolean;
   createdAt: number;
 }
 
-function shareInfo(env: Env, id: string, allowDownload: boolean, createdAt: number): ShareInfo {
-  return { shareId: id, url: `${env.PUBLIC_APP_URL.replace(/\/+$/, "")}/share/${id}`, apiUrl: `/api/share/${id}`, allowDownload, createdAt };
+/** `GET /api/projects/:id/share`. */
+export interface ShareState extends ShareSettings {
+  enabled: boolean;
+  shareId: string | null;
+  url: string | null;
+  /** When the snapshot was last written (epoch ms), null without a link. */
+  snapshotAt: number | null;
 }
 
-/** Creates the share link, or refreshes the snapshot of the project's active link (same id). */
+interface LinkRow {
+  id: string;
+  project_id: string;
+  workspace_id: string | null;
+  snapshot_key: string;
+  allow_download: number;
+  show_on_profile: number;
+  show_prompt: number;
+  audience: ShareAudience;
+  created_at: number;
+}
+
+function shareUrl(env: Env, id: string): string {
+  return `${env.PUBLIC_APP_URL.replace(/\/+$/, "")}/share/${id}`;
+}
+
+function settingsOf(row: LinkRow): ShareSettings {
+  return { audience: row.audience === "workspace" ? "workspace" : "link", allowDownload: row.allow_download === 1, showPrompt: row.show_prompt === 1, showOnProfile: row.show_on_profile === 1 };
+}
+
+function shareInfo(env: Env, id: string, settings: ShareSettings, createdAt: number): ShareInfo {
+  return { shareId: id, url: shareUrl(env, id), apiUrl: `/api/share/${id}`, ...settings, createdAt };
+}
+
+async function activeLink(env: Env, projectId: string): Promise<LinkRow | null> {
+  return env.DB.prepare("SELECT * FROM share_links WHERE project_id = ? AND revoked_at IS NULL ORDER BY created_at DESC LIMIT 1").bind(projectId).first<LinkRow>();
+}
+
+/** Profile cover of a share: the first video in the snapshot, else the first image (the profile re-checks its rating). */
+export function shareCover(doc: ShareDoc): string | null {
+  const withAsset = doc.nodes.filter((n) => n.assetId && doc.assets[n.assetId]);
+  const pick = withAsset.find((n) => doc.assets[n.assetId!]!.kind === "video") ?? withAsset.find((n) => doc.assets[n.assetId!]!.kind === "image");
+  return pick?.assetId ?? null;
+}
+
+const PROMPT_KEY = /prompt/i;
+
+/** Drops prompt fields (`prompt`, `negativePrompt`, ...) from node params, at any depth. */
+export function stripPrompts(params: Record<string, unknown>): Record<string, unknown> {
+  const walk = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === "object") {
+      const out: Record<string, unknown> = {};
+      for (const [k, x] of Object.entries(v)) if (!PROMPT_KEY.test(k)) out[k] = walk(x);
+      return out;
+    }
+    return v;
+  };
+  return walk(params) as Record<string, unknown>;
+}
+
+/**
+ * Creates the share link, or refreshes the snapshot of the project's active
+ * link (same id). Settings not given keep the link's current values (defaults
+ * for a new link). Prompts are left out of the snapshot unless `showPrompt`.
+ */
 export async function createShare(
   env: Env,
-  input: { project: ProjectRow; userId: string; allowDownload: boolean; graph: { state: GraphState; assets: Record<string, string>; ratings?: Record<string, string> } },
+  input: { project: ProjectRow; userId: string; settings: Partial<ShareSettings>; graph: { state: GraphState; assets: Record<string, string>; ratings?: Record<string, string> } },
 ): Promise<ShareInfo> {
-  const existing = await env.DB.prepare("SELECT id FROM share_links WHERE project_id = ? AND revoked_at IS NULL ORDER BY created_at DESC LIMIT 1")
-    .bind(input.project.id)
-    .first<{ id: string }>();
+  const existing = await activeLink(env, input.project.id);
   const shareId = existing?.id ?? newId("share");
+  const settings: ShareSettings = { ...(existing ? settingsOf(existing) : DEFAULT_SHARE_SETTINGS), ...input.settings };
   const doc = await buildShareDoc(env, { shareId, project: input.project, graph: input.graph });
+  if (!settings.showPrompt) for (const n of doc.nodes) n.params = stripPrompts(n.params);
   await env.MEDIA.put(snapshotKey(shareId), JSON.stringify(doc), { httpMetadata: { contentType: "application/json" } });
+  const cover = shareCover(doc);
+  const flags = [settings.allowDownload ? 1 : 0, settings.showOnProfile ? 1 : 0, settings.showPrompt ? 1 : 0, settings.audience, cover] as const;
   if (existing) {
-    await env.DB.prepare("UPDATE share_links SET allow_download = ?, created_at = ? WHERE id = ?").bind(input.allowDownload ? 1 : 0, doc.createdAt, shareId).run();
+    // Re-sharing publishes as the person sharing now.
+    await env.DB.prepare("UPDATE share_links SET allow_download = ?, show_on_profile = ?, show_prompt = ?, audience = ?, cover_asset_id = ?, created_by = ?, created_at = ? WHERE id = ?")
+      .bind(...flags, input.userId, doc.createdAt, shareId)
+      .run();
   } else {
     await env.DB.prepare(
-      "INSERT INTO share_links (id, project_id, snapshot_key, allow_download, revoked_at, workspace_id, created_by, created_at) VALUES (?, ?, ?, ?, NULL, ?, ?, ?)",
+      `INSERT INTO share_links (id, project_id, snapshot_key, revoked_at, workspace_id, created_by, created_at, allow_download, show_on_profile, show_prompt, audience, cover_asset_id)
+       VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-      .bind(shareId, input.project.id, snapshotKey(shareId), input.allowDownload ? 1 : 0, input.project.workspace_id, input.userId, doc.createdAt)
+      .bind(shareId, input.project.id, snapshotKey(shareId), input.project.workspace_id, input.userId, doc.createdAt, ...flags)
       .run();
   }
-  return shareInfo(env, shareId, input.allowDownload, doc.createdAt);
+  return shareInfo(env, shareId, settings, doc.createdAt);
+}
+
+/** The project's share state (`enabled: false` with default settings when there is no active link). */
+export async function shareState(env: Env, projectId: string): Promise<ShareState> {
+  const link = await activeLink(env, projectId);
+  if (!link) return { enabled: false, shareId: null, url: null, snapshotAt: null, ...DEFAULT_SHARE_SETTINGS };
+  return { enabled: true, shareId: link.id, url: shareUrl(env, link.id), snapshotAt: link.created_at, ...settingsOf(link) };
+}
+
+/**
+ * Changes settings of the active link without re-publishing the snapshot.
+ * Turning `showPrompt` on only affects the next publish (prompts were left out
+ * of the current snapshot); turning it off hides them at once. Null when the
+ * project has no active link.
+ */
+export async function updateShareSettings(env: Env, projectId: string, userId: string, patch: Partial<ShareSettings>): Promise<ShareState | null> {
+  const link = await activeLink(env, projectId);
+  if (!link) return null;
+  const next = { ...settingsOf(link), ...patch };
+  await env.DB.prepare("UPDATE share_links SET allow_download = ?, show_on_profile = ?, show_prompt = ?, audience = ?, created_by = CASE WHEN ? THEN ? ELSE created_by END WHERE id = ?")
+    .bind(next.allowDownload ? 1 : 0, next.showOnProfile ? 1 : 0, next.showPrompt ? 1 : 0, next.audience, patch.showOnProfile === true ? 1 : 0, userId, link.id)
+    .run();
+  return { enabled: true, shareId: link.id, url: shareUrl(env, link.id), snapshotAt: link.created_at, ...next };
 }
 
 export async function revokeShares(env: Env, projectId: string): Promise<number> {
@@ -198,21 +300,21 @@ export async function revokeShares(env: Env, projectId: string): Promise<number>
 }
 
 /** Public, signed-out view of a share: fresh signed URLs, mature re-checked now. Null when missing or revoked. */
-export async function readShare(env: Env, shareId: string) {
-  const link = await env.DB.prepare("SELECT * FROM share_links WHERE id = ? AND revoked_at IS NULL")
-    .bind(shareId)
-    .first<{ id: string; project_id: string; snapshot_key: string; allow_download: number }>();
+export async function readShare(env: Env, shareId: string, viewer: { memberOf: (workspaceId: string) => boolean } | null = null) {
+  const link = await env.DB.prepare("SELECT * FROM share_links WHERE id = ? AND revoked_at IS NULL").bind(shareId).first<LinkRow>();
   if (!link) return null;
+  // `workspace` links open only for signed-in members of the project's workspace (others get 404).
+  if (link.audience === "workspace" && (!viewer || !link.workspace_id || !viewer.memberOf(link.workspace_id))) return null;
   const obj = await env.MEDIA.get(link.snapshot_key);
   if (!obj) return null;
   const doc = (await obj.json()) as ShareDoc;
   const rows = await loadAssets(env, Object.keys(doc.assets));
-  const viewer = { mayViewMature: false };
+  const publicViewer = { mayViewMature: false };
   const media: Record<string, { kind: string; url: string | null; thumbUrl: string | null }> = {};
   for (const [id, a] of Object.entries(doc.assets)) {
     const row = rows.get(id);
     if (!row || row.mature === 1) continue; // deleted or marked mature since sharing
-    const ref = (key: string | null) => (key ? mediaUrlFor(env, { key, workspaceId: a.workspaceId, mature: false }, viewer, SHARE_URL_TTL_SECONDS) : Promise.resolve(null));
+    const ref = (key: string | null) => (key ? mediaUrlFor(env, { key, workspaceId: a.workspaceId, mature: false }, publicViewer, SHARE_URL_TTL_SECONDS) : Promise.resolve(null));
     media[id] = { kind: a.kind, url: await ref(a.r2Key), thumbUrl: await ref(a.thumbKey ?? (a.kind === "image" ? a.r2Key : null)) };
   }
   return {
@@ -221,13 +323,15 @@ export async function readShare(env: Env, shareId: string) {
     revision: doc.revision,
     createdAt: doc.createdAt,
     allowDownload: link.allow_download === 1,
+    audience: link.audience,
+    showPrompt: link.show_prompt === 1,
     nodes: doc.nodes.map((n) => {
       const m = n.assetId ? media[n.assetId] : undefined;
       return {
         id: n.id,
         kind: n.kind,
         title: n.title,
-        params: n.params,
+        params: link.show_prompt === 1 ? n.params : stripPrompts(n.params),
         position: n.position,
         groupId: n.groupId,
         media: m ? { kind: m.kind, url: m.url, thumbUrl: m.thumbUrl, downloadUrl: link.allow_download === 1 ? m.url : null } : null,

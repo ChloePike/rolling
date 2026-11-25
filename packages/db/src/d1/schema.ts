@@ -17,6 +17,7 @@ import {
   real,
   sqliteTable,
   text,
+  uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
 export const workspaces = sqliteTable(
@@ -32,6 +33,8 @@ export const workspaces = sqliteTable(
     /** D-005 review flag (migration 0009): set after repeated hard-limit blocks; mature runs are refused until cleared. */
     safetyFlag: integer("safety_flag", { mode: "boolean" }).notNull().default(false),
     safetyFlaggedAt: integer("safety_flagged_at"),
+    /** Migration 0013: set when the owner deleted their account; members are removed, the row stays for Stripe and ledger history. */
+    deletedAt: integer("deleted_at"),
   },
   (t) => [check("workspaces_kind_check", sql`${t.kind} IN ('personal','team')`)],
 );
@@ -74,8 +77,15 @@ export const userPrefs = sqliteTable(
     /** D-010: system (default), light or dark. */
     theme: text("theme", { enum: ["system", "light", "dark"] }).notNull().default("system"),
     updatedAt: integer("updated_at").notNull().default(0),
+    /** Migration 0013: R2 key of the derived, safe-rated avatar (served by `/api/media/avatar/:userId`). */
+    avatarKey: text("avatar_key"),
+    avatarAssetId: text("avatar_asset_id"),
   },
-  (t) => [check("user_prefs_theme_check", sql`${t.theme} IN ('system','light','dark')`)],
+  (t) => [
+    check("user_prefs_theme_check", sql`${t.theme} IN ('system','light','dark')`),
+    // Migration 0013: handles are unique case-insensitively.
+    uniqueIndex("user_prefs_handle_ci").on(sql`lower(${t.handle})`),
+  ],
 );
 
 /*
@@ -182,6 +192,8 @@ export const workspaceInvites = sqliteTable(
     acceptedAt: integer("accepted_at"),
     acceptedBy: text("accepted_by"),
     revokedAt: integer("revoked_at"),
+    /** Migration 0013: monthly credit limit applied to the member on accept (null = no limit). */
+    monthlyCreditLimit: integer("monthly_credit_limit"),
   },
   (t) => [
     index("workspace_invites_ws").on(t.workspaceId, sql`${t.createdAt} DESC`),
@@ -585,6 +597,8 @@ export const templates = sqliteTable("templates", {
   slots: text("slots").notNull(),
   previewAssetId: text("preview_asset_id"),
   uses: integer("uses").notNull().default(0),
+  /** Migration 0013: author (public profile lists global templates they authored). */
+  createdBy: text("created_by"),
 });
 
 export const shareLinks = sqliteTable("share_links", {
@@ -596,7 +610,42 @@ export const shareLinks = sqliteTable("share_links", {
   workspaceId: text("workspace_id"),
   createdBy: text("created_by"),
   createdAt: integer("created_at").notNull().default(0),
-}, (t) => [index("share_links_project").on(t.projectId)]);
+  /** Migration 0013: "Publish to profile". */
+  showOnProfile: integer("show_on_profile", { mode: "boolean" }).notNull().default(false),
+  coverAssetId: text("cover_asset_id"),
+  /** Migration 0013: `link` (anyone with the link) or `workspace` (signed-in members only). */
+  audience: text("audience", { enum: ["link", "workspace"] }).notNull().default("link"),
+  /** Migration 0013: prompts are kept in the snapshot only when true. */
+  showPrompt: integer("show_prompt", { mode: "boolean" }).notNull().default(true),
+}, (t) => [index("share_links_project").on(t.projectId), check("share_links_audience_check", sql`${t.audience} IN ('link','workspace')`), index("share_links_profile").on(t.createdBy, t.showOnProfile, sql`${t.createdAt} DESC`)]);
+
+/** Migration 0013: R2 prefixes queued for deletion (account deletion), worked through by the sweep cron. */
+export const r2Cleanup = sqliteTable(
+  "r2_cleanup",
+  {
+    prefix: text("prefix").primaryKey(),
+    reason: text("reason").notNull(),
+    createdAt: integer("created_at").notNull(),
+    doneAt: integer("done_at"),
+  },
+  (t) => [index("r2_cleanup_pending").on(t.doneAt, t.createdAt)],
+);
+
+/** Migration 0013: Help → Send feedback. */
+export const feedback = sqliteTable(
+  "feedback",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id"),
+    workspaceId: text("workspace_id"),
+    kind: text("kind", { enum: ["bug", "idea", "other"] }).notNull(),
+    message: text("message").notNull(),
+    page: text("page"),
+    diagnostics: text("diagnostics"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [index("feedback_time").on(sql`${t.createdAt} DESC`), check("feedback_kind_check", sql`${t.kind} IN ('bug','idea','other')`)],
+);
 
 export const agentThreads = sqliteTable("agent_threads", {
   id: text("id").primaryKey(),

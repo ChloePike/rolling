@@ -15,6 +15,8 @@ export const RESEND_COOLDOWN_SECONDS = 30;
 
 const Email = z.string().trim().toLowerCase().email().max(254);
 const SendCodeBody = z.object({ email: Email, type: z.literal("sign-in") });
+const RequestEmailChangeBody = z.object({ newEmail: Email }).strict();
+const ChangeEmailBody = z.object({ newEmail: Email, otp: z.string().trim().regex(/^\d{6}$/, "Code must be 6 digits") }).strict();
 const SignInBody = z.object({ email: Email, otp: z.string().trim().regex(/^\d{6}$/, "Code must be 6 digits") }).passthrough();
 
 const AUTH_CODE_MAP: Record<string, ErrorCode> = {
@@ -123,6 +125,35 @@ export const authRoutes = new Hono<AppEnv>()
     await limitOrThrow(c.env.AUTH_RATE_LIMIT, `otp-verify:${emailHash}:${ip}`, "Too many attempts. Try again in a minute.");
     return forward(c, JSON.stringify({ email: body.email, otp: body.otp }));
   })
+  /** Email change, step 1: a code to the new address (Better Auth email OTP `change-email`). Signed in. */
+  .post("/email-otp/request-email-change", async (c) => {
+    const { json } = await readJson(c);
+    const body = parse(RequestEmailChangeBody, json);
+    const ip = clientIp(c.req.raw);
+    const emailHash = await sha256Hex(`change:${body.newEmail}`);
+    await limitOrThrow(c.env.RATE_LIMIT, `auth-ip:${ip}`);
+    await limitOrThrow(c.env.AUTH_RATE_LIMIT, `email-change:${emailHash}:${ip}`, "Too many codes requested. Try again in a minute.");
+    await reserveSend(c.env, emailHash, Date.now());
+    return forward(c, JSON.stringify(body));
+  })
+  /** Email change, step 2: `{ newEmail, otp }` → the account's email becomes `newEmail` (verified). */
+  .post("/email-otp/change-email", async (c) => {
+    const { json } = await readJson(c);
+    const body = parse(ChangeEmailBody, json);
+    const ip = clientIp(c.req.raw);
+    await limitOrThrow(c.env.RATE_LIMIT, `auth-ip:${ip}`);
+    await limitOrThrow(c.env.AUTH_RATE_LIMIT, `email-change-verify:${await sha256Hex(body.newEmail)}:${ip}`, "Too many attempts. Try again in a minute.");
+    const res = await forward(c, JSON.stringify(body));
+    if (res.status === 400) {
+      const env = (await res.clone().json().catch(() => null)) as { error?: { message?: string } } | null;
+      if (env?.error?.message === "Email already in use") {
+        return c.json(errorEnvelope("CONFLICT", "That email belongs to another account", { reason: "EMAIL_IN_USE" }), 409);
+      }
+    }
+    return res;
+  })
+  /** Account deletion goes through `POST /api/me/delete` (emailed code); Better Auth's own routes are closed. */
+  .on(["GET", "POST"], ["/delete-user", "/delete-user/*"], (c) => c.json(errorEnvelope("NOT_FOUND", "Route not found"), 404))
   /** Ends the current session (D1 row deleted, cookie cleared). Always 200. */
   .post("/logout", async (c) => {
     const auth = await getAuth(c.env);

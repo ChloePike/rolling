@@ -13,7 +13,7 @@ import type { AppEnv } from "../env";
 import { billingCaller } from "../billing/context";
 import { creditAccount, unwrapLedger } from "../billing/credits";
 import { billingSummary, listLedger } from "../billing/read";
-import { ensureCustomer, isLive, latestSubscription, planPriceId, readSubscription, seatsInUse, stripeFor, teamSeatPriceId, upsertSubscription, workspaceBilling } from "../billing/stripe";
+import { ensureCustomer, idOf, isLive, latestSubscription, planPriceId, readSubscription, seatsInUse, stripeFor, teamSeatPriceId, upsertSubscription, workspaceBilling } from "../billing/stripe";
 import { ApiError } from "../lib/errors";
 import { validate } from "../lib/validate";
 
@@ -308,6 +308,42 @@ export const billing = new Hono<AppEnv>()
     const who = await billingCaller(c);
     const q = c.req.valid("query");
     return c.json(await listLedger(c.env, who.workspaceId, q.first, q.after ?? null));
+  })
+
+  /**
+   * The card on file (owner): the customer's default payment method, else the
+   * live subscription's. `{ paymentMethod: null }` without a customer or card.
+   * Changes go through the billing portal.
+   */
+  .get("/payment-method", async (c) => {
+    const who = await billingCaller(c, "owner");
+    const ws = await workspaceBilling(c.env, who.workspaceId);
+    c.header("cache-control", "private, no-store");
+    if (!ws?.stripe_customer_id) return c.json({ paymentMethod: null });
+    const stripe = stripeFor(c.env);
+    const customer = await stripe.request<{ invoice_settings?: { default_payment_method?: string | { id: string } | null } }>("GET", `/v1/customers/${encodeURIComponent(ws.stripe_customer_id)}`);
+    let pmId = idOf(customer.invoice_settings?.default_payment_method ?? null);
+    if (!pmId) {
+      const sub = await latestSubscription(c.env, who.workspaceId);
+      if (isLive(sub)) pmId = idOf((await stripe.getSubscription(sub.id)).default_payment_method ?? null);
+    }
+    if (!pmId) return c.json({ paymentMethod: null });
+    const pm = await stripe.request<{ id: string; type: string; card?: { brand?: string; last4?: string; exp_month?: number; exp_year?: number; wallet?: { type?: string } | null } }>(
+      "GET",
+      `/v1/payment_methods/${encodeURIComponent(pmId)}`,
+    );
+    if (!pm.card) return c.json({ paymentMethod: { id: pm.id, type: pm.type, brand: null, last4: null, expMonth: null, expYear: null, wallet: null } });
+    return c.json({
+      paymentMethod: {
+        id: pm.id,
+        type: pm.type,
+        brand: pm.card.brand ?? null,
+        last4: pm.card.last4 ?? null,
+        expMonth: pm.card.exp_month ?? null,
+        expYear: pm.card.exp_year ?? null,
+        wallet: pm.card.wallet?.type ?? null,
+      },
+    });
   })
 
   /** Stripe invoices (plans and top-ups) of the workspace, newest first. */

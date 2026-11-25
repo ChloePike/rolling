@@ -21,7 +21,15 @@ import { validate } from "../lib/validate";
 export const INVITE_TTL_DAYS = 7;
 const DAY_MS = 86_400_000;
 
-const InviteBody = z.object({ email: z.string().trim().toLowerCase().email().max(254), role: z.enum(INVITE_ROLES) }).strict();
+const CreditLimit = z.number().int().min(0).max(100_000_000).nullable();
+const InviteBody = z
+  .object({
+    email: z.string().trim().toLowerCase().email().max(254),
+    role: z.enum(INVITE_ROLES),
+    /** Applied to the member when the invite is accepted; null/absent = no limit. */
+    monthlyCreditLimit: CreditLimit.optional(),
+  })
+  .strict();
 const AcceptBody = z.object({ token: z.string().min(20).max(200) }).strict();
 const TokenQuery = z.object({ token: z.string().min(20).max(200) });
 const MemberParam = z.object({ id: z.string().min(1).max(80) });
@@ -30,7 +38,7 @@ const MemberPatch = z
   .object({
     role: z.enum(ROLES),
     /** Credits per calendar month this member may spend from the shared pool; null removes the limit. */
-    monthlyCreditLimit: z.number().int().min(0).max(100_000_000).nullable(),
+    monthlyCreditLimit: CreditLimit,
   })
   .partial()
   .strict()
@@ -55,6 +63,7 @@ interface InviteRow {
   expires_at: number;
   accepted_at: number | null;
   revoked_at: number | null;
+  monthly_credit_limit?: number | null;
 }
 
 function randomToken(): string {
@@ -71,7 +80,7 @@ async function teamSeats(env: Env, workspaceId: string, now: number): Promise<nu
 }
 
 function inviteView(r: InviteRow) {
-  return { id: r.id, email: r.email, role: r.role, invitedBy: r.invited_by, createdAt: r.created_at, expiresAt: r.expires_at };
+  return { id: r.id, email: r.email, role: r.role, monthlyCreditLimit: r.monthly_credit_limit ?? null, invitedBy: r.invited_by, createdAt: r.created_at, expiresAt: r.expires_at };
 }
 
 async function ownerCount(db: D1Database, workspaceId: string): Promise<number> {
@@ -137,7 +146,7 @@ export const workspace = new Hono<AppEnv>()
   })
   .post("/invites", validate("json", InviteBody), async (c) => {
     const auth = requireRole(c, "owner");
-    const { email, role } = c.req.valid("json");
+    const { email, role, monthlyCreditLimit = null } = c.req.valid("json");
     await limitOrThrow(c.env.RATE_LIMIT, `invite:${auth.workspaceId}`);
     const now = Date.now();
     const seats = await teamSeats(c.env, auth.workspaceId, now);
@@ -167,8 +176,8 @@ export const workspace = new Hono<AppEnv>()
     const expiresAt = now + INVITE_TTL_DAYS * DAY_MS;
     const statements = [
       c.env.DB.prepare(
-        `INSERT INTO workspace_invites (id, workspace_id, email, role, token_hash, invited_by, created_at, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`,
-      ).bind(id, auth.workspaceId, email, role, await sha256Hex(token), auth.userId, now, expiresAt),
+        `INSERT INTO workspace_invites (id, workspace_id, email, role, token_hash, invited_by, created_at, expires_at, monthly_credit_limit) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`,
+      ).bind(id, auth.workspaceId, email, role, await sha256Hex(token), auth.userId, now, expiresAt, monthlyCreditLimit),
     ];
     if (pendingSame) {
       statements.unshift(c.env.DB.prepare("UPDATE workspace_invites SET revoked_at = ?2 WHERE id = ?1").bind(pendingSame.id, now));
@@ -186,7 +195,7 @@ export const workspace = new Hono<AppEnv>()
       },
     });
     return c.json(
-      { invite: inviteView({ id, workspace_id: auth.workspaceId, email, role, invited_by: auth.userId, created_at: now, expires_at: expiresAt, accepted_at: null, revoked_at: null }) },
+      { invite: inviteView({ id, workspace_id: auth.workspaceId, email, role, invited_by: auth.userId, created_at: now, expires_at: expiresAt, accepted_at: null, revoked_at: null, monthly_credit_limit: monthlyCreditLimit }) },
       201,
     );
   })
@@ -223,7 +232,12 @@ export const workspace = new Hono<AppEnv>()
     const members = (await seatsInUse(c.env.DB, row.workspace_id, now)).members;
     if (members >= seats) throw new ApiError(402, "SEATS_REQUIRED", "This workspace has no free seat", { seats, used: members, needed: members + 1 });
     const [, updated] = await c.env.DB.batch([
-      c.env.DB.prepare("INSERT OR IGNORE INTO workspace_members (workspace_id, user_id, role) VALUES (?1, ?2, ?3)").bind(row.workspace_id, auth.userId, row.role),
+      c.env.DB.prepare("INSERT OR IGNORE INTO workspace_members (workspace_id, user_id, role, monthly_credit_limit) VALUES (?1, ?2, ?3, ?4)").bind(
+        row.workspace_id,
+        auth.userId,
+        row.role,
+        row.monthly_credit_limit ?? null,
+      ),
       c.env.DB.prepare("UPDATE workspace_invites SET accepted_at = ?2, accepted_by = ?3 WHERE id = ?1 AND accepted_at IS NULL").bind(row.id, now, auth.userId),
     ]);
     if (!updated?.meta.changes) throw new ApiError(409, "CONFLICT", "This invite can no longer be used", { state: "accepted" });

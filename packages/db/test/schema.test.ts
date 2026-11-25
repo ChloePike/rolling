@@ -63,9 +63,13 @@ describe("D1 migration", () => {
     const db = new DatabaseSync(":memory:");
     const dir = new URL("../migrations/d1/", import.meta.url);
     const files = readdirSync(dir).filter((f) => f.endsWith(".sql")).sort();
-    expect(files).toEqual(["0001_init.sql", "0002_models.sql", "0003_plan_names.sql", "0004_auth.sql", "0005_billing.sql", "0006_projects_assets.sql", "0007_runs.sql", "0008_agent.sql", "0009_safety.sql", "0010_uploads.sql", "0011_agent_allowance.sql", "0012_team.sql"]);
+    expect(files).toEqual(["0001_init.sql", "0002_models.sql", "0003_plan_names.sql", "0004_auth.sql", "0005_billing.sql", "0006_projects_assets.sql", "0007_runs.sql", "0008_agent.sql", "0009_safety.sql", "0010_uploads.sql", "0011_agent_allowance.sql", "0012_team.sql", "0013_account.sql"]);
     for (const f of files) db.exec(readFileSync(new URL(f, dir), "utf8"));
     expectSchemaMatches(db, tablesOf(d1));
+    // 0013: profiles, avatars, profile publishing, feedback, account deletion.
+    expect(columnsIn(db, "share_links")).toEqual(expect.arrayContaining(["show_on_profile", "cover_asset_id"]));
+    db.exec("INSERT INTO user_prefs (user_id, handle) VALUES ('usr_h1', 'ada')");
+    expect(() => db.exec("INSERT INTO user_prefs (user_id, handle) VALUES ('usr_h2', 'ADA')")).toThrow();
     // 0012 (D-013): Team seats.
     expect(columnsIn(db, "subscriptions")).toContain("seats");
     expect(columnsIn(db, "checkout_sessions")).toContain("seats");

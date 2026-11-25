@@ -13,6 +13,20 @@ export const EmailTemplates = {
     acceptUrl: z.string().url(),
     expiresInDays: z.number().int().positive(),
   }),
+  /** Email change (Better Auth email OTP `change-email`): sent to the new address. */
+  'change-email-code': z.object({ code: z.string().regex(/^\d{4,10}$/), expiresInMinutes: z.number().int().positive() }),
+  /** Account deletion confirmation code: sent to the account's address. */
+  'delete-account-code': z.object({ code: z.string().regex(/^\d{4,10}$/), expiresInMinutes: z.number().int().positive() }),
+  /** Help → Send feedback, forwarded to `FEEDBACK_TO`. */
+  feedback: z.object({
+    id: z.string().min(1).max(80),
+    kind: z.enum(['bug', 'idea', 'other']),
+    message: z.string().min(1).max(5000),
+    page: z.string().max(500).nullable(),
+    userId: z.string().max(80).nullable(),
+    userEmail: z.string().max(254).nullable(),
+    diagnostics: z.string().max(4000).nullable(),
+  }),
 } as const;
 
 export type EmailTemplateId = keyof typeof EmailTemplates;
@@ -74,6 +88,54 @@ export function renderEmail<T extends EmailTemplateId>(template: T, data: unknow
           `<a href="${url}">Accept the invite</a>`,
           `The link expires in ${d.expiresInDays} days.`,
         ]),
+      };
+    }
+    case 'change-email-code': {
+      const d = EmailTemplates['change-email-code'].parse(data);
+      return {
+        subject: `Confirm your new ${appName} email: ${d.code}`,
+        text: [
+          `Enter ${d.code} in ${appName} to use this address for your account.`,
+          `The code expires in ${d.expiresInMinutes} minutes.`,
+          `If you didn't ask to change your email, you can ignore this email.`,
+        ].join('\n\n'),
+        html: html([
+          `Enter <strong style="font-size:20px;letter-spacing:2px">${d.code}</strong> in ${app} to use this address for your account.`,
+          `The code expires in ${d.expiresInMinutes} minutes.`,
+          `If you didn't ask to change your email, you can ignore this email.`,
+        ]),
+      };
+    }
+    case 'delete-account-code': {
+      const d = EmailTemplates['delete-account-code'].parse(data);
+      return {
+        subject: `Your ${appName} account deletion code is ${d.code}`,
+        text: [
+          `Enter ${d.code} in ${appName} to delete your account. This can't be undone.`,
+          `The code expires in ${d.expiresInMinutes} minutes.`,
+          `If you didn't ask to delete your account, ignore this email; nothing changes.`,
+        ].join('\n\n'),
+        html: html([
+          `Enter <strong style="font-size:20px;letter-spacing:2px">${d.code}</strong> in ${app} to delete your account. This can't be undone.`,
+          `The code expires in ${d.expiresInMinutes} minutes.`,
+          `If you didn't ask to delete your account, ignore this email; nothing changes.`,
+        ]),
+      };
+    }
+    case 'feedback': {
+      const d = EmailTemplates.feedback.parse(data);
+      const lines = [
+        `Kind: ${d.kind}`,
+        `From: ${d.userEmail ?? 'unknown'} (${d.userId ?? 'signed out'})`,
+        `Page: ${d.page ?? '-'}`,
+        '',
+        d.message,
+        ...(d.diagnostics ? ['', 'Diagnostics:', d.diagnostics] : []),
+      ];
+      return {
+        subject: `[${appName} feedback] ${d.kind}: ${d.message.replace(/\s+/g, ' ').slice(0, 60)}`,
+        text: lines.join('\n'),
+        html: html(lines.filter((l) => l !== '').map(escapeHtml)),
       };
     }
     default: {
