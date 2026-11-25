@@ -28,6 +28,11 @@ export const ID_PREFIXES = {
   timeline: 'tl',
   clip: 'clip',
   event: 'evt',
+  user: 'usr',
+  session: 'ses',
+  account: 'acc',
+  verification: 'vrf',
+  invite: 'inv',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIXES;

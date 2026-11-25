@@ -1,0 +1,38 @@
+import { describe, expect, it } from 'vitest';
+import { EmailSendError } from './EmailProvider';
+import { ResendEmailProvider } from './resend';
+import { renderEmail } from './templates';
+
+describe('email templates', () => {
+  it('renders the sign-in code (plain, sentence case)', () => {
+    const e = renderEmail('sign-in-code', { code: '123456', expiresInMinutes: 10 });
+    expect(e.subject).toBe('Your Rolling sign-in code is 123456');
+    expect(e.text).toBe("Your sign-in code is 123456.\n\nIt expires in 10 minutes.\n\nIf you didn't try to sign in to Rolling, you can ignore this email.");
+    expect(e.html).toContain('123456');
+  });
+
+  it('escapes HTML in invite data and validates input', () => {
+    const e = renderEmail('workspace-invite', {
+      workspaceName: '<b>Acme</b>',
+      inviterName: 'Ada',
+      role: 'viewer',
+      acceptUrl: 'https://example.com/invite/abc',
+      expiresInDays: 7,
+    });
+    expect(e.subject).toBe('Ada invited you to <b>Acme</b> on Rolling');
+    expect(e.html).toContain('&lt;b&gt;Acme&lt;/b&gt;');
+    expect(e.text).toContain('as a viewer');
+    expect(() => renderEmail('sign-in-code', { code: 'abc', expiresInMinutes: 10 })).toThrow();
+  });
+});
+
+describe('ResendEmailProvider', () => {
+  it('maps errors to retryable or not', async () => {
+    for (const [status, retryable] of [[429, true], [500, true], [422, false]] as const) {
+      const p = new ResendEmailProvider({ apiKey: 'k', from: 'a@b.c', fetch: (async () => new Response('x', { status })) as unknown as typeof fetch });
+      const err = await p.send({ to: 'x@y.z', subject: 's', text: 't', html: 'h' }).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(EmailSendError);
+      expect((err as EmailSendError).retryable).toBe(retryable);
+    }
+  });
+});
