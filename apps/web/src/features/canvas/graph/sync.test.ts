@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MockProjectRoom } from './mockRoom';
 import { GraphStore } from './store';
 import { ProjectSync } from './sync';
-import type { GraphState, Refusal } from './types';
+import type { GraphState, Refusal } from '@rolling/core/graph';
 
 function initial(): GraphState {
   return {

@@ -1,4 +1,4 @@
-import type { GraphState } from './graph/types';
+import type { GraphState } from '@rolling/core/graph';
 
 /**
  * Mock project shaped like the ProjectRoom snapshot, with the values of

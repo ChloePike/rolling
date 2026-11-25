@@ -1,7 +1,7 @@
-import { fromSnapshot, messageId, type ClientMessage, type ServerMessage } from './protocol';
+import { fromSnapshot, messageId, type ClientMessage, type ServerMessage } from '@rolling/core/graph';
 import { applyOps, normalizeOps, type ApplyResult, type GraphStore, type LocalOp } from './store';
 import type { Transport } from './transport';
-import type { GraphState, Refusal } from './types';
+import type { GraphState, Refusal } from '@rolling/core/graph';
 
 export type SyncStatus = 'connecting' | 'saving' | 'saved';
 

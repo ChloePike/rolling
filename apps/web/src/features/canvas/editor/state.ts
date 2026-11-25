@@ -1,7 +1,7 @@
 import type { EditProposal } from './mocks';
-import { DEFAULT_PPS } from './timeline/geometry';
-import { applyOps, type ApplyOptions } from './timeline/ops';
-import type { Edl, TimelineOp } from './timeline/types';
+import { DEFAULT_PPS } from '@rolling/core/timeline';
+import { applyOps, type ApplyOptions } from '@rolling/core/timeline';
+import type { Edl, TimelineOp } from '@rolling/core/timeline';
 
 export type Tool = 'select' | 'razor' | 'slip' | 'text' | 'hand';
 

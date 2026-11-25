@@ -2,8 +2,8 @@ import { cx, motionSafe } from '@rolling/ui';
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { createContext, memo, useContext, type CSSProperties, type ReactNode } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
-import { hasInputs, outputType } from '../graph/ports';
-import type { GraphNode } from '../graph/types';
+import { hasInputs, outputType } from '@rolling/core/graph';
+import type { GraphNode } from '@rolling/core/graph';
 import { CanvasIcon } from '../icons';
 import styles from './nodes.module.css';
 

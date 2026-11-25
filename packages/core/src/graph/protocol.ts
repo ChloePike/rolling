@@ -1,18 +1,10 @@
 /**
- * ProjectRoom WebSocket protocol, mirrored from apps/api/src/ws/envelope.ts
- * (D-003). Every message is `{ type, id, payload }`; a patch is answered with
- * `ack { revision }` or `conflict { snapshot }` carrying the patch's id.
- *
- * TODO(core): import these from packages/core once envelope.ts moves there.
+ * ProjectRoom WebSocket protocol (D-003): typed messages over the envelope in
+ * `./envelope`. A patch is answered with `ack { revision }` or
+ * `conflict { snapshot }` carrying the patch's id.
  */
-import type { GraphGroup, GraphNode, GraphState, NodeKind, NodeStatus } from './types';
-import type { LocalOp } from './store';
-
-export interface WsEnvelope<T extends string = string, P = unknown> {
-  type: T;
-  id: string;
-  payload: P;
-}
+import type { TypedEnvelope as WsEnvelope } from './envelope';
+import type { GraphGroup, GraphNode, GraphState, LocalOp, NodeKind, NodeStatus } from './types';
 
 /** Node row as stored in ProjectRoom (`nodes` table) plus runtime columns. */
 export interface NodeRow {
@@ -63,7 +55,7 @@ export interface ProjectSnapshot {
   groups?: GroupRow[];
 }
 
-export interface PatchPayload {
+export interface GraphPatch {
   baseRevision: number;
   ops: LocalOp[];
 }
@@ -81,7 +73,7 @@ export type ServerMessage =
   | WsEnvelope<'job.failed', { jobId: string; nodeId: string; refunded: number; reason: string }>
   | WsEnvelope<'credits.changed', { balance: number; held: number }>;
 
-export type ClientMessage = WsEnvelope<'patch', PatchPayload> | WsEnvelope<'ping', null>;
+export type ClientMessage = WsEnvelope<'patch', GraphPatch> | WsEnvelope<'ping', null>;
 
 const CANVAS_ID = 'cnv_main';
 

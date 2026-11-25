@@ -4,7 +4,7 @@ import { PEAKS_PER_SECOND } from './mockPeaks';
 import type { PlayheadStore } from './playhead';
 import type { EditorAction, EditorState } from './state';
 import styles from './Editor.module.css';
-import { clamp, moveRange, trimRange } from './timeline/constraints';
+import { clamp, moveRange, trimRange } from '@rolling/core/timeline';
 import {
   CLIP_INSET_X,
   clampPps,
@@ -18,11 +18,11 @@ import {
   timeToX,
   xToTime,
   type Row,
-} from './timeline/geometry';
-import { applyOps } from './timeline/ops';
-import type { Highlight } from './timeline/plan';
-import { snapCandidates, snapMove, SNAP_PX, snapTime } from './timeline/snap';
-import { formatTimecode, snapToFrame } from './timeline/timecode';
+} from '@rolling/core/timeline';
+import { applyOps } from '@rolling/core/timeline';
+import type { Highlight } from '@rolling/core/timeline';
+import { snapCandidates, snapMove, SNAP_PX, snapTime } from '@rolling/core/timeline';
+import { formatTimecode, snapToFrame } from '@rolling/core/timeline';
 import {
   clipEnd,
   edlDuration,
@@ -33,7 +33,7 @@ import {
   type MediaClip,
   type TimelineOp,
   type Track,
-} from './timeline/types';
+} from '@rolling/core/timeline';
 
 /** Colors from CanvasEdit.dc.html and handoff section 2. */
 const C = {

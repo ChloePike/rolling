@@ -21,7 +21,7 @@ import { AgentPanel, type AgentPlan } from './agent/AgentPanel';
 import { getAccount, getProject, getShare, openProject, quoteRun, startRun, type ProjectSession } from './api';
 import canvas from './canvas.module.css';
 import type { LocalOp } from './graph/store';
-import type { GraphNode, GraphState, NodeKind, Refusal } from './graph/types';
+import type { GraphNode, GraphState, NodeKind, Refusal } from '@rolling/core/graph';
 import { CanvasIcon, CanvasLogo, type CanvasIconName } from './icons';
 import { AddNodeMenu, CreditsPopover, HistoryDrawer, MOCK_RUNS, PlanDialog, ScriptDialog, ShareDialog, type HistoryRow } from './layers/Layers';
 import { MOCK_ACCOUNT, MOCK_CREDITS, type PromptRef } from './mocks';

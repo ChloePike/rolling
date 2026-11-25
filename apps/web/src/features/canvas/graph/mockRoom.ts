@@ -1,8 +1,8 @@
 import { newId } from '@rolling/core/ids';
-import { messageId, toSnapshot, type ClientMessage, type ServerMessage } from './protocol';
+import { messageId, toSnapshot, type ClientMessage, type ServerMessage } from '@rolling/core/graph';
 import { applyOps } from './store';
 import type { Transport } from './transport';
-import type { GraphState } from './types';
+import type { GraphState } from '@rolling/core/graph';
 
 export interface MockRoomOptions {
   projectId: string;

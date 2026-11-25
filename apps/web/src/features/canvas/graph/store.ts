@@ -1,9 +1,9 @@
 import { newId } from '@rolling/core/ids';
-import { inputPorts, OUT_PORT, resolveInputPort, validateConnection } from './ports';
-import type { GraphGroup, GraphNode, GraphOp, GraphState, NodeStatus, Refusal } from './types';
+import { inputPorts, OUT_PORT, resolveInputPort, validateConnection } from '@rolling/core/graph';
+import type { GraphGroup, GraphNode, GraphOp, GraphState, LocalOp, NodeStatus, Refusal } from '@rolling/core/graph';
 
-/** Client-only extension used by undo to dissolve a group it created. */
-export type LocalOp = GraphOp | { op: 'ungroup'; groupId: string };
+/** `LocalOp` (GraphOp plus `ungroup` for undo) lives in @rolling/core/graph. */
+export type { LocalOp };
 
 export type ApplyResult =
   | { ok: true; revision: number; idMap: Record<string, string>; state: GraphState }

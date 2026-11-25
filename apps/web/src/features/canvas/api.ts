@@ -1,7 +1,7 @@
 import { MockProjectRoom } from './graph/mockRoom';
 import { GraphStore } from './graph/store';
 import { ProjectSync, type SyncEvents } from './graph/sync';
-import type { GraphEdge, GraphNode } from './graph/types';
+import type { GraphEdge, GraphNode } from '@rolling/core/graph';
 import { mockGraph, MOCK_ACCOUNT, MOCK_CREDITS, MOCK_PROJECT, MOCK_SHARE } from './mocks';
 
 /**

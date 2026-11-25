@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { MOCK_CUT_TO_10, mockProject } from './mocks';
 import { editPoints, gainAt, meterLevel, mixPeak, pictureAt } from './playback';
 import { initEditorState, makeReducer } from './state';
-import { clipEnd, findClip, type MediaClip } from './timeline/types';
+import { clipEnd, findClip, type MediaClip } from '@rolling/core/timeline';
 
 const project = mockProject('prj_test');
 const none = new Set<string>();

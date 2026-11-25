@@ -3,7 +3,7 @@ import { useIntl } from 'react-intl';
 import styles from './Editor.module.css';
 import { Icon } from './icons';
 import type { BinItem } from './mocks';
-import { formatClipLength } from './timeline/timecode';
+import { formatClipLength } from '@rolling/core/timeline';
 
 type BinTab = 'project' | 'assets' | 'public';
 const TABS: BinTab[] = ['project', 'assets', 'public'];

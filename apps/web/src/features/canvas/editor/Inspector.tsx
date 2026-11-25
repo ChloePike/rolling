@@ -2,8 +2,8 @@ import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } fr
 import { useIntl } from 'react-intl';
 import styles from './Editor.module.css';
 import type { EditorProject } from './mocks';
-import { formatClipLength, formatTimecode } from './timeline/timecode';
-import { clipEnd, isCaptionClip, type Clip, type MediaClip, type Track } from './timeline/types';
+import { formatClipLength, formatTimecode } from '@rolling/core/timeline';
+import { clipEnd, isCaptionClip, type Clip, type MediaClip, type Track } from '@rolling/core/timeline';
 
 /** Volume fader range in dB (−6 dB sits at 62.5%). */
 const DB_MIN = -26;

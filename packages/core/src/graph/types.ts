@@ -1,9 +1,7 @@
 /**
  * Graph model for the canvas, shaped like the ProjectRoom tables
  * (db/do-project.sql) and the GraphOp patch format (docs/harness.md §5).
- *
- * TODO(core): move NodeKind, GraphOp and the port table to packages/core/graph
- * once the server implements them, and import them here.
+ * Shared by the canvas (apps/web) and ProjectRoom (apps/api).
  */
 
 export type NodeKind = 'text' | 'script' | 'image' | 'video' | 'audio' | 'asset' | 'render';
@@ -83,6 +81,9 @@ export type GraphOp =
   | { op: 'removeNode'; nodeId: string }
   | { op: 'group'; nodeIds: string[]; title: string; groupId?: string }
   | { op: 'moveNode'; nodeId: string; position: XY };
+
+/** Ops the client may send: GraphOp plus `ungroup` (undo of `group`). */
+export type LocalOp = GraphOp | { op: 'ungroup'; groupId: string };
 
 export type RefusalCode =
   | 'NODE_NOT_FOUND'

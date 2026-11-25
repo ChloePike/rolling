@@ -15,9 +15,9 @@ import { useReducedMotion } from './presence';
 import { ProposalCard } from './ProposalCard';
 import { initEditorState, makeReducer, type Tool } from './state';
 import { TimelinePanel } from './TimelinePanel';
-import { clampScroll, clampPps } from './timeline/geometry';
-import { snapToFrame } from './timeline/timecode';
-import { clipEnd, edlDuration, findClip, isCaptionClip, type Clip, type Edl, type MediaClip, type Track } from './timeline/types';
+import { clampScroll, clampPps } from '@rolling/core/timeline';
+import { snapToFrame } from '@rolling/core/timeline';
+import { clipEnd, edlDuration, findClip, isCaptionClip, type Clip, type Edl, type MediaClip, type Track } from '@rolling/core/timeline';
 
 export interface EditorProps {
   projectId: string;

@@ -1,7 +1,7 @@
 import { MOCK_CUT_TO_10, MOCK_SCRIPT, mockProject, type EditorProject, type EditProposal } from './mocks';
-import { assembleFromScript } from './timeline/assemble';
-import { planCutTo } from './timeline/plan';
-import { edlDuration, type Edl } from './timeline/types';
+import { assembleFromScript } from '@rolling/core/timeline';
+import { planCutTo } from '@rolling/core/timeline';
+import { edlDuration, type Edl } from '@rolling/core/timeline';
 
 /**
  * Editor data access. Mock for now; the real client reads the ProjectRoom

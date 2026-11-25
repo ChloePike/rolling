@@ -5,8 +5,8 @@ import { Icon } from './icons';
 import type { EditorProject } from './mocks';
 import { gainAt, pictureAt } from './playback';
 import { usePlayhead, type PlayheadStore } from './playhead';
-import { formatTimecode } from './timeline/timecode';
-import { clipEnd, edlDuration, type Clip, type Edl, type MediaClip } from './timeline/types';
+import { formatTimecode } from '@rolling/core/timeline';
+import { clipEnd, edlDuration, type Clip, type Edl, type MediaClip } from '@rolling/core/timeline';
 
 /** Placeholder picture per shot (mock media): sky, ground and the product, tinted like the shot's clip. */
 const SCENES = [

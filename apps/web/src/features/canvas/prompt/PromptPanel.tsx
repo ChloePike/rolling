@@ -5,7 +5,7 @@ import type { CatalogModel } from '../../../lib/models';
 import { findModel, formatLabel, mediaKind, resolutionOptions } from '../pricing';
 import { runCost } from '../nodes/NodeCard';
 import { useIntl } from 'react-intl';
-import type { GraphNode } from '../graph/types';
+import type { GraphNode } from '@rolling/core/graph';
 import { CanvasIcon, type CanvasIconName } from '../icons';
 import { MOCK_REFS, type PromptRef } from '../mocks';
 import styles from './promptPanel.module.css';

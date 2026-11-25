@@ -7,10 +7,10 @@ import { meterLevel, mixPeak } from './playback';
 import { usePlayhead, type PlayheadStore } from './playhead';
 import type { EditorAction, EditorState, Tool } from './state';
 import { TimelineCanvas } from './TimelineCanvas';
-import { clampPps, clampScroll, ppsToZoom, rowLayout, zoomToPps } from './timeline/geometry';
-import type { Highlight } from './timeline/plan';
-import { formatTimecode } from './timeline/timecode';
-import { edlDuration, findClip, isCaptionClip, type Clip, type Track } from './timeline/types';
+import { clampPps, clampScroll, ppsToZoom, rowLayout, zoomToPps } from '@rolling/core/timeline';
+import type { Highlight } from '@rolling/core/timeline';
+import { formatTimecode } from '@rolling/core/timeline';
+import { edlDuration, findClip, isCaptionClip, type Clip, type Track } from '@rolling/core/timeline';
 
 const TOOLS: Array<{ tool: Tool; icon: IconName; label: string }> = [
   { tool: 'select', icon: 'select', label: 'editor.timeline.select' },

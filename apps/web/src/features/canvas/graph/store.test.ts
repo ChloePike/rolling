@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { applyOps, GraphStore, normalizeOps } from './store';
-import type { GraphState } from './types';
+import type { GraphState } from '@rolling/core/graph';
 
 let n = 0;
 const ids = { node: () => `node_T${++n}`, edge: () => `edge_T${++n}`, group: () => `grp_T${++n}` };

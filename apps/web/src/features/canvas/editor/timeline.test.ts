@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { MOCK_CUT_TO_10, MOCK_SCRIPT } from '../mocks';
-import { assembleFromScript } from './assemble';
-import { moveRange, trimRange } from './constraints';
-import { clipRect, gainY, hitTest, ppsToZoom, rowLayout, rulerTicks, thumbCount, zoomToPps } from './geometry';
-import { applyOp, applyOps, nextClipId, validateEdl } from './ops';
-import { planCutTo } from './plan';
-import { snapCandidates, snapMove, snapTime } from './snap';
-import { formatClipLength, formatTimecode } from './timecode';
-import { clipEnd, edlDuration, findClip, type Edl, type MediaClip } from './types';
+import { MOCK_CUT_TO_10, MOCK_SCRIPT } from './mocks';
+import { assembleFromScript } from '@rolling/core/timeline';
+import { moveRange, trimRange } from '@rolling/core/timeline';
+import { clipRect, gainY, hitTest, ppsToZoom, rowLayout, rulerTicks, thumbCount, zoomToPps } from '@rolling/core/timeline';
+import { applyOp, applyOps, nextClipId, validateEdl } from '@rolling/core/timeline';
+import { planCutTo } from '@rolling/core/timeline';
+import { snapCandidates, snapMove, snapTime } from '@rolling/core/timeline';
+import { formatClipLength, formatTimecode } from '@rolling/core/timeline';
+import { clipEnd, edlDuration, findClip, type Edl, type MediaClip } from '@rolling/core/timeline';
 
 const edl = (): Edl => assembleFromScript(MOCK_SCRIPT);
 const ok = (r: ReturnType<typeof applyOp>) => {

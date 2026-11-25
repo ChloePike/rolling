@@ -7,6 +7,3 @@ export { GraphStore, applyOps, diffOps, normalizeOps, type ApplyResult, type Loc
 export { ProjectSync, type SyncStatus, type SyncEvents } from './graph/sync';
 export { MockProjectRoom } from './graph/mockRoom';
 export { webSocketTransport, type Transport } from './graph/transport';
-export { validateConnection, resolveInputPort, inputPorts, outputType } from './graph/ports';
-export type * from './graph/types';
-export type { WsEnvelope, ServerMessage, ClientMessage, ProjectSnapshot } from './graph/protocol';

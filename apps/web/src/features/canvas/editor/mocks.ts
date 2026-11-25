@@ -1,7 +1,7 @@
 import { MUSIC_PEAKS_TENTHS, VOICE_PEAKS_TENTHS } from './mockPeaks';
-import { assembleFromScript, type AssembleInput } from './timeline/assemble';
-import type { Highlight } from './timeline/plan';
-import type { Edl, TimelineOp } from './timeline/types';
+import { assembleFromScript, type AssembleInput } from '@rolling/core/timeline';
+import type { Highlight } from '@rolling/core/timeline';
+import type { Edl, TimelineOp } from '@rolling/core/timeline';
 
 /**
  * Mock data for the editor, shaped like the ProjectRoom snapshot (EDL +
