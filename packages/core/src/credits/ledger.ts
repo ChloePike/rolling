@@ -10,7 +10,20 @@
  * - a settle never spends more than its hold; a job is settled or released at most once;
  * - the buckets equal the sums of their ledger lines (see `reconcile`).
  */
-import { creditsFor, lowestPlanFor, planAllowsResolution, PLANS, TOP_UP, UnpricedModelError, type PlanId } from '../pricing/config';
+import {
+  creditsFor,
+  lowestPlanFor,
+  planAllowsResolution,
+  planConcurrentJobs,
+  planMonthlyCredits,
+  PLANS,
+  prorate,
+  SEAT_PRICE,
+  TEAM_SEATS,
+  TOP_UP,
+  UnpricedModelError,
+  type PlanId,
+} from '../pricing/config';
 import type {
   AccountState,
   AutoTopUpSettings,
@@ -32,6 +45,7 @@ import type {
   QuoteResult,
   QuotedItem,
   ReleaseResult,
+  SeatsResult,
   SettleResult,
   StoredQuote,
 } from './types';
@@ -78,6 +92,9 @@ export function emptyAccount(): AccountState {
     periodEnd: null,
     autoTopUp: null,
     autoTopUpSeq: 0,
+    seats: 1,
+    sliceSeats: 1,
+    grantedPlanId: null,
   };
 }
 
@@ -103,6 +120,13 @@ export function addMonths(ms: number, months: number): number {
 
 function isNonNegInt(n: unknown): n is number {
   return typeof n === 'number' && Number.isInteger(n) && n >= 0;
+}
+
+function validSeats(seats: unknown): number {
+  if (typeof seats !== 'number' || !Number.isInteger(seats) || seats < TEAM_SEATS.min || seats > TEAM_SEATS.max) {
+    throw new LedgerError('BAD_REQUEST', 'seats is out of range.', { min: TEAM_SEATS.min, max: TEAM_SEATS.max });
+  }
+  return seats;
 }
 
 function requireKey(key: unknown): string {
@@ -232,7 +256,7 @@ export class CreditLedger {
       const total = items.reduce((sum, i) => sum + i.credits, 0);
 
       const open = this.store.openHolds();
-      const limit = PLANS[s.planId].concurrentJobs;
+      const limit = planConcurrentJobs(s.planId, s.seats);
       if (items.length > 0 && open.length + items.length > limit) {
         throw new LedgerError('CONCURRENCY_LIMIT', 'Too many jobs running at once for this plan.', {
           limit,
@@ -392,6 +416,7 @@ export class CreditLedger {
     if (!isNonNegInt(period.start) || !isNonNegInt(period.end) || period.end <= period.start) {
       throw new LedgerError('BAD_REQUEST', 'Invalid period.');
     }
+    if (period.seats !== undefined) validSeats(period.seats);
     return this.idempotent('grant', key, period, (now) => {
       const s = this.store.getAccount();
       if (s.periodStart !== null && period.start < s.periodStart) {
@@ -402,6 +427,7 @@ export class CreditLedger {
       if (s.periodStart !== period.start) s.autoTopUpSeq += 1;
       s.periodStart = period.start;
       s.periodEnd = period.end;
+      if (period.seats !== undefined) s.seats = period.seats;
       const lines: LedgerLine[] = [];
       const { expired, granted } = this.replacePlanCredits(s, now, key, lines);
       this.store.putAccount(s);
@@ -417,17 +443,57 @@ export class CreditLedger {
     s.plan = 0;
     s.planExpiresAt = null;
     if (!s.planId || s.periodStart === null || s.periodEnd === null || now >= s.periodEnd) return { expired, granted: 0 };
-    let sliceEnd = s.periodEnd;
-    if (s.interval === 'year') {
-      let k = 1;
-      while (addMonths(s.periodStart, k) <= now) k += 1;
-      sliceEnd = Math.min(addMonths(s.periodStart, k), s.periodEnd);
-    }
-    const granted = PLANS[s.planId].monthlyCredits;
+    const sliceEnd = s.interval === 'year' ? this.slice(s, now).end : s.periodEnd;
+    const granted = planMonthlyCredits(s.planId, s.seats);
     s.plan = granted;
     s.planExpiresAt = sliceEnd;
+    s.sliceSeats = s.seats;
+    s.grantedPlanId = s.planId;
     lines.push(this.line(key, lines.length, 'grant', 'plan', granted, now, { note: `${s.planId}:${s.interval}` }));
     return { expired, granted };
+  }
+
+  /** The month slice of the period that contains `now` (yearly plans grant monthly slices). */
+  private slice(s: AccountState, now: number): { start: number; end: number } {
+    const start = s.periodStart ?? now;
+    const end = s.periodEnd ?? now;
+    if (s.interval !== 'year') return { start, end };
+    let k = 1;
+    while (addMonths(start, k) <= now) k += 1;
+    return { start: addMonths(start, k - 1), end: Math.min(addMonths(start, k), end) };
+  }
+
+  /**
+   * Purchased seats changed (D-013; Stripe subscription quantity + 1). Limits
+   * follow at once. Seats above the highest count already granted in the
+   * current slice get the prorated share of their monthly credits now (once:
+   * removing and re-adding a seat in the same slice grants nothing new); the
+   * next slice grants the full amount for the seats held then.
+   */
+  setSeats(seats: number, idemKey: string): SeatsResult {
+    const key = requireKey(idemKey);
+    validSeats(seats);
+    return this.idempotent('setSeats', key, { seats }, (now) => {
+      const s = this.store.getAccount();
+      const previous = s.seats;
+      s.seats = seats;
+      let granted = 0;
+      const lines: LedgerLine[] = [];
+      // Only a slice granted as Team gets seat credits (a switch to Team is granted by its invoice).
+      const team = s.planId !== null && PLANS[s.planId].kind === 'team' && s.grantedPlanId !== null && PLANS[s.grantedPlanId].kind === 'team';
+      if (team && s.planExpiresAt !== null && now < s.planExpiresAt && seats > s.sliceSeats) {
+        const slice = this.slice(s, now);
+        granted = prorate((seats - s.sliceSeats) * SEAT_PRICE.monthlyCredits, slice.start, s.planExpiresAt, now);
+        if (granted > 0) {
+          s.plan += granted;
+          lines.push(this.line(key, 0, 'grant', 'plan', granted, now, { note: `team:seats:${s.sliceSeats}->${seats}` }));
+        }
+        s.sliceSeats = seats;
+      }
+      this.store.putAccount(s);
+      this.store.appendLines(lines);
+      return { seats, previous, granted, balance: balanceOf(s) };
+    });
   }
 
   /** Purchased credits (top-up). Never expire. `source: 'auto'` advances the auto top-up window. */

@@ -66,7 +66,10 @@ export function creditsForAll(items: readonly { model: ListingModel; request?: P
   return items.reduce((sum, item) => sum + creditsFor(item.model, item.request), 0);
 }
 
-export type PlanId = 'starter' | 'plus' | 'pro';
+export type PlanId = 'starter' | 'plus' | 'pro' | 'team';
+
+/** Personal plans have one seat; Team buys seats (D-013). */
+export type PlanKind = 'personal' | 'team';
 
 /**
  * Plans are the entry ticket (D-006): membership unlocks generating and
@@ -76,6 +79,7 @@ export type PlanId = 'starter' | 'plus' | 'pro';
 export interface PlanConfig {
   id: PlanId;
   label: string;
+  kind: PlanKind;
   /** Included credits per month; expire at the next billing date (PRD rule 3). */
   monthlyCredits: number;
   priceMonthlyUsd: number | Placeholder;
@@ -90,13 +94,17 @@ export interface PlanConfig {
   /** Highest image output resolution. */
   maxImageResolution: '2K' | '4K';
   voiceCloning: boolean;
-  /** Seats in a shared credit pool (1 = personal). */
+  /**
+   * Seats included in the base price (D-013): 1 everywhere. Personal plans
+   * cannot add seats; Team adds them at `SEAT_PRICE` each.
+   */
   seats: number;
 }
 
 export const PLANS: Record<PlanId, PlanConfig> = {
   starter: {
     id: 'starter',
+    kind: 'personal',
     label: 'Starter',
     monthlyCredits: 200,
     priceMonthlyUsd: 5,
@@ -111,6 +119,7 @@ export const PLANS: Record<PlanId, PlanConfig> = {
   },
   plus: {
     id: 'plus',
+    kind: 'personal',
     label: 'Plus',
     monthlyCredits: 800,
     priceMonthlyUsd: 15,
@@ -125,6 +134,7 @@ export const PLANS: Record<PlanId, PlanConfig> = {
   },
   pro: {
     id: 'pro',
+    kind: 'personal',
     label: 'Pro',
     monthlyCredits: 2500,
     priceMonthlyUsd: 49,
@@ -135,11 +145,113 @@ export const PLANS: Record<PlanId, PlanConfig> = {
     maxVideoResolution: '4K',
     maxImageResolution: '4K',
     voiceCloning: true,
-    seats: 10,
+    seats: 1,
+  },
+  /**
+   * Team (D-013): Pro perks for a shared workspace. The base price includes
+   * the owner's seat; values below are for that one seat, `team*` helpers add
+   * what each extra seat brings.
+   */
+  team: {
+    id: 'team',
+    label: 'Team',
+    kind: 'team',
+    monthlyCredits: 2500,
+    priceMonthlyUsd: 79,
+    priceYearlyUsd: 758,
+    yearlyDiscount: 0.2,
+    topUpBonus: 0.1,
+    concurrentJobs: 10,
+    maxVideoResolution: '4K',
+    maxImageResolution: '4K',
+    voiceCloning: true,
+    seats: 1,
   },
 };
 
-export const PLAN_ORDER: readonly PlanId[] = ['starter', 'plus', 'pro'];
+export const PLAN_ORDER: readonly PlanId[] = ['starter', 'plus', 'pro', 'team'];
+
+/** Personal plans, lowest first (upgrade prompts, the Upgrade page cards). */
+export const PERSONAL_PLAN_ORDER: readonly PlanId[] = PLAN_ORDER.filter((p) => PLANS[p].kind === 'personal');
+
+/**
+ * Each Team seat beyond the first (D-013). Seats = members including the owner;
+ * `seats − 1` is the Stripe quantity of the per-seat price.
+ */
+export const SEAT_PRICE = {
+  priceMonthlyUsd: 25,
+  priceYearlyUsd: 240,
+  /** Shared plan credits added per month. */
+  monthlyCredits: 500,
+  /** Concurrent jobs added (capped at `maxConcurrentJobs`). */
+  concurrentJobs: 2,
+  maxConcurrentJobs: 30,
+  /** Agent allowance added per month (D-012). */
+  agentAllowanceUsd: 3,
+} as const;
+
+/** Seat bounds for a Team workspace. */
+export const TEAM_SEATS = { min: 1, max: 200 } as const;
+
+function seatCount(seats: number): number {
+  if (!Number.isInteger(seats) || seats < TEAM_SEATS.min || seats > TEAM_SEATS.max) {
+    throw new RangeError(`seats must be an integer from ${TEAM_SEATS.min} to ${TEAM_SEATS.max}.`);
+  }
+  return seats;
+}
+
+/** Shared plan credits per month for a Team of `seats` (2,500 + 500 per extra seat). */
+export function teamIncludedCredits(seats: number): number {
+  return PLANS.team.monthlyCredits + (seatCount(seats) - 1) * SEAT_PRICE.monthlyCredits;
+}
+
+/** Concurrent jobs for a Team of `seats` (10 + 2 per extra seat, max 30). */
+export function teamConcurrentJobs(seats: number): number {
+  return Math.min(SEAT_PRICE.maxConcurrentJobs, PLANS.team.concurrentJobs + (seatCount(seats) - 1) * SEAT_PRICE.concurrentJobs);
+}
+
+/** Monthly agent allowance in USD for a Team of `seats` ($12.50 + $3 per extra seat). */
+export function teamAgentAllowanceUsd(seats: number): number {
+  return Math.round((AGENT_ALLOWANCE_USD.team + (seatCount(seats) - 1) * SEAT_PRICE.agentAllowanceUsd) * 100) / 100;
+}
+
+/** Price of a Team of `seats` per interval, in cents (base + seats − 1 extra seats). */
+export function teamPriceCents(seats: number, interval: 'month' | 'year'): number {
+  const base = interval === 'month' ? PLANS.team.priceMonthlyUsd : PLANS.team.priceYearlyUsd;
+  const seat = interval === 'month' ? SEAT_PRICE.priceMonthlyUsd : SEAT_PRICE.priceYearlyUsd;
+  return Math.round(((base as number) + (seatCount(seats) - 1) * seat) * 100);
+}
+
+/**
+ * The share of `amount` left for the rest of a period (`now` in [start, end)),
+ * rounded down. Used for the prorated Stripe estimate of added seats and for
+ * the extra plan credits added seats bring in the current month slice.
+ */
+export function prorate(amount: number, start: number, end: number, now: number): number {
+  if (!(end > start) || now >= end) return 0;
+  if (now <= start) return Math.floor(amount);
+  return Math.floor((amount * (end - now)) / (end - start) + 1e-9);
+}
+
+/** Seats that count for limits: Team uses the purchased seats, personal plans 1. */
+function effectiveSeats(plan: PlanId, seats: number | null | undefined): number {
+  return PLANS[plan].kind === 'team' ? Math.max(1, Math.min(TEAM_SEATS.max, Math.floor(seats ?? 1))) : 1;
+}
+
+/** Included plan credits per month for `plan` (Team: by seats). */
+export function planMonthlyCredits(plan: PlanId, seats?: number | null): number {
+  return PLANS[plan].kind === 'team' ? teamIncludedCredits(effectiveSeats(plan, seats)) : PLANS[plan].monthlyCredits;
+}
+
+/** Concurrent generation jobs for `plan` (Team: by seats). */
+export function planConcurrentJobs(plan: PlanId, seats?: number | null): number {
+  return PLANS[plan].kind === 'team' ? teamConcurrentJobs(effectiveSeats(plan, seats)) : PLANS[plan].concurrentJobs;
+}
+
+/** Monthly agent allowance in USD for `plan` (Team: by seats, D-012/D-013). */
+export function planAgentAllowanceUsd(plan: PlanId, seats?: number | null): number {
+  return PLANS[plan].kind === 'team' ? teamAgentAllowanceUsd(effectiveSeats(plan, seats)) : AGENT_ALLOWANCE_USD[plan];
+}
 
 /**
  * Output size rank for plan caps. Video labels use their short side (480p, 720p,
@@ -229,9 +341,10 @@ export const AUTO_TOP_UP = { belowCredits: 200, amountUsd: TOP_UP.minUsd } as co
  * agent turn deducts its actual LLM cost; resets on the plan's billing period
  * start (monthly slices for yearly plans). Sized so plan gross margin stays
  * ≥ 50% in the worst case (all included credits used + card fees + 2% infra +
- * the whole allowance), see config.test.ts.
+ * the whole allowance), see config.test.ts. `team` is the one-seat base;
+ * use `planAgentAllowanceUsd(plan, seats)` (D-013 adds $3 per extra seat).
  */
-export const AGENT_ALLOWANCE_USD: Record<PlanId, number> = { starter: 1.2, plus: 3.5, pro: 12.5 };
+export const AGENT_ALLOWANCE_USD: Record<PlanId, number> = { starter: 1.2, plus: 3.5, pro: 12.5, team: 12.5 };
 
 /** Default turn size for cost estimates before a model has history (D-012). */
 export const AGENT_TURN_TOKENS = { prompt: 10_000, completion: 1_200 } as const;

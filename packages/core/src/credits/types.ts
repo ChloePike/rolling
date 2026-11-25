@@ -59,6 +59,12 @@ export interface AccountState {
   autoTopUp: AutoTopUpSettings | null;
   /** Bumped by every auto top-up purchase and settings change; part of the workflow window id. */
   autoTopUpSeq: number;
+  /** Purchased seats (D-013; Team only, 1 for personal plans). Drives Team grants and concurrency. */
+  seats: number;
+  /** Highest seat count already granted plan credits in the current slice (added seats are granted once). */
+  sliceSeats: number;
+  /** Plan the current slice's credits were granted for; a paid change to a higher plan is an upgrade (grants again). */
+  grantedPlanId: PlanId | null;
 }
 
 export interface Balance {
@@ -173,6 +179,16 @@ export interface GrantPeriod {
   /** Billing period from Stripe (epoch ms). */
   start: number;
   end: number;
+  /** Purchased seats (Team, D-013); omitted keeps the stored count. */
+  seats?: number;
+}
+
+export interface SeatsResult {
+  seats: number;
+  previous: number;
+  /** Prorated plan credits granted for seats added in the current slice. */
+  granted: number;
+  balance: Balance;
 }
 
 export interface GrantResult {

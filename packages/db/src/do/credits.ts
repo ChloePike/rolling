@@ -26,6 +26,10 @@ export const balance = sqliteTable(
     periodStart: integer("period_start"),
     periodEnd: integer("period_end"),
     autoTopupSeq: integer("auto_topup_seq").notNull().default(0),
+    // v4 (D-013): Team seats and the seats already granted in the current slice
+    seats: integer("seats").notNull().default(1),
+    sliceSeats: integer("slice_seats").notNull().default(1),
+    grantedPlanId: text("granted_plan_id"),
   },
   (t) => [check("balance_singleton", sql`${t.id} = 1`)],
 );
@@ -183,6 +187,16 @@ CREATE TABLE agent_holds (turn_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, llm T
 CREATE INDEX agent_holds_status ON agent_holds (status);
 CREATE INDEX agent_holds_period ON agent_holds (period_start, status);
 CREATE INDEX agent_holds_llm ON agent_holds (llm, status, closed_at);
+`,
+  },
+  {
+    version: 4,
+    name: "team_seats",
+    sql: `
+ALTER TABLE balance ADD COLUMN seats INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE balance ADD COLUMN slice_seats INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE balance ADD COLUMN granted_plan_id TEXT;
+UPDATE balance SET granted_plan_id = plan_id WHERE plan_expires_at IS NOT NULL;
 `,
   },
 ];

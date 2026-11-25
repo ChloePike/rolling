@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { encodeForm, invoiceSubscriptionId, StripeClient, StripeError, subscriptionPeriod } from './stripe';
 import { signStripePayload, StripeSignatureError, verifyStripeSignature } from './webhook';
-import { parsePlanLookupKey, planLookupKey, publicPlanCatalog, stripePlanPrices } from './plans';
+import { parsePlanLookupKey, parseTeamSeatLookupKey, planLookupKey, publicPlanCatalog, stripePlanPrices, stripeSeatPrices } from './plans';
 
 const SECRET = 'whsec_test_secret';
 const payload = JSON.stringify({ id: 'evt_1', object: 'event', type: 'invoice.paid', created: 1, data: { object: {} } });
@@ -73,9 +73,19 @@ describe('Stripe client', () => {
 });
 
 describe('plan catalog', () => {
-  it('derives six subscription prices with lookup keys from PLANS', () => {
+  it('derives eight subscription prices with lookup keys from PLANS, plus two Team seat prices (D-013)', () => {
     const prices = stripePlanPrices();
-    expect(prices).toHaveLength(6);
+    expect(prices).toHaveLength(8);
+    expect(prices.find((p) => p.lookupKey === 'rolling_team_month')).toMatchObject({ unitAmount: 7900, productId: 'rolling_plan_team' });
+    expect(prices.find((p) => p.lookupKey === 'rolling_team_year')).toMatchObject({ unitAmount: 75800 });
+    expect(stripeSeatPrices()).toEqual([
+      { interval: 'month', lookupKey: 'rolling_team_seat_month', productId: 'rolling_plan_team_seat', unitAmount: 2500, currency: 'usd' },
+      { interval: 'year', lookupKey: 'rolling_team_seat_year', productId: 'rolling_plan_team_seat', unitAmount: 24000, currency: 'usd' },
+    ]);
+    expect(parseTeamSeatLookupKey('rolling_team_seat_year')).toEqual({ interval: 'year' });
+    expect(parsePlanLookupKey('rolling_team_seat_year')).toBeNull();
+    expect(parsePlanLookupKey('rolling_team_year')).toEqual({ planId: 'team', interval: 'year' });
+    expect(publicPlanCatalog().teamSeat).toMatchObject({ prices: { month: 2500, year: 24000 }, monthlyCredits: 500, concurrentJobs: 2, maxConcurrentJobs: 30, agentAllowanceUsd: 3 });
     expect(prices.find((p) => p.lookupKey === 'rolling_plus_year')).toMatchObject({ unitAmount: 14400, productId: 'rolling_plan_plus' });
     expect(parsePlanLookupKey(planLookupKey('pro', 'month'))).toEqual({ planId: 'pro', interval: 'month' });
     expect(parsePlanLookupKey('other')).toBeNull();

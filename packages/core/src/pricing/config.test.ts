@@ -26,11 +26,11 @@ describe('pricing model (D-006)', () => {
   const costPerCredit = USD_PER_CREDIT / MARKUP;
   const margin = (revenue: number, credits: number) => 1 - (costPerCredit * credits) / revenue - cardFee(revenue) - INFRA;
 
-  it('ships Starter, Plus and Pro as entry tickets', () => {
-    expect(PLAN_ORDER).toEqual(['starter', 'plus', 'pro']);
+  it('ships Starter, Plus and Pro as personal entry tickets, then Team (D-013)', () => {
+    expect(PLAN_ORDER).toEqual(['starter', 'plus', 'pro', 'team']);
     expect(PLANS.starter).toMatchObject({ label: 'Starter', monthlyCredits: 200, priceMonthlyUsd: 5, priceYearlyUsd: 48, topUpBonus: 0 });
     expect(PLANS.plus).toMatchObject({ label: 'Plus', monthlyCredits: 800, priceMonthlyUsd: 15, topUpBonus: 0.05 });
-    expect(PLANS.pro).toMatchObject({ label: 'Pro', monthlyCredits: 2500, priceMonthlyUsd: 49, topUpBonus: 0.1, seats: 10 });
+    expect(PLANS.pro).toMatchObject({ label: 'Pro', monthlyCredits: 2500, priceMonthlyUsd: 49, topUpBonus: 0.1, seats: 1, kind: 'personal' });
     expect(MARKUP).toBe(3);
     expect(USD_PER_CREDIT).toBe(0.01);
     expect(DEFAULT_CONFIRM_THRESHOLD_CREDITS).toBe(300);
@@ -92,7 +92,7 @@ describe('pricing model (D-006)', () => {
   });
 
   it('keeps plan gross margin >= 50% with the whole agent allowance used (D-012)', () => {
-    expect(AGENT_ALLOWANCE_USD).toEqual({ starter: 1.2, plus: 3.5, pro: 12.5 });
+    expect(AGENT_ALLOWANCE_USD).toEqual({ starter: 1.2, plus: 3.5, pro: 12.5, team: 12.5 });
     for (const plan of Object.values(PLANS)) {
       const price = plan.priceMonthlyUsd as number;
       const cost = costPerCredit * plan.monthlyCredits + price * cardFee(price) + price * INFRA + AGENT_ALLOWANCE_USD[plan.id];

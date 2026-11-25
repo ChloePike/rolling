@@ -69,6 +69,7 @@ export interface StripeCustomer {
 export interface StripeSubscriptionItem {
   id: string;
   price: StripePrice;
+  quantity?: number;
   /** 2025-03-31+ API versions. */
   current_period_start?: number;
   current_period_end?: number;
@@ -86,6 +87,9 @@ export interface StripeSubscription {
   default_payment_method?: string | { id: string } | null;
   items: { data: StripeSubscriptionItem[] };
   metadata?: Metadata;
+  /** Set when an update with `payment_behavior: pending_if_incomplete` waits for payment. */
+  pending_update?: { subscription_items?: { id?: string; quantity?: number; price?: string | StripePrice }[] | null; expires_at?: number } | null;
+  latest_invoice?: string | { id: string; status?: string; amount_due?: number; amount_paid?: number } | null;
 }
 
 export interface StripeCheckoutSession {
@@ -217,6 +221,9 @@ export class StripeClient {
   }
   getSubscription(id: string) {
     return this.request<StripeSubscription>('GET', `/v1/subscriptions/${encodeURIComponent(id)}`);
+  }
+  updateSubscription(id: string, params: Record<string, FormValue>, idempotencyKey?: string) {
+    return this.request<StripeSubscription>('POST', `/v1/subscriptions/${encodeURIComponent(id)}`, params, idempotencyKey);
   }
   listPricesByLookupKeys(keys: readonly string[]) {
     return this.request<StripeList<StripePrice>>('GET', '/v1/prices', { lookup_keys: [...keys], active: true, limit: 100 });

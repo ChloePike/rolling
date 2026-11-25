@@ -196,7 +196,7 @@ export const subscriptions = sqliteTable(
     workspaceId: text("workspace_id")
       .notNull()
       .references(() => workspaces.id),
-    plan: text("plan", { enum: ["starter", "plus", "pro"] }).notNull(),
+    plan: text("plan", { enum: ["starter", "plus", "pro", "team"] }).notNull(),
     interval: text("interval", { enum: ["month", "year"] }).notNull(),
     status: text("status").notNull(),
     currentPeriodEnd: integer("current_period_end").notNull(),
@@ -205,10 +205,13 @@ export const subscriptions = sqliteTable(
     /** M2 (migration 0005). */
     stripePriceId: text("stripe_price_id"),
     currentPeriodStart: integer("current_period_start"),
+    /** D-013 (migration 0012): members including the owner (Team seat quantity + 1); 1 for personal plans. */
+    seats: integer("seats").notNull().default(1),
   },
   (t) => [
     index("subscriptions_ws").on(t.workspaceId, sql`${t.currentPeriodEnd} DESC`),
-    check("subscriptions_plan_check", sql`${t.plan} IN ('starter','plus','pro')`),
+    check("subscriptions_plan_check", sql`${t.plan} IN ('starter','plus','pro','team')`),
+    check("subscriptions_seats_check", sql`${t.seats} >= 1`),
     check("subscriptions_interval_check", sql`${t.interval} IN ('month','year')`),
   ],
 );
@@ -221,7 +224,7 @@ export const checkoutSessions = sqliteTable(
     workspaceId: text("workspace_id").notNull(),
     userId: text("user_id").notNull(),
     kind: text("kind", { enum: ["plan", "topUp"] }).notNull(),
-    plan: text("plan", { enum: ["starter", "plus", "pro"] }),
+    plan: text("plan", { enum: ["starter", "plus", "pro", "team"] }),
     interval: text("interval", { enum: ["month", "year"] }),
     amountCents: integer("amount_cents"),
     credits: integer("credits"),
@@ -229,6 +232,8 @@ export const checkoutSessions = sqliteTable(
     status: text("status", { enum: ["open", "complete", "expired"] }).notNull().default("open"),
     createdAt: integer("created_at").notNull(),
     completedAt: integer("completed_at"),
+    /** D-013 (migration 0012): Team seats bought in this checkout. */
+    seats: integer("seats"),
   },
   (t) => [
     index("checkout_sessions_ws").on(t.workspaceId, sql`${t.createdAt} DESC`),

@@ -34,3 +34,10 @@ CREATE TABLE agent_holds (turn_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, llm T
 CREATE INDEX agent_holds_status ON agent_holds (status);
 CREATE INDEX agent_holds_period ON agent_holds (period_start, status);
 CREATE INDEX agent_holds_llm ON agent_holds (llm, status, closed_at);
+
+-- v4 (D-013): Team seats (Stripe seat quantity + 1) and the seats already granted plan credits in the current slice.
+ALTER TABLE balance ADD COLUMN seats INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE balance ADD COLUMN slice_seats INTEGER NOT NULL DEFAULT 1;
+-- Plan the current slice was granted for (upgrade detection in invoice.paid).
+ALTER TABLE balance ADD COLUMN granted_plan_id TEXT;
+UPDATE balance SET granted_plan_id = plan_id WHERE plan_expires_at IS NOT NULL;

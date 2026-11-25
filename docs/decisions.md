@@ -2,11 +2,34 @@
 
 Decisions made after the original spec. Where this file disagrees with `PRD.md`, `architecture.md`, `api.md` or `harness.md`, this file wins. Newest first.
 
+## D-013 — Team plan with purchased seats; personal plans have one seat (2026-11-25)
+
+Owner decision. Values live in `packages/core/pricing/config.ts` (`PLANS.team`, `SEAT_PRICE`, `teamIncludedCredits`, `teamConcurrentJobs`, `teamAgentAllowanceUsd`, `teamPriceCents`, `planMonthlyCredits/ConcurrentJobs/AgentAllowanceUsd(plan, seats)`); `team.test.ts` enforces the margin floor.
+
+- **Personal plans:** Starter, Plus and Pro have 1 seat each (Pro no longer includes 10 seats). Only Team workspaces can invite.
+- **Team** (id `team`, plan order Starter, Plus, Pro, Team): base **$79/month or $758/year** including 1 seat (the owner); Pro perks (4K video and image caps, voice cloning), +10% top-up bonus; per month **2,500 shared plan credits**, **$12.50 agent allowance** (D-012), **10 jobs at once**.
+- **Each additional seat: $25/month or $240/year**, adding +500 shared plan credits/month, +2 jobs at once (max 30) and +$3/month agent allowance. Seats = members including the owner; pending invites reserve a seat. Seats 1–200.
+
+| Team seats | Monthly | Yearly | Credits/month | Jobs at once | Agent allowance/month |
+|---|---|---|---|---|---|
+| 1 | $79 | $758 | 2,500 | 10 | $12.50 |
+| 3 | $129 | $1,238 | 3,500 | 14 | $18.50 |
+| 5 | $179 | $1,718 | 4,500 | 18 | $24.50 |
+| 11+ | +$25/seat | +$240/seat | +500/seat | 30 (max) | +$3/seat |
+
+- **Margin floor for Team: ≥ 60% worst case** (every included credit and the whole agent allowance used, card fees 4.65% + $0.30 per charge, 2% infrastructure), monthly and yearly, for the base and for every additional seat (also checked per seat on its own, with its own $0.30). Base: 66.6% monthly, 60.3% yearly; seat: 73.5% monthly, 69.9% yearly. Personal plans keep the 50% floor.
+- **Gating:** inviting without Team → `402 TEAM_REQUIRED { currentPlan }`; beyond purchased seats → `402 SEATS_REQUIRED { seats, used, needed }`. Accepting an invite turns its reserved seat into a member; removing a member or revoking an invite frees the seat. The purchased count stays until the owner lowers it; lowering below seats in use → `409 SEATS_IN_USE`.
+- **Stripe:** one subscription, two items: base `rolling_team_<interval>` (quantity 1) and per-seat `rolling_team_seat_<interval>` (quantity seats − 1). `POST /api/billing/checkout {kind:'plan', planId:'team', interval, seats}`; `PATCH /api/billing/seats {seats}`. Increases: `proration_behavior: always_invoice` with `payment_behavior: pending_if_incomplete` (charged now, applied only once paid). Decreases: `proration_behavior: none` — effective now, no refund or credit for the rest of the period, the next invoice charges fewer seats. (Chosen over `create_prorations`: a prorated refund after the seat's credits were granted would let a workspace add and remove seats for free credits.)
+- **Credits for added seats:** the prorated share of 500 credits per added seat for the rest of the current month slice, granted once per slice (`CreditAccount.setSeats`, high-water mark: removing and re-adding a seat in the same slice grants nothing new). Applied from the `PATCH` response and again (no-op) from `customer.subscription.updated` / `invoice.paid`; the next slice grants the full amount for the seats held then.
+- **Personal → Team:** the simpler correct option — the workspace converts in place. Its subscription switches items (prorated, charged now), the workspace keeps its id, projects, assets and credits and becomes `kind: 'team'`; `invoice.paid` grants Team credits for the seats (leftover plan credits of the old slice expire, as on any upgrade). Starting Team from a workspace without a plan uses Checkout and converts the workspace the same way. A Team that later moves to a personal plan stays `kind: 'team'` but cannot invite; existing members stay.
+- **Existing Pro workspaces with extra members** (from the old 10-seat Pro) keep them; new invites need Team.
+- Supersedes D-006's seat column and the PRD's “Teams (Studio)” rule (which D-006 had moved to Pro).
+
 ## D-012 — Agent allowance: monthly USD of gateway cost per plan, held and settled per turn (2026-11-25)
 
 Owner decision; replaces the daily turn limits (D-007) and resolves D-009's open item on premium agent LLMs.
 
-- **Allowance per plan** (`AGENT_ALLOWANCE_USD`, `packages/core/pricing/config.ts`), in USD of Hyperouter cost per month: **Starter $1.20, Plus $3.50, Pro $12.50**. Members only (D-007). It resets on the plan's billing period start: monthly slices from the subscription's `current_period_start` (yearly plans reset monthly on the same day), else the calendar month in UTC.
+- **Allowance per plan** (`AGENT_ALLOWANCE_USD`, `packages/core/pricing/config.ts`), in USD of Hyperouter cost per month: **Starter $1.20, Plus $3.50, Pro $12.50** (Team: `planAgentAllowanceUsd`, D-013). Members only (D-007). It resets on the plan's billing period start: monthly slices from the subscription's `current_period_start` (yearly plans reset monthly on the same day), else the calendar month in UTC.
 - **Margin.** Sized so each plan keeps gross margin ≥ 50% in the worst case: plan price × 0.5 ≥ cost of all included credits + card fees (4.65% + $0.30) + 2% infra + the whole allowance (Starter $2.50 ≥ $2.50, Plus $7.50 ≥ $7.46, Pro $24.50 ≥ $24.39 at monthly prices; `config.test.ts` asserts it). Open: with the yearly discount the monthly worst case dips below 50% (Starter ≈ 46%); real allowance use is far lower.
 - **What a turn costs:** the sum of `usage.cost` of every Hyperouter response in the turn (all LLM calls, retries, the thread summary when it runs); a response without `cost` is priced as tokens × the resolved gateway model's `tokenPrice`. Classifier calls (Auto model choice, safety checks) are never charged to the allowance.
 - **Holds, like credits.** The CreditAccount DO (one per workspace) keeps an agent allowance ledger in micro-USD: `agentHold` reserves the turn's estimate before the first LLM call and refuses with `AGENT_ALLOWANCE_EXHAUSTED` when used + held + estimate > allowance; `agentSettle` charges the actual cost (may exceed the hold; the overrun is recorded); `agentRelease` drops the hold of a turn that cost nothing (cancel, failure before a response); holds older than 10 minutes expire on the DO alarm (crashed turns; a late settle still charges). A turn in flight may overrun slightly; that is accepted.
@@ -71,13 +94,13 @@ Owner decisions: gross margin ≥ 50%; revenue comes mainly from top-ups; plans 
 |---|---|---|---|---|---|---|---|---|---|
 | Starter | $5 | $48 | 200 | +0% | 2 | 720p | 2K | no | 1 |
 | Plus | $15 | $144 | 800 | +5% | 5 | 1080p | 2K | yes | 1 |
-| Pro | $49 | $470 | 2,500 | +10% | 10 | 4K | 4K | yes | 10 |
+| Pro | $49 | $470 | 2,500 | +10% | 10 | 4K | 4K | yes | 1 (was 10; seats moved to Team, D-013) |
 
 - **Resolution caps** are enforced by `planAllowsResolution(plan, kind, resolution)` on every quote and run (video and avatar runs use the video cap). Ranks use the short side (768p > 720p, so MiniMax H3 at 768p needs Plus); unknown labels are refused. The UI shows locked resolutions with the lowest plan that unlocks them (`lowestPlanFor`).
 - **Top-ups (members only, never expire): any amount from $10 to $10,000** in whole cents. Base credits = amount ÷ $0.01, plus a bonus by amount tier — $10+ 0%, $25+ 4%, $50+ 10%, $100+ 15% — plus the plan bonus above (additive, max 25%). Suggested chips: $10, $25, $50, $100, $250.
 - **Margin floor (all credits used, after card fees ~4.65% + $0.30 and 2% infra):** top-ups ≥ 50.0% at every amount and plan (worst case: Pro member, ≥ $100); plans 70–76%. Real usage below 100% raises it.
 - **Confirm threshold** default 300 credits (≈ $3), the PRD's “20 credits” rescaled. **Auto top-up:** below 200 credits, top up the $10 minimum.
-- Supersedes the PRD's plan names (Starter/Pro/Studio), plan credits, prices, yearly discount, credit packs and per-model credit prices. The PRD's “Teams (Studio)” rule now applies to Pro.
+- Supersedes the PRD's plan names (Starter/Pro/Studio), plan credits, prices, yearly discount, credit packs and per-model credit prices. ~~The PRD's “Teams (Studio)” rule now applies to Pro.~~ Seats moved to the Team plan (D-013); every personal plan has 1 seat.
 
 ## D-005 — Adult (18+) content is allowed (2026-11-25)
 
