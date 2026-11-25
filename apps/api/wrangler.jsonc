@@ -3,7 +3,8 @@
 // The Cloudflare account is shared with unrelated projects: every resource name starts with `rolling-`
 // (AE datasets: `rolling_<env>`). Top level = local development only (`wrangler dev`, tests); always
 // deploy with `--env staging` or `--env production`.
-// Placeholders: D1 `database_id` values (REPLACE_ME_*) and the rate-limit `namespace_id`s.
+// Placeholders: D1 `database_id` values (REPLACE_ME_*). Rate-limit `namespace_id`s are account-unique integers we
+// choose (1001.., 2001.., 3001..), not placeholders: keep them.
 // Bindings are not inherited by named environments, so each env repeats them.
 // Local dev: containers are disabled (`dev.enable_containers: false`); use `wrangler dev --enable-containers`
 // with Docker running to exercise FfmpegRenderer. `assets.directory` must exist: build apps/web first
@@ -223,11 +224,10 @@
         // Direct browser uploads (D-011): S3 API endpoint of the MEDIA bucket. Secrets: R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY.
         "R2_ACCOUNT_ID": "e2ed20c61e6c1ce394300a753734eff9",
         "R2_BUCKET_NAME": "rolling-media-staging",
-        // Email sender for Resend, e.g. "Rolling <hello@<product-domain>>" (open: product domain, D-001).
-        "EMAIL_FROM": "",
-        // Email provider: "" (Resend when RESEND_API_KEY is set; development records), "resend", or
-        // "test-inbox" (staging e2e: GET /api/test/inbox; refused in production).
-        "EMAIL_PROVIDER": ""
+        // Placeholder sender until the product domain exists (D-001); the test inbox does not send mail.
+        "EMAIL_FROM": "Rolling <no-reply@rolling.local>",
+        // Staging e2e reads sign-in codes from GET /api/test/inbox (admin token; refused in production).
+        "EMAIL_PROVIDER": "test-inbox"
       },
       "d1_databases": [
         {
