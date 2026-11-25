@@ -3,6 +3,7 @@
   position:sticky;top:0;z-index:30;
   display:flex;align-items:center;gap:12px;flex-wrap:wrap;
   padding:14px 24px;
+  box-sizing:border-box;min-height:var(--app-header-h,72px);
   background:var(--c-header-bg);
   -webkit-backdrop-filter:blur(20px) saturate(1.4);
   backdrop-filter:blur(20px) saturate(1.4);

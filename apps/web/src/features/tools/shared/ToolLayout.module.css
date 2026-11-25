@@ -4,9 +4,8 @@
  * DigitalHuman, Character), which share one layout.
  */
 .root{
-  /* Fill the viewport under the shared header; cancel AppShell main padding. */
+  /* Fill the viewport under the shared header; the route is full-bleed (no AppShell padding). */
   position:relative;
-  margin:0 -32px -64px;
   height:calc(100dvh - var(--app-header-h,72px));
   min-height:calc(860px - var(--app-header-h,72px));
   display:flex;
