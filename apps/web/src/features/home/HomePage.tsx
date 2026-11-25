@@ -158,7 +158,7 @@ export function HomePage() {
         f.kind === 'allowance'
           ? t('home.agent.allowanceUsedUp', { date: f.resetsAt ? intl.formatDate(f.resetsAt, { month: 'short', day: 'numeric' }) : '' })
           : f.kind === 'rateLimited'
-            ? t('home.agent.rateLimited')
+            ? t('home.agent.rateLimited', { seconds: f.retryAfter ?? 0 })
             : t('home.agent.error');
       setAgent({ brief, text: '', pending: false, plan: null, notice });
     }

@@ -126,4 +126,3 @@
 .play[aria-pressed="true"]{background:var(--c-accent);color:var(--c-text-1)}
 .play:disabled{opacity:.5;cursor:default}
 .fileImg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:inherit}
-.fileImgBlurred{filter:blur(16px);cursor:pointer}

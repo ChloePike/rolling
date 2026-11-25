@@ -249,7 +249,8 @@ export class ProjectSync {
         return;
       }
       case 'graph.patched': {
-        if (!this.confirmed) return;
+        // Catch-up after a reconnect may repeat events this tab already applied.
+        if (!this.confirmed || msg.payload.revision <= this.confirmed.revision) return;
         const r = applyOps(this.confirmed, msg.payload.ops, undefined, msg.payload.actor === 'agent' ? 'agent' : 'user');
         if (!r.ok) return;
         this.confirmed = { ...r.state, revision: msg.payload.revision };

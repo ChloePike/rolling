@@ -1,6 +1,7 @@
 import { cx, motionSafe } from '@rolling/ui';
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
-import { createContext, memo, useContext, useState, type CSSProperties, type ReactNode } from 'react';
+import { createContext, memo, useContext, type CSSProperties, type ReactNode } from 'react';
+import { RatedThumb } from '@/lib/media';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { hasInputs, inputPorts, outputType, type PortType } from '@rolling/core/graph';
 import type { GraphNode } from '@rolling/core/graph';
@@ -200,30 +201,10 @@ function Result({ node, reveal }: { node: GraphNode; reveal: boolean }) {
   const intl = useIntl();
   const { url: mediaUrl, rating } = useContext(CardMediaContext);
   const actions = useContext(NodeActionsContext);
-  const [revealed, setRevealed] = useState(false);
-  const blurred = (rating === 'suggestive' || rating === 'explicit') && !revealed;
   const tone = str(node.params.tone, 'var(--c-tone-indigo)');
-  const mediaClass = cx(styles.resultMedia, blurred && styles.resultBlurred);
+  // D-005: suggestive / explicit results are blurred with Show unless the viewer has mature content on.
   const media = mediaUrl ? (
-    <>
-      {node.kind === 'image' ? (
-        <img className={mediaClass} src={mediaUrl} alt="" draggable={false} data-testid={`node-media-${node.id}`} />
-      ) : (
-        <video className={mediaClass} src={mediaUrl} muted playsInline preload="metadata" data-testid={`node-media-${node.id}`} />
-      )}
-      {blurred ? (
-        <button
-          type="button"
-          className={cx(styles.revealBtn, 'nodrag')}
-          onClick={(e) => {
-            e.stopPropagation();
-            setRevealed(true);
-          }}
-        >
-          <FormattedMessage id="canvas.node.showMature" />
-        </button>
-      ) : null}
-    </>
+    <RatedThumb className={cx(styles.resultMedia, 'nodrag')} src={mediaUrl} alt={node.title} rating={rating ?? null} kind={node.kind === 'video' ? 'video' : 'image'} />
   ) : null;
   if (node.kind === 'image') {
     return (

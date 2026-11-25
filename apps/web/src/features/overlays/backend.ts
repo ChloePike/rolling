@@ -114,27 +114,53 @@ export function openProjectChannel(projectId: string): ProjectChannel {
   const ours = new Map<string, string>();
   const raws = new Set<(raw: string) => void>();
   const statuses = new Set<(s: { open: boolean; fatalCode?: number }) => void>();
+  /** Project events that arrive before `subscribed` (D-014 catch-up): applied after it. */
+  let buffer: Array<{ type: string; id: string; payload: unknown }> | null = [];
   const emit = (type: string, id: string, payload: unknown) => {
     const raw = JSON.stringify({ type, id, payload });
     for (const l of raws) l(raw);
+  };
+  /** Keeps the hub's catch-up cursor at the last graph revision this tab applied. */
+  const track = (type: string, payload: unknown) => {
+    const p = payload as { revision?: unknown; canvasId?: unknown } | null;
+    if (typeof p?.revision !== 'number' || (type !== 'ack' && type !== 'graph.patched' && type !== 'snapshot') || p.canvasId !== undefined) return;
+    channel.setRevision(p.revision);
   };
   const offAny = channel.onAny((type, payload, id) => {
     const mine = ours.get(id);
     if (mine) ours.delete(id);
     if (type === 'subscribed') {
-      const p = payload as { snapshot?: unknown; patches?: Array<{ revision: number; ops: unknown[]; actor: string }> };
-      if (p.snapshot) emit('snapshot', id, p.snapshot);
-      for (const patch of p.patches ?? []) emit('graph.patched', id, patch);
+      // `{ projectId, revision, seq, canEdit, snapshot?, events? }`: a snapshot, or the events since our cursor.
+      const p = payload as { canEdit?: boolean; snapshot?: { revision: number }; events?: Array<{ seq: number; type: string; payload: unknown }> };
+      emit('hello', id, { actor: '', canEdit: p.canEdit !== false });
+      if (p.snapshot) {
+        emit('snapshot', id, p.snapshot);
+        track('snapshot', p.snapshot);
+      }
+      for (const e of p.events ?? []) {
+        emit(e.type, `${id}:${e.seq}`, e.payload);
+        track(e.type, e.payload);
+      }
+      for (const e of buffer ?? []) emit(e.type, e.id, e.payload);
+      buffer = null;
       for (const l of statuses) l({ open: true });
       return;
     }
+    if (type === 'unsubscribed') return;
     if (type === 'error' && !mine) {
       const code = (payload as { code?: string })?.code ?? '';
       if (FATAL_CODES[code]) for (const l of statuses) l({ open: false, fatalCode: FATAL_CODES[code] });
     }
+    if (buffer && !mine && type !== 'error') {
+      buffer.push({ type, id, payload });
+      return;
+    }
     emit(type, mine ?? id, payload);
+    track(type, payload);
   });
   const offStatus = realtime.realtime.user.onEvent('status', (st) => {
+    // After a reconnect the hub re-subscribes; buffer until its `subscribed` answer.
+    if (st !== 'open') buffer ??= [];
     for (const l of statuses) l({ open: st === 'open' });
   });
   const offClosed = realtime.realtime.user.onEvent('closed', (code) => {

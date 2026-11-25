@@ -69,6 +69,6 @@
   "home.agent.dismiss": "Dismiss",
   "home.agent.safety": "This can’t be made under our content rules. Change the brief and try again.",
   "home.agent.error": "The agent couldn’t answer. Nothing was changed. Try again.",
-  "home.agent.rateLimited": "Too many messages at once. Wait a moment and send again.",
+  "home.agent.rateLimited": "{seconds, plural, =0 {Too many messages at once. Wait a moment and send again.} one {Too many messages at once. Send again in # second.} other {Too many messages at once. Send again in # seconds.}}",
   "home.agent.stale": "This plan was already used or replaced. Send the brief again."
 }

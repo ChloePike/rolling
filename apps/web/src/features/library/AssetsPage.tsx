@@ -8,27 +8,8 @@ import { assetFromFile, useAssetMutations, useAssets, useCharacters, useFolders,
 import type { AssetItem, AssetType, FolderItem, VoiceState } from './assetsMocks';
 import styles from './Assets.module.css';
 import { isMockApi } from '@/features/overlays/backend';
+import { RatedThumb } from '@/lib/media';
 
-/**
- * Thumbnail of a listed asset; mature-rated ones are blurred until clicked (D-005).
- * TODO(media): switch to `RatedThumb` from lib/media once it lands.
- */
-function RatedImg({ src, mature }: { src: string; mature: boolean }) {
-  const [shown, setShown] = useState(!mature);
-  return (
-    <img
-      src={src}
-      alt=""
-      className={cx(styles.fileImg, !shown && styles.fileImgBlurred)}
-      onClick={(e) => {
-        if (shown) return;
-        e.stopPropagation();
-        setShown(true);
-      }}
-      draggable={false}
-    />
-  );
-}
 
 const cx = (...c: Array<string | false | undefined>) => c.filter(Boolean).join(' ');
 const TONES = ['var(--c-tone-plum)', 'var(--c-tone-teal)', 'var(--c-tone-indigo)', 'var(--c-tone-sand)', 'var(--c-tone-neutral)', 'var(--c-tone-moss)', 'var(--c-tone-clay)', 'var(--c-tone-slate)'];
@@ -317,7 +298,7 @@ function FileCard({ asset, index, order, on, onPick }: { asset: AssetItem; index
       data-asset={asset.id}
     >
       <span className={styles.fileThumb} style={{ aspectRatio: asset.ar, background: audio ? 'var(--c-surface-4)' : TONES[index % TONES.length] }}>
-        {asset.thumbUrl && !audio ? <RatedImg src={asset.thumbUrl} mature={!!asset.mature} /> : null}
+        {asset.thumbUrl && !audio ? <RatedThumb className={styles.fileImg} src={asset.thumbUrl} alt={asset.name} rating={asset.mature ? 'suggestive' : null} /> : null}
         <span className={styles.typeBadge}>{intl.formatMessage({ id: `library.assets.type.${asset.type}` })}</span>
         {audio && (
           <span className={styles.wave} aria-hidden="true">

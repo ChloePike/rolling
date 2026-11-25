@@ -288,7 +288,7 @@
   "canvas.error.PROJECT_DELETED.title": "This project was deleted",
   "canvas.error.PROJECT_DELETED.body": "Someone in your workspace deleted it. Its share links no longer open.",
   "canvas.agent.error.allowance": "Agent allowance for this month is used up · resets {date}",
-  "canvas.agent.error.rateLimited": "Too many messages at once. Wait a moment and send again.",
+  "canvas.agent.error.rateLimited": "{seconds, plural, =0 {Too many messages at once. Wait a moment and send again.} one {Too many messages at once. Send again in # second.} other {Too many messages at once. Send again in # seconds.}}",
   "canvas.agent.error.busy": "The agent is still answering your last message.",
   "canvas.agent.error.offline": "Can’t reach the agent. Check your connection and send again.",
   "canvas.agent.error.generic": "The agent couldn’t answer. Nothing was changed. Try again.",
@@ -315,6 +315,5 @@
   "canvas.quote.code.SAFETY_BLOCKED": "This can’t be generated under our content rules.",
   "canvas.quote.code.MATURE_REQUIRED": "Turn on mature content in Settings to generate this, or change the prompt.",
   "canvas.quote.code.SAFETY_REVIEW": "Mature content is paused for this workspace while recent activity is reviewed.",
-  "canvas.quote.code.NO_PLAN": "Join a plan and turn on mature content to generate this, or change the prompt.",
-  "canvas.node.showMature": "Show"
+  "canvas.quote.code.NO_PLAN": "Join a plan and turn on mature content to generate this, or change the prompt."
 }

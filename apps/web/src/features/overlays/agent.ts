@@ -206,7 +206,7 @@ export async function discardProposal(proposalId: string): Promise<void> {
 export type AgentFailure =
   | { kind: 'join' }
   | { kind: 'allowance'; resetsAt: number | null; model: string | null }
-  | { kind: 'rateLimited' }
+  | { kind: 'rateLimited'; retryAfter: number | null }
   | { kind: 'busy' }
   | { kind: 'stale' }
   | { kind: 'offline' }
@@ -220,7 +220,8 @@ export function agentFailure(e: unknown): AgentFailure {
     case 'AGENT_ALLOWANCE_EXHAUSTED':
       return { kind: 'allowance', resetsAt: typeof e.data.resetsAt === 'number' ? e.data.resetsAt : null, model: typeof e.data.model === 'string' ? e.data.model : null };
     case 'RATE_LIMITED':
-      return { kind: 'rateLimited' };
+      // DeepSeek sends may be rate limited per model: `{ retryAfter (seconds), model }`.
+      return { kind: 'rateLimited', retryAfter: typeof (e.data as { retryAfter?: unknown }).retryAfter === 'number' ? (e.data as { retryAfter: number }).retryAfter : null };
     case 'CONFLICT':
       return typeof e.data.status === 'string' ? { kind: 'stale' } : { kind: 'busy' };
     case 'NETWORK':

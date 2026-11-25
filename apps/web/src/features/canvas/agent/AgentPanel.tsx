@@ -142,7 +142,7 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
       case 'allowance':
         return intl.formatMessage({ id: 'canvas.agent.error.allowance' }, { date: f.resetsAt ? intl.formatDate(f.resetsAt, { month: 'short', day: 'numeric' }) : '' });
       case 'rateLimited':
-        return intl.formatMessage({ id: 'canvas.agent.error.rateLimited' });
+        return intl.formatMessage({ id: 'canvas.agent.error.rateLimited' }, { seconds: f.retryAfter ?? 0 });
       case 'busy':
         return intl.formatMessage({ id: 'canvas.agent.error.busy' });
       case 'offline':
