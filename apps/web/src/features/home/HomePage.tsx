@@ -17,6 +17,7 @@ import {
 import { Paywall, useRunFlow, type RunRequest } from '@/features/overlays';
 import { useTemplates } from '@/features/templates/api';
 import { checkoutPlan, useSession } from '@/lib/session';
+import { useAgentAllowance } from '@/lib/session/agentAllowance';
 import type { TemplateSummary } from '@/features/templates/types';
 import { useCreateProject, useRecentProjects } from './api';
 import { HomeResult, nextVersion, type HomeResultState } from './HomeResult';
@@ -48,6 +49,7 @@ export function HomePage() {
   const [refs, setRefs] = useState<RefItem[]>([]);
   const { data: skills } = useSkills();
   const { pills, renderPillPopover, credits, run } = useHomePills(mode);
+  const allowance = useAgentAllowance();
   // Settings commands open the pill they name; a mode without that pill does not list them.
   const pillIds = {
     model: pills.some((p) => p.id === 'model') ? 'model' : undefined,
@@ -165,6 +167,11 @@ export function HomePage() {
           }
           onSubmit={submit}
         />
+        {mode === 'agent' && allowance.exhausted ? (
+          <p role="status" className={styles.allowanceNotice}>
+            <FormattedMessage id="home.agent.allowanceUsedUp" values={{ date: intl.formatDate(allowance.resetsAt, { month: 'short', day: 'numeric' }) }} />
+          </p>
+        ) : null}
         <nav className={styles.entries} aria-label={intl.formatMessage({ id: 'home.start.label' })}>
           {ENTRIES.map((e) => (
             <Link key={e.key} to={e.to} className={styles.entry}>

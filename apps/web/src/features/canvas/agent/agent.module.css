@@ -35,6 +35,7 @@
 .shuffle:hover{background:var(--c-surface-6)}
 .built{font-size:12px;color:var(--c-text-3);line-height:1.5}
 .composerWrap{padding:10px;flex:none}
+.allowanceNotice{margin:0 0 8px;font-size:12px;color:var(--c-text-2)}
 .composer{border-radius:16px;background:var(--c-surface-4);padding:10px 10px 8px;display:flex;flex-direction:column;gap:8px}
 .textarea{background:none;border:0;outline:0;color:var(--c-text-1);font:inherit;font-size:13px;line-height:1.5;resize:none;padding:2px;margin:0}
 .textarea::placeholder{color:var(--c-text-4)}

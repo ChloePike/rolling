@@ -2,6 +2,18 @@
 
 Decisions made after the original spec. Where this file disagrees with `PRD.md`, `architecture.md`, `api.md` or `harness.md`, this file wins. Newest first.
 
+## D-012 — Agent allowance: monthly USD of gateway cost per plan, held and settled per turn (2026-11-25)
+
+Owner decision; replaces the daily turn limits (D-007) and resolves D-009's open item on premium agent LLMs.
+
+- **Allowance per plan** (`AGENT_ALLOWANCE_USD`, `packages/core/pricing/config.ts`), in USD of Hyperouter cost per month: **Starter $1.20, Plus $3.50, Pro $12.50**. Members only (D-007). It resets on the plan's billing period start: monthly slices from the subscription's `current_period_start` (yearly plans reset monthly on the same day), else the calendar month in UTC.
+- **Margin.** Sized so each plan keeps gross margin ≥ 50% in the worst case: plan price × 0.5 ≥ cost of all included credits + card fees (4.65% + $0.30) + 2% infra + the whole allowance (Starter $2.50 ≥ $2.50, Plus $7.50 ≥ $7.46, Pro $24.50 ≥ $24.39 at monthly prices; `config.test.ts` asserts it). Open: with the yearly discount the monthly worst case dips below 50% (Starter ≈ 46%); real allowance use is far lower.
+- **What a turn costs:** the sum of `usage.cost` of every Hyperouter response in the turn (all LLM calls, retries, the thread summary when it runs); a response without `cost` is priced as tokens × the resolved gateway model's `tokenPrice`. Classifier calls (Auto model choice, safety checks) are never charged to the allowance.
+- **Holds, like credits.** The CreditAccount DO (one per workspace) keeps an agent allowance ledger in micro-USD: `agentHold` reserves the turn's estimate before the first LLM call and refuses with `AGENT_ALLOWANCE_EXHAUSTED` when used + held + estimate > allowance; `agentSettle` charges the actual cost (may exceed the hold; the overrun is recorded); `agentRelease` drops the hold of a turn that cost nothing (cancel, failure before a response); holds older than 10 minutes expire on the DO alarm (crashed turns; a late settle still charges). A turn in flight may overrun slightly; that is accepted.
+- **Estimate** for the chosen public LLM: the rolling average of that model's last 20 settled turns in the workspace; without history, token prices × 10k prompt + 1.2k completion tokens (e.g. DeepSeek V4.1 Flash ≈ $0.0011, Claude Opus 5.5 $0.064, GPT-6 Astra $0.16 → Starter ≈ 1,081 / 18 / 7 turns).
+- **API:** `429 AGENT_ALLOWANCE_EXHAUSTED { allowanceUsd, usedUsd, resetsAt, model }` on send; `GET /api/agent/allowance` → `{ plan, allowanceUsd, usedUsd, resetsAt, models: [{ id, name, estTurnUsd, turnsLeft }] }` (public LLM ids only); `agent.allowance` with the same payload on the user socket after each turn. D1 `agent_usage` keeps one row per turn (migration 0011) as history.
+- **UI:** the agent LLM pickers show “~N turns left” per model; when nothing fits, a non-blocking notice says “Agent allowance for this month is used up · resets <date>”.
+
 ## D-011 — Transfers: one shared queue, uploads direct to R2, resumable both ways (2026-11-25)
 
 - **Uploads go straight from the browser to R2** with presigned S3 `UploadPart` URLs; the Worker never carries upload bytes. Contract (`docs/api.md` → Assets): `POST /api/assets/uploads {filename, contentType, size, fingerprint, projectId?}` → `{assetId, key, uploadId, partSize (8 MiB), partCount, parts:[{n,size,etag}], expiresAt}` — an unexpired upload with the same fingerprint is returned with the parts storage already has; `POST …/:assetId/part-urls {partNumbers}` → `{urls:[{n,url,expiresAt}]}` (~1 h); the client `PUT`s each slice with `credentials: 'omit'` and reads the `ETag` header (bucket CORS exposes it); `GET …/:assetId` lists received parts (S3 `ListParts`) for resume; `POST …/complete` (no body); `DELETE …/:assetId` aborts. The client requests part URLs in batches sized to its in-flight window, refreshes them before expiry and on 403, and falls back to Worker-path part URLs (development only, `direct: false`) with cookies.
@@ -31,7 +43,7 @@ Decisions made after the original spec. Where this file disagrees with `PRD.md`,
   - An entry is listed only while one of its gateway models is in the synced catalog.
 - **Wan 3.0 is served through Berry.** `lumina/berry-1.0*` is the same model, capabilities and price as `alibaba/wan3.0*`; users see “Wan 3.0 / Turbo / Pro / Pro Turbo” (Wan icon) and calls go to the Berry ids; the `alibaba/wan3.0*` ids are hidden.
 - **Auto model selection uses an LLM classifier.** For generation runs with model “Auto”, the backend asks DeepSeek V4.1 Flash (cheapest route) to pick a model from the candidates that satisfy the request’s capabilities, the plan’s resolution cap (D-006) and mature routing (D-005), given the prompt, references, mode and length. Output is a Zod-validated model id from that candidate list; anything else, a timeout (2 s) or an error falls back to the deterministic `pickAuto` (cheapest capable model). The classifier is free to the user and runs before the quote, so the quote shows the chosen model.
-- **Open:** premium agent LLMs (Opus, Astra, Sonnet, GPT-6.1 Sol) cost up to ~60× DeepSeek per turn while agent turns are free for members (D-007). Either meter agent turns on non-default LLMs in credits (3× token cost, D-006) or limit them by plan. Decide before M6 ships.
+- Premium agent LLMs are metered by the monthly agent allowance: see D-012.
 
 ## D-008 — Media is served from a media domain, not the API (2026-11-25)
 
@@ -45,7 +57,7 @@ In production, images and video never stream through the API Worker.
 ## D-007 — The agent is members-only; margin assumptions (2026-11-25)
 
 - **Non-members cannot use the agent.** This replaces PRD rule 1’s “plan with the agent for free”. Without an active plan a user can sign up, browse, open templates’ previews and the public library, and type a brief; sending it to the agent (Home Agent mode, canvas agent panel, editor “Ask for an edit”, Simple-mode field filling in tools) opens Paywall `variant=join` and keeps the brief so it resumes after checkout. The API enforces it: agent routes and the agent WebSocket messages return `NO_PLAN` for workspaces without an active subscription.
-- Agent turns stay free for members (they do not spend credits); per-workspace daily turn limits still apply as abuse protection.
+- Agent turns stay free for members (they do not spend credits); they draw on the plan's monthly agent allowance (D-012, which replaced the daily turn limits).
 - **Margin assumptions** (owner): the Hyperouter 5.5% top-up fee is not counted, and payment-channel risk (e.g. high-risk processors for adult content) is not modelled for now. The 3× markup applies to every model, mature ones included.
 
 ## D-006 — Pricing: credits are the product, plans are the entry ticket (2026-11-25)

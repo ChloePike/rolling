@@ -168,6 +168,8 @@
   "canvas.add.source.public": "Public",
   "canvas.agent.addRef": "Add a reference",
   "canvas.agent.llmDefault": "DeepSeek V4.1 Flash",
+  "canvas.agent.turnsLeft": "~{count, plural, one {# turn} other {# turns}} left",
+  "canvas.agent.allowanceUsedUp": "Agent allowance for this month is used up · resets {date}",
   "canvas.agent.llmLabel": "Agent model",
   "canvas.agent.llmPill": "Agent model: {name}",
   "canvas.agent.modelPill": "Model for new shots: {name}",

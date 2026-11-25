@@ -7,6 +7,8 @@ export interface PillOption {
   label: string;
   /** Model rows: shows the provider mark (lib/modelIcons) before the label. */
   modelId?: string;
+  /** Secondary text at the end of the row (e.g. "~12 turns left"). */
+  meta?: string;
 }
 
 /**
@@ -43,6 +45,7 @@ export function PillListPopover({
           >
             {o.modelId ? <ModelIcon modelId={o.modelId} size={15} /> : null}
             {o.label}
+            {o.meta ? <span className={styles.pillOptionMeta}>{o.meta}</span> : null}
           </button>
         ))}
       </div>

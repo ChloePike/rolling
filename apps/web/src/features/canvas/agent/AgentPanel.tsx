@@ -3,6 +3,7 @@ import { useMemo, useRef, useState } from 'react';
 import { AUTO_MODEL, ModelPicker, mockModels, Paywall, catalogToOptions } from '@/features/overlays';
 import { ReferencePicker, useSkills, type RefItem } from '@/features/prompt';
 import { checkoutPlan } from '@/lib/session';
+import { useAgentAllowance } from '@/lib/session/agentAllowance';
 import { pickerModels, useModels } from '@/lib/models';
 import { ModelIcon, modelIcon } from '@/lib/modelIcons';
 import { FormattedMessage, useIntl } from 'react-intl';
@@ -70,6 +71,12 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
   const chat = useMemo(() => pickerModels(chatAll, { featuredOnly: false }).filter((m) => m.kind === 'chat'), [chatAll]);
   const llmModel = chat.find((m) => m.id === llm) ?? chat.find((m) => m.default) ?? chat[0];
   const llmLabel = llmModel && llm ? llmModel.name : intl.formatMessage({ id: 'canvas.agent.llm' });
+  // D-012: each LLM shows the turns the monthly agent allowance has left.
+  const allowance = useAgentAllowance();
+  const turnsLeftLabel = (id: string) => {
+    const left = allowance.turnsLeftFor(id);
+    return left === null ? undefined : intl.formatMessage({ id: 'canvas.agent.turnsLeft' }, { count: left });
+  };
 
   const videoAll = useModels('video').data;
   const videoOptions = useMemo(() => {
@@ -242,6 +249,11 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
             setMenu(null);
           }}
         />
+        {allowance.exhausted ? (
+          <p role="status" className={styles.allowanceNotice}>
+            <FormattedMessage id="canvas.agent.allowanceUsedUp" values={{ date: intl.formatDate(allowance.resetsAt, { month: 'short', day: 'numeric' }) }} />
+          </p>
+        ) : null}
         <div className={styles.composer}>
           <label htmlFor="canvas-ask" className="rl-visually-hidden">
             <FormattedMessage id="canvas.agent.ask" />
@@ -294,6 +306,7 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
                   ? chat.map((m) => ({
                       key: m.id,
                       label: m.name,
+                      meta: turnsLeftLabel(m.id),
                       checked: m.id === llmModel?.id,
                       onSelect: () => {
                         setLlm(m.id);

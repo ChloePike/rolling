@@ -3,6 +3,7 @@ import { useIntl } from 'react-intl';
 import { pickerModels, useModels, type CatalogModel } from '@/lib/models';
 import { usePref } from '@/lib/prefs';
 import { useSession } from '@/lib/session';
+import { useAgentAllowance } from '@/lib/session/agentAllowance';
 import {
   AUTO_MODEL,
   ModelPicker,
@@ -54,11 +55,12 @@ export function useHomePills(mode: HomeModeId): {
   const intl = useIntl();
   const { planId } = useSession();
   const plan = planId ?? undefined;
+  const allowance = useAgentAllowance();
   // The default aspect ratio preference (header settings, Settings → Preferences) seeds the video settings.
   const prefRatio = usePref('defaultAspectRatio') as VideoParams['aspectRatio'];
   const seedRatio = <T extends VideoParams>(v: T): T => (VIDEO_RATIOS.includes(prefRatio) ? { ...v, aspectRatio: prefRatio } : v);
   const t = (id: string, v?: Record<string, string | number>) => intl.formatMessage({ id }, v);
-  // Agent turns are free for members (D-007): only the curated low-cost LLMs are offered.
+  // Agent turns spend the plan's monthly agent allowance (D-012): each LLM shows the turns it has left.
   const chatAll = useModels('chat').data;
   const chat = useMemo(() => (chatAll ? pickerModels(chatAll, { featuredOnly: true }) : chatAll), [chatAll]);
   const imagesAll = useModels('image').data;
@@ -125,12 +127,12 @@ export function useHomePills(mode: HomeModeId): {
     />
   );
 
-  const list = (pill: PromptPill, options: string[], value: number, set: (i: number) => void, modelIds?: string[]) => (s: PillPopoverState) => (
+  const list = (pill: PromptPill, options: string[], value: number, set: (i: number) => void, modelIds?: string[], metas?: (string | undefined)[]) => (s: PillPopoverState) => (
     <PillListPopover
       pill={pill}
       state={s}
       value={String(value)}
-      options={options.map((label, i) => ({ id: String(i), label, modelId: modelIds?.[i] }))}
+      options={options.map((label, i) => ({ id: String(i), label, modelId: modelIds?.[i], meta: metas?.[i] }))}
       onPick={(id) => set(Number(id))}
     />
   );
@@ -162,6 +164,10 @@ export function useHomePills(mode: HomeModeId): {
           Math.max(0, (chat ?? []).findIndex((m) => m.id === pick(chat, llmId)?.id)),
           (i) => setLlmId(chat?.[i]?.id ?? null),
           (chat ?? []).map((m) => m.id),
+          (chat ?? []).map((m) => {
+            const left = allowance.turnsLeftFor(m.id);
+            return left === null ? undefined : t('home.agent.turnsLeft', { count: left });
+          }),
         ),
       },
       { pill: videoModelPill, render: modelPicker('video', videos, agentModel, setAgentModel) },
