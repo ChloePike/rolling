@@ -264,6 +264,10 @@ export const quotes = sqliteTable("quotes", {
   items: text("items").notNull(),
   total: integer("total").notNull(),
   expiresAt: integer("expires_at").notNull(),
+  /** 0007 (M4): who quoted, the scope, and when. */
+  createdBy: text("created_by"),
+  scope: text("scope"),
+  createdAt: integer("created_at"),
 });
 
 export const runStatuses = ["queued", "running", "succeeded", "partial", "failed", "canceled"] as const;
@@ -279,8 +283,19 @@ export const runs = sqliteTable(
     status: text("status", { enum: runStatuses }).notNull(),
     createdBy: text("created_by").notNull(),
     createdAt: integer("created_at").notNull(),
+    // 0007 (M4): Activity fields and totals.
+    title: text("title"),
+    source: text("source").notNull().default("canvas"),
+    creditsQuoted: integer("credits_quoted").notNull().default(0),
+    creditsSpent: integer("credits_spent").notNull().default(0),
+    creditsRefunded: integer("credits_refunded").notNull().default(0),
+    /** JSON run options (staging-only `forceFailure`). */
+    options: text("options").notNull().default("{}"),
+    updatedAt: integer("updated_at"),
+    finishedAt: integer("finished_at"),
   },
   (t) => [
+    index("runs_ws").on(t.workspaceId, sql`${t.createdAt} DESC`),
     check(
       "runs_status_check",
       sql`${t.status} IN ('queued','running','succeeded','partial','failed','canceled')`,
@@ -322,16 +337,64 @@ export const jobs = sqliteTable(
     errorCode: text("error_code"),
     createdAt: integer("created_at").notNull(),
     finishedAt: integer("finished_at"),
+    // 0007 (M4).
+    workspaceId: text("workspace_id"),
+    itemRef: text("item_ref"),
+    createdBy: text("created_by"),
+    attempt: integer("attempt").notNull().default(1),
+    assetId: text("asset_id"),
+    errorMessage: text("error_message"),
+    updatedAt: integer("updated_at"),
   },
   (t) => [
     index("jobs_activity").on(t.runId),
     index("jobs_ext").on(t.provider, t.externalId),
+    index("jobs_ws").on(t.workspaceId, sql`${t.createdAt} DESC`),
     check(
       "jobs_status_check",
       sql`${t.status} IN ('queued','submitted','running','succeeded','failed','canceled','unknown')`,
     ),
   ],
 );
+
+export const runItemStatuses = ["pending", "running", "succeeded", "failed", "skipped", "canceled"] as const;
+
+/** M4 (0007): one row per `run` item of a quote; held and started when its inputs land. */
+export const runItems = sqliteTable(
+  "run_items",
+  {
+    runId: text("run_id")
+      .notNull()
+      .references(() => runs.id),
+    ref: text("ref").notNull(),
+    nodeId: text("node_id"),
+    title: text("title"),
+    kind: text("kind").notNull(),
+    model: text("model").notNull(),
+    /** Frozen GenSpec (JSON). */
+    spec: text("spec").notNull(),
+    priceRequest: text("price_request").notNull().default("{}"),
+    paramsHash: text("params_hash"),
+    dependsOn: text("depends_on").notNull().default("[]"),
+    credits: integer("credits").notNull(),
+    status: text("status", { enum: runItemStatuses }).notNull(),
+    jobId: text("job_id"),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    ord: integer("ord").notNull().default(0),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.runId, t.ref] }), index("run_items_pending").on(t.status, t.runId)],
+);
+
+/** M4 (0007): provider webhook deliveries seen (dedupe on `webhook-id`). */
+export const webhookEvents = sqliteTable("webhook_events", {
+  id: text("id").primaryKey(),
+  provider: text("provider").notNull(),
+  eventType: text("event_type").notNull(),
+  externalId: text("external_id"),
+  receivedAt: integer("received_at").notNull(),
+});
 
 /** Mirror of the CreditAccount ledger (written by the `ledger-mirror` queue). */
 export const ledgerLines = sqliteTable(
