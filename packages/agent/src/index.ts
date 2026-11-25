@@ -15,3 +15,4 @@ export { TOOLS, toolsFor, getTool, toolDefinition, runReadTool, accountView, typ
 export { canvasView, timelineView, compactNode } from './tools/compact';
 export * from './tools/schemas';
 export { SYSTEM_PROMPT, SKILL_PROMPTS } from './prompts.generated';
+export { catalogModelsPort } from './modelsPort';

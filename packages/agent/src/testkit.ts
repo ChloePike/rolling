@@ -2,29 +2,14 @@
  * In-memory ports and a scripted LLM for tests, evals and DO tests.
  * Not used in production paths.
  */
-import { Catalog, type ChatEvent, type ChatRequest, type LlmProvider } from '@rolling/core';
-import type { GraphState } from '@rolling/core/graph';
-import { creditsFor, type PlanId } from '@rolling/core/pricing/config';
-import type { Edl } from '@rolling/core/timeline';
-import type { AccountSnapshot, AgentPorts, AssetItem, ModelsPort, NamedItem, TemplateItem } from './ports';
+import type { Catalog, ChatEvent, ChatRequest, LlmProvider } from '@rolling/core';
+import { catalogModelsPort } from './modelsPort';
 
-export function catalogModelsPort(catalog: Catalog): ModelsPort {
-  return {
-    models: () => catalog.models.filter((m) => m.kind !== 'chat'),
-    get: (id) => {
-      const m = catalog.get(id);
-      return m && m.kind !== 'chat' ? m : undefined;
-    },
-    creditsFor: (model, request) => {
-      try {
-        return creditsFor(model, request);
-      } catch {
-        return null;
-      }
-    },
-    chatModels: () => catalog.models.filter((m) => m.kind === 'chat'),
-  };
-}
+export { catalogModelsPort };
+import type { GraphState } from '@rolling/core/graph';
+import type { PlanId } from '@rolling/core/pricing/config';
+import type { Edl } from '@rolling/core/timeline';
+import type { AccountSnapshot, AgentPorts, AssetItem, NamedItem, TemplateItem } from './ports';
 
 export function account(overrides: Partial<AccountSnapshot> = {}): AccountSnapshot {
   return {

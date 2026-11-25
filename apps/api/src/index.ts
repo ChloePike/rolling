@@ -15,6 +15,7 @@ import { me } from "./routes/me";
 import { media } from "./routes/media";
 import { models } from "./routes/models";
 import { runs } from "./routes/runs";
+import { agent } from "./routes/agent";
 import { hooks } from "./routes/hooks";
 import { realtime } from "./routes/realtime";
 import { workspace } from "./routes/workspace";
@@ -55,6 +56,7 @@ const api = new Hono<AppEnv>()
   .route("/media", media)
   .route("/models", models)
   .route("/runs", runs)
+  .route("/agent", agent)
   .route("/hooks", hooks)
   .route("/", realtime)
   .on(["GET", "POST"], "/graphql", async (c) =>
