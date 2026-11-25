@@ -1,94 +1,28 @@
 /**
- * Run planning (M4): the canonical planner for graph runs and tool-page prompt
- * specs. Pure; the API loads the graph, active versions and catalog and calls it
- * (ProjectRoom may call it too — keep one implementation).
- *
- * For each node in scope, in dependency order:
- *   none      text, script, asset, audio and render nodes (nothing to generate);
- *   bypassed  `params.bypassed === true`; dependents take its pass-through input;
- *   blocked   missing input, upstream blocked, unknown/incapable model, plan cap
- *             (D-006), mature routing (D-005), empty prompt;
- *   reuse     an active version made with the node's current input digest and
- *             no upstream item runs (unless the node is a forced target);
- *   run       otherwise. Auto resolves to a concrete model here (D-009) so the
- *             quote shows it.
+ * Run planning (M4), generation layer. Graph runs build on the structural plan
+ * of `core/project/plan.ts` (ProjectRoom.planRun: scope, order, digests,
+ * bypass pass-through, run / reuse / blocked / bypassed / none) and add what a
+ * generation needs: the model (Auto resolved here so the quote shows it, D-009),
+ * capability checks, plan resolution caps (D-006), mature routing (D-005) and a
+ * frozen GenSpec + PriceRequest per `run` item. Tool pages plan a PromptSpec.
  */
 import type { Catalog } from '../models/catalog';
 import { matureRunProblem, unmetCapability, type AutoRequest } from '../models/capabilities';
 import type { CatalogModel, GenerationMode, ImageSource } from '../models/types';
 import type { PriceRequest } from '../models/catalog';
-import type { GraphNode, GraphState, PortType } from '../graph/types';
+import type { GraphNode, GraphState } from '../graph/types';
 import { outputType } from '../graph/ports';
-import { computeInputDigests, hash64, stableStringify } from '../project/digest';
+import { hash64, stableStringify } from '../project/digest';
+import type { PlanItem as StructuralItem } from '../project/plan';
 import { lowestPlanFor, planAllowsResolution } from '../pricing/config';
 import { autoCandidates, chooseModel, fitRequest, type Classify } from './auto';
 import { cleanPrompt, findModel, imageSizeFor, isAuto, modelRefOf, settingsOf, textOfNode, usesSize, type NodeSettings, type PromptSpec } from './spec';
-import type { ActiveVersion, BlockCode, GenInput, GenSpec, PlanContext, PlanItem, RunPlan, RunScope } from './types';
+import type { BlockCode, GenInput, GenSpec, PlanContext, PlanItem, RunPlan } from './types';
 
-const GENERATIVE = new Set(['image', 'video']);
+const GENERATIVE = new Set<string>(['image', 'video']);
 
 export class PlanInputError extends Error {
   override readonly name = 'PlanInputError';
-}
-
-/** Node ids in topological order (stable: graph order among ready nodes). */
-export function dependencyOrder(graph: Pick<GraphState, 'nodes' | 'edges'>): string[] {
-  const ids = graph.nodes.map((n) => n.id);
-  const known = new Set(ids);
-  const indeg = new Map(ids.map((id) => [id, 0]));
-  for (const e of graph.edges) if (known.has(e.from.node) && known.has(e.to.node)) indeg.set(e.to.node, indeg.get(e.to.node)! + 1);
-  const out: string[] = [];
-  const left = [...ids];
-  while (left.length) {
-    let i = left.findIndex((id) => indeg.get(id) === 0);
-    if (i === -1) i = 0; // Cycle guard: graphs are acyclic (validateConnection).
-    const [id] = left.splice(i, 1);
-    out.push(id!);
-    for (const e of graph.edges) if (e.from.node === id && indeg.has(e.to.node)) indeg.set(e.to.node, Math.max(0, indeg.get(e.to.node)! - 1));
-  }
-  return out;
-}
-
-function walk(graph: Pick<GraphState, 'edges'>, start: string, dir: 'up' | 'down'): Set<string> {
-  const seen = new Set<string>([start]);
-  const stack = [start];
-  while (stack.length) {
-    const id = stack.pop()!;
-    for (const e of graph.edges) {
-      const next = dir === 'up' ? (e.to.node === id ? e.from.node : null) : e.from.node === id ? e.to.node : null;
-      if (next && !seen.has(next)) {
-        seen.add(next);
-        stack.push(next);
-      }
-    }
-  }
-  return seen;
-}
-
-/** Nodes in scope and the targets that run even when their version is valid. */
-export function scopeNodes(graph: Pick<GraphState, 'nodes' | 'edges'>, scope: RunScope, nodeIds: readonly string[] = []): { inScope: Set<string>; forced: Set<string> } {
-  const known = new Set(graph.nodes.map((n) => n.id));
-  for (const id of nodeIds) if (!known.has(id)) throw new PlanInputError(`Unknown node ${id}.`);
-  switch (scope) {
-    case 'all':
-      return { inScope: known, forced: new Set() };
-    case 'node':
-    case 'selection':
-      if (nodeIds.length === 0) throw new PlanInputError('nodeIds is required for this scope.');
-      if (scope === 'node' && nodeIds.length !== 1) throw new PlanInputError('scope node takes exactly one node id.');
-      return { inScope: new Set(nodeIds), forced: new Set(nodeIds) };
-    case 'upTo':
-    case 'from': {
-      if (nodeIds.length !== 1) throw new PlanInputError(`scope ${scope} takes exactly one node id.`);
-      return { inScope: walk(graph, nodeIds[0]!, scope === 'upTo' ? 'up' : 'down'), forced: new Set(nodeIds) };
-    }
-  }
-}
-
-interface ResolvedInputs {
-  promptParts: string[];
-  inputs: GenInput[];
-  dependsOn: string[];
 }
 
 type Blocked = { code: BlockCode; reason: string; lowestPlan?: PlanItem['lowestPlan'] };
@@ -226,10 +160,13 @@ export async function buildSpec(input: BuildSpecInput): Promise<BuiltSpec> {
 
 export interface PlanGraphInput {
   graph: GraphState;
-  /** Active version per node id. */
-  active: ReadonlyMap<string, ActiveVersion>;
-  scope: RunScope;
-  nodeIds?: readonly string[];
+  /**
+   * The structural plan from `core/project` `planRun` (ProjectRoom.planRun):
+   * scope, topological order, run / reuse / blocked / bypassed / none,
+   * pass-through inputs, input digests and dependencies. This layer adds
+   * models, capabilities, plan caps, mature routing and Auto.
+   */
+  structural: readonly StructuralItem[];
   catalog: Catalog;
   ctx: PlanContext;
   classify?: Classify | null;
@@ -240,161 +177,135 @@ function assetOrigin(node: GraphNode): ImageSource {
   return s === 'generated' || s === 'character' || s === 'public' || s === 'mine' || s === 'team' || s === 'builtin' ? s : 'upload';
 }
 
+const STRUCTURAL_BLOCK: Record<StructuralItem['reason'] & string, BlockCode> = {
+  NO_PROMPT: 'empty_prompt',
+  INPUT_NOT_READY: 'missing_input',
+  BYPASS_TYPE_MISMATCH: 'bypassed_input',
+  UPSTREAM_BLOCKED: 'upstream_blocked',
+};
+
 /** Plans a graph run (canvas Run, Run all, Run up to here, Run from here). */
 export async function planRun(input: PlanGraphInput): Promise<RunPlan> {
-  const { graph, active, catalog, ctx } = input;
-  const { inScope: scopeSet, forced } = scopeNodes(graph, input.scope, input.nodeIds);
+  const { graph, catalog, ctx } = input;
   const byId = new Map(graph.nodes.map((n) => [n.id, n]));
-  const versionIds = new Map<string, string>();
-  for (const [id, v] of active) versionIds.set(id, v.versionId);
-  const digests = computeInputDigests(graph, versionIds);
-  const incoming = new Map<string, { port: string; from: string; i: number }[]>();
-  graph.edges.forEach((e, i) => {
-    const list = incoming.get(e.to.node) ?? [];
-    list.push({ port: e.to.port, from: e.from.node, i });
-    incoming.set(e.to.node, list);
-  });
-  for (const list of incoming.values()) list.sort((a, b) => (a.port === b.port ? a.i - b.i : a.port < b.port ? -1 : 1));
-
   const items = new Map<string, PlanItem>();
 
-  /** What node `id` hands downstream on a port of `type`. */
-  const outputOf = (id: string, type: PortType, seen: Set<string> = new Set()): { sources: GenInput['from'][]; origins: ImageSource[]; deps: string[] } | Blocked => {
-    const node = byId.get(id)!;
-    const item = items.get(id);
-    if (seen.has(id)) return { code: 'missing_input', reason: 'Inputs loop.' };
-    seen.add(id);
-    if (item?.action === 'bypassed' || (!item && node.params.bypassed === true)) {
-      // Pass-through: the bypassed node's own inputs of the same type.
-      const ups = (incoming.get(id) ?? []).filter((e) => outputType(byId.get(e.from)!) === type);
-      if (ups.length === 0) return { code: 'bypassed_input', reason: `${node.title} is bypassed and has no ${type} input to pass on.` };
-      const out = { sources: [] as GenInput['from'][], origins: [] as ImageSource[], deps: [] as string[] };
-      for (const e of ups) {
-        const r = outputOf(e.from, type, seen);
-        if ('code' in r) return r;
-        out.sources.push(...r.sources);
-        out.origins.push(...r.origins);
-        out.deps.push(...r.deps);
-      }
-      return out;
-    }
-    if (node.kind === 'text' || node.kind === 'script') {
-      const text = textOfNode(node.params);
-      return { sources: text ? [{ text }] : [], origins: [], deps: [] };
-    }
-    if (node.kind === 'asset') {
-      const assetId = typeof node.params.assetId === 'string' ? node.params.assetId : null;
-      if (!assetId) return { code: 'missing_input', reason: `${node.title} has no file.` };
-      return { sources: [{ assetId, origin: assetOrigin(node) }], origins: type === 'image' ? [assetOrigin(node)] : [], deps: [] };
-    }
-    if (item?.action === 'blocked') return { code: 'upstream_blocked', reason: `${node.title} can’t run: ${item.reason ?? 'blocked'}` };
-    if (item?.action === 'run') return { sources: [{ node: id }], origins: type === 'image' ? ['generated'] : [], deps: [id] };
-    const version = active.get(id);
-    if (version?.assetId) return { sources: [{ node: id }], origins: type === 'image' ? ['generated'] : [], deps: [] };
-    return { code: 'missing_input', reason: `${node.title} has no output yet.` };
-  };
+  for (const s of input.structural) {
+    const node = byId.get(s.nodeId);
+    const params = node?.params ?? s.params;
+    const modelRef = modelRefOf(params);
+    const known = GENERATIVE.has(s.kind) && !isAuto(modelRef) ? findModel(catalog, modelRef) : null;
+    const base: PlanItem = {
+      ref: s.nodeId,
+      nodeId: s.nodeId,
+      title: s.title,
+      kind: s.kind,
+      action: s.action,
+      dependsOn: [],
+      model: known?.id ?? null,
+      modelName: GENERATIVE.has(s.kind) ? (known?.displayName ?? (isAuto(modelRef) ? 'Auto' : modelRef)) : null,
+      ...(s.inputDigest && { digest: s.inputDigest }),
+    };
+    const block = (code: BlockCode, reason: string, extra: Partial<PlanItem> = {}) => items.set(s.nodeId, { ...base, ...extra, action: 'blocked', code, reason });
 
-  const resolveInputs = (node: GraphNode, settings: NodeSettings): ResolvedInputs | Blocked => {
-    const out: ResolvedInputs = { promptParts: [], inputs: [], dependsOn: [] };
-    for (const e of incoming.get(node.id) ?? []) {
-      const source = byId.get(e.from);
-      if (!source) continue;
-      const type = outputType(source);
+    if (s.action === 'none' || s.action === 'bypassed') {
+      items.set(s.nodeId, { ...base, ...(s.message && { reason: s.message }) });
+      continue;
+    }
+    if (s.action === 'blocked') {
+      block(STRUCTURAL_BLOCK[s.reason ?? 'INPUT_NOT_READY'] ?? 'missing_input', s.message ?? 'Blocked');
+      continue;
+    }
+    if (!node) {
+      block('missing_input', 'Node not found.');
+      continue;
+    }
+    if (!GENERATIVE.has(s.kind)) {
+      // Audio nodes: voice generation is an open decision (no provider yet).
+      if (s.action === 'run') block('unsupported', 'Voice generation is not available yet.');
+      else items.set(s.nodeId, base);
+      continue;
+    }
+    if (node.status === 'queued' || node.status === 'generating') {
+      items.set(s.nodeId, { ...base, action: 'reuse', reason: 'Already running' });
+      continue;
+    }
+
+    // Inputs: a dependency this layer blocked blocks this item too.
+    const kind = s.kind as 'image' | 'video';
+    const settings = settingsOf(kind, params);
+    const promptParts: string[] = [];
+    const inputs: GenInput[] = [];
+    let blocked: Blocked | null = null;
+    for (const inp of s.inputs) {
+      const up = byId.get(inp.nodeId);
+      if (!up) {
+        blocked ??= { code: 'missing_input', reason: 'An input node is missing.' };
+        continue;
+      }
+      const upItem = items.get(up.id);
+      if (upItem?.action === 'blocked') {
+        blocked ??= { code: 'upstream_blocked', reason: `Waiting on “${up.title}”, which can’t run.` };
+        continue;
+      }
+      const type = outputType(up);
+      if (up.kind === 'text' || up.kind === 'script' || type === 'text') {
+        const text = up.kind === 'asset' ? '' : textOfNode(up.params);
+        if (text) promptParts.push(text);
+        continue;
+      }
       if (!type) continue;
-      const r = outputOf(e.from, type);
-      if ('code' in r) return r;
-      out.dependsOn.push(...r.deps);
-      for (const from of r.sources) {
-        if ('text' in from) {
-          out.promptParts.push(from.text);
+      let from: GenInput['from'];
+      if (up.kind === 'asset') {
+        const assetId = typeof up.params.assetId === 'string' ? up.params.assetId : inp.assetId;
+        if (!assetId) {
+          blocked ??= { code: 'missing_input', reason: `“${up.title}” has no file.` };
           continue;
         }
-        if (type === 'text') continue;
-        const role: GenInput['role'] =
-          type === 'audio' ? 'audio' : node.kind === 'image' ? 'edit' : settings.refsMode ? 'reference' : e.port === 'frame' ? 'frame' : 'reference';
-        out.inputs.push({ role, media: type, from });
+        from = { assetId, origin: assetOrigin(up) };
+      } else {
+        from = { node: up.id };
       }
+      const role: GenInput['role'] =
+        type === 'audio' ? 'audio' : kind === 'image' ? 'edit' : settings.refsMode || inp.port !== 'frame' ? 'reference' : 'frame';
+      inputs.push({ role, media: type, from });
     }
-    out.dependsOn = [...new Set(out.dependsOn)];
-    return out;
-  };
+    if (blocked) {
+      block(blocked.code, blocked.reason);
+      continue;
+    }
+    if (s.action === 'reuse') {
+      items.set(s.nodeId, base);
+      continue;
+    }
 
-  const originsOf = (inputs: GenInput[]): ImageSource[] =>
-    inputs.filter((i) => i.media === 'image').map((i) => ('node' in i.from ? 'generated' : 'assetId' in i.from ? i.from.origin : 'upload'));
-
-  for (const id of dependencyOrder(graph)) {
-    const node = byId.get(id)!;
-    if (!scopeSet.has(id)) continue;
-    const base = {
-      ref: id,
-      nodeId: id,
-      title: node.title,
-      kind: node.kind,
-      dependsOn: [] as string[],
-      model: null as string | null,
-      modelName: null as string | null,
-      ...(digests.get(id) && { digest: digests.get(id)! }),
-    };
-    if (node.params.bypassed === true) {
-      items.set(id, { ...base, action: 'bypassed', reason: 'Bypassed' });
-      continue;
-    }
-    if (!GENERATIVE.has(node.kind)) {
-      items.set(id, { ...base, action: 'none' });
-      continue;
-    }
-    const kind = node.kind as 'image' | 'video';
-    const modelRef = modelRefOf(node.params);
-    const known = isAuto(modelRef) ? null : findModel(catalog, modelRef);
-    const named = { model: known?.id ?? null, modelName: known?.displayName ?? (isAuto(modelRef) ? 'Auto' : modelRef) };
-    if (node.status === 'queued' || node.status === 'generating') {
-      items.set(id, { ...base, ...named, action: 'reuse', reason: 'Already running' });
-      continue;
-    }
-    const settings = settingsOf(kind, node.params);
-    const resolved = resolveInputs(node, settings);
-    if ('code' in resolved) {
-      items.set(id, { ...base, ...named, action: 'blocked', code: resolved.code, reason: resolved.reason });
-      continue;
-    }
-    const version = active.get(id);
-    const upstreamRuns = resolved.dependsOn.length > 0;
-    if (!forced.has(id) && !upstreamRuns && version && version.digest === digests.get(id)) {
-      items.set(id, { ...base, ...named, action: 'reuse' });
-      continue;
-    }
-    const ownPrompt = typeof node.params.prompt === 'string' ? node.params.prompt : '';
-    const prompt = [...resolved.promptParts, ownPrompt].filter((p) => p.trim() !== '').join('\n\n');
+    const ownPrompt = typeof params.prompt === 'string' ? params.prompt : '';
+    const prompt = [...promptParts, ownPrompt].filter((p) => p.trim() !== '').join('\n\n');
     const built = await buildSpec({
       kind,
       modelRef,
       prompt,
       settings,
-      inputs: resolved.inputs,
-      imageOrigins: originsOf(resolved.inputs),
+      inputs,
+      imageOrigins: inputs.filter((i) => i.media === 'image').map((i) => ('node' in i.from ? 'generated' : 'assetId' in i.from ? i.from.origin : 'upload')),
       catalog,
       ctx,
       classify: input.classify ?? null,
     });
     if (!built.ok) {
-      items.set(id, {
-        ...base,
-        ...named,
+      block(built.code, built.reason, {
         ...(built.model && { model: built.model.id, modelName: built.model.displayName }),
-        action: 'blocked',
-        code: built.code,
-        reason: built.reason,
         ...(built.lowestPlan !== undefined && { lowestPlan: built.lowestPlan }),
       });
       continue;
     }
-    items.set(id, {
+    items.set(s.nodeId, {
       ...base,
       action: 'run',
       model: built.model.id,
       modelName: built.model.displayName,
       ...(built.autoVia && { autoVia: built.autoVia }),
-      dependsOn: resolved.dependsOn,
+      dependsOn: [...s.dependsOn],
       paramsHash: paramsHash(node),
       spec: built.spec,
       priceRequest: built.priceRequest,

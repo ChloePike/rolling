@@ -4,7 +4,10 @@ import type { GraphEdge, GraphNode, GraphState } from '../graph/types';
 import { computeInputDigests } from '../project/digest';
 import { creditsFor } from '../pricing/config';
 import { buildGenerateRequest } from './request';
-import { dependencyOrder, planPromptSpec, planRun, scopeNodes, PlanInputError } from './plan';
+import { planPromptSpec, planRun as planLayer } from './plan';
+import { planRun as structuralPlan } from '../project/plan';
+import type { Classify } from './auto';
+import type { RunScope } from './types';
 import { imageSizeFor } from './spec';
 import type { ActiveVersion, PlanContext, PlanItem } from './types';
 
@@ -33,6 +36,14 @@ function versions(graph: GraphState, valid: string[], stale: string[] = []): Map
   return out;
 }
 
+/** Structural plan (core/project, as ProjectRoom.planRun) + the generation layer. */
+async function planRun(input: { graph: GraphState; active: Map<string, ActiveVersion>; scope: RunScope; nodeIds?: string[]; catalog: typeof fixtureCatalog; ctx: PlanContext; classify?: Classify }) {
+  const ids = new Map([...input.active].map(([k, v]) => [k, v.versionId]));
+  const digests = computeInputDigests(input.graph, ids);
+  const structural = structuralPlan(input.graph, input.active, digests, input.scope, input.nodeIds ?? []);
+  return planLayer({ graph: input.graph, structural, catalog: input.catalog, ctx: input.ctx, ...(input.classify && { classify: input.classify }) });
+}
+
 const byRef = (items: PlanItem[]) => Object.fromEntries(items.map((i) => [i.ref, i]));
 
 /** The sample canvas: script → keyframe → shot A; photo → keyframe; keyframe → shot B; missing asset → shot C. */
@@ -56,22 +67,6 @@ function sample() {
   return graphOf(nodes, edges);
 }
 
-describe('dependencyOrder and scope', () => {
-  it('orders upstream nodes first', () => {
-    const order = dependencyOrder(sample());
-    expect(order.indexOf('keyframe')).toBeLessThan(order.indexOf('shotA'));
-    expect(order.indexOf('script')).toBeLessThan(order.indexOf('keyframe'));
-  });
-
-  it('selects ancestors for upTo and descendants for from', () => {
-    const g = sample();
-    expect([...scopeNodes(g, 'upTo', ['shotA']).inScope].sort()).toEqual(['keyframe', 'photo', 'script', 'shotA']);
-    expect([...scopeNodes(g, 'from', ['keyframe']).inScope].sort()).toEqual(['keyframe', 'shotA', 'shotB']);
-    expect(() => scopeNodes(g, 'node', [])).toThrow(PlanInputError);
-    expect(() => scopeNodes(g, 'node', ['nope'])).toThrow(PlanInputError);
-  });
-});
-
 describe('planRun', () => {
   it('run all: reuses valid versions, runs stale ones, blocks a node with a missing input', async () => {
     const g = sample();
@@ -84,7 +79,7 @@ describe('planRun', () => {
     expect(items.shotA!.spec).toMatchObject({ mode: 'i2v', seconds: 5, resolution: '720p', ratio: '9:16', audio: true });
     expect(items.shotA!.spec!.inputs).toEqual([{ role: 'frame', media: 'image', from: { node: 'keyframe' } }]);
     expect(items.shotB).toMatchObject({ action: 'run' });
-    expect(items.shotC).toMatchObject({ action: 'blocked', code: 'missing_input', reason: 'empty has no file.' });
+    expect(items.shotC).toMatchObject({ action: 'blocked', code: 'missing_input', reason: '“empty” has no file.' });
     // Credits come from the catalog price of the frozen request.
     const credits = creditsFor(fixtureCatalog.get('bytedance/seedance-2.0-mini')!, items.shotA!.priceRequest);
     expect(credits).toBeGreaterThan(0);
@@ -112,7 +107,7 @@ describe('planRun', () => {
   it('blocks a missing upstream output outside the scope and cascades blocks downstream', async () => {
     const g = sample();
     const single = await planRun({ graph: g, active: new Map(), scope: 'node', nodeIds: ['shotA'], catalog: fixtureCatalog, ctx: PLUS });
-    expect(single.items[0]).toMatchObject({ action: 'blocked', code: 'missing_input', reason: 'keyframe has no output yet.' });
+    expect(single.items[0]).toMatchObject({ action: 'blocked', code: 'missing_input', reason: '“keyframe” has no output yet.' });
 
     g.nodes.find((n) => n.id === 'keyframe')!.params.model = 'Nope 9';
     const all = byRef((await planRun({ graph: g, active: new Map(), scope: 'all', catalog: fixtureCatalog, ctx: PLUS })).items);
@@ -138,9 +133,9 @@ describe('planRun', () => {
   it('passes a bypassed node’s input through, or blocks dependents when there is none', async () => {
     const nodes = [
       node('photo', 'asset', { assetId: 'ast_p', source: 'generated', media: 'image' }),
-      node('img', 'image', { model: 'Seedream 5.0 Lite', prompt: 'x', bypassed: true }),
+      { ...node('img', 'image', { model: 'Seedream 5.0 Lite', prompt: 'x' }), bypass: true } as GraphNode,
       node('vid', 'video', { model: 'Seedance 2.0 Mini', prompt: 'move', length: 5 }),
-      node('img2', 'image', { model: 'Seedream 5.0 Lite', prompt: 'y', bypassed: true }),
+      { ...node('img2', 'image', { model: 'Seedream 5.0 Lite', prompt: 'y' }), bypass: true } as GraphNode,
       node('vid2', 'video', { model: 'Seedance 2.0 Mini', prompt: 'move', length: 5 }),
     ];
     const g = graphOf(nodes, [edge('photo', 'img', 'refs'), edge('img', 'vid', 'frame'), edge('img2', 'vid2', 'frame')]);
