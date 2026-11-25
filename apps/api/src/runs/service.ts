@@ -57,6 +57,10 @@ export interface QuoteResponse {
   balance: number;
   balanceAfter: number;
   expiresAt: number | null;
+  /** The user's "Confirm before running" threshold (D-006): totals below it may start without the dialog. */
+  confirmThreshold: number;
+  /** total >= confirmThreshold: show RunConfirm before `POST /api/runs`. */
+  needsConfirm: boolean;
 }
 
 export type QuoteRequest =
@@ -177,7 +181,8 @@ export async function quoteRun(env: Env, auth: AuthContext, req: QuoteRequest): 
       .bind(quoteId, auth.workspaceId, projectId, JSON.stringify(stored), total, expiresAt, auth.userId, scope, Date.now())
       .run();
   }
-  return { quoteId, items: stored.map(toResponseItem), total, balance, balanceAfter: balance - total, expiresAt };
+  const confirmThreshold = auth.prefs.confirmThreshold;
+  return { quoteId, items: stored.map(toResponseItem), total, balance, balanceAfter: balance - total, expiresAt, confirmThreshold, needsConfirm: total >= confirmThreshold };
 }
 
 const LEDGER_API: Partial<Record<LedgerErrorCode, [402 | 403 | 409 | 429, "NO_PLAN" | "INSUFFICIENT_CREDITS" | "MEMBER_LIMIT_REACHED" | "QUOTE_EXPIRED" | "CONCURRENCY_LIMIT"]>> = {

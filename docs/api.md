@@ -199,7 +199,7 @@ Every project belongs to a workspace. Reads need membership of that workspace (a
 
 `Project`: `{ id, workspaceId, title, kind, nodeCount, updatedAt, createdBy, thumbUrl }` (times are epoch ms).
 
-**GraphOp** (`@rolling/core/graph` `LocalOp` plus node flags; validated by `@rolling/core/project`): `addNode { tempId, kind, title, params, position? }`, `updateNode { nodeId, params, title? }` (a param set to `null` is removed), `moveNode { nodeId, position }`, `connect { from, to, edgeId? }`, `disconnect { edgeId }`, `removeNode { nodeId }`, `group { nodeIds, title, groupId? }`, `ungroup { groupId }`, `setBypass { nodeId, bypass }`, `setCollapsed { nodeId, collapsed }`.
+**GraphOp** (`@rolling/core/graph` `LocalOp` plus node flags; validated by `@rolling/core/project`): `addNode { tempId, kind, title, params, position? }`, `updateNode { nodeId, params, title? }` (a param set to `null` is removed), `moveNode { nodeId, position }`, `connect { from, to, edgeId? }`, `disconnect { edgeId }`, `removeNode { nodeId }`, `group { nodeIds, title, groupId? }`, `ungroup { groupId }`, `setBypass { nodeId, bypass }`, `setCollapsed { nodeId, collapsed }`, `addReroute { edgeId, index, position }`, `moveReroute { edgeId, index, position }`, `removeReroute { edgeId, index }` (≤ 16 points per edge; `REROUTE_NOT_FOUND`, `TOO_MANY_REROUTES`). Flag and reroute semantics are `@rolling/core/graph` `applyFlagOp`, shared with the canvas.
 - Ids: `addNode.tempId` starting with `node_` is kept as the node id (client-chosen, must be unique, else `DUPLICATE_ID`); any other temp id gets a fresh `node_…` id and can be referenced by later ops of the same patch. `edgeId` must start with `edge_`, `groupId` with `grp_`; both are generated when absent.
 - Patches are atomic: the first refused op refuses the whole patch. Refusal codes: `NODE_NOT_FOUND`, `EDGE_NOT_FOUND`, `PORT_NOT_FOUND`, `PORT_TYPE_MISMATCH`, `SELF_CONNECTION`, `DUPLICATE_EDGE`, `CYCLE`, `PORT_FULL`, `DUPLICATE_ID`, `EMPTY_GROUP`, `INVALID_OP` (schema), `TOO_LARGE` (params > 32 KB, > 2000 nodes). `message` is a human-readable English reason (e.g. “Image nodes don’t take audio input.”).
 - Nodes added without `position` are laid out left to right by dependency, to the right of the existing graph; the broadcast ops carry the final positions.
@@ -218,7 +218,7 @@ Server → client, on connect: `hello { actor, canEdit }`, then `snapshot`:
   nodes: [{ id, canvas_id, kind, title, params /* JSON string */, x, y, group_id, active_version_id, status,
             created_by: 'user'|'agent', updated_at, bypass: 0|1, collapsed: 0|1,
             version_n?, version_total?, asset_id? /* active version */ }],
-  edges: [{ id, canvas_id, from_node, from_port, to_node, to_port, ord, pinned_version_id }],
+  edges: [{ id, canvas_id, from_node, from_port, to_node, to_port, ord, pinned_version_id, reroutes /* JSON [{x,y}] or null */ }],
   groups: [{ id, canvas_id, title, color }],
   timeline: { canvasId, revision, edl } | null }
 ```
@@ -279,6 +279,8 @@ type QuoteResponse = {
   }>
   total: number; balance: number; balanceAfter: number
   expiresAt: number | null        // epoch ms (10 minutes)
+  confirmThreshold: number        // prefs.confirmThreshold (default 300, D-006)
+  needsConfirm: boolean           // total >= confirmThreshold → show RunConfirm; else start directly
 }
 
 type PromptSpec = {
@@ -318,19 +320,28 @@ Provider webhooks: `POST /api/hooks/hyperouter` (no session). Standard Webhooks 
 
 ## Assets and libraries
 
-Uploads go through the Worker into R2 multipart uploads (no S3 presigning). Bytes are served only through signed media URLs (D-008), never from `/api`.
+Uploads are resumable and chunked and go **directly from the browser to R2** with presigned URLs (D-011); the Worker never carries upload bytes. Downloads are resumable (`Range`). Bytes are served only through signed media URLs (D-008), never from `/api`.
+
+**Upload flow:** `POST /api/assets/uploads` → `POST …/part-urls` → browser `PUT`s each part to its URL (parallel is fine; keep each response's `ETag` only for your own progress) → `POST …/complete`. To resume after a reload, call `POST /api/assets/uploads` again with the same `fingerprint` (or `GET …/:assetId`) and upload only the parts not listed in `parts`.
 
 | Method | Path | Notes |
 |---|---|---|
-| POST | `/api/assets/uploads` | `{ filename, contentType, size, projectId?, name? }` → `201 { assetId, uploadId, partSize, parts, kind }`. Limits: images ≤ 30 MB (jpeg, png, webp, gif, avif, heic), video ≤ 2 GB (mp4, quicktime, webm), audio ≤ 200 MB (mpeg, mp4/m4a, aac, wav, ogg, webm, flac). `413` / `415` `VALIDATION_FAILED` with `data.reason: TOO_LARGE \| UNSUPPORTED_TYPE`, `maxBytes`, `limits`. Editors and owners only |
-| PUT | `/api/assets/uploads/:assetId/parts/:n` | raw bytes, `Content-Length` required; every part but the last is exactly `partSize` (10 MiB) → `{ partNumber, etag }`. Parts may go in parallel. Only the uploader |
-| POST | `/api/assets/uploads/:assetId/complete` | `{ parts: [{ partNumber, etag }] }` → `{ asset }` (`status: processing`); queues `media.process` |
-| DELETE | `/api/assets/uploads/:assetId` | aborts an open upload |
+| POST | `/api/assets/uploads` | `{ filename, contentType, size, fingerprint?, projectId?, name? }` → `201` new or `200` resumed: `{ assetId, key, uploadId, status: "uploading", size, partSize: 8388608, partCount, parts: [{ n, size, etag }], expiresAt, resumed, kind? }`. `fingerprint` = client hash of name + size + lastModified + first/last 1 MB; an unexpired upload of the caller with the same fingerprint, size and type in the same workspace is returned instead of a new one. Limits: images ≤ 30 MB (jpeg, png, webp, gif, avif, heic), video ≤ 2 GB (mp4, quicktime, webm), audio ≤ 200 MB (mpeg, mp4/m4a, aac, wav, ogg, webm, flac); `413` / `415` `VALIDATION_FAILED` with `data.reason: TOO_LARGE \| UNSUPPORTED_TYPE`, `maxBytes`, `limits`. Editors and owners; rate-limited (`429 RATE_LIMITED`) |
+| GET | `/api/assets/uploads/:assetId` | `{ assetId, key, uploadId, status: uploading\|complete\|aborted\|expired, size, partSize, partCount, parts: [{ n, size, etag }], expiresAt }`. `parts` come from R2 (S3 `ListParts`), so they are exactly what storage has |
+| POST | `/api/assets/uploads/:assetId/part-urls` | `{ partNumbers: n[] (≤ 100) }` → `{ assetId, direct, urls: [{ n, size, method: "PUT", url, expiresAt }] }`. `url` is a presigned S3 `UploadPart` URL (`https://<account>.r2.cloudflarestorage.com/<bucket>/<key>?partNumber=n&uploadId=…&X-Amz-…`, 1 h). Part `n` must be exactly `size` bytes (8 MiB except the last). Re-sending a part replaces it. Rate-limited |
+| POST | `/api/assets/uploads/:assetId/complete` | no body. Lists the parts R2 has, checks count and sizes against the declared size (`400 VALIDATION_FAILED` `data.reason: MISSING_PARTS (missing[]) \| EXTRA_PART \| PART_SIZE (n, expected, got)`), completes and queues `media.process` → `{ asset }` (`status: processing`). Idempotent: a completed upload returns the asset again |
+| DELETE | `/api/assets/uploads/:assetId` | aborts the multipart upload and removes the pending asset → `{ ok, status }` |
+| PUT | `/api/assets/uploads/:assetId/parts/:n` | **development fallback only** (no R2 S3 credentials, `ENVIRONMENT=development`): `part-urls` then return these Worker URLs (`direct: false`); body = raw part bytes with `Content-Length` → `{ n, etag, size }`. `404` everywhere else |
+
+Uploads are only visible to their uploader. They expire 7 days after creation (R2's limit): `status: expired`, and the 6-hourly cron aborts them. The bucket's CORS allows `PUT`/`GET`/`HEAD` from the app origins and exposes `ETag`.
+
+| Method | Path | Notes |
+|---|---|---|
 | GET | `/api/assets` | `?scope=mine\|team\|builtin\|public\|all (all)&kind=image\|video\|audio\|text&q=&first=1..100 (48)&after=` → `{ items: Asset[], nextCursor }`, newest first; `q` is full-text (prefix match on name and tags). GraphQL: `assets(scope: MINE\|TEAM\|BUILTIN\|PUBLIC\|ALL, kind, q, first, after)` |
 | GET | `/api/assets/:id` | `{ asset }` (own workspace, builtin or public) |
 | DELETE | `/api/assets/:id` | removes the row, search entry and R2 objects (editor+) |
 | GET | `/api/media/private/:assetId` | signed-in convenience: `302` to a signed URL; never carries bytes |
-| GET | `/media/<key>?exp=&ws=&sig=` | signed private media (this Worker until the media hostname exists). `Range` supported. `403 { reason: invalid }`, `410 { reason: expired }` |
+| GET | `/media/<key>?exp=&ws=&sig=` | signed private media (this Worker until the media hostname exists). Resumable: `Accept-Ranges: bytes`, single `Range` → `206` + `Content-Range`, unsatisfiable → `416` with `Content-Range: bytes */size`, `If-Range` (ETag or date; mismatch → full `200`), `ETag` / `If-None-Match` → `304`. `403 { reason: invalid }`, `410 { reason: expired }`. `/api/media/public/...` (public-library fallback) answers `Range` the same way |
 | GET | `/api/public-library` | `?category=&sub=&q=` with license |
 | GET | `/api/characters` | `{ items: [{ id, name, meta, coverAssetId, coverUrl, versions: [{ n, assetIds, createdAt }], createdAt, createdBy }] }` |
 | POST | `/api/characters` | `{ name, coverAssetId?, referenceAssetIds?, meta? }` → `201 { character }`; `DELETE /api/characters/:id` |

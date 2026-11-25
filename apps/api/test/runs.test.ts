@@ -355,6 +355,7 @@ describe("runs: run all", () => {
     expect(q.total).toBe(row("Keyframe B").credits + row("Shot A").credits + row("Shot B").credits);
     const before = await available(ws);
     expect(q.balanceAfter).toBe(before - q.total);
+    expect(q).toMatchObject({ confirmThreshold: 300, needsConfirm: q.total >= 300 });
 
     const res = await start(user, q.quoteId);
     expect(res.status, await res.clone().text()).toBe(201);
