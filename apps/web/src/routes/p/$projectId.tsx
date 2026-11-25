@@ -1,7 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { CANVAS_OVERLAYS, CanvasPage, type CanvasOverlay } from '@/features/canvas';
+import { CANVAS_OVERLAYS, CanvasError, CanvasPage, type CanvasOverlay } from '@/features/canvas';
 import { Editor } from '@/features/canvas/editor';
 import { NODE } from '@/features/canvas/mocks';
+
+const EDITOR_TO_CANVAS: Record<string, string> = { node_shot_a: NODE.shotA, node_shot_b: NODE.shotB };
 
 interface CanvasSearch {
   /** Opens one layer on load, like the design's `initOverlay` (plan, addMenu, script, share, edit, editAgent, at). */
@@ -18,6 +20,7 @@ export const Route = createFileRoute('/p/$projectId')({
     return typeof o === 'string' && (CANVAS_OVERLAYS as readonly string[]).includes(o) ? { overlay: o as CanvasOverlay } : {};
   },
   component: CanvasRoute,
+  errorComponent: CanvasError,
 });
 
 function CanvasRoute() {
@@ -29,8 +32,14 @@ function CanvasRoute() {
       projectId={projectId}
       initialOverlay={overlay ?? null}
       initialSelection={NODE.shotA}
-      renderEditor={({ projectId: id, withProposal, onClose }) => (
-        <Editor projectId={id} initialAsk={withProposal ? 'cut to 10s' : undefined} onClose={onClose} />
+      renderEditor={({ projectId: id, withProposal, onClose, onOpenOnCanvas }) => (
+        <Editor
+          projectId={id}
+          initialAsk={withProposal ? 'cut to 10s' : undefined}
+          onClose={onClose}
+          // The editor mock names shots by its own node ids; map them to the canvas mock's.
+          onOpenOnCanvas={(nodeId) => onOpenOnCanvas(EDITOR_TO_CANVAS[nodeId] ?? nodeId)}
+        />
       )}
     />
   );

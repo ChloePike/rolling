@@ -176,6 +176,14 @@ export class ProjectSync {
         }
         return;
       }
+      case 'job.queued': {
+        this.runtime(msg.payload.nodeId, { status: 'queued', progress: 0 });
+        return;
+      }
+      case 'node.version': {
+        this.runtime(msg.payload.nodeId, { version: msg.payload.version });
+        return;
+      }
       case 'job.progress': {
         this.runtime(msg.payload.nodeId, { status: 'generating', progress: msg.payload.progress });
         return;

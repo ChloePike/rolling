@@ -7,6 +7,7 @@ import { meterLevel, mixPeak } from './playback';
 import { usePlayhead, type PlayheadStore } from './playhead';
 import type { EditorAction, EditorState, Tool } from './state';
 import { TimelineCanvas } from './TimelineCanvas';
+import { MenuPopover, type MenuEntry } from '../layers/Menu';
 import { clampPps, clampScroll, ppsToZoom, rowLayout, zoomToPps } from '@rolling/core/timeline';
 import type { Highlight } from '@rolling/core/timeline';
 import { formatTimecode } from '@rolling/core/timeline';
@@ -38,6 +39,12 @@ export interface TimelinePanelProps {
   onAskChange: (v: string) => void;
   onAsk: (request: string) => void;
   onGenerate: (clipId: string) => void;
+  generateCredits: (nodeId: string) => number;
+  onAddMarker: () => void;
+  /** Effects for the selected clip (Effects panel rows). */
+  effects: MenuEntry[];
+  effectsOpen: boolean;
+  onEffectsOpenChange: (open: boolean) => void;
   onTextTool: (clipId: string) => void;
   clipName: (clip: Clip, track: Track) => string;
 }
@@ -91,13 +98,28 @@ export function TimelinePanel(props: TimelinePanelProps) {
         >
           <Icon name="snapping" />
         </button>
-        {/* TODO: markers and effects panels are not designed yet. */}
-        <button type="button" aria-label={t('editor.timeline.addMarker')} title={t('editor.timeline.addMarker')} className={`${styles.btn} ${styles.icon}`}>
+        <button
+          type="button"
+          aria-label={t('editor.timeline.addMarker')}
+          title={t('editor.timeline.addMarkerHint')}
+          className={`${styles.btn} ${styles.icon}`}
+          onClick={props.onAddMarker}
+        >
           <Icon name="marker" />
         </button>
-        <button type="button" aria-label={t('editor.timeline.effects')} title={t('editor.timeline.effects')} className={`${styles.btn} ${styles.icon}`}>
-          <Icon name="effects" />
-        </button>
+        <MenuPopover
+          open={props.effectsOpen}
+          onOpenChange={props.onEffectsOpenChange}
+          label={t('editor.effects.title')}
+          title={t('editor.effects.title')}
+          side="top"
+          entries={props.effects}
+          trigger={(tp) => (
+            <button {...tp} type="button" aria-label={t('editor.timeline.effects')} title={t('editor.timeline.effects')} className={`${styles.btn} ${styles.icon}`}>
+              <Icon name="effects" />
+            </button>
+          )}
+        />
         <span className={styles.spacer} />
         <form className={styles.agentField} onSubmit={submit}>
           <label htmlFor="edask" className={styles.agentLabel}>
@@ -184,6 +206,7 @@ export function TimelinePanel(props: TimelinePanelProps) {
             reducedMotion={props.reducedMotion}
             highlights={props.highlights}
             onGenerate={props.onGenerate}
+            creditsFor={props.generateCredits}
             onTextTool={props.onTextTool}
             generateLabel={(count) => t('editor.timeline.generate', { count })}
             clipName={props.clipName}

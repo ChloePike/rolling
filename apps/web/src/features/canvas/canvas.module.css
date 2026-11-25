@@ -163,3 +163,37 @@
 
 .editorPlaceholder{position:absolute;inset:0;z-index:30;background:var(--c-surface-1);display:flex;align-items:center;justify-content:center;color:var(--c-text-3)}
 .picker{position:absolute;width:640px;z-index:40}
+
+/* Run history rows are buttons (they select the node). */
+.historyItem{display:block}
+button.historyRow{width:100%;border:0;background:transparent;color:inherit;font:inherit;font-size:13px;text-align:left;cursor:pointer}
+button.historyRow:focus-visible{background:var(--c-surface-4);outline:none;box-shadow:var(--focus-ring)}
+
+/* Tool rail panels (workflows and templates, assets). */
+.toolPanel{
+  position:absolute;left:72px;top:50%;translate:0 -50%;z-index:30;width:300px;border-radius:20px;background:var(--c-surface-2);
+  box-shadow:var(--shadow-float);display:flex;flex-direction:column;padding:0 8px 10px;
+}
+.toolPanel:focus-visible{outline:none}
+.toolPanelLink{margin:6px 10px 0;font-size:12px;color:var(--c-link);text-decoration:none}
+.toolPanelLink:hover{text-decoration:underline}
+.assetPanel{position:absolute;left:72px;top:64px;z-index:40;width:640px}
+
+/* Project title: rename in place. */
+.projectInput{
+  height:36px;width:260px;padding:0 12px;border-radius:12px;border:0;outline:0;background:var(--c-surface-5);color:var(--c-text-1);
+  font:inherit;font-size:14px;font-weight:600;box-shadow:inset 0 0 0 1px var(--c-accent);box-sizing:border-box;
+}
+.zoomValueBtn{height:28px;border:0;border-radius:999px;background:none;color:inherit;cursor:pointer;padding:0 4px;font:600 12px/1 var(--font-sans)}
+.zoomValueBtn:hover,.zoomValueBtn[aria-expanded="true"]{background:var(--c-surface-5)}
+.minimap:focus-visible{outline:none;box-shadow:var(--focus-ring)}
+.minimap[data-dragging]{cursor:grabbing}
+.tool[aria-disabled="true"]{color:var(--c-text-4)}
+
+/* Error state (route errorComponent). */
+.errorBox{position:absolute;left:50%;top:50%;translate:-50% -50%;width:420px;padding:24px;border-radius:24px;background:var(--c-surface-2);box-shadow:var(--shadow-float);display:flex;flex-direction:column;gap:10px}
+.errorTitle{margin:0;font-size:20px;font-weight:700}
+.errorText{margin:0;font-size:14px;line-height:1.5;color:var(--c-text-3)}
+.errorActions{display:flex;gap:8px;margin-top:6px}
+.errorPrimary{height:40px;padding:0 18px;border-radius:999px;border:0;background:var(--c-text-1);color:var(--c-bg);font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+.errorSecondary{height:40px;padding:0 18px;border-radius:999px;background:var(--c-surface-5);color:var(--c-text-1);font-size:13px;line-height:40px;text-decoration:none}

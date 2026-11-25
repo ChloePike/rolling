@@ -1,0 +1,18 @@
+/* Canvas menus that have no dedicated design: the shared popover surface with plain rows. */
+.panel{padding:6px;min-width:200px;border-radius:14px;background:var(--c-surface-float);box-shadow:var(--shadow-popover);color:var(--c-text-1)}
+.point{position:fixed;z-index:60}
+.scrim{position:fixed;inset:0;z-index:59}
+.rows{display:flex;flex-direction:column;gap:2px}
+.title{padding:6px 10px 4px;font-size:var(--fs-badge);font-weight:600;color:var(--c-text-4);text-transform:none}
+.item{display:flex;align-items:center;gap:10px;min-height:34px;padding:0 10px;border:0;border-radius:8px;background:transparent;color:var(--c-text-1);font:inherit;font-size:var(--fs-control);text-align:left;cursor:pointer;transition:background var(--dur-fast) var(--ease-standard)}
+.item:hover,.item:focus-visible{background:var(--c-surface-6);outline:none}
+.item[aria-disabled="true"]{color:var(--c-text-4);cursor:not-allowed}
+.item[aria-disabled="true"]:hover{background:transparent}
+.danger{color:var(--c-danger)}
+.label{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meta{flex:none;font-size:var(--fs-meta);color:var(--c-text-4);font-variant-numeric:tabular-nums}
+.reason{flex:none;font-size:var(--fs-badge);color:var(--c-text-4)}
+.check{flex:none;width:14px;height:14px;border-radius:999px;box-shadow:inset 0 0 0 1.5px var(--c-control-off)}
+.checkOn{box-shadow:inset 0 0 0 4px var(--c-accent)}
+.item[role="menuitemcheckbox"] .check{border-radius:4px}
+.item[role="menuitemcheckbox"] .checkOn{box-shadow:none;background:var(--c-accent)}

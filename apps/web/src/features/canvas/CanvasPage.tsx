@@ -1,5 +1,5 @@
 import { cx, presenceProps, usePresence, useToast } from '@rolling/ui';
-import { Link } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -11,27 +11,70 @@ import {
   type FinalConnectionState,
   type NodeChangeset,
   type OnConnectEnd,
+  type OnConnectStart,
 } from '@xyflow/react';
 import '@xyflow/react/dist/base.css';
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { ReferencePicker, type RefItem } from '@/features/prompt';
-import type { RunPlanRow, RunRowKind } from '@/features/overlays';
+import { Paywall, ResultViewer, RunConfirm, type PaywallOption, type ResultActionId, type RunPlanRow, type RunRowKind } from '@/features/overlays';
 import { AgentPanel, type AgentPlan } from './agent/AgentPanel';
-import { getProject, getShare, openProject, quoteRun, startRun, type ProjectSession } from './api';
+import {
+  getProject,
+  openProject,
+  publishShare,
+  quoteRun,
+  renameProject,
+  setActiveVersion,
+  startRun,
+  stopSharing,
+  topUp,
+  updateShare,
+  useCredits,
+  useProject,
+  useShare,
+  type GraphProposal,
+  type QuoteItem,
+  type QuoteScope,
+  type ProjectSession,
+} from './api';
 import canvas from './canvas.module.css';
 import type { LocalOp } from './graph/store';
-import type { GraphNode, GraphState, NodeKind, Refusal } from '@rolling/core/graph';
+import {
+  blockedByBypass,
+  inputPorts,
+  outputType,
+  rerouteIndex,
+  type GraphNode,
+  type GraphState,
+  type NodeKind,
+  type PortType,
+  type Refusal,
+  type XY,
+} from '@rolling/core/graph';
 import { CanvasIcon, CanvasLogo, type CanvasIconName } from './icons';
-import { AddNodeMenu, CreditsPopover, HistoryDrawer, MOCK_RUNS, PlanDialog, ScriptDialog, ShareDialog, type HistoryRow } from './layers/Layers';
-import { MOCK_CREDITS, type PromptRef } from './mocks';
-import { useSession } from '@/lib/session';
+import {
+  AddNodeMenu,
+  CreditsPopover,
+  HistoryDrawer,
+  MOCK_RUNS,
+  PlanDialog,
+  ScriptDialog,
+  ShareDialog,
+  TemplatesPanel,
+  type AddPick,
+  type HistoryRow,
+} from './layers/Layers';
+import { MenuPopover, PointMenu, type MenuEntry } from './layers/Menu';
+import { MOCK_PRICE, MOCK_REFS, mockVideoCredits, SCRIPT_ROWS, type CanvasTemplate, type PromptRef, type ScriptRow } from './mocks';
+import { useSession, checkoutPlan } from '@/lib/session';
 import { PLAN_ORDER } from '@rolling/core/pricing/config';
 import { NodeActionsContext, NodeCard, NODE_WIDTH, runCost, willRun, type CardNode, type NodeActions } from './nodes/NodeCard';
 import styles from './nodes/nodes.module.css';
-import { ConnectionLine, Wire, type WireEdge } from './nodes/Wire';
+import { ConnectionLine, EdgeActionsContext, Wire, type EdgeActions, type WireEdge } from './nodes/Wire';
 import { PromptPanel } from './prompt/PromptPanel';
-import { CONFIRM_THRESHOLD, formatLabel, usePricedNodes } from './pricing';
+import { formatLabel, usePricedNodes } from './pricing';
+import { getPrefs } from '@/lib/prefs';
 
 /** Layers the design opens through `initOverlay` (Canvas.dc.html), plus the canvas' own. */
 export type CanvasOverlay = 'plan' | 'addMenu' | 'script' | 'share' | 'edit' | 'editAgent' | 'at';
@@ -42,6 +85,8 @@ export interface CanvasEditorSlotProps {
   /** Opened with the agent's edit proposal (CanvasEditAgent). */
   withProposal: boolean;
   onClose: () => void;
+  /** "Open on canvas" from the editor: closes it and selects the node. */
+  onOpenOnCanvas: (nodeId: string) => void;
 }
 
 export interface CanvasPageProps {
@@ -69,8 +114,19 @@ const ADD_AT = { x: 360, y: 500 };
 const AGENT_INSET = 368;
 /** Gap between a node and its prompt editor (Canvas.dc.html genY). */
 const PROMPT_GAP = { image: 10, video: 6 };
+const ZOOM_PRESETS = [0.5, 0.75, 1, 1.5, 2];
 const nodeTypes = { card: NodeCard };
 const edgeTypes = { wire: Wire };
+
+/** New-node defaults per kind. */
+const NODE_DEFAULTS: Record<string, Record<string, unknown>> = {
+  text: { text: '' },
+  script: { rows: [], versionLabel: 'v1' },
+  image: { tone: 'var(--c-tone-plum)', prompt: '', model: 'Seedream 5.0 Pro', mode: 'Text to image', ratio: '9:16', resolution: '2K', count: 1, quick: ['Style', 'Framing', 'Lighting', 'Camera'], refs: [], runCost: MOCK_PRICE.image },
+  video: { tone: 'var(--c-tone-indigo)', seconds: 5, prompt: '', model: 'Seedance 2.5', mode: 'First frame', ratio: '9:16', resolution: '720p', length: 5, extra: '×1 · Audio on', quick: ['Style', 'Camera', 'Lighting', 'Pace'], refs: [], runCost: mockVideoCredits(5) },
+  audio: { voice: 'Clear female', seconds: 0, wave: [], runCost: MOCK_PRICE.voice },
+};
+const ADDABLE: NodeKind[] = ['text', 'script', 'image', 'video', 'audio'];
 
 function useGraph(session: ProjectSession): GraphState {
   return useSyncExternalStore(session.store.subscribe, session.store.getState);
@@ -119,9 +175,11 @@ export function CanvasPage(props: CanvasPageProps) {
   );
 }
 
-function planMeta(intl: ReturnType<typeof useIntl>, n: GraphNode): string {
+function planMeta(intl: ReturnType<typeof useIntl>, n: GraphNode, item?: QuoteItem): string {
   const p = n.params;
   const parts: string[] = [];
+  if (item?.action === 'bypassed') return intl.formatMessage({ id: 'canvas.plan.meta.bypassed' });
+  if (item?.action === 'blocked' && item.reason) return item.reason;
   if (n.kind === 'script' || n.kind === 'text') return intl.formatMessage({ id: 'canvas.plan.meta.text' });
   if (n.kind === 'asset') return intl.formatMessage({ id: 'canvas.plan.meta.asset' });
   if (n.kind === 'audio') {
@@ -150,6 +208,32 @@ export function refusalText(intl: ReturnType<typeof useIntl>, r: Refusal): strin
   }
 }
 
+/** Input port of a node of `kind` that takes `type`, if any. */
+function inputFor(kind: NodeKind, type: PortType): string | null {
+  return inputPorts({ kind }).find((p) => p.type === type)?.name ?? null;
+}
+
+/** Node kinds that can sit at the other end of a wire dragged from a port. */
+function acceptingKinds(type: PortType, from: 'out' | 'in'): NodeKind[] {
+  return ADDABLE.filter((k) => (from === 'out' ? !!inputFor(k, type) : outputType({ kind: k, params: {} }) === type));
+}
+
+type RunGate =
+  | { type: 'confirm'; items: QuoteItem[]; nodeId: string }
+  | { type: 'join'; items: QuoteItem[] }
+  | { type: 'credits'; items: QuoteItem[]; total: number };
+
+type Menu =
+  | { kind: 'node'; id: string; x: number; y: number }
+  | { kind: 'edge'; id: string; x: number; y: number; flow: XY }
+  | { kind: 'versions'; id: string; x: number; y: number };
+
+interface PendingWire {
+  nodeId: string;
+  type: PortType;
+  from: 'out' | 'in';
+}
+
 interface InnerProps extends CanvasPageProps {
   session: ProjectSession;
   titles: Map<string, string>;
@@ -159,26 +243,42 @@ interface InnerProps extends CanvasPageProps {
 function CanvasInner({ projectId, initialOverlay = null, initialSelection = null, renderEditor, session, titles, retryRef }: InnerProps) {
   const intl = useIntl();
   const toast = useToast();
+  const navigate = useNavigate();
   const flow = useReactFlow<CardNode, WireEdge>();
   const viewport = useViewport();
   const storeGraph = useGraph(session);
   const { nodes: pricedNodes, models } = usePricedNodes(storeGraph.nodes);
   const graph = useMemo(() => ({ ...storeGraph, nodes: pricedNodes }), [storeGraph, pricedNodes]);
   const syncStatus = useSyncExternalStore(session.sync.subscribe, session.sync.getStatus);
-  const project = getProject(projectId);
+  const project = useProject(projectId);
+  const credits = useCredits();
+  const share = useShare(projectId);
 
   const [selected, setSelected] = useState<string | null>(initialSelection);
   const [selectedEdge, setSelectedEdge] = useState<string | null>(null);
   const [overlay, setOverlay] = useState<CanvasOverlay | null>(initialOverlay);
-  const [tool, setTool] = useState<Tool>('add');
   const [agentOpen, setAgentOpen] = useState(true);
   // Membership and plan caps come from the shared session (D-006, D-007).
   const { isMember, planId } = useSession();
   const [creditsOpen, setCreditsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [toolPanel, setToolPanel] = useState<'templates' | 'assets' | null>(null);
+  const [projectMenu, setProjectMenu] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [zoomMenu, setZoomMenu] = useState(false);
+  const [menu, setMenu] = useState<Menu | null>(null);
+  const [resultFor, setResultFor] = useState<string | null>(null);
+  const [gate, setGate] = useState<RunGate | null>(null);
+  const [planScope, setPlanScope] = useState<{ scope: QuoteScope; nodeId?: string }>({ scope: 'all' });
+  const [scriptMenu, setScriptMenu] = useState<'fields' | null>(null);
+  const [shareBusy, setShareBusy] = useState(false);
   const [addAt, setAddAt] = useState(ADD_AT);
+  const [wire, setWire] = useState<PendingWire | null>(null);
+  const [dropWire, setDropWire] = useState<PendingWire | null>(null);
   const [refused, setRefused] = useState<string | null>(null);
-  const [extraRefs, setExtraRefs] = useState<Record<string, PromptRef[]>>({});
+  const [proposed, setProposed] = useState<string[] | null>(null);
+  const [refRegistry, setRefRegistry] = useState<Record<string, PromptRef>>(MOCK_REFS);
+  const pickerFromTyping = useRef(false);
   const [sessionRuns, setSessionRuns] = useState<HistoryRow[]>([]);
   const [size, setSize] = useState({ w: typeof window === 'undefined' ? 1440 : window.innerWidth, h: 900 });
   const rootRef = useRef<HTMLDivElement>(null);
@@ -203,6 +303,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
       const byId = new Map(prev.map((n) => [n.id, n]));
       return graph.nodes.map((node) => {
         const old = byId.get(node.id);
+        const blocked = node.bypass || !willRun(node) ? null : blockedByBypass(graph, node.id);
         return {
           ...(old ?? {}),
           id: node.id,
@@ -210,17 +311,25 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
           position: old && dragging.current.has(node.id) ? old.position : node.position,
           width: NODE_WIDTH[node.kind],
           selected: node.id === selected,
-          data: { node, buildIndex: session.store.buildIndex(node.id), refused: refused === node.id },
+          data: {
+            node,
+            buildIndex: session.store.buildIndex(node.id),
+            refused: refused === node.id,
+            proposed: proposed?.includes(node.id) ?? false,
+            connecting: wire,
+            blockedReason: blocked?.message ?? null,
+          },
         };
       });
     });
-  }, [graph, selected, refused, session]);
+  }, [graph, selected, refused, session, proposed, wire]);
 
   const rfEdges = useMemo<WireEdge[]>(() => {
-    const status = new Map(graph.nodes.map((n) => [n.id, n.status]));
+    const byId = new Map(graph.nodes.map((n) => [n.id, n]));
     return graph.edges.map((e) => {
       const a = session.store.buildIndex(e.from.node);
       const b = session.store.buildIndex(e.to.node);
+      const src = byId.get(e.from.node);
       return {
         id: e.id,
         type: 'wire' as const,
@@ -232,8 +341,10 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
         data: {
           highlight: e.to.node === selected,
           // Dashed: the frames a running job is rendering from.
-          pending: status.get(e.to.node) === 'generating' && (e.to.port === 'frame' || e.to.port === 'refs' || e.to.port === 'clips'),
+          pending: byId.get(e.to.node)?.status === 'generating' && (e.to.port === 'frame' || e.to.port === 'refs' || e.to.port === 'clips'),
           build: a >= 0 && b >= 0 ? Math.max(a, b) : -1,
+          type: src ? outputType(src) : null,
+          reroutes: e.reroutes,
         },
       };
     });
@@ -277,11 +388,14 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
     }
   }, []);
 
-  const flashRefused = useCallback((nodeId: string, r: Refusal) => {
-    setRefused(nodeId);
-    window.setTimeout(() => setRefused((x) => (x === nodeId ? null : x)), 1200);
-    toast.show({ message: refusalText(intl, r) });
-  }, [toast, intl]);
+  const flashRefused = useCallback(
+    (nodeId: string, r: Refusal) => {
+      setRefused(nodeId);
+      window.setTimeout(() => setRefused((x) => (x === nodeId ? null : x)), 1200);
+      toast.show({ message: refusalText(intl, r) });
+    },
+    [toast, intl],
+  );
 
   const onConnect = useCallback(
     (c: Connection) => {
@@ -295,13 +409,32 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
     [session, commit, flashRefused],
   );
 
-  const isValidConnection = useCallback(
-    (c: Connection | Edge) => session.store.planConnect(c.source, c.target).ok,
+  const isValidConnection = useCallback((c: Connection | Edge) => session.store.planConnect(c.source, c.target).ok, [session]);
+
+  const onConnectStart: OnConnectStart = useCallback(
+    (_e, params) => {
+      const node = session.store.getState().nodes.find((n) => n.id === params.nodeId);
+      if (!node) return;
+      const from = params.handleType === 'source' ? 'out' : 'in';
+      const type = from === 'out' ? outputType(node) : (inputPorts(node)[0]?.type ?? null);
+      if (type) setWire({ nodeId: node.id, type, from });
+    },
     [session],
   );
 
   const onConnectEnd: OnConnectEnd = useCallback(
-    (_e: MouseEvent | TouchEvent, state: FinalConnectionState) => {
+    (e: MouseEvent | TouchEvent, state: FinalConnectionState) => {
+      const pending = wire;
+      setWire(null);
+      if (!state.toNode && state.fromNode && pending) {
+        // Dropped on empty canvas: node search filtered to what can take the wire.
+        const pt = 'changedTouches' in e ? e.changedTouches[0]! : (e as MouseEvent);
+        const rect = rootRef.current!.getBoundingClientRect();
+        setAddAt({ x: pt.clientX - rect.left, y: pt.clientY - rect.top });
+        setDropWire(pending);
+        setOverlay('addMenu');
+        return;
+      }
       if (state.isValid !== false || !state.toNode || !state.fromNode) return;
       const fromIsSource = state.fromHandle?.type === 'source';
       const source = fromIsSource ? state.fromNode.id : state.toNode.id;
@@ -309,22 +442,27 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
       const plan = session.store.planConnect(source, target);
       if (!plan.ok) flashRefused(target, plan.refusal);
     },
-    [session, flashRefused],
+    [session, flashRefused, wire],
   );
 
-  const onDelete = useCallback(
-    ({ nodes, edges }: { nodes: CardNode[]; edges: WireEdge[] }) => {
-      const removed = new Set(nodes.map((n) => n.id));
+  const removeNodes = useCallback(
+    (nodeIds: string[], edgeIds: string[] = []) => {
+      const removed = new Set(nodeIds);
       const ops: LocalOp[] = [
-        ...edges.filter((e) => !removed.has(e.source) && !removed.has(e.target)).map((e) => ({ op: 'disconnect' as const, edgeId: e.id })),
-        ...nodes.map((n) => ({ op: 'removeNode' as const, nodeId: n.id })),
+        ...edgeIds.map((edgeId) => ({ op: 'disconnect' as const, edgeId })),
+        ...nodeIds.map((nodeId) => ({ op: 'removeNode' as const, nodeId })),
       ];
       if (!ops.length) return;
       const r = commit(ops);
-      if (r.ok && nodes.length) {
+      if (r.ok && nodeIds.length) {
         if (selected && removed.has(selected)) setSelected(null);
         toast.show({
-          message: intl.formatMessage({ id: 'canvas.toast.deleted' }, { n: nodes.length }),
+          message: intl.formatMessage({ id: 'canvas.toast.deleted' }, { n: nodeIds.length }),
+          action: { label: intl.formatMessage({ id: 'canvas.toast.undo' }), onAction: () => session.sync.undo() },
+        });
+      } else if (r.ok && edgeIds.length) {
+        toast.show({
+          message: intl.formatMessage({ id: 'canvas.toast.disconnected' }, { n: edgeIds.length }),
           action: { label: intl.formatMessage({ id: 'canvas.toast.undo' }), onAction: () => session.sync.undo() },
         });
       }
@@ -332,103 +470,179 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
     [commit, selected, toast, intl, session],
   );
 
-  /* ---------- Keyboard: undo / redo ---------- */
+  const onDelete = useCallback(
+    ({ nodes, edges }: { nodes: CardNode[]; edges: WireEdge[] }) => {
+      const removed = new Set(nodes.map((n) => n.id));
+      removeNodes(
+        nodes.map((n) => n.id),
+        edges.filter((e) => !removed.has(e.source) && !removed.has(e.target)).map((e) => e.id),
+      );
+    },
+    [removeNodes],
+  );
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
-      const mod = e.metaKey || e.ctrlKey;
-      if (!mod) return;
-      const k = e.key.toLowerCase();
-      if (k === 'z' && !e.shiftKey) {
-        e.preventDefault();
-        session.sync.undo();
-      } else if ((k === 'z' && e.shiftKey) || k === 'y') {
-        e.preventDefault();
-        session.sync.redo();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [session]);
+  /* ---------- Node commands ---------- */
 
-  /* ---------- Runs ---------- */
+  const selectNode = useCallback(
+    (id: string, center = false) => {
+      setSelected(id);
+      setSelectedEdge(null);
+      const n = flow.getNode(id);
+      if (center && n) void flow.setCenter(n.position.x + (n.measured?.width ?? 240) / 2, n.position.y + (n.measured?.height ?? 200) / 2, { zoom: viewport.zoom, duration: 320 });
+    },
+    [flow, viewport.zoom],
+  );
 
-  const selectedNode = graph.nodes.find((n) => n.id === selected) ?? null;
+  const duplicate = useCallback(
+    (id: string) => {
+      const n = session.store.getState().nodes.find((x) => x.id === id);
+      if (!n) return;
+      const r = commit([
+        {
+          op: 'addNode',
+          tempId: 'dup',
+          kind: n.kind,
+          title: intl.formatMessage({ id: 'canvas.node.copyTitle' }, { title: n.title }),
+          params: { ...n.params },
+          position: { x: n.position.x + 40, y: n.position.y + 40 },
+        },
+      ]);
+      if (r.ok) setSelected(r.idMap.dup ?? null);
+    },
+    [session, commit, intl],
+  );
 
-  const run = useCallback(
-    (ids: string[]) => {
-      const startable = ids.filter((id) => {
-        const n = session.store.getState().nodes.find((x) => x.id === id);
-        return n && n.status !== 'generating' && n.status !== 'queued';
-      });
-      if (!startable.length) return;
-      startRun(startable);
+  const toggleBypass = useCallback(
+    (id: string) => {
+      const n = session.store.getState().nodes.find((x) => x.id === id);
+      if (!n) return;
+      const r = commit([{ op: 'setBypass', nodeId: id, bypass: !n.bypass }]);
+      if (r.ok) toast.show({ message: intl.formatMessage({ id: n.bypass ? 'canvas.toast.bypassOff' : 'canvas.toast.bypassOn' }, { title: n.title }) });
+    },
+    [session, commit, toast, intl],
+  );
+
+  const toggleCollapsed = useCallback(
+    (id: string) => {
+      const n = session.store.getState().nodes.find((x) => x.id === id);
+      if (n) commit([{ op: 'setCollapsed', nodeId: id, collapsed: !n.collapsed }]);
+    },
+    [session, commit],
+  );
+
+  /* ---------- Runs: quote → (paywall | top-up | confirm per threshold) → hold → jobs ---------- */
+
+  const recordRuns = useCallback(
+    (items: QuoteItem[]) => {
       const now = new Date();
       setSessionRuns((rows) => [
-        ...startable.map((id) => {
-          const n = session.store.getState().nodes.find((x) => x.id === id)!;
-          return { id: `run_${id}_${now.getTime()}`, title: n.title, model: typeof n.params.model === 'string' ? n.params.model : '', credits: runCost(n) ?? 0, status: 'running' as const, at: now, nodeId: id } as HistoryRow & { nodeId: string };
+        ...items.map((it) => {
+          const n = session.store.getState().nodes.find((x) => x.id === it.nodeId)!;
+          return { id: `run_${it.nodeId}_${now.getTime()}`, nodeId: it.nodeId, title: n.title, model: it.model, credits: it.credits, status: 'running' as const, at: now };
         }),
         ...rows,
       ]);
-      toast.show({ message: intl.formatMessage({ id: 'canvas.toast.started' }, { n: startable.length }) });
     },
-    [session, toast, intl],
+    [session],
   );
-  retryRef.current = (id) => run([id]);
 
-  const generate = useCallback(
-    (id: string) => {
-      const n = graph.nodes.find((x) => x.id === id);
-      if (!n) return;
+  const executeRun = useCallback(
+    (items: QuoteItem[]) => {
+      const runs = items.filter((i) => i.action === 'run');
+      if (!runs.length) return;
+      const total = runs.reduce((s, i) => s + i.credits, 0);
+      // Generating needs an active plan (D-007): the paywall keeps the run and resumes it.
+      if (!isMember) {
+        setGate({ type: 'join', items: runs });
+        return;
+      }
+      const r = startRun(runs);
+      if (!r.ok) {
+        if (r.code === 'INSUFFICIENT_CREDITS') setGate({ type: 'credits', items: runs, total });
+        else toast.show({ message: intl.formatMessage({ id: 'canvas.toast.offline' }) });
+        return;
+      }
+      setGate(null);
+      recordRuns(runs);
+      toast.show({ message: intl.formatMessage({ id: 'canvas.toast.started' }, { n: runs.length }) });
+    },
+    [isMember, toast, intl, recordRuns],
+  );
+  executeRunRef.current = executeRun;
+
+  /** Run one node, or a node with its upstream (`upTo`) or downstream (`from`). */
+  const requestRun = useCallback(
+    (id: string, scope: Exclude<QuoteScope, 'all'> = 'node') => {
+      const state = session.store.getState();
+      if (scope !== 'node') {
+        setPlanScope({ scope, nodeId: id });
+        setOverlay('plan');
+        return;
+      }
+      const nodes = graph.nodes.length ? graph.nodes : state.nodes;
+      const q = quoteRun(nodes, state.edges, [id], 'node');
+      const item = q.items[0];
+      if (!item || item.action !== 'run') {
+        const n = nodes.find((x) => x.id === id);
+        toast.show({
+          message:
+            item?.action === 'blocked' && item.reason
+              ? item.reason
+              : intl.formatMessage({ id: item?.action === 'bypassed' ? 'canvas.toast.bypassedRun' : 'canvas.toast.nothingToRun' }, { title: n?.title ?? '' }),
+        });
+        return;
+      }
       // Runs under the user's "Confirm before running" threshold start without the quote dialog.
-      if ((runCost(n) ?? 0) < CONFIRM_THRESHOLD) run([id]);
-      else setOverlay('plan');
+      if (q.total < getPrefs().confirmThreshold) executeRun(q.items);
+      else setGate({ type: 'confirm', items: q.items, nodeId: id });
     },
-    [graph.nodes, run],
+    [session, graph.nodes, executeRun, toast, intl],
   );
+  retryRef.current = (id) => requestRun(id);
 
-  const quote = useMemo(() => quoteRun(graph.nodes, graph.edges), [graph.nodes, graph.edges]);
-  const runAllEstimate = graph.nodes.filter(willRun).reduce((s, n) => s + (runCost(n) ?? 0), 0);
+  const planQuote = useMemo(
+    () => (planScope.scope === 'all' || !planScope.nodeId ? quoteRun(graph.nodes, graph.edges) : quoteRun(graph.nodes, graph.edges, [planScope.nodeId], planScope.scope)),
+    [graph.nodes, graph.edges, planScope],
+  );
+  const runAllEstimate = graph.nodes.filter((n) => willRun(n) && !n.bypass).reduce((s, n) => s + (runCost(n) ?? 0), 0);
   const planRows: RunPlanRow[] = useMemo(
     () =>
-      quote.items.map((it) => {
+      planQuote.items.map((it) => {
         const n = graph.nodes.find((x) => x.id === it.nodeId)!;
         return {
           id: n.id,
           name: n.kind === 'script' ? `${intl.formatMessage({ id: 'canvas.node.kind.script' })} · ${String(n.params.versionLabel ?? '')}` : n.title,
-          meta: planMeta(intl, n),
+          meta: planMeta(intl, n, it),
           kind: runKind(n.kind),
-          state: it.action === 'none' ? 'free' : it.action === 'run' || n.status === 'generating' ? 'run' : it.action,
-          cost: it.action === 'none' ? 0 : runCost(n) ?? 0,
+          state: it.action === 'none' || it.action === 'bypassed' ? 'free' : it.action === 'run' || (n.status === 'generating' && it.action !== 'blocked') ? 'run' : it.action,
+          cost: it.action === 'run' || n.status === 'generating' ? runCost(n) ?? 0 : 0,
           tone: typeof n.params.tone === 'string' ? n.params.tone : undefined,
         };
       }),
-    [quote, graph.nodes, intl],
+    [planQuote, graph.nodes, intl],
   );
 
   /* ---------- Agent: Build on canvas (a free graph patch from the plan proposal) ---------- */
 
-  const buildPlan = useCallback(
-    (plan: AgentPlan) => {
+  const buildShots = useCallback(
+    (shots: Array<{ n: number | string; title: string; seconds: number; visual: string }>, title: string, from?: string) => {
       const nodes = session.store.getState().nodes;
       const bottom = Math.max(0, ...nodes.map((n) => n.position.y + (n.kind === 'image' ? 263 : 193)));
       const y = bottom + 80;
       const ops: LocalOp[] = [];
       const ids: string[] = [];
-      plan.shots.forEach((s, i) => {
+      shots.forEach((s, i) => {
         const key = `k${s.n}`;
         const shot = `v${s.n}`;
         ids.push(key, shot);
         ops.push(
-          { op: 'addNode', tempId: key, kind: 'image', title: `${s.title} keyframe`, params: { tone: 'var(--c-tone-plum)', prompt: s.visual, model: 'Seedream 5.0 Pro', mode: 'Image to image', ratio: '9:16', resolution: '2K', count: 1, quick: ['Style', 'Framing', 'Lighting', 'Camera'], refs: ['m1'], runCost: 2 }, position: { x: 448 + i * 600, y } },
-          { op: 'addNode', tempId: shot, kind: 'video', title: `Shot ${String.fromCharCode(65 + i)}: ${s.title}`, params: { tone: 'var(--c-tone-indigo)', seconds: s.seconds, prompt: s.visual, model: 'Seedance 2.5', mode: 'First frame', ratio: '9:16', resolution: '720p', length: s.seconds, extra: '×1 · Audio on', quick: ['Style', 'Camera', 'Lighting', 'Pace'], refs: [], runCost: 8 }, position: { x: 448 + i * 600 + 270, y } },
+          { op: 'addNode', tempId: key, kind: 'image', title: `${s.title} keyframe`, params: { ...NODE_DEFAULTS.image, prompt: s.visual, mode: 'Image to image', refs: ['m1'] }, position: { x: 448 + i * 600, y } },
+          { op: 'addNode', tempId: shot, kind: 'video', title: `Shot ${String.fromCharCode(65 + i)}: ${s.title}`, params: { ...NODE_DEFAULTS.video, seconds: s.seconds, prompt: s.visual, length: s.seconds, runCost: mockVideoCredits(s.seconds) }, position: { x: 448 + i * 600 + 270, y } },
           { op: 'connect', from: { node: key, port: 'out' }, to: { node: shot, port: 'frame' } },
         );
+        if (from) ops.push({ op: 'connect', from: { node: from, port: 'out' }, to: { node: key, port: 'prompt' } });
       });
-      ops.push({ op: 'group', nodeIds: ids, title: plan.title });
+      ops.push({ op: 'group', nodeIds: ids, title });
       // Applying a proposal is a normal patch by the user (harness §2); the agent only proposed it.
       const r = commit(ops);
       return r.ok ? ids.length : 0;
@@ -436,10 +650,60 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
     [session, commit],
   );
 
+  const buildPlan = useCallback((plan: AgentPlan) => buildShots(plan.shots, plan.title), [buildShots]);
+
+  const scriptNode = graph.nodes.find((n) => n.kind === 'script') ?? null;
+  const scriptRows = (scriptNode && Array.isArray(scriptNode.params.script) ? scriptNode.params.script : undefined) as ScriptRow[] | undefined;
+
+  const generateStoryboard = useCallback(
+    (rows: Array<{ n: string; visual: string; seconds: number }>, scriptId?: string) => {
+      if (!rows.length) return;
+      const added = buildShots(
+        rows.map((r) => ({ n: r.n, title: r.visual.split(',')[0]!.slice(0, 32), seconds: r.seconds, visual: r.visual })),
+        intl.formatMessage({ id: 'canvas.script.storyboardGroup' }, { version: String(scriptNode?.params.versionLabel ?? '') }),
+        scriptId,
+      );
+      if (added) {
+        setOverlay(null);
+        toast.show({ message: intl.formatMessage({ id: 'canvas.toast.storyboard' }, { n: added }) });
+      }
+    },
+    [buildShots, intl, scriptNode, toast],
+  );
+
+  const saveScript = useCallback(
+    (rows: ScriptRow[], version: string) => {
+      if (!scriptNode) return;
+      commit([
+        {
+          op: 'updateNode',
+          nodeId: scriptNode.id,
+          params: { script: rows, rows: rows.filter((r) => r.selected).map((r) => ({ n: r.n, visual: r.visual, seconds: r.seconds })), versionLabel: version },
+        },
+      ]);
+    },
+    [scriptNode, commit],
+  );
+
+  const applyProposal = useCallback(
+    (p: GraphProposal) => {
+      const r = commit(p.ops);
+      if (r.ok) {
+        toast.show({
+          message: intl.formatMessage({ id: 'canvas.toast.proposalApplied' }),
+          action: { label: intl.formatMessage({ id: 'canvas.toast.undo' }), onAction: () => session.sync.undo() },
+        });
+      }
+      return r.ok;
+    },
+    [commit, toast, intl, session],
+  );
+
   /* ---------- Layout of the floating prompt editor ---------- */
 
+  const selectedNode = graph.nodes.find((n) => n.id === selected) ?? null;
   const visibleRight = size.w - (agentOpen ? AGENT_INSET : 16);
-  const promptNode = selectedNode && (selectedNode.kind === 'image' || selectedNode.kind === 'video') ? selectedNode : null;
+  const promptNode = selectedNode && (selectedNode.kind === 'image' || selectedNode.kind === 'video') && !selectedNode.collapsed ? selectedNode : null;
   const promptPos = useMemo(() => {
     if (!promptNode) return null;
     const rf = rfNodes.find((n) => n.id === promptNode.id);
@@ -456,9 +720,16 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
   if (promptPos) lastPromptPos.current = promptPos;
   const promptPresence = usePresence(!!promptNode && overlay !== 'edit' && overlay !== 'editAgent');
 
+  const refsOf = (node: GraphNode): PromptRef[] =>
+    ((Array.isArray(node.params.refs) ? node.params.refs : []) as string[]).map((id) => refRegistry[id]).filter((r): r is PromptRef => !!r);
+
   /* ---------- Overlays ---------- */
 
-  const close = useCallback(() => setOverlay(null), []);
+  const close = useCallback(() => {
+    setOverlay(null);
+    setDropWire(null);
+    setScriptMenu(null);
+  }, []);
   const addP = usePresence(overlay === 'addMenu');
   const scriptP = usePresence(overlay === 'script');
   const shareP = usePresence(overlay === 'share');
@@ -467,71 +738,311 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
   const agentP = usePresence(agentOpen);
   const creditsP = usePresence(creditsOpen);
   const historyP = usePresence(historyOpen);
+  const templatesP = usePresence(toolPanel === 'templates');
+  const assetsP = usePresence(toolPanel === 'assets');
+  const menuP = usePresence(!!menu);
+  const lastMenu = useRef(menu);
+  if (menu) lastMenu.current = menu;
   const editorOpen = overlay === 'edit' || overlay === 'editAgent';
 
   const pickTool = (k: Tool) => {
-    setTool(k);
     if (k === 'add') {
       setAddAt(ADD_AT);
+      setDropWire(null);
       setOverlay((o) => (o === 'addMenu' ? null : 'addMenu'));
     } else if (k === 'cut') {
       setOverlay((o) => (o === 'edit' ? null : 'edit'));
     } else if (k === 'hist') {
       setHistoryOpen((h) => !h);
-    } else if (k === 'asset' && promptNode) {
-      setOverlay('at');
+    } else if (k === 'asset') {
+      setToolPanel((p) => (p === 'assets' ? null : 'assets'));
+    } else if (k === 'flow') {
+      setToolPanel((p) => (p === 'templates' ? null : 'templates'));
+    } else if (k === 'dir') {
+      toast.show({ message: intl.formatMessage({ id: 'canvas.tools.directorSoon' }) });
+    }
+  };
+  const toolPressed = (k: Tool) =>
+    k === 'add' ? overlay === 'addMenu' : k === 'cut' ? editorOpen : k === 'hist' ? historyOpen : k === 'asset' ? toolPanel === 'assets' : k === 'flow' ? toolPanel === 'templates' : false;
+
+  /** Flow position of the screen point (relative to the canvas). */
+  const toFlow = (p: XY) => {
+    const rect = rootRef.current?.getBoundingClientRect();
+    return flow.screenToFlowPosition({ x: p.x + (rect?.left ?? 0), y: p.y + (rect?.top ?? 0) });
+  };
+
+  const addFromMenu = (pick: AddPick) => {
+    const pos = toFlow(addAt);
+    const at = { x: Math.round(pos.x), y: Math.round(pos.y) };
+    const tempId = 'new';
+    const ops: LocalOp[] = [];
+    let kind: NodeKind;
+    if (pick.type === 'resource') {
+      const r = pick.item;
+      kind = r.group === 'voice' ? 'audio' : 'asset';
+      ops.push({
+        op: 'addNode',
+        tempId,
+        kind,
+        title: r.name,
+        params: kind === 'audio' ? { voice: r.name, seconds: 0, wave: [], runCost: MOCK_PRICE.voice } : { media: 'image', label: r.meta, tone: r.tone, refId: r.id },
+        position: at,
+      });
+    } else {
+      kind = pick.kind;
+      ops.push({
+        op: 'addNode',
+        tempId,
+        kind,
+        title: intl.formatMessage({ id: `canvas.add.newTitle.${kind}` }),
+        params: { ...(NODE_DEFAULTS[kind] ?? {}), ...(pick.variant ? { source: pick.variant } : {}) },
+        position: at,
+      });
+    }
+    // Dropped from a wire: connect the new node to the other end in the same patch.
+    if (dropWire) {
+      if (dropWire.from === 'out') {
+        const port = inputFor(kind, dropWire.type);
+        if (port) ops.push({ op: 'connect', from: { node: dropWire.nodeId, port: 'out' }, to: { node: tempId, port } });
+      } else {
+        const target = session.store.getState().nodes.find((n) => n.id === dropWire.nodeId);
+        const port = target ? inputPorts(target).find((p) => p.type === dropWire.type)?.name : undefined;
+        if (port) ops.push({ op: 'connect', from: { node: tempId, port: 'out' }, to: { node: dropWire.nodeId, port } });
+      }
+    }
+    const r = commit(ops);
+    if (r.ok) setSelected(r.idMap[tempId] ?? null);
+    close();
+  };
+
+  const useTemplate = (tpl: CanvasTemplate) => {
+    const center = toFlow({ x: size.w / 2 - 300, y: size.h / 2 - 120 });
+    const ops: LocalOp[] = [];
+    tpl.nodes.forEach((n, i) => {
+      ops.push({
+        op: 'addNode',
+        tempId: `t${i}`,
+        kind: n.kind,
+        title: n.title,
+        params: { ...(NODE_DEFAULTS[n.kind] ?? {}), ...(n.prompt ? { prompt: n.prompt } : {}) },
+        position: { x: Math.round(center.x + i * 330), y: Math.round(center.y) },
+      });
+      const prev = tpl.nodes[i - 1];
+      if (prev) {
+        const type = outputType({ kind: prev.kind, params: {} });
+        const port = type ? inputFor(n.kind, type) : null;
+        if (port) ops.push({ op: 'connect', from: { node: `t${i - 1}`, port: 'out' }, to: { node: `t${i}`, port } });
+      }
+    });
+    ops.push({ op: 'group', nodeIds: tpl.nodes.map((_, i) => `t${i}`), title: tpl.name });
+    const r = commit(ops);
+    if (r.ok) {
+      setToolPanel(null);
+      toast.show({
+        message: intl.formatMessage({ id: 'canvas.toast.template' }, { name: tpl.name, n: tpl.nodes.length }),
+        action: { label: intl.formatMessage({ id: 'canvas.toast.undo' }), onAction: () => session.sync.undo() },
+      });
     }
   };
 
-  const addNode = (kind: NodeKind) => {
-    const pos = flow.screenToFlowPosition({ x: addAt.x, y: addAt.y });
-    const tempId = 'new';
-    const defaults: Record<string, Record<string, unknown>> = {
-      text: { text: '' },
-      script: { rows: [], versionLabel: 'v1' },
-      image: { tone: 'var(--c-tone-plum)', prompt: '', model: 'Seedream 5.0 Pro', mode: 'Text to image', ratio: '9:16', resolution: '2K', count: 1, quick: ['Style', 'Framing', 'Lighting', 'Camera'], refs: [], runCost: 2 },
-      video: { tone: 'var(--c-tone-indigo)', seconds: 5, prompt: '', model: 'Seedance 2.5', mode: 'First frame', ratio: '9:16', resolution: '720p', length: 5, extra: '×1 · Audio on', quick: ['Style', 'Camera', 'Lighting', 'Pace'], refs: [], runCost: 8 },
-      audio: { voice: 'Clear female', seconds: 0, wave: [], runCost: 2 },
-    };
-    const r = commit([
-      { op: 'addNode', tempId, kind, title: intl.formatMessage({ id: `canvas.add.newTitle.${kind}` }), params: defaults[kind] ?? {}, position: { x: Math.round(pos.x), y: Math.round(pos.y) } },
-    ]);
-    if (r.ok) setSelected(r.idMap[tempId] ?? null);
-    setOverlay(null);
+  const addAssets = (items: RefItem[]) => {
+    const center = toFlow({ x: 120, y: size.h / 2 - 100 });
+    const r = commit(
+      items.map((it, i) => ({
+        op: 'addNode' as const,
+        tempId: `a${i}`,
+        kind: it.group === 'voice' ? ('audio' as const) : ('asset' as const),
+        title: it.name,
+        params: it.group === 'voice' ? { voice: it.name, seconds: 0, wave: [], runCost: MOCK_PRICE.voice } : { media: 'image', label: it.meta, tone: it.tone, refId: it.id },
+        position: { x: Math.round(center.x + i * 230), y: Math.round(center.y) },
+      })),
+    );
+    if (r.ok) {
+      setToolPanel(null);
+      toast.show({ message: intl.formatMessage({ id: 'canvas.toast.assetsAdded' }, { n: items.length }) });
+    }
   };
 
   const actions: NodeActions = useMemo(
     () => ({
       openScript: () => setOverlay('script'),
-      retry: (id) => run([id]),
-      generateStoryboard: () => setOverlay('script'),
+      openFields: () => {
+        setScriptMenu('fields');
+        setOverlay('script');
+      },
+      retry: (id) => requestRun(id),
+      generateStoryboard: (id) => {
+        const n = session.store.getState().nodes.find((x) => x.id === id);
+        const rows = (Array.isArray(n?.params.rows) ? n!.params.rows : []) as Array<{ n: string; visual: string; seconds: number }>;
+        generateStoryboard(rows, id);
+      },
+      run: (id) => requestRun(id),
+      openResult: (id) => setResultFor(id),
+      openVersions: (id, r) => setMenu({ kind: 'versions', id, x: r.left, y: r.bottom + 6 }),
     }),
-    [run],
+    [requestRun, generateStoryboard, session],
   );
 
+  const edgeActions: EdgeActions = useMemo(
+    () => ({
+      moveReroute: (edgeId, index, position) => commit([{ op: 'moveReroute', edgeId, index, position }]),
+      removeReroute: (edgeId, index) => commit([{ op: 'removeReroute', edgeId, index }]),
+      rerouteLabel: (i) => intl.formatMessage({ id: 'canvas.edge.reroute' }, { n: i + 1 }),
+    }),
+    [commit, intl],
+  );
+
+  const addReroute = (edgeId: string, at: XY) => {
+    const e = session.store.getState().edges.find((x) => x.id === edgeId);
+    const a = flow.getNode(e?.from.node ?? '');
+    const b = flow.getNode(e?.to.node ?? '');
+    if (!e || !a || !b) return;
+    const from = { x: a.position.x + (a.measured?.width ?? 240), y: a.position.y + (a.measured?.height ?? 200) / 2 };
+    const to = { x: b.position.x, y: b.position.y + (b.measured?.height ?? 200) / 2 };
+    commit([{ op: 'addReroute', edgeId, index: rerouteIndex(from, to, e.reroutes ?? [], at), position: { x: Math.round(at.x), y: Math.round(at.y) } }]);
+  };
+
   const historyRows: HistoryRow[] = useMemo(() => {
-    const live = (nodeId: string, row: HistoryRow): HistoryRow => {
+    const live = (nodeId: string | undefined, row: HistoryRow): HistoryRow => {
       const n = graph.nodes.find((x) => x.id === nodeId);
       if (!n || row.status === 'done') return row;
-      if (n.status === 'generating') return { ...row, status: 'running', progress: n.progress ?? 0 };
+      if (n.status === 'generating' || n.status === 'queued') return { ...row, status: 'running', progress: n.progress ?? 0 };
       if (n.status === 'failed') return { ...row, status: 'failed', refunded: n.refunded ?? row.credits };
       return { ...row, status: 'done' };
     };
-    const session = sessionRuns.map((r) => live((r as HistoryRow & { nodeId: string }).nodeId, r));
-    return [...session, ...MOCK_RUNS.map((r) => live(r.nodeId, r))];
+    return [...sessionRuns.map((r) => live(r.nodeId, r)), ...MOCK_RUNS.map((r) => live(r.nodeId, r))];
   }, [graph.nodes, sessionRuns]);
 
   const pickRefs = (items: RefItem[]) => {
     if (!promptNode) return;
     const label = { mine: 'Mine', team: 'Team', builtin: 'Built-in', public: 'Public' } as const;
-    setExtraRefs((m) => ({
+    const refs = (Array.isArray(promptNode.params.refs) ? promptNode.params.refs : []) as string[];
+    setRefRegistry((m) => ({
       ...m,
-      [promptNode.id]: [
-        ...(m[promptNode.id] ?? []),
-        ...items.map((it) => ({ id: it.id, name: it.name, source: label[it.source], tone: it.tone, letter: it.glyph.type === 'letter' ? it.glyph.letter : '' })),
-      ],
+      ...Object.fromEntries(items.map((it) => [it.id, { id: it.id, name: it.name, source: label[it.source], tone: it.tone, letter: it.glyph.type === 'letter' ? it.glyph.letter : '' }])),
     }));
+    const params: Record<string, unknown> = { refs: [...refs, ...items.map((it) => it.id).filter((id) => !refs.includes(id))] };
+    if (pickerFromTyping.current) {
+      // Typed `@`: the mention replaces it in the prompt.
+      const prompt = typeof promptNode.params.prompt === 'string' ? promptNode.params.prompt : '';
+      params.prompt = `${prompt.replace(/@$/, '')}${items.map((it) => `@[${it.name}]`).join(' ')} `;
+    }
+    pickerFromTyping.current = false;
+    commit([{ op: 'updateNode', nodeId: promptNode.id, params }]);
     setOverlay(null);
+  };
+
+  /* ---------- Keyboard: undo / redo, bypass, node menu, duplicate ---------- */
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (editorOpen) return;
+      const mod = e.metaKey || e.ctrlKey;
+      const k = e.key.toLowerCase();
+      if (mod && k === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        session.sync.undo();
+      } else if (mod && ((k === 'z' && e.shiftKey) || k === 'y')) {
+        e.preventDefault();
+        session.sync.redo();
+      } else if (mod && k === 'b' && selected) {
+        e.preventDefault();
+        toggleBypass(selected);
+      } else if (mod && k === 'd' && selected) {
+        e.preventDefault();
+        duplicate(selected);
+      } else if (selected && (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10'))) {
+        e.preventDefault();
+        const el = document.querySelector(`[data-testid="node-${selected}"]`)?.getBoundingClientRect();
+        if (el) setMenu({ kind: 'node', id: selected, x: el.left + 12, y: el.top + 12 });
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [session, selected, toggleBypass, duplicate, editorOpen]);
+
+  /* ---------- Menus ---------- */
+
+  const menuEntries = (m: Menu): MenuEntry[] => {
+    const n = graph.nodes.find((x) => x.id === m.id);
+    if (m.kind === 'versions') {
+      if (!n?.version) return [];
+      return Array.from({ length: n.version.total }, (_, i) => i + 1).map((v) => ({
+        key: `v${v}`,
+        label: intl.formatMessage({ id: 'canvas.node.versionItem' }, { n: v }),
+        meta: v === n.version!.total ? intl.formatMessage({ id: 'canvas.node.latest' }) : undefined,
+        checked: v === n.version!.n,
+        onSelect: () => {
+          if (setActiveVersion(n.id, v)) toast.show({ message: intl.formatMessage({ id: 'canvas.toast.version' }, { title: n.title, n: v }) });
+        },
+      }));
+    }
+    if (m.kind === 'edge') {
+      return [
+        { key: 'reroute', label: intl.formatMessage({ id: 'canvas.edge.addReroute' }), onSelect: () => addReroute(m.id, m.flow) },
+        { key: 'disconnect', label: intl.formatMessage({ id: 'canvas.edge.disconnect' }), danger: true, onSelect: () => removeNodes([], [m.id]) },
+      ];
+    }
+    if (!n) return [];
+    const generative = n.kind === 'image' || n.kind === 'video' || n.kind === 'audio';
+    const inputs = graph.edges.filter((e) => e.to.node === n.id);
+    const cost = runCost(n);
+    const mod = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+';
+    return [
+      ...(generative
+        ? [
+            {
+              key: 'run',
+              label: intl.formatMessage({ id: 'canvas.node.menu.run' }),
+              meta: cost !== undefined ? intl.formatMessage({ id: 'canvas.node.menu.credits' }, { n: cost }) : undefined,
+              disabled: n.status === 'generating' || n.status === 'queued' || n.bypass,
+              reason: intl.formatMessage({ id: n.bypass ? 'canvas.node.menu.bypassedReason' : 'canvas.node.menu.runningReason' }),
+              onSelect: () => requestRun(n.id),
+            },
+            { key: 'upTo', label: intl.formatMessage({ id: 'canvas.node.menu.runUpTo' }), onSelect: () => requestRun(n.id, 'upTo') },
+            { key: 'from', label: intl.formatMessage({ id: 'canvas.node.menu.runFrom' }), onSelect: () => requestRun(n.id, 'from') },
+          ]
+        : []),
+      ...(n.version ? [{ key: 'result', label: intl.formatMessage({ id: 'canvas.node.menu.result' }), onSelect: () => setResultFor(n.id) }] : []),
+      ...(n.kind === 'script' ? [{ key: 'script', label: intl.formatMessage({ id: 'canvas.node.fullScreen' }), onSelect: () => setOverlay('script') }] : []),
+      { key: 'duplicate', label: intl.formatMessage({ id: 'canvas.node.menu.duplicate' }), meta: `${mod}D`, onSelect: () => duplicate(n.id) },
+      {
+        key: 'bypass',
+        label: intl.formatMessage({ id: 'canvas.node.menu.bypass' }),
+        kind: 'checkbox' as const,
+        checked: !!n.bypass,
+        meta: `${mod}B`,
+        onSelect: () => toggleBypass(n.id),
+      },
+      { key: 'collapse', label: intl.formatMessage({ id: n.collapsed ? 'canvas.node.menu.expand' : 'canvas.node.menu.collapse' }), onSelect: () => toggleCollapsed(n.id) },
+      ...(inputs.length
+        ? [{ key: 'disconnect', label: intl.formatMessage({ id: 'canvas.node.menu.disconnect' }, { n: inputs.length }), onSelect: () => removeNodes([], inputs.map((e) => e.id)) }]
+        : []),
+      { key: 'delete', label: intl.formatMessage({ id: 'canvas.node.menu.delete' }), meta: intl.formatMessage({ id: 'canvas.node.menu.deleteKey' }), danger: true, onSelect: () => removeNodes([n.id], []) },
+    ];
+  };
+
+  /* ---------- Result viewer ---------- */
+
+  const resultNode = graph.nodes.find((n) => n.id === resultFor) ?? null;
+  const lastResult = useRef(resultNode);
+  if (resultNode) lastResult.current = resultNode;
+  const shownResult = resultNode ?? lastResult.current;
+
+  const onResultAction = (id: ResultActionId) => {
+    const n = shownResult;
+    if (!n) return;
+    if (id === 'edit') {
+      setResultFor(null);
+      selectNode(n.id, true);
+    } else if (id === 'regenerate') {
+      setResultFor(null);
+      requestRun(n.id);
+    } else if (id === 'download') {
+      toast.show({ message: intl.formatMessage({ id: 'canvas.toast.download' }, { title: n.title }) });
+    }
   };
 
   const bg: CSSProperties = {
@@ -539,45 +1050,70 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
     backgroundSize: `${22 * viewport.zoom}px ${22 * viewport.zoom}px`,
   };
 
+  const gateRows: RunPlanRow[] =
+    gate?.type === 'confirm'
+      ? gate.items.map((it) => {
+          const n = graph.nodes.find((x) => x.id === it.nodeId)!;
+          return { id: it.nodeId, name: n.title, meta: planMeta(intl, n), kind: runKind(n.kind), state: 'run', cost: it.credits, tone: typeof n.params.tone === 'string' ? n.params.tone : undefined };
+        })
+      : [];
+
   return (
     <NodeActionsContext.Provider value={actions}>
-      <div ref={rootRef} className={canvas.flow} style={bg}>
-        <ReactFlow<CardNode, WireEdge>
-          nodes={rfNodes}
-          edges={rfEdges}
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          onConnectEnd={onConnectEnd}
-          isValidConnection={isValidConnection}
-          onDelete={onDelete}
-          connectionLineComponent={ConnectionLine}
-          onPaneClick={(e) => {
-            setSelected(null);
-            setSelectedEdge(null);
-            if (e.detail === 2) {
-              const rect = rootRef.current!.getBoundingClientRect();
-              setAddAt({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-              setOverlay('addMenu');
-            } else if (overlay === 'addMenu' || overlay === 'at') {
-              setOverlay(null);
-            }
-          }}
-          defaultViewport={{ x: 0, y: 0, zoom: 1 }}
-          minZoom={0.25}
-          maxZoom={2}
-          zoomOnDoubleClick={false}
-          panOnScroll
-          deleteKeyCode={['Delete', 'Backspace']}
-          multiSelectionKeyCode="Shift"
-          proOptions={{ hideAttribution: true }}
-          ariaLabelConfig={{}}
-        >
-          <GroupFrames graph={graph} rfNodes={rfNodes} />
-        </ReactFlow>
-      </div>
+      <EdgeActionsContext.Provider value={edgeActions}>
+        <div ref={rootRef} className={canvas.flow} style={bg}>
+          <ReactFlow<CardNode, WireEdge>
+            nodes={rfNodes}
+            edges={rfEdges}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            onConnectStart={onConnectStart}
+            onConnectEnd={onConnectEnd}
+            isValidConnection={isValidConnection}
+            onDelete={onDelete}
+            connectionLineComponent={ConnectionLine}
+            onNodeContextMenu={(e, n) => {
+              e.preventDefault();
+              selectNode(n.id);
+              setMenu({ kind: 'node', id: n.id, x: e.clientX, y: e.clientY });
+            }}
+            onEdgeContextMenu={(e, edge) => {
+              e.preventDefault();
+              setMenu({ kind: 'edge', id: edge.id, x: e.clientX, y: e.clientY, flow: flow.screenToFlowPosition({ x: e.clientX, y: e.clientY }) });
+            }}
+            onEdgeDoubleClick={(e, edge) => {
+              e.stopPropagation();
+              addReroute(edge.id, flow.screenToFlowPosition({ x: e.clientX, y: e.clientY }));
+            }}
+            onPaneClick={(e) => {
+              setSelected(null);
+              setSelectedEdge(null);
+              if (e.detail === 2) {
+                const rect = rootRef.current!.getBoundingClientRect();
+                setAddAt({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                setDropWire(null);
+                setOverlay('addMenu');
+              } else if (overlay === 'addMenu' || overlay === 'at') {
+                close();
+              }
+            }}
+            defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+            minZoom={0.25}
+            maxZoom={2}
+            zoomOnDoubleClick={false}
+            panOnScroll
+            deleteKeyCode={['Delete', 'Backspace']}
+            multiSelectionKeyCode="Shift"
+            proOptions={{ hideAttribution: true }}
+            ariaLabelConfig={{}}
+          >
+            <GroupFrames graph={graph} rfNodes={rfNodes} />
+          </ReactFlow>
+        </div>
+      </EdgeActionsContext.Provider>
 
       {promptPresence.mounted && lastPromptNode.current && lastPromptPos.current ? (
         <PromptPanel
@@ -585,13 +1121,21 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
           left={(promptPos ?? lastPromptPos.current).left}
           top={(promptPos ?? lastPromptPos.current).top}
           state={promptPresence.state}
-          extraRefs={extraRefs[(promptNode ?? lastPromptNode.current).id] ?? []}
+          refs={refsOf(promptNode ?? lastPromptNode.current)}
           pickerOpen={overlay === 'at'}
-          onOpenPicker={() => setOverlay((o) => (o === 'at' ? null : 'at'))}
-          onGenerate={generate}
+          onOpenPicker={(fromTyping) => {
+            pickerFromTyping.current = !!fromTyping;
+            setOverlay((o) => (o === 'at' && !fromTyping ? null : 'at'));
+          }}
+          onGenerate={(id) => requestRun(id)}
           models={models}
           plan={planId ?? PLAN_ORDER[0]!}
-          onSetResolution={(nodeId, resolution) => commit([{ op: 'updateNode', nodeId, params: { resolution } }])}
+          onUpdate={(nodeId, params) => commit([{ op: 'updateNode', nodeId, params }])}
+          onRemoveRef={(nodeId, index) => {
+            const n = graph.nodes.find((x) => x.id === nodeId);
+            const refs = (Array.isArray(n?.params.refs) ? n!.params.refs : []) as string[];
+            commit([{ op: 'updateNode', nodeId, params: { refs: refs.filter((_, i) => i !== index) } }]);
+          }}
         />
       ) : null}
 
@@ -599,10 +1143,37 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
         <Link to="/" className={canvas.logo} aria-label={intl.formatMessage({ id: 'canvas.backHome' })}>
           <CanvasLogo />
         </Link>
-        <button type="button" className={canvas.project} aria-label={intl.formatMessage({ id: 'canvas.projectMenu' }, { title: project.title })}>
-          {project.title}
-          <CanvasIcon name="caret" size={12} strokeWidth={2.4} className={canvas.caret} />
-        </button>
+        {renaming ? (
+          <ProjectRename
+            title={project.title}
+            onDone={(title) => {
+              setRenaming(false);
+              if (title === null || title === project.title) return;
+              void renameProject(projectId, title).then((r) =>
+                toast.show({ message: r.ok ? intl.formatMessage({ id: 'canvas.toast.renamed' }, { title: r.title }) : intl.formatMessage({ id: 'canvas.toast.renameEmpty' }) }),
+              );
+            }}
+          />
+        ) : (
+          <MenuPopover
+            open={projectMenu}
+            onOpenChange={setProjectMenu}
+            label={intl.formatMessage({ id: 'canvas.projectMenu' }, { title: project.title })}
+            entries={[
+              { key: 'rename', label: intl.formatMessage({ id: 'canvas.project.rename' }), onSelect: () => setRenaming(true) },
+              { key: 'share', label: intl.formatMessage({ id: 'canvas.share' }), onSelect: () => setOverlay('share') },
+              { key: 'edit', label: intl.formatMessage({ id: 'canvas.project.openEditor' }), onSelect: () => setOverlay('edit') },
+              { key: 'history', label: intl.formatMessage({ id: 'canvas.tools.history' }), onSelect: () => setHistoryOpen(true) },
+              { key: 'home', label: intl.formatMessage({ id: 'canvas.backHome' }), onSelect: () => void navigate({ to: '/' }) },
+            ]}
+            trigger={(t) => (
+              <button {...t} type="button" className={canvas.project} aria-label={intl.formatMessage({ id: 'canvas.projectMenu' }, { title: project.title })}>
+                {project.title}
+                <CanvasIcon name="caret" size={12} strokeWidth={2.4} className={canvas.caret} />
+              </button>
+            )}
+          />
+        )}
         <span className={canvas.saved} data-status={syncStatus} role="status" data-testid="sync-status">
           <span className={canvas.savedDot} />
           <FormattedMessage id={`canvas.sync.${syncStatus}`} />
@@ -619,7 +1190,9 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
           onClick={() => setCreditsOpen((o) => !o)}
         >
           <CanvasIcon name="coin" size={15} stroke="var(--c-text-3)" />
-          <span className={canvas.creditsValue}>{intl.formatNumber(MOCK_CREDITS.balance)}</span>
+          <span className={canvas.creditsValue} data-testid="credits-balance">
+            {intl.formatNumber(credits.available)}
+          </span>
           <span className={canvas.creditsPlus}>
             <CanvasIcon name="plus" size={13} strokeWidth={2.2} stroke="var(--c-text-1)" />
           </span>
@@ -633,7 +1206,10 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
           aria-expanded={overlay === 'plan'}
           aria-haspopup="dialog"
           aria-label={intl.formatMessage({ id: 'canvas.runAll.label' }, { n: runAllEstimate })}
-          onClick={() => setOverlay('plan')}
+          onClick={() => {
+            setPlanScope({ scope: 'all' });
+            setOverlay('plan');
+          }}
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
             <path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5z" />
@@ -648,14 +1224,24 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
             <FormattedMessage id="canvas.agent.open" />
           </button>
         ) : null}
-        {creditsP.mounted ? <CreditsPopover state={creditsP.state} onClose={() => setCreditsOpen(false)} /> : null}
+        {creditsP.mounted ? <CreditsPopover state={creditsP.state} onClose={() => setCreditsOpen(false)} credits={credits} /> : null}
       </div>
 
       <div role="toolbar" aria-label={intl.formatMessage({ id: 'canvas.tools.label' })} aria-orientation="vertical" className={canvas.toolbar}>
         {TOOLS.map((t) => {
           const label = intl.formatMessage({ id: t.label });
+          const soon = t.key === 'dir';
           return (
-            <button key={t.key} type="button" className={canvas.tool} aria-label={label} title={label} aria-pressed={tool === t.key} onClick={() => pickTool(t.key)}>
+            <button
+              key={t.key}
+              type="button"
+              className={canvas.tool}
+              aria-label={label}
+              title={soon ? intl.formatMessage({ id: 'canvas.tools.directorSoon' }) : label}
+              aria-pressed={soon ? undefined : toolPressed(t.key)}
+              aria-disabled={soon || undefined}
+              onClick={() => pickTool(t.key)}
+            >
               <CanvasIcon name={t.icon} size={18} />
             </button>
           );
@@ -668,9 +1254,26 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
           <button type="button" className={canvas.zoomBtn} aria-label={intl.formatMessage({ id: 'canvas.zoomOut' })} onClick={() => flow.zoomOut({ duration: 200 })}>
             <CanvasIcon name="minus" size={16} />
           </button>
-          <span className={canvas.zoomValue} data-testid="zoom-value">
-            <FormattedMessage id="canvas.zoom" values={{ zoom: viewport.zoom }} />
-          </span>
+          <MenuPopover
+            open={zoomMenu}
+            onOpenChange={setZoomMenu}
+            label={intl.formatMessage({ id: 'canvas.zoomMenu' })}
+            side="top"
+            entries={[
+              ...ZOOM_PRESETS.map((z) => ({
+                key: String(z),
+                label: intl.formatMessage({ id: 'canvas.zoom' }, { zoom: z }),
+                checked: Math.abs(viewport.zoom - z) < 0.005,
+                onSelect: () => void flow.zoomTo(z, { duration: 200 }),
+              })),
+              { key: 'fit', label: intl.formatMessage({ id: 'canvas.fitAll' }), onSelect: () => void flow.fitView({ duration: 320, padding: 0.15 }) },
+            ]}
+            trigger={(t) => (
+              <button {...t} type="button" className={cx(canvas.zoomValue, canvas.zoomValueBtn)} data-testid="zoom-value" aria-label={intl.formatMessage({ id: 'canvas.zoomLabel' }, { zoom: viewport.zoom })}>
+                <FormattedMessage id="canvas.zoom" values={{ zoom: viewport.zoom }} />
+              </button>
+            )}
+          />
           <button type="button" className={canvas.zoomBtn} aria-label={intl.formatMessage({ id: 'canvas.zoomIn' })} onClick={() => flow.zoomIn({ duration: 200 })}>
             <CanvasIcon name="plus" size={16} />
           </button>
@@ -680,36 +1283,79 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
         </div>
       </div>
 
-      {agentP.mounted ? <AgentPanel state={agentP.state} onClose={() => setAgentOpen(false)} onBuild={buildPlan} isMember={isMember} /> : null}
+      {agentP.mounted ? (
+        <AgentPanel
+          state={agentP.state}
+          onClose={() => setAgentOpen(false)}
+          onBuild={buildPlan}
+          isMember={isMember}
+          onApplyProposal={applyProposal}
+          onPreview={setProposed}
+        />
+      ) : null}
 
-      {historyP.mounted ? <HistoryDrawer state={historyP.state} onClose={() => setHistoryOpen(false)} rows={historyRows} /> : null}
+      {historyP.mounted ? <HistoryDrawer state={historyP.state} onClose={() => setHistoryOpen(false)} rows={historyRows} onOpen={(id) => selectNode(id, true)} /> : null}
+
+      {templatesP.mounted ? <TemplatesPanel state={templatesP.state} onClose={() => setToolPanel(null)} onUse={useTemplate} /> : null}
+
+      {assetsP.mounted ? (
+        <div className={cx(canvas.assetPanel, 'rl-pop')} {...presenceProps(assetsP.state)} data-testid="assets-panel">
+          <ReferencePicker autoFocus onAdd={addAssets} onClose={() => setToolPanel(null)} />
+        </div>
+      ) : null}
 
       {atP.mounted && lastPromptPos.current ? (
         <div className={cx(canvas.picker, 'rl-pop')} style={{ left: lastPromptPos.current.left, top: lastPromptPos.current.top + 68 }} {...presenceProps(atP.state)}>
           <ReferencePicker
             initialSelected={[]}
+            attachedIds={promptNode && Array.isArray(promptNode.params.refs) ? (promptNode.params.refs as string[]) : []}
             onAdd={pickRefs}
-            onClose={close}
+            onClose={() => {
+              pickerFromTyping.current = false;
+              close();
+            }}
           />
         </div>
       ) : null}
 
       {addP.mounted ? (
-        <AddNodeMenu state={addP.state} onClose={close} x={addAt.x} y={addAt.y} suggested={selectedNode?.kind ?? null} onPick={addNode} />
+        <AddNodeMenu
+          state={addP.state}
+          onClose={close}
+          x={addAt.x}
+          y={addAt.y}
+          suggested={dropWire ? null : (selectedNode?.kind ?? null)}
+          onPick={addFromMenu}
+          onSoon={(key) => toast.show({ message: intl.formatMessage({ id: `canvas.add.soonReason.${key}` }) })}
+          accept={dropWire ? { kinds: acceptingKinds(dropWire.type, dropWire.from), resources: dropWire.type === 'image' || dropWire.type === 'audio' ? (dropWire.from === 'in' ? [dropWire.type] : []) : [] } : null}
+        />
       ) : null}
 
       {scriptP.mounted ? (
         <ScriptDialog
           state={scriptP.state}
           onClose={close}
-          title={graph.nodes.find((n) => n.kind === 'script')?.title ?? ''}
-          version={String(graph.nodes.find((n) => n.kind === 'script')?.params.versionLabel ?? '')}
+          title={scriptNode?.title ?? ''}
+          version={String(scriptNode?.params.versionLabel ?? '')}
+          rows={scriptRows ?? SCRIPT_ROWS}
+          onChange={saveScript}
+          onGenerate={(rows) => generateStoryboard(rows, scriptNode?.id)}
+          initialMenu={scriptMenu}
         />
       ) : null}
 
       {editorOpen ? (
         renderEditor ? (
-          renderEditor({ projectId, withProposal: overlay === 'editAgent', onClose: close })
+          renderEditor({
+            projectId,
+            withProposal: overlay === 'editAgent',
+            onClose: close,
+            onOpenOnCanvas: (nodeId) => {
+              close();
+              if (graph.nodes.some((n) => n.id === nodeId)) selectNode(nodeId, true);
+              else toast.show({ message: intl.formatMessage({ id: 'canvas.toast.notOnCanvas' }) });
+            },
+          })
         ) : (
           // TODO(editor): replaced by the editor from features/canvas/editor once it exports one.
           <section aria-label={intl.formatMessage({ id: 'canvas.editor.placeholder' })} className={canvas.editorPlaceholder} data-testid="editor-placeholder">
@@ -722,11 +1368,33 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
         <ShareDialog
           state={shareP.state}
           onClose={close}
-          url={getShare().url}
-          snapshotAt={getShare().snapshotAt}
+          share={share}
+          busy={shareBusy}
           onCopy={() => {
-            void navigator.clipboard?.writeText(`https://${getShare().url}`).catch(() => {});
-            toast.show({ message: intl.formatMessage({ id: 'canvas.shareDialog.copied' }) });
+            const url = `https://${share.url}`;
+            const done = () => toast.show({ message: intl.formatMessage({ id: 'canvas.shareDialog.copied' }) });
+            const failed = () => toast.show({ message: intl.formatMessage({ id: 'canvas.shareDialog.copyFailed' }, { url }) });
+            if (navigator.clipboard?.writeText) void navigator.clipboard.writeText(url).then(done, failed);
+            else failed();
+          }}
+          onUpdate={(patch) => void updateShare(projectId, patch)}
+          onStop={() => {
+            setShareBusy(true);
+            void stopSharing(projectId).then(() => {
+              setShareBusy(false);
+              toast.show({
+                message: intl.formatMessage({ id: 'canvas.toast.shareStopped' }),
+                action: { label: intl.formatMessage({ id: 'canvas.shareDialog.shareAgain' }), onAction: () => void publishShare(projectId) },
+              });
+            });
+          }}
+          onPublish={() => {
+            setShareBusy(true);
+            const wasActive = share.active;
+            void publishShare(projectId).then(() => {
+              setShareBusy(false);
+              toast.show({ message: intl.formatMessage({ id: wasActive ? 'canvas.toast.snapshotPublished' : 'canvas.toast.shareOn' }) });
+            });
           }}
         />
       ) : null}
@@ -736,13 +1404,126 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
           state={planP.state}
           onClose={close}
           rows={planRows}
+          balance={credits.available}
           onConfirm={() => {
-            run(quote.items.filter((i) => i.action === 'run').map((i) => i.nodeId));
             close();
+            executeRun(planQuote.items);
           }}
         />
       ) : null}
+
+      <RunConfirm
+        open={gate?.type === 'confirm'}
+        onOpenChange={(o) => !o && setGate(null)}
+        variant="single"
+        rows={gateRows}
+        balance={credits.available}
+        eta={intl.formatMessage({ id: 'canvas.plan.etaSingle' })}
+        subtitle={gateRows[0]?.meta}
+        actionLabel={intl.formatMessage({ id: 'canvas.run.action' })}
+        onConfirm={() => gate && executeRun(gate.items)}
+      />
+      <Paywall
+        open={gate?.type === 'join'}
+        onOpenChange={(o) => !o && setGate(null)}
+        variant="join"
+        onContinue={(option: PaywallOption) => {
+          const items = gate?.items ?? [];
+          void checkoutPlan(option.id).then(() => {
+            setGate(null);
+            // The run resumes after checkout with the same quote items.
+            window.setTimeout(() => executeRunRef.current(items), 0);
+          });
+        }}
+      />
+      <Paywall
+        open={gate?.type === 'credits'}
+        onOpenChange={(o) => !o && setGate(null)}
+        variant="credits"
+        runCost={gate?.type === 'credits' ? gate.total : undefined}
+        balance={credits.available}
+        plan={planId}
+        onContinue={(option: PaywallOption) => {
+          const items = gate?.items ?? [];
+          const usd = typeof option.amountUsd === 'number' ? option.amountUsd : Number(/^topup_(\d+(?:\.\d+)?)$/.exec(option.id)?.[1] ?? 0);
+          void topUp(usd).then(
+            () => {
+              setGate(null);
+              window.setTimeout(() => executeRunRef.current(items), 50);
+            },
+            () => toast.show({ message: intl.formatMessage({ id: 'canvas.toast.topUpFailed' }) }),
+          );
+        }}
+      />
+
+      {shownResult?.version ? (
+        <ResultViewer
+          open={!!resultNode}
+          onOpenChange={(o) => !o && setResultFor(null)}
+          title={shownResult.title}
+          author={intl.formatMessage({ id: 'canvas.result.author' })}
+          createdAt={new Date()}
+          aspectRatio={String(shownResult.params.ratio ?? '9:16').replace(':', '/')}
+          mediaKind={shownResult.kind === 'video' ? 'video' : 'image'}
+          versions={Array.from({ length: shownResult.version.total }, (_, i) => ({ id: `v${i + 1}`, label: `v${i + 1}`, tone: typeof shownResult.params.tone === 'string' ? shownResult.params.tone : undefined }))}
+          versionId={`v${shownResult.version.n}`}
+          currentVersionId={`v${shownResult.version.n}`}
+          onVersionChange={(id) => setActiveVersion(shownResult.id, Number(id.slice(1)))}
+          durationSec={typeof shownResult.params.seconds === 'number' ? shownResult.params.seconds : undefined}
+          prompt={String(shownResult.params.prompt ?? '').replace(/@\[([^\]]+)\]/g, '@$1')}
+          params={[
+            { label: intl.formatMessage({ id: 'canvas.result.model' }), value: String(shownResult.params.model ?? '') },
+            { label: intl.formatMessage({ id: 'canvas.result.format' }), value: formatLabel(shownResult) },
+          ]}
+          assets={refsOf(shownResult).map((r) => ({ id: r.id, name: r.name, tone: r.tone }))}
+          actions={[{ id: 'edit' }, { id: 'regenerate', cost: runCost(shownResult) }, { id: 'download' }]}
+          onAction={onResultAction}
+        />
+      ) : null}
+
+      {menuP.mounted && lastMenu.current ? (
+        <PointMenu
+          state={menuP.state}
+          x={lastMenu.current.x}
+          y={lastMenu.current.y}
+          label={intl.formatMessage({ id: `canvas.menu.${lastMenu.current.kind}` })}
+          entries={menuEntries(lastMenu.current)}
+          onClose={() => setMenu(null)}
+          testId={`menu-${lastMenu.current.kind}`}
+        />
+      ) : null}
     </NodeActionsContext.Provider>
+  );
+}
+
+/** The resume path after checkout or a top-up needs the latest `executeRun`. */
+const executeRunRef: { current: (items: QuoteItem[]) => void } = { current: () => {} };
+
+function ProjectRename({ title, onDone }: { title: string; onDone: (title: string | null) => void }) {
+  const intl = useIntl();
+  const [value, setValue] = useState(title);
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    ref.current?.focus();
+    ref.current?.select();
+  }, []);
+  return (
+    <input
+      ref={ref}
+      className={canvas.projectInput}
+      aria-label={intl.formatMessage({ id: 'canvas.project.renameLabel' })}
+      value={value}
+      maxLength={120}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={() => onDone(value)}
+      onKeyDown={(e: ReactKeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') onDone(value);
+        else if (e.key === 'Escape') {
+          e.stopPropagation();
+          onDone(null);
+        }
+      }}
+    />
   );
 }
 
@@ -781,10 +1562,12 @@ function GroupFrames({ graph, rfNodes }: { graph: GraphState; rfNodes: CardNode[
   );
 }
 
+/** Minimap: click or drag to move the view there; arrow keys pan (Shift for bigger steps). */
 function Minimap({ graph, rfNodes, selected, size }: { graph: GraphState; rfNodes: CardNode[]; selected: string | null; size: { w: number; h: number } }) {
   const intl = useIntl();
   const flow = useReactFlow();
   const viewport = useViewport();
+  const [drag, setDrag] = useState(false);
   const W = 150;
   const H = 92;
   const pad = 8;
@@ -799,17 +1582,43 @@ function Minimap({ graph, rfNodes, selected, size }: { graph: GraphState; rfNode
   const oy = pad + ((H - pad * 2) - (maxY - minY) * s) / 2;
   const tx = (x: number) => ox + (x - minX) * s;
   const ty = (y: number) => oy + (y - minY) * s;
+  // While dragging, the mapping stays the one from pointer down so the view follows the pointer.
+  const frozen = useRef<{ minX: number; minY: number; s: number; ox: number; oy: number } | null>(null);
+  const centerAt = (clientX: number, clientY: number, rect: DOMRect, animate: boolean) => {
+    const m = frozen.current ?? { minX, minY, s, ox, oy };
+    const fx = m.minX + (clientX - rect.left - m.ox) / m.s;
+    const fy = m.minY + (clientY - rect.top - m.oy) / m.s;
+    void flow.setCenter(fx, fy, { zoom: viewport.zoom, duration: animate ? 320 : 0 });
+  };
   return (
     <div
       aria-label={intl.formatMessage({ id: 'canvas.minimap' })}
-      role="img"
+      aria-description={intl.formatMessage({ id: 'canvas.minimapHint' })}
+      role="application"
+      tabIndex={0}
       className={canvas.minimap}
       data-count={graph.nodes.length}
-      onClick={(e) => {
-        const r = e.currentTarget.getBoundingClientRect();
-        const fx = minX + (e.clientX - r.left - ox) / s;
-        const fy = minY + (e.clientY - r.top - oy) / s;
-        void flow.setCenter(fx, fy, { zoom: viewport.zoom, duration: 320 });
+      data-dragging={drag ? '' : undefined}
+      data-testid="minimap"
+      onPointerDown={(e) => {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        frozen.current = { minX, minY, s, ox, oy };
+        setDrag(true);
+        centerAt(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect(), true);
+      }}
+      onPointerMove={(e) => {
+        if (drag) centerAt(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect(), false);
+      }}
+      onPointerUp={() => {
+        frozen.current = null;
+        setDrag(false);
+      }}
+      onKeyDown={(e) => {
+        const step = (e.shiftKey ? 240 : 60) * viewport.zoom;
+        const d = { ArrowLeft: [step, 0], ArrowRight: [-step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] }[e.key];
+        if (!d) return;
+        e.preventDefault();
+        void flow.setViewport({ x: viewport.x + d[0]!, y: viewport.y + d[1]!, zoom: viewport.zoom }, { duration: 140 });
       }}
     >
       {boxes.map((b) => (

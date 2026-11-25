@@ -6,7 +6,7 @@ import type { EditorProject } from './mocks';
 import { gainAt, pictureAt } from './playback';
 import { usePlayhead, type PlayheadStore } from './playhead';
 import { formatTimecode } from '@rolling/core/timeline';
-import { clipEnd, edlDuration, type Clip, type Edl, type MediaClip } from '@rolling/core/timeline';
+import { clipEnd, edlDuration, sourceTime, type Clip, type Edl, type MediaClip } from '@rolling/core/timeline';
 
 /** Placeholder picture per shot (mock media): sky, ground and the product, tinted like the shot's clip. */
 const SCENES = [
@@ -116,10 +116,14 @@ function Shot({ clip, opacity, local, playing, tint, title, notGenerated, src }:
       </div>
     );
   }
-  if (src) return <ShotVideo src={src} time={clip.in + local} playing={playing} opacity={opacity} />;
+  const tf = clip.transform;
+  const look = tf
+    ? { opacity: opacity * tf.opacity, transform: `translate(${(tf.x / 1080) * 100}%, ${(tf.y / 1920) * 100}%) rotate(${tf.rotation}deg) scale(${tf.scale})` }
+    : { opacity };
+  if (src) return <ShotVideo src={src} time={sourceTime(clip, clip.start + local)} playing={playing} opacity={look.opacity} />;
   const progress = Math.min(1, Math.max(0, local / (clipEnd(clip) - clip.start)));
   return (
-    <div className={styles.scene} style={{ background: tint.bg, opacity }} data-testid="monitor-shot" data-clip-id={clip.id}>
+    <div className={styles.scene} style={{ background: tint.bg, ...look }} data-testid="monitor-shot" data-clip-id={clip.id} data-transform={tf ? '' : undefined}>
       <div className={styles.ground} style={{ background: tint.ground }} />
       <div className={styles.product} style={{ background: tint.product, transform: `scale(${1 + PUSH_IN * progress})` }} />
     </div>
@@ -167,7 +171,7 @@ function ClipAudio({ clip, src, time, playing, muted }: { clip: MediaClip; src: 
     if (!a) return;
     a.volume = Math.min(1, gainAt(clip, time));
     a.muted = muted;
-    const local = clip.in + (time - clip.start);
+    const local = sourceTime(clip, time);
     if (active && Math.abs(a.currentTime - local) > 0.15) a.currentTime = local;
     if (active && playing && a.paused) void a.play().catch(() => undefined);
     if ((!active || !playing) && !a.paused) a.pause();

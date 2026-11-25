@@ -196,3 +196,22 @@
 .apply{flex:1;height:32px;border-radius:6px;font-size:13px}
 .discard{flex:1;height:32px;border-radius:6px;background:var(--c-surface-5);color:var(--c-text-1);font-size:13px;font-weight:600}
 .discard:hover:not(:disabled){background:var(--c-surface-6)}
+
+/* Inspector controls added for transform, speed and fades. */
+.posInputs{display:flex;gap:6px}
+.posInput{width:52px;height:24px;padding:0 6px;border-radius:6px;border:0;background:var(--c-surface-4);color:var(--c-text-1);font:inherit;font-size:12px;font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
+.posInput:focus-visible{outline:none;box-shadow:inset 0 0 0 1px var(--c-accent)}
+.inspToggle{height:24px;padding:0 10px;border-radius:999px;background:var(--c-surface-4);color:var(--c-text-2);font-size:12px;font-weight:600}
+.inspToggle[aria-checked="true"]{background:var(--c-accent-soft);color:var(--c-accent-text)}
+
+/* Bin lists for Assets and Public. */
+.binImg{width:100%;height:100%;object-fit:cover;border-radius:inherit}
+.binRetry{height:28px;padding:0 12px;border-radius:999px;margin:8px 0 0}
+
+/* Export dialog. */
+.exportBody{display:flex;flex-direction:column;gap:14px}
+.exportRow{display:flex;flex-direction:column;gap:6px}
+.exportNote{margin:0;font-size:13px;line-height:1.5;color:var(--c-text-2)}
+.exportHint{margin:0;font-size:12px;line-height:1.5;color:var(--c-text-4)}
+.exportActions{display:flex;justify-content:flex-end;gap:8px}
+.exportBtn{height:36px;padding:0 16px;border-radius:999px;font-size:13px;text-decoration:none;display:inline-flex;align-items:center}

@@ -85,7 +85,7 @@ export function mockGraph(): GraphState {
         id: NODE.voice,
         kind: 'audio',
         title: 'Voiceover',
-        params: { voice: 'Clear female', seconds: 8, runCost: 2, wave: VOICE_WAVE, text: 'Morning. The first sip of the mountains. Pop it open.' },
+        params: { voice: 'Clear female', seconds: 8, runCost: 6, wave: VOICE_WAVE, text: 'Morning. The first sip of the mountains. Pop it open.' },
         position: { x: 96, y: 636 },
         groupId: null,
         status: 'idle',
@@ -105,7 +105,7 @@ export function mockGraph(): GraphState {
           count: 2,
           quick: ['Style', 'Framing', 'Lighting', 'Camera'],
           refs: ['m1'],
-          runCost: 2,
+          runCost: 22,
         },
         position: { x: 448, y: 96 },
         groupId: null,
@@ -130,7 +130,7 @@ export function mockGraph(): GraphState {
           extra: '×1 · Audio on',
           quick: ['Style', 'Camera', 'Lighting', 'Pace'],
           refs: ['m1', 'c1'],
-          runCost: 8,
+          runCost: 347,
         },
         position: { x: 772, y: 96 },
         groupId: null,
@@ -144,7 +144,7 @@ export function mockGraph(): GraphState {
         title: 'Shot B: Cap pop',
         params: { tone: 'var(--c-tone-indigo)', seconds: 5, prompt: 'Hand twists the cap, close-up of bubbles rising', model: 'Seedance 2.5', mode: 'First frame', ratio: '9:16',
           resolution: '720p',
-          length: 5, extra: '×1 · Audio on', quick: ['Style', 'Camera', 'Lighting', 'Pace'], refs: ['m1'], runCost: 8 },
+          length: 5, extra: '×1 · Audio on', quick: ['Style', 'Camera', 'Lighting', 'Pace'], refs: ['m1'], runCost: 347 },
         position: { x: 772, y: 616 },
         groupId: null,
         status: 'generating',
@@ -165,6 +165,25 @@ export function mockGraph(): GraphState {
 
 export const MOCK_PROJECT = { id: MOCK_PROJECT_ID, title: 'Ridgeline Sparkling · 15s ad' };
 
+export interface AgentPlanOption {
+  id: string;
+  title: string;
+  estimate: number;
+  shots: Array<{ n: number; title: string; seconds: number; visual: string; tone: string }>;
+}
+
+/**
+ * Mock prices on the D-006 scale (3× live cost, 1 credit = $0.01), used when
+ * the synced catalog is unavailable: Seedance 2.5 720p is 347 credits per 5s,
+ * a Seedream image 11, a voiceover line 6.
+ */
+export const MOCK_PRICE = { videoPerSecond: 1.1556 * 3 / 0.01 / 5, image: 11, voice: 6 } as const;
+
+/** Mock credits for a video of `seconds` (Seedance 2.5 720p). */
+export function mockVideoCredits(seconds: number): number {
+  return Math.ceil(MOCK_PRICE.videoPerSecond * seconds);
+}
+
 /** Agent thread on the canvas (surface `canvas`, skill `tv-ad`). */
 export const MOCK_AGENT = {
   skill: '/TV ad',
@@ -172,7 +191,7 @@ export const MOCK_AGENT = {
     { role: 'user' as const, text: 'A 15-second vertical ad for Ridgeline Sparkling Water. Open on a close-up of the cap popping, end on the logo.' },
     { role: 'agent' as const, text: 'I split this into 3 shots: keyframes first, then video. Nodes go on the canvas only after you approve the plan, and nothing is charged until then.' },
   ],
-  plan: {
+  plan: <AgentPlanOption>{
     id: 'prop_01JDCANVASPLAN0000000000',
     title: 'Option A · Riverside at dawn',
     // Seedance 2.5 at 720p (4s + 5s + 3s) plus three Seedream keyframes, D-006 credits.
@@ -184,6 +203,83 @@ export const MOCK_AGENT = {
     ],
   },
 };
+
+/** The other options of the same `propose.plan` call (2–3 options, harness section 3); Shuffle cycles through them. */
+export const MOCK_AGENT_OPTIONS: AgentPlanOption[] = [
+  {
+    id: 'prop_01JDCANVASPLAN0000000001',
+    title: 'Option B · Kitchen counter',
+    estimate: 794,
+    shots: [
+      { n: 1, title: 'Fridge door', seconds: 3, visual: 'Cold light as the door opens', tone: 'var(--c-saved)' },
+      { n: 2, title: 'Cap pop', seconds: 5, visual: 'Macro on the cap, bubbles rising', tone: 'var(--c-generating)' },
+      { n: 3, title: 'Logo', seconds: 4, visual: 'Bottle on the counter, tagline comes in', tone: 'var(--c-text-3)' },
+    ],
+  },
+  {
+    id: 'prop_01JDCANVASPLAN0000000002',
+    title: 'Option C · Trail at noon',
+    estimate: 1040,
+    shots: [
+      { n: 1, title: 'Hiker', seconds: 4, visual: 'Wide shot on a ridge, noon sun', tone: 'var(--c-saved)' },
+      { n: 2, title: 'First sip', seconds: 5, visual: 'Close-up, condensation on the bottle', tone: 'var(--c-generating)' },
+      { n: 3, title: 'Logo', seconds: 3, visual: 'Bottle on a rock, tagline comes in', tone: 'var(--c-text-3)' },
+    ],
+  },
+];
+
+/** Workflows and templates offered from the tool rail (shape of `templates.search` rows). */
+export interface CanvasTemplate {
+  id: string;
+  name: string;
+  /** Node chain the template inserts, left to right. */
+  nodes: Array<{ kind: 'text' | 'image' | 'video' | 'audio'; title: string; prompt?: string }>;
+}
+
+export const MOCK_TEMPLATES: CanvasTemplate[] = [
+  {
+    id: 'tpl_product_hero',
+    name: 'Product hero shot',
+    nodes: [
+      { kind: 'image', title: 'Hero keyframe', prompt: 'Product on a clean surface, soft key light' },
+      { kind: 'video', title: 'Hero push-in', prompt: 'Slow push-in on the product' },
+    ],
+  },
+  {
+    id: 'tpl_talking_head',
+    name: 'Voiceover with b-roll',
+    nodes: [
+      { kind: 'audio', title: 'Voiceover' },
+      { kind: 'video', title: 'B-roll', prompt: 'Lifestyle b-roll that matches the voiceover' },
+    ],
+  },
+  {
+    id: 'tpl_storyboard',
+    name: 'Storyboard from a brief',
+    nodes: [
+      { kind: 'text', title: 'Brief' },
+      { kind: 'image', title: 'Storyboard frame', prompt: 'Frame from the brief' },
+    ],
+  },
+];
+
+/** Generation modes per node kind (mode pill). */
+export const MODES = {
+  video: ['First frame', 'First and last frame', 'Text to video', 'Reference to video'],
+  image: ['Text to image', 'Image to image'],
+} as const;
+
+/** Options per quick modifier chip; the choice is stored in `params.modifiers`. */
+export const QUICK_OPTIONS: Record<string, string[]> = {
+  Style: ['Cinematic', 'Documentary', 'Commercial', 'Anime', 'Film grain'],
+  Camera: ['Static', 'Slow push-in', 'Pull back', 'Orbit', 'Handheld'],
+  Lighting: ['Morning sun', 'Golden hour', 'Soft studio', 'Night neon', 'Overcast'],
+  Pace: ['Slow', 'Medium', 'Fast'],
+  Framing: ['Close-up', 'Medium', 'Wide', 'Top down'],
+};
+
+/** Script versions (Versions menu in the script full screen). */
+export const SCRIPT_VERSIONS = ['v2', 'v1'] as const;
 
 export const MOCK_CREDITS = {
   balance: 2480,
@@ -202,7 +298,7 @@ export const MOCK_SHARE = {
 
 /** Run history for the activity drawer (shape of `GET /api/runs` rows). */
 export const MOCK_RUNS = [
-  { id: 'run_01JDCANVASRUN00000000001', nodeId: NODE.shotB, title: 'Shot B: Cap pop', model: 'Seedance 2.5', credits: 8, status: 'running' as const, at: new Date(2026, 10, 25, 10, 12) },
-  { id: 'run_01JDCANVASRUN00000000002', nodeId: NODE.keyframe, title: 'Product keyframe', model: 'Seedream 5.0 Pro', credits: 2, status: 'done' as const, at: new Date(2026, 10, 25, 10, 4) },
-  { id: 'run_01JDCANVASRUN00000000003', nodeId: NODE.shotA, title: 'Shot A: Hero shot', model: 'Seedance 2.5', credits: 8, status: 'done' as const, at: new Date(2026, 10, 25, 9, 58) },
+  { id: 'run_01JDCANVASRUN00000000001', nodeId: NODE.shotB, title: 'Shot B: Cap pop', model: 'Seedance 2.5', credits: 347, status: 'running' as const, at: new Date(2026, 10, 25, 10, 12) },
+  { id: 'run_01JDCANVASRUN00000000002', nodeId: NODE.keyframe, title: 'Product keyframe', model: 'Seedream 5.0 Pro', credits: 22, status: 'done' as const, at: new Date(2026, 10, 25, 10, 4) },
+  { id: 'run_01JDCANVASRUN00000000003', nodeId: NODE.shotA, title: 'Shot A: Hero shot', model: 'Seedance 2.5', credits: 278, status: 'done' as const, at: new Date(2026, 10, 25, 9, 58) },
 ];

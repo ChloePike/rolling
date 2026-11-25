@@ -2,7 +2,7 @@ import { cx, motionSafe } from '@rolling/ui';
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { createContext, memo, useContext, type CSSProperties, type ReactNode } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
-import { hasInputs, outputType } from '@rolling/core/graph';
+import { hasInputs, inputPorts, outputType, type PortType } from '@rolling/core/graph';
 import type { GraphNode } from '@rolling/core/graph';
 import { CanvasIcon } from '../icons';
 import styles from './nodes.module.css';
@@ -13,20 +13,40 @@ export interface CardData extends Record<string, unknown> {
   buildIndex: number;
   /** The node's input port was just refused while connecting. */
   refused: boolean;
+  /** Changed by the open agent proposal (outlined). */
+  proposed?: boolean;
+  /** While a wire is being dragged: what it carries and from which side, to dim ports that can't take it. */
+  connecting?: { type: PortType; from: 'out' | 'in'; nodeId: string } | null;
+  /** Blocked by a bypassed upstream node: the reason. */
+  blockedReason?: string | null;
 }
 
 export type CardNode = Node<CardData, 'card'>;
 
 export interface NodeActions {
   openScript: (nodeId: string) => void;
+  /** Script node "Fields": the full screen with field visibility open. */
+  openFields: (nodeId: string) => void;
   retry: (nodeId: string) => void;
   generateStoryboard: (nodeId: string) => void;
+  /** Cost chip: run this node (quote, confirm per threshold, then generate). */
+  run: (nodeId: string) => void;
+  /** Play / result: the result viewer with versions. */
+  openResult: (nodeId: string) => void;
+  /** Version chip: the version menu at the chip. */
+  openVersions: (nodeId: string, anchor: DOMRect) => void;
 }
 
+const noop = () => {};
+
 export const NodeActionsContext = createContext<NodeActions>({
-  openScript: () => {},
-  retry: () => {},
-  generateStoryboard: () => {},
+  openScript: noop,
+  openFields: noop,
+  retry: noop,
+  generateStoryboard: noop,
+  run: noop,
+  openResult: noop,
+  openVersions: noop,
 });
 
 /** Card width per kind (Canvas.dc.html). */
@@ -85,15 +105,23 @@ function Status({ node }: { node: GraphNode }) {
 
 function Cost({ node }: { node: GraphNode }) {
   const intl = useIntl();
+  const actions = useContext(NodeActionsContext);
   if (!willRun(node)) return null;
+  const busy = node.status === 'generating' || node.status === 'queued';
   return (
-    <span
-      className={styles.cost}
+    <button
+      type="button"
+      className={cx(styles.cost, styles.costBtn, 'nodrag')}
       title={intl.formatMessage({ id: 'canvas.node.cost' })}
       aria-label={intl.formatMessage({ id: 'canvas.node.costLabel' }, { n: runCost(node) })}
+      aria-disabled={busy || undefined}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (!busy) actions.run(node.id);
+      }}
     >
       {intl.formatNumber(runCost(node)!)}
-    </span>
+    </button>
   );
 }
 
@@ -108,9 +136,24 @@ function Label({ node }: { node: GraphNode }) {
   );
 }
 
+/** Port types a node's input side accepts. */
+function inputTypes(node: GraphNode): PortType[] {
+  return inputPorts(node).map((p) => p.type);
+}
+
+const ConnectingContext = createContext<CardData['connecting']>(null);
+
 function Port({ type, node, active, refused, top }: { type: 'in' | 'out'; node: GraphNode; active: boolean; refused?: boolean; top: number }) {
   const intl = useIntl();
-  const hidden = type === 'out' && (node.kind === 'video' || node.kind === 'render');
+  const connecting = useContext(ConnectingContext);
+  const hidden = type === 'out' && (node.kind === 'video' || node.kind === 'render') && !connecting;
+  // The wire's type colors the port: the output's type, or the first input type.
+  const portType = type === 'out' ? outputType(node) : (inputTypes(node)[0] ?? null);
+  // While dragging a wire, ports on the wrong side or of the wrong type dim.
+  const incompatible =
+    !!connecting &&
+    connecting.nodeId !== node.id &&
+    (connecting.from === 'out' ? type === 'out' || !inputTypes(node).includes(connecting.type) : type === 'in' || outputType(node) !== connecting.type);
   return (
     <Handle
       type={type === 'in' ? 'target' : 'source'}
@@ -122,8 +165,10 @@ function Port({ type, node, active, refused, top }: { type: 'in' | 'out'; node: 
         active && styles.portActive,
         refused && styles.portRefused,
         hidden && styles.portHidden,
+        incompatible && styles.portDim,
       )}
       style={{ top }}
+      data-type={portType ?? undefined}
       aria-label={intl.formatMessage({ id: type === 'in' ? 'canvas.port.in' : 'canvas.port.out' }, { title: node.title })}
       data-port={type}
     />
@@ -133,25 +178,43 @@ function Port({ type, node, active, refused, top }: { type: 'in' | 'out'; node: 
 /** Done image/video body: the result (tone stands in for the thumbnail). */
 function Result({ node, reveal }: { node: GraphNode; reveal: boolean }) {
   const intl = useIntl();
+  const actions = useContext(NodeActionsContext);
   const tone = str(node.params.tone, 'var(--c-tone-indigo)');
   if (node.kind === 'image') {
     return (
-      <div className={cx(styles.reveal, reveal && 'rl-reveal')} style={{ background: tone }} {...motionSafe}>
+      <div className={cx(styles.reveal, reveal && 'rl-reveal')} style={{ background: tone }} {...motionSafe} onDoubleClick={() => actions.openResult(node.id)}>
         {node.version ? (
-          <span className={styles.versionChip}>
+          <button
+            type="button"
+            className={cx(styles.versionChip, styles.chipBtn, 'nodrag')}
+            aria-haspopup="menu"
+            aria-label={intl.formatMessage({ id: 'canvas.node.versionsLabel' }, { n: node.version.n, total: node.version.total })}
+            onClick={(e) => {
+              e.stopPropagation();
+              actions.openVersions(node.id, e.currentTarget.getBoundingClientRect());
+            }}
+          >
             <FormattedMessage id="canvas.node.version" values={{ n: node.version.n, total: node.version.total }} />
-          </span>
+          </button>
         ) : null}
       </div>
     );
   }
   return (
     <div className={cx(styles.reveal, reveal && 'rl-reveal')} style={{ background: tone }} {...motionSafe}>
-      <span className={styles.playDisc} role="img" aria-label={intl.formatMessage({ id: 'canvas.node.play' })}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="var(--c-text-1)" aria-hidden="true">
+      <button
+        type="button"
+        className={cx(styles.playDisc, styles.chipBtn, 'nodrag')}
+        aria-label={intl.formatMessage({ id: 'canvas.node.play' })}
+        onClick={(e) => {
+          e.stopPropagation();
+          actions.openResult(node.id);
+        }}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5z" />
         </svg>
-      </span>
+      </button>
       <span className={styles.duration}>{clock(num(node.params.seconds, 5))}</span>
     </div>
   );
@@ -251,7 +314,7 @@ function CardContent({ node, selected, refused }: { node: GraphNode; selected: b
               <button type="button" className={cx(styles.pillBtn, 'nodrag')} onClick={() => actions.generateStoryboard(node.id)}>
                 {intl.formatMessage({ id: 'canvas.node.script.generate' }, { n: rows.length })}
               </button>
-              <button type="button" className={cx(styles.ghostBtn, 'nodrag')}>
+              <button type="button" className={cx(styles.ghostBtn, 'nodrag')} aria-haspopup="dialog" onClick={() => actions.openFields(node.id)}>
                 {intl.formatMessage({ id: 'canvas.node.script.fields' })}
               </button>
             </div>
@@ -339,20 +402,51 @@ function CardContent({ node, selected, refused }: { node: GraphNode; selected: b
   }
 }
 
-function NodeCardImpl({ data, selected }: NodeProps<CardNode>) {
-  const { node, buildIndex, refused } = data;
-  const building = buildIndex >= 0;
+function Collapsed({ node, selected }: { node: GraphNode; selected: boolean }) {
   return (
-    <div
-      className={cx(styles.node, selected && styles.selected, building && cx(styles.build, 'rl-build'))}
-      style={building ? ({ width: NODE_WIDTH[node.kind], '--rl-i': buildIndex } as CSSProperties) : { width: NODE_WIDTH[node.kind] }}
-      data-node-kind={node.kind}
-      data-status={node.status}
-      data-testid={`node-${node.id}`}
-      {...(building ? motionSafe : {})}
-    >
-      <CardContent node={node} selected={!!selected} refused={refused} />
+    <div className={cx(styles.body, styles.collapsedBody)} data-body="">
+      <Label node={node} />
+      <span className={styles.spacer} />
+      <Status node={node} />
+      <Cost node={node} />
+      {hasInputs(node) ? <Port type="in" node={node} active={selected} top={15} /> : null}
+      {outputType(node) ? <Port type="out" node={node} active={false} top={15} /> : null}
     </div>
+  );
+}
+
+function NodeCardImpl({ data, selected }: NodeProps<CardNode>) {
+  const { node, buildIndex, refused, proposed, connecting, blockedReason } = data;
+  const building = buildIndex >= 0;
+  const intl = useIntl();
+  return (
+    <ConnectingContext.Provider value={connecting ?? null}>
+      <div
+        className={cx(
+          styles.node,
+          selected && styles.selected,
+          building && cx(styles.build, 'rl-build'),
+          node.bypass && styles.bypassed,
+          proposed && styles.proposed,
+        )}
+        style={building ? ({ width: NODE_WIDTH[node.kind], '--rl-i': buildIndex } as CSSProperties) : { width: NODE_WIDTH[node.kind] }}
+        data-node-kind={node.kind}
+        data-status={node.status}
+        data-bypass={node.bypass ? '' : undefined}
+        data-collapsed={node.collapsed ? '' : undefined}
+        data-proposed={proposed ? '' : undefined}
+        data-testid={`node-${node.id}`}
+        title={blockedReason ?? undefined}
+        {...(building ? motionSafe : {})}
+      >
+        {node.bypass || blockedReason ? (
+          <span className={cx(styles.flag, blockedReason && !node.bypass && styles.flagBlocked)} role="note">
+            {node.bypass ? intl.formatMessage({ id: 'canvas.node.bypassed' }) : intl.formatMessage({ id: 'canvas.node.blocked' })}
+          </span>
+        ) : null}
+        {node.collapsed ? <Collapsed node={node} selected={!!selected} /> : <CardContent node={node} selected={!!selected} refused={refused} />}
+      </div>
+    </ConnectingContext.Provider>
   );
 }
 

@@ -1,4 +1,11 @@
 import { useToast } from '@rolling/ui';
+import { Paywall, RunConfirm } from '@/features/overlays';
+import { useModels } from '@/lib/models';
+import { getPrefs } from '@/lib/prefs';
+import { checkoutPlan, useCredits, useSession } from '@/lib/session';
+import { MenuPopover, type MenuEntry } from '../layers/Menu';
+import { catalogCredits, findModel } from '../pricing';
+import { ExportDialog } from './ExportDialog';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent } from 'react';
 import { useIntl } from 'react-intl';
@@ -16,8 +23,19 @@ import { ProposalCard } from './ProposalCard';
 import { initEditorState, makeReducer, type Tool } from './state';
 import { TimelinePanel } from './TimelinePanel';
 import { clampScroll, clampPps } from '@rolling/core/timeline';
-import { snapToFrame } from '@rolling/core/timeline';
-import { clipEnd, edlDuration, findClip, isCaptionClip, type Clip, type Edl, type MediaClip, type Track } from '@rolling/core/timeline';
+import { formatTimecode, snapToFrame } from '@rolling/core/timeline';
+import { clipEnd, edlDuration, findClip, isCaptionClip, nextClipId, type Clip, type Edl, type MediaClip, type Track } from '@rolling/core/timeline';
+import type { GraphNode } from '@rolling/core/graph';
+import type { BinInsert } from './Bin';
+
+/** Output formats offered by the format menu. */
+const FORMATS = [
+  { key: '9:16', width: 1080, height: 1920 },
+  { key: '16:9', width: 1920, height: 1080 },
+  { key: '1:1', width: 1080, height: 1080 },
+  { key: '4:5', width: 1080, height: 1350 },
+] as const;
+const FPS = [24, 25, 30] as const;
 
 export interface EditorProps {
   projectId: string;
@@ -70,6 +88,25 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
   const [focusCaption, setFocusCaption] = useState(0);
   const [focusProposal, setFocusProposal] = useState(false);
   const gainSession = useRef(0);
+  const [formatOpen, setFormatOpen] = useState(false);
+  const [effectsOpen, setEffectsOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [gate, setGate] = useState<{ type: 'join' | 'confirm'; clipId: string } | null>(null);
+  const { isMember } = useSession();
+  const credits = useCredits();
+  const { data: catalog } = useModels('video');
+
+  /** Credits for a shot: the synced catalog at its model, resolution and length (D-006), or the mock price. */
+  const shotCredits = useCallback(
+    (nodeId: string | undefined) => {
+      const shot = nodeId ? project.shots[nodeId] : undefined;
+      if (!shot) return 0;
+      const node = { kind: 'video', params: { model: shot.model, resolution: shot.resolution, length: shot.seconds } } as unknown as GraphNode;
+      const model = findModel(catalog, node);
+      return (model && catalogCredits(model, node)) ?? shot.credits;
+    },
+    [catalog, project.shots],
+  );
   const stateRef = useRef(state);
   stateRef.current = state;
 
@@ -132,21 +169,32 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
   };
   const discard = () => dispatch({ type: 'proposalClose' });
 
-  const run = async (clipId: string) => {
-    const ref = findClip(state.edl, clipId);
-    const clip = ref?.clip as MediaClip | undefined;
+  /** Generate / Regenerate: members only (D-007), RunConfirm at or over the threshold (D-006). */
+  const requestRun = (clipId: string) => {
+    const clip = findClip(state.edl, clipId)?.clip as MediaClip | undefined;
     if (!clip?.nodeId || state.running.includes(clipId)) return;
-    const shot = project.shots[clip.nodeId];
+    if (!isMember) return setGate({ type: 'join', clipId });
+    if (shotCredits(clip.nodeId) >= getPrefs().confirmThreshold) return setGate({ type: 'confirm', clipId });
+    void run(clipId);
+  };
+
+  const run = async (clipId: string) => {
+    setGate(null);
+    const ref = findClip(stateRef.current.edl, clipId);
+    const clip = ref?.clip as MediaClip | undefined;
+    if (!clip?.nodeId || stateRef.current.running.includes(clipId)) return;
     const request: RunRequest = {
       kind: clip.assetId === null ? 'generate' : 'regenerate',
       clipId,
       nodeId: clip.nodeId,
-      credits: shot?.credits ?? 0,
+      credits: shotCredits(clip.nodeId),
     };
     dispatch({ type: 'running', clipId, on: true });
+    toast.show({ message: t(request.kind === 'generate' ? 'editor.run.started' : 'editor.run.restarted', { credits: request.credits }) });
     try {
       const outcome = await (onRequestRun ?? mockRun)(request);
       if (outcome.status === 'done') {
+        toast.show({ message: t('editor.run.done', { name: project.shots[clip.nodeId]?.title ?? '' }) });
         // Regenerate keeps the clip's place, trims and effects: only the shot reference changes.
         dispatch({ type: 'commit', ops: [{ op: 'replaceShot', clipId, nodeId: outcome.nodeId, assetId: outcome.assetId }], animate: false });
       }
@@ -182,6 +230,72 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
         }
       }
     }
+  };
+
+  const addMarker = () => {
+    const time = snapToFrame(playhead.time, state.edl.fps);
+    const removing = state.markers.some((m) => Math.abs(m - time) < 1 / state.edl.fps / 2 + 1e-6);
+    dispatch({ type: 'marker', time });
+    toast.show({ message: t(removing ? 'editor.marker.removed' : 'editor.marker.added', { time: formatTimecode(time, state.edl.fps) }) });
+  };
+
+  const selectedMedia = selected && !isCaptionClip(selected.clip) ? (selected.clip as MediaClip) : null;
+  const selectedVideo = selectedMedia && selected?.track.kind === 'video' ? selectedMedia : null;
+  const noClip = t('editor.effects.noClip');
+  const effectEntries: MenuEntry[] = [
+    {
+      key: 'dissolve',
+      label: t('editor.effects.dissolve'),
+      kind: 'checkbox',
+      checked: !!selectedVideo?.transitionOut,
+      disabled: !selectedVideo,
+      reason: t('editor.effects.needShot'),
+      onSelect: () =>
+        selectedVideo &&
+        dispatch({ type: 'commit', ops: [{ op: 'setTransition', clipId: selectedVideo.id, transition: selectedVideo.transitionOut ? null : { type: 'dissolve', dur: 0.5 } }], animate: true }),
+    },
+    {
+      key: 'fade',
+      label: t('editor.effects.fadeIn'),
+      kind: 'checkbox',
+      checked: !!selectedMedia?.fadeIn,
+      disabled: !selectedMedia,
+      reason: noClip,
+      onSelect: () => selectedMedia && dispatch({ type: 'commit', ops: [{ op: 'setFade', clipId: selectedMedia.id, fadeIn: selectedMedia.fadeIn ? 0 : 0.5 }], animate: false }),
+    },
+    {
+      key: 'reverse',
+      label: t('editor.inspector.reverse'),
+      kind: 'checkbox',
+      checked: !!selectedMedia?.reverse,
+      disabled: !selectedMedia,
+      reason: noClip,
+      onSelect: () => selectedMedia && dispatch({ type: 'commit', ops: [{ op: 'setSpeed', clipId: selectedMedia.id, speed: selectedMedia.speed ?? 1, reverse: !selectedMedia.reverse }], animate: true }),
+    },
+    {
+      key: 'reset',
+      label: t('editor.effects.resetTransform'),
+      disabled: !selectedVideo?.transform,
+      reason: t('editor.effects.nothingToReset'),
+      onSelect: () => selectedVideo && dispatch({ type: 'commit', ops: [{ op: 'setTransform', clipId: selectedVideo.id, transform: { scale: 1, x: 0, y: 0, rotation: 0, opacity: 1 } }], animate: false }),
+    },
+  ];
+
+  /** Bin Assets / Public: adds the item at the end of the matching track. */
+  const insertFromBin = (item: BinInsert) => {
+    const kind = item.kind === 'audio' ? 'voice' : 'video';
+    const track = state.edl.tracks.find((tr) => tr.kind === kind);
+    if (!track) return;
+    const start = Math.max(0, ...(track.clips as Clip[]).map((c) => clipEnd(c)));
+    const id = nextClipId(state.edl, (track.clips as Clip[])[0]?.id ?? (kind === 'video' ? 'v1' : 'a1'));
+    const seconds = item.seconds ?? 3;
+    dispatch({
+      type: 'commit',
+      ops: [{ op: 'insert', trackId: track.id, clip: { id, assetId: item.assetId, in: 0, out: seconds, start } }],
+      animate: true,
+      select: id,
+    });
+    toast.show({ message: t('editor.bin.added', { name: item.name, time: formatTimecode(start, state.edl.fps) }), action: { label: t('editor.undoAction'), onAction: undo } });
   };
 
   const jumpEdit = (dir: -1 | 1) => {
@@ -257,6 +371,8 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
       if (target.getAttribute('role') === 'slider') return;
       e.preventDefault();
       jumpEdit(key === 'arrowup' ? -1 : 1);
+    } else if (key === 'm') {
+      addMarker();
     } else if (key === 'i' || key === 'o') {
       dispatch({ type: 'mark', edge: key === 'i' ? 'in' : 'out', time: playhead.time });
     } else if (key === '=' || key === '+' || key === '-') {
@@ -275,6 +391,11 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
     [state.tracks],
   );
   const fmt = (n: number) => intl.formatNumber(n, { useGrouping: false });
+  const gateClip = gate ? (findClip(state.edl, gate.clipId)?.clip as MediaClip | undefined) : undefined;
+  const gateShot = gateClip?.nodeId ? project.shots[gateClip.nodeId] : undefined;
+  const gateRows = gateShot
+    ? [{ id: gateShot.nodeId, name: gateShot.title, meta: t('editor.inspector.shotMeta', { model: gateShot.model, resolution: gateShot.resolution, seconds: gateShot.seconds }), kind: 'video' as const, state: 'run' as const, cost: shotCredits(gateShot.nodeId) }]
+    : [];
 
   return (
     <section
@@ -317,18 +438,47 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
           <Icon name="redo" />
         </button>
         <span className={styles.divider} style={{ margin: '0 4px' }} />
-        {/* TODO: export format popover is not designed yet. */}
-        <button type="button" className={`${styles.btn} ${styles.secondary} ${styles.format}`} aria-haspopup="menu">
-          {t('editor.format', { width: fmt(state.edl.width), height: fmt(state.edl.height), fps: fmt(state.edl.fps) })}
-          <Icon name="chevronDown" size={12} />
-        </button>
-        <button type="button" className={`${styles.btn} ${styles.primary} ${styles.export}`} onClick={() => onExport?.(state.edl)}>
+        <MenuPopover
+          open={formatOpen}
+          onOpenChange={setFormatOpen}
+          label={t('editor.formatMenu')}
+          align="end"
+          entries={[
+            ...FORMATS.map((f) => ({
+              key: f.key,
+              label: t('editor.formatSize', { ratio: f.key, width: fmt(f.width), height: fmt(f.height) }),
+              checked: state.edl.width === f.width && state.edl.height === f.height,
+              onSelect: () => dispatch({ type: 'format', width: f.width, height: f.height, fps: state.edl.fps }),
+            })),
+            ...FPS.map((fps) => ({
+              key: `fps${fps}`,
+              label: t('editor.formatFps', { fps }),
+              checked: state.edl.fps === fps,
+              onSelect: () => dispatch({ type: 'format', width: state.edl.width, height: state.edl.height, fps }),
+            })),
+          ]}
+          trigger={(tp) => (
+            <button {...tp} type="button" className={`${styles.btn} ${styles.secondary} ${styles.format}`}>
+              {t('editor.format', { width: fmt(state.edl.width), height: fmt(state.edl.height), fps: fmt(state.edl.fps) })}
+              <Icon name="chevronDown" size={12} />
+            </button>
+          )}
+        />
+        <button
+          type="button"
+          className={`${styles.btn} ${styles.primary} ${styles.export}`}
+          aria-haspopup="dialog"
+          onClick={() => {
+            onExport?.(state.edl);
+            setExportOpen(true);
+          }}
+        >
           <Icon name="export" size={14} stroke={2.4} />
           {t('editor.export')}
         </button>
       </div>
       <div className={styles.body}>
-        <Bin items={project.bin} currentId={binCurrent} onPick={pickBin} />
+        <Bin items={project.bin} currentId={binCurrent} onPick={pickBin} onInsert={insertFromBin} />
         <Monitor
           project={project}
           edl={state.edl}
@@ -351,7 +501,17 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
             if (commit) gainSession.current++;
           }}
           onCaption={(clipId, text) => dispatch({ type: 'commit', ops: [{ op: 'setCaption', clipId, text }], animate: false })}
-          onRun={(clipId) => void run(clipId)}
+          onRun={requestRun}
+          credits={shotCredits}
+          onTransform={(clipId, transform, commit) => {
+            dispatch({ type: 'commit', ops: [{ op: 'setTransform', clipId, transform }], animate: false, coalesce: `tf:${clipId}:${gainSession.current}` });
+            if (commit) gainSession.current++;
+          }}
+          onSpeed={(clipId, speed, reverse) => dispatch({ type: 'commit', ops: [{ op: 'setSpeed', clipId, speed, reverse }], animate: true })}
+          onFade={(clipId, fadeIn, commit) => {
+            dispatch({ type: 'commit', ops: [{ op: 'setFade', clipId, fadeIn }], animate: false, coalesce: `fade:${clipId}:${gainSession.current}` });
+            if (commit) gainSession.current++;
+          }}
           onOpenOnCanvas={(nodeId) => (onOpenOnCanvas ? onOpenOnCanvas(nodeId) : close())}
         />
       </div>
@@ -365,11 +525,46 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
         ask={ask}
         onAskChange={setAsk}
         onAsk={(r) => void askAgent(r, true)}
-        onGenerate={(clipId) => void run(clipId)}
+        onGenerate={requestRun}
+        generateCredits={shotCredits}
+        onAddMarker={addMarker}
+        effects={effectEntries}
+        effectsOpen={effectsOpen}
+        onEffectsOpenChange={setEffectsOpen}
         onTextTool={() => setFocusCaption((n) => n + 1)}
         clipName={clipName}
       />
       <ProposalCard proposal={state.proposalPhase === 'open' ? state.proposal : null} onApply={apply} onDiscard={discard} focusOnOpen={focusProposal} />
+      <ExportDialog
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        projectId={project.id}
+        edl={state.edl}
+        marks={state.marks}
+        onDone={() => toast.show({ message: t('editor.export.toast') })}
+      />
+      <RunConfirm
+        open={gate?.type === 'confirm'}
+        onOpenChange={(o) => !o && setGate(null)}
+        variant="single"
+        rows={gateRows}
+        balance={credits.available}
+        eta={t('editor.run.eta')}
+        actionLabel={t('editor.run.action')}
+        onConfirm={() => gate && void run(gate.clipId)}
+      />
+      <Paywall
+        open={gate?.type === 'join'}
+        onOpenChange={(o) => !o && setGate(null)}
+        variant="join"
+        onContinue={(option) => {
+          const clipId = gate?.clipId;
+          void checkoutPlan(option.id).then(() => {
+            setGate(null);
+            if (clipId) void run(clipId);
+          });
+        }}
+      />
     </section>
   );
 }

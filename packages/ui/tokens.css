@@ -524,3 +524,8 @@
     scroll-behavior:auto!important;
   }
 }
+
+/* Canvas port types (text / image / video / audio ports and their wires). */
+:root{--c-port-text:#A78BFA;--c-port-image:#60A5FA;--c-port-video:#FBBF24;--c-port-audio:#4ADE80}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){--c-port-text:#7C3AED;--c-port-image:#2563EB;--c-port-video:#B45309;--c-port-audio:#15803D}}
+:root[data-theme="light"]{--c-port-text:#7C3AED;--c-port-image:#2563EB;--c-port-video:#B45309;--c-port-audio:#15803D}

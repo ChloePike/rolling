@@ -7,3 +7,4 @@ export { GraphStore, applyOps, diffOps, normalizeOps, type ApplyResult, type Loc
 export { ProjectSync, type SyncStatus, type SyncEvents } from './graph/sync';
 export { MockProjectRoom } from './graph/mockRoom';
 export { webSocketTransport, type Transport } from './graph/transport';
+export { CanvasError } from './CanvasError';

@@ -4,18 +4,111 @@ import styles from './Editor.module.css';
 import { Icon } from './icons';
 import type { BinItem } from './mocks';
 import { formatClipLength } from '@rolling/core/timeline';
+import { useReferences, type RefItem } from '@/features/prompt';
+import { usePublicItems } from '@/lib/publicLibrary';
 
 type BinTab = 'project' | 'assets' | 'public';
 const TABS: BinTab[] = ['project', 'assets', 'public'];
+
+/** An asset or public item to put on the timeline. */
+export interface BinInsert {
+  name: string;
+  assetId: string;
+  kind: 'image' | 'video' | 'audio';
+  /** Length on the timeline; stills default to 3s. */
+  seconds?: number;
+}
 
 export interface BinProps {
   items: BinItem[];
   /** Bin item for the selected clip. */
   currentId: string | null;
   onPick: (item: BinItem) => void;
+  /** Assets / Public: adds the item at the end of its track. */
+  onInsert: (item: BinInsert) => void;
 }
 
-export function Bin({ items, currentId, onPick }: BinProps) {
+/** Kind of a picker item from its group and meta line (`Video · 0:08`, `Image · 2048×2048`). */
+function refKind(r: RefItem): BinInsert['kind'] {
+  if (r.group === 'voice') return 'audio';
+  return /^video/i.test(r.meta) ? 'video' : 'image';
+}
+
+function RefList({ items, onInsert, empty }: { items: Array<{ id: string; name: string; meta: string; tone: string; thumbUrl?: string | null; kind: BinInsert['kind']; assetId: string }>; onInsert: BinProps['onInsert']; empty: string }) {
+  const intl = useIntl();
+  if (!items.length) return <p className={styles.binEmpty}>{empty}</p>;
+  return (
+    <ul className={styles.binList}>
+      {items.map((item) => (
+        <li key={item.id}>
+          <button
+            type="button"
+            className={`${styles.btn} ${styles.binItem}`}
+            aria-label={intl.formatMessage({ id: 'editor.bin.insert' }, { name: item.name })}
+            title={intl.formatMessage({ id: 'editor.bin.insert' }, { name: item.name })}
+            onClick={() => onInsert({ name: item.name, assetId: item.assetId, kind: item.kind })}
+          >
+            <span className={styles.binThumb} style={{ background: item.tone }}>
+              {item.thumbUrl ? <img src={item.thumbUrl} alt="" className={styles.binImg} /> : <Icon name={item.kind === 'audio' ? 'audio' : item.kind} size={14} />}
+            </span>
+            <span className={styles.binText}>
+              <span className={styles.binTitle}>{item.name}</span>
+              <span className={styles.binMeta}>{item.meta}</span>
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function AssetsTab({ onInsert }: { onInsert: BinProps['onInsert'] }) {
+  const intl = useIntl();
+  const refs = useReferences().data ?? [];
+  const items = refs
+    .filter((r) => r.group !== 'pub')
+    .map((r) => ({ id: r.id, name: r.name, meta: r.meta, tone: r.tone, thumbUrl: r.thumbUrl, kind: refKind(r), assetId: r.id }));
+  return <RefList items={items} onInsert={onInsert} empty={intl.formatMessage({ id: 'editor.bin.assetsEmpty' })} />;
+}
+
+function PublicTab({ onInsert }: { onInsert: BinProps['onInsert'] }) {
+  const intl = useIntl();
+  const q = usePublicItems(null);
+  const items = (q.data?.pages.flatMap((p) => p.items) ?? []).map((it, i) => ({
+    id: it.id,
+    name: it.title,
+    meta: intl.formatMessage({ id: 'editor.bin.publicMeta' }, { category: it.category }),
+    tone: PUB_TONES[i % PUB_TONES.length]!,
+    thumbUrl: it.thumbUrl,
+    kind: 'image' as const,
+    assetId: it.assetId,
+  }));
+  if (q.isError) {
+    return (
+      <div className={styles.binEmpty} role="status">
+        <p>{intl.formatMessage({ id: 'editor.bin.publicError' })}</p>
+        <button type="button" className={`${styles.btn} ${styles.secondary} ${styles.binRetry}`} onClick={() => void q.refetch()}>
+          {intl.formatMessage({ id: 'editor.bin.retry' })}
+        </button>
+      </div>
+    );
+  }
+  if (q.isPending) return <p className={styles.binEmpty} role="status">{intl.formatMessage({ id: 'editor.bin.loading' })}</p>;
+  return (
+    <>
+      <RefList items={items} onInsert={onInsert} empty={intl.formatMessage({ id: 'editor.bin.publicEmpty' })} />
+      {q.hasNextPage ? (
+        <button type="button" className={`${styles.btn} ${styles.secondary} ${styles.binRetry}`} disabled={q.isFetchingNextPage} onClick={() => void q.fetchNextPage()}>
+          {intl.formatMessage({ id: 'editor.bin.more' })}
+        </button>
+      ) : null}
+    </>
+  );
+}
+
+const PUB_TONES = ['var(--c-tone-plum)', 'var(--c-tone-indigo)', 'var(--c-tone-sand)', 'var(--c-tone-teal)'];
+
+export function Bin({ items, currentId, onPick, onInsert }: BinProps) {
   const intl = useIntl();
   const [tab, setTab] = useState<BinTab>('project');
   const onKey = (e: KeyboardEvent) => {
@@ -74,9 +167,10 @@ export function Bin({ items, currentId, onPick }: BinProps) {
               </li>
             ))}
           </ul>
+        ) : tab === 'assets' ? (
+          <AssetsTab onInsert={onInsert} />
         ) : (
-          // TODO(overlays): Assets and Public reuse the @ reference picker lists once exported.
-          <p className={styles.binEmpty}>{intl.formatMessage({ id: tab === 'assets' ? 'editor.bin.assetsEmpty' : 'editor.bin.publicEmpty' })}</p>
+          <PublicTab onInsert={onInsert} />
         )}
       </div>
     </aside>

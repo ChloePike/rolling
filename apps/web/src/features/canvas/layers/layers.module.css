@@ -76,3 +76,32 @@
 [data-layer]:focus-visible{outline:none}
 .script:focus-visible,.share:focus-visible,.plan:focus-visible{box-shadow:none}
 .plan{border-radius:24px}
+
+/* Script editing: cells edit in place and render like the static design. */
+.tr{position:relative}
+.editable{outline:none;border-radius:4px;cursor:text;transition:box-shadow var(--dur-fast) var(--ease-standard)}
+.editable:hover{box-shadow:0 0 0 4px var(--c-surface-5);background:var(--c-surface-5)}
+.editable:focus{box-shadow:0 0 0 4px var(--c-surface-6);background:var(--c-surface-6);color:var(--c-text-1)}
+.editable:empty::before{content:attr(data-placeholder);color:var(--c-text-4)}
+.editableInline{display:inline}
+.rowRemove{
+  position:absolute;right:14px;top:50%;translate:0 -50%;width:28px;height:28px;border-radius:999px;border:0;padding:0;
+  display:flex;align-items:center;justify-content:center;background:var(--c-surface-5);color:var(--c-text-3);cursor:pointer;
+  opacity:0;transition:opacity var(--dur-fast) var(--ease-standard),color var(--dur-fast) var(--ease-standard);
+}
+.tr:hover .rowRemove,.rowRemove:focus-visible{opacity:1}
+.rowRemove:hover{color:var(--c-danger)}
+.addShot{
+  margin:10px 18px 16px;height:32px;padding:0 12px;border-radius:999px;border:0;background:var(--c-surface-4);color:var(--c-text-2);
+  font:inherit;font-size:12px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;transition:background-color var(--dur-fast) var(--ease-standard);
+}
+.addShot:hover{background:var(--c-surface-5);color:var(--c-text-1)}
+.empty{margin:0;padding:16px 18px;font-size:13px;color:var(--c-text-4)}
+.softOn{background:var(--c-accent-soft);color:var(--c-accent-text)}
+.primary[aria-disabled="true"]{opacity:.5;cursor:not-allowed}
+
+/* Share states. */
+.linkOff{color:var(--c-text-4)}
+.settingOn{color:var(--c-text-1)}
+.copy[aria-disabled="true"],.stop[aria-disabled="true"]{opacity:.5;cursor:not-allowed}
+.publish[aria-busy="true"]{opacity:.7;cursor:progress}

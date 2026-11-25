@@ -113,6 +113,8 @@ export interface TimelineCanvasProps {
   onGenerate: (clipId: string) => void;
   onTextTool: (clipId: string) => void;
   generateLabel: (credits: number) => string;
+  /** Credits to generate a shot (catalog price); defaults to the mock shot price. */
+  creditsFor?: (nodeId: string) => number;
   clipName: (clip: Clip, track: Track) => string;
   clipListLabel: (clip: Clip, track: Track) => string;
   ariaLabel: string;
@@ -242,6 +244,19 @@ export function TimelineCanvas(props: TimelineCanvasProps) {
       ctx.fillStyle = C.markRange;
       const x0 = timeToX(marks.in, pps, scrollX);
       ctx.fillRect(x0, 0, (marks.out - marks.in) * pps, 4);
+    }
+    // Markers: a small flag on the ruler (playhead color).
+    ctx.fillStyle = C.playhead;
+    for (const t of p.state.markers) {
+      const x = Math.round(timeToX(t, pps, scrollX));
+      ctx.beginPath();
+      ctx.moveTo(x - 4, 4);
+      ctx.lineTo(x + 4, 4);
+      ctx.lineTo(x + 4, 10);
+      ctx.lineTo(x, 14);
+      ctx.lineTo(x - 4, 10);
+      ctx.closePath();
+      ctx.fill();
     }
     const { ticks } = rulerTicks(duration, pps, xToTime(-60, pps, scrollX), xToTime(w, pps, scrollX));
     ctx.font = `400 10px ${FONT}`;
@@ -612,7 +627,7 @@ export function TimelineCanvas(props: TimelineCanvasProps) {
     const kind = p.state.tool === 'slip' ? (isCaptionClip(ref.clip) ? null : 'slip') : hit.zone === 'body' ? 'move' : hit.zone;
     if (!kind) return;
     const cands = snapCandidates(p.state.edl, { playhead: p.playhead.time, exclude: hit.clipId });
-    cands.push(p.state.marks.in, p.state.marks.out);
+    cands.push(p.state.marks.in, p.state.marks.out, ...p.state.markers);
     drag.current = { kind, clipId: hit.clipId, x0: x, orig: ref.clip, cands, started: false, ops: null, preview: null, snapAt: null };
   }
 
@@ -922,7 +937,7 @@ export function TimelineCanvas(props: TimelineCanvasProps) {
       <canvas ref={canvasRef} className={styles.lanesCanvas} aria-hidden="true" />
       <div className={styles.laneOverlay}>
         {pending.map(({ clip }) => {
-          const credits = clip.nodeId ? (props.project.shots[clip.nodeId]?.credits ?? 0) : 0;
+          const credits = clip.nodeId ? (props.creditsFor?.(clip.nodeId) ?? props.project.shots[clip.nodeId]?.credits ?? 0) : 0;
           const busy = running.includes(clip.id);
           return (
             <button

@@ -87,9 +87,9 @@ export const MOCK_SCRIPT: AssembleInput = {
 };
 
 export const MOCK_SHOTS: Record<string, ShotInfo> = {
-  node_shot_a: { nodeId: 'node_shot_a', title: 'Shot A, hero', model: 'Seedance 2.5', resolution: '1080p', seconds: 4, credits: 8 },
-  node_shot_b: { nodeId: 'node_shot_b', title: 'Shot B, cap pop', model: 'Seedance 2.5', resolution: '1080p', seconds: 5, credits: 8 },
-  node_shot_c: { nodeId: 'node_shot_c', title: 'Shot C, logo', model: 'Seedance 2.5', resolution: '1080p', seconds: 3, credits: 8 },
+  node_shot_a: { nodeId: 'node_shot_a', title: 'Shot A, hero', model: 'Seedance 2.5', resolution: '720p', seconds: 4, credits: 278 },
+  node_shot_b: { nodeId: 'node_shot_b', title: 'Shot B, cap pop', model: 'Seedance 2.5', resolution: '720p', seconds: 5, credits: 347 },
+  node_shot_c: { nodeId: 'node_shot_c', title: 'Shot C, logo', model: 'Seedance 2.5', resolution: '720p', seconds: 3, credits: 209 },
 };
 
 export const MOCK_AUDIO: Record<string, AudioInfo> = {

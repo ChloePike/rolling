@@ -20,6 +20,12 @@
   display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 7px;border-radius:999px;background:var(--c-surface-4);
   font:600 11px/1 var(--font-sans);color:var(--c-text-2);
 }
+.costBtn{border:0;cursor:pointer;transition:background-color var(--dur-fast) var(--ease-standard),color var(--dur-fast) var(--ease-standard)}
+.costBtn:hover{background:var(--c-surface-6);color:var(--c-text-1)}
+.costBtn[aria-disabled="true"]{cursor:default}
+/* Chips and discs that are buttons keep their drawn look. */
+.chipBtn{border:0;color:var(--c-text-1);font-family:inherit;cursor:pointer;padding-top:0;padding-bottom:0}
+.playDisc.chipBtn{padding:0}
 .iconBtn{
   width:22px;height:22px;border:0;border-radius:6px;background:none;color:var(--c-text-3);cursor:pointer;padding:1px 6px;font:13.333px Arial,sans-serif;
   transition:background-color var(--dur-fast) var(--ease-standard),color var(--dur-fast) var(--ease-standard);
@@ -102,3 +108,27 @@
   position:absolute;border-radius:20px;box-shadow:inset 0 0 0 1px var(--c-surface-5);background:color-mix(in srgb,var(--c-text-1) 1.5%,transparent);pointer-events:none;
 }
 .groupTitle{position:absolute;left:14px;top:10px;font-size:12px;font-weight:600;color:var(--c-text-3)}
+
+/* Typed ports and wires: the ring takes the port type's color. */
+.port[data-type="text"]{--port:var(--c-port-text)}
+.port[data-type="image"]{--port:var(--c-port-image)}
+.port[data-type="video"]{--port:var(--c-port-video)}
+.port[data-type="audio"]{--port:var(--c-port-audio)}
+.port[data-type]{box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--port) 55%,var(--c-disabled-text))}
+.port[data-type].portActive{box-shadow:inset 0 0 0 2px var(--c-accent)}
+.portDim{opacity:.25}
+
+/* Bypassed: dimmed, with a chip; blocked dependents get the same chip in danger. */
+.bypassed > :not(.flag){opacity:.45}
+.flag{
+  position:absolute;right:0;top:-26px;height:20px;padding:0 8px;border-radius:999px;background:var(--c-surface-5);color:var(--c-text-2);
+  font:600 11px/20px var(--font-sans);animation:rl-fade-in var(--dur-base) var(--ease-standard) both;
+}
+.flagBlocked{background:color-mix(in srgb,var(--c-danger) 14%,transparent);color:var(--c-danger-strong)}
+.proposed .body,.proposed .collapsedBody{box-shadow:0 0 0 2px var(--c-accent),0 0 0 6px var(--c-accent-soft)}
+
+/* Collapsed: header only. */
+.collapsedBody{height:30px;padding:0 10px;border-radius:12px;background:var(--c-surface-2);display:flex;align-items:center;gap:6px;font-size:12px;color:var(--c-text-3)}
+.port[data-type].portRefused{box-shadow:inset 0 0 0 2px var(--c-danger),0 0 0 4px color-mix(in srgb,var(--c-danger) 20%,transparent)}
+:global(.react-flow__handle.connectingto).port[data-type]{box-shadow:inset 0 0 0 2px var(--c-danger),0 0 0 4px color-mix(in srgb,var(--c-danger) 20%,transparent)}
+:global(.react-flow__handle.connectingto.valid).port[data-type]{box-shadow:inset 0 0 0 2px var(--c-accent),0 0 0 4px color-mix(in srgb,var(--c-accent) 25%,transparent)}

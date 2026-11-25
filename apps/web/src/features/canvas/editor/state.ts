@@ -33,6 +33,8 @@ export interface EditorState {
   pps: number;
   scrollX: number;
   marks: { in: number; out: number };
+  /** Timeline markers (seconds), sorted. */
+  markers: number[];
   tracks: Record<string, TrackFlags>;
   proposal: EditProposal | null;
   proposalPhase: ProposalPhase;
@@ -58,6 +60,10 @@ export type EditorAction =
   | { type: 'snapping'; on: boolean }
   | { type: 'view'; pps?: number; scrollX?: number }
   | { type: 'mark'; edge: 'in' | 'out'; time: number }
+  /** Adds a marker at `time`, or removes the one already there. */
+  | { type: 'marker'; time: number }
+  /** Output format (frame size and rate); undoable like a timeline edit. */
+  | { type: 'format'; width: number; height: number; fps: number }
   | { type: 'trackFlag'; trackId: string; flag: keyof TrackFlags }
   | { type: 'proposalPending' }
   | { type: 'proposal'; proposal: EditProposal | null }
@@ -78,6 +84,7 @@ export function initEditorState(edl: Edl, marks: { in: number; out: number }, se
     pps: DEFAULT_PPS,
     scrollX: 0,
     marks,
+    markers: [],
     tracks: Object.fromEntries(edl.tracks.map((t) => [t.id, { hidden: false, muted: false, locked: false }])),
     proposal: null,
     proposalPhase: 'idle',
@@ -132,6 +139,16 @@ export function makeReducer(opts: ApplyOptions) {
         return { ...state, pps: action.pps ?? state.pps, scrollX: action.scrollX ?? state.scrollX };
       case 'mark':
         return { ...state, marks: { ...state.marks, [action.edge]: action.time } };
+      case 'marker': {
+        const near = state.markers.find((m) => Math.abs(m - action.time) < 1 / state.edl.fps / 2 + 1e-6);
+        const markers = near !== undefined ? state.markers.filter((m) => m !== near) : [...state.markers, action.time].sort((a, b) => a - b);
+        return { ...state, markers };
+      }
+      case 'format': {
+        const { width, height, fps } = action;
+        if (width === state.edl.width && height === state.edl.height && fps === state.edl.fps) return state;
+        return withEdl(state, { ...state.edl, width, height, fps }, false, { past: [...state.past, state.edl].slice(-HISTORY_LIMIT), future: [] });
+      }
       case 'trackFlag': {
         const flags = state.tracks[action.trackId];
         if (!flags) return state;

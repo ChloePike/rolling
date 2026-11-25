@@ -1,5 +1,5 @@
 import { newId } from '@rolling/core/ids';
-import { inputPorts, OUT_PORT, resolveInputPort, validateConnection } from '@rolling/core/graph';
+import { applyFlagOp, inputPorts, isFlagOp, OUT_PORT, resolveInputPort, validateConnection } from '@rolling/core/graph';
 import type { GraphGroup, GraphNode, GraphOp, GraphState, LocalOp, NodeStatus, Refusal } from '@rolling/core/graph';
 
 /** `LocalOp` (GraphOp plus `ungroup` for undo) lives in @rolling/core/graph. */
@@ -37,7 +37,7 @@ function clone(state: GraphState): GraphState {
   return {
     revision: state.revision,
     nodes: state.nodes.map((n) => ({ ...n, params: { ...n.params }, position: { ...n.position } })),
-    edges: state.edges.map((e) => ({ id: e.id, from: { ...e.from }, to: { ...e.to } })),
+    edges: state.edges.map((e) => ({ id: e.id, from: { ...e.from }, to: { ...e.to }, ...(e.reroutes ? { reroutes: e.reroutes.map((p) => ({ ...p })) } : {}) })),
     groups: state.groups.map((g) => ({ ...g, nodeIds: [...g.nodeIds] })),
   };
 }
@@ -77,6 +77,11 @@ export function applyOps(state: GraphState, ops: LocalOp[], ids: IdFactory = def
 
   for (let i = 0; i < ops.length; i++) {
     const op = ops[i]!;
+    if (isFlagOp(op)) {
+      const refusal = applyFlagOp(next, op, resolve);
+      if (refusal) return refuse(i, refusal);
+      continue;
+    }
     switch (op.op) {
       case 'addNode': {
         const fixed = /^node_/.test(op.tempId) && !next.nodes.some((n) => n.id === op.tempId);
@@ -187,6 +192,9 @@ export function normalizeOps(ops: LocalOp[], ids: IdFactory = defaultIds): Local
         return { ...op, nodeId: r(op.nodeId) };
       case 'moveNode':
         return { ...op, nodeId: r(op.nodeId) };
+      case 'setBypass':
+      case 'setCollapsed':
+        return { ...op, nodeId: r(op.nodeId) };
       case 'removeNode':
         return { ...op, nodeId: r(op.nodeId) };
       case 'connect':
@@ -214,6 +222,8 @@ export function diffOps(from: GraphState, to: GraphState): LocalOp[] {
     const was = fromNodes.get(n.id);
     if (!was) {
       ops.push({ op: 'addNode', tempId: n.id, kind: n.kind, title: n.title, params: { ...n.params }, position: { ...n.position } });
+      if (n.bypass) ops.push({ op: 'setBypass', nodeId: n.id, bypass: true });
+      if (n.collapsed) ops.push({ op: 'setCollapsed', nodeId: n.id, collapsed: true });
       continue;
     }
     if (!sameParams(was.params, n.params) || was.title !== n.title) {
@@ -222,8 +232,18 @@ export function diffOps(from: GraphState, to: GraphState): LocalOp[] {
     if (was.position.x !== n.position.x || was.position.y !== n.position.y) {
       ops.push({ op: 'moveNode', nodeId: n.id, position: { ...n.position } });
     }
+    if (!!was.bypass !== !!n.bypass) ops.push({ op: 'setBypass', nodeId: n.id, bypass: !!n.bypass });
+    if (!!was.collapsed !== !!n.collapsed) ops.push({ op: 'setCollapsed', nodeId: n.id, collapsed: !!n.collapsed });
   }
   for (const e of to.edges) if (!fromEdges.has(e.id)) ops.push({ op: 'connect', from: { ...e.from }, to: { ...e.to }, edgeId: e.id });
+  // Reroutes: rebuild the point list of every edge whose points changed (or that was re-created).
+  for (const e of to.edges) {
+    const before = fromEdges.get(e.id)?.reroutes ?? [];
+    const after = e.reroutes ?? [];
+    if (JSON.stringify(before) === JSON.stringify(after)) continue;
+    for (let i = before.length - 1; i >= 0; i--) ops.push({ op: 'removeReroute', edgeId: e.id, index: i });
+    after.forEach((p, i) => ops.push({ op: 'addReroute', edgeId: e.id, index: i, position: { ...p } }));
+  }
   for (const g of to.groups) if (!from.groups.some((f) => f.id === g.id)) ops.push({ op: 'group', nodeIds: [...g.nodeIds], title: g.title, groupId: g.id });
   return ops;
 }

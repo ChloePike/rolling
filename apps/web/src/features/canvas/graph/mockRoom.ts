@@ -15,6 +15,10 @@ export interface MockRoomOptions {
   step?: number;
   /** When true, jobs never advance on their own (screenshots, tests). */
   frozen?: boolean;
+  /** Workspace credits the room's CreditAccount stand-in starts with. */
+  credits?: { balance: number; held: number };
+  /** Every new job fails at 40% (`?mock=fail`), to see the refund path. */
+  failAll?: boolean;
 }
 
 interface Job {
@@ -22,6 +26,8 @@ interface Job {
   nodeId: string;
   progress: number;
   fail: boolean;
+  /** Upstream nodes of the same run that must finish first (GenerateWorkflow waits on them). */
+  waitFor: string[];
 }
 
 /**
@@ -35,13 +41,17 @@ export class MockProjectRoom {
   private sockets = new Set<(raw: string) => void>();
   private jobs = new Map<string, Job>();
   private timer: ReturnType<typeof setInterval> | null = null;
+  /** Credits held per running node (CreditAccount hold → settle | release). */
+  private holds = new Map<string, number>();
+  credits: { balance: number; held: number };
   readonly opts: Required<MockRoomOptions>;
 
   constructor(options: MockRoomOptions) {
-    this.opts = { latency: 40, tick: 400, step: 0.06, frozen: false, ...options };
+    this.opts = { latency: 40, tick: 400, step: 0.06, frozen: false, credits: { balance: 0, held: 0 }, failAll: false, ...options };
+    this.credits = { ...this.opts.credits };
     this.state = options.initial;
     for (const n of this.state.nodes) {
-      if (n.status === 'generating') this.jobs.set(n.id, { id: newId('job'), nodeId: n.id, progress: n.progress ?? 0, fail: false });
+      if (n.status === 'generating') this.jobs.set(n.id, { id: newId('job'), nodeId: n.id, progress: n.progress ?? 0, fail: false, waitFor: [] });
     }
     this.ensureTicking();
   }
@@ -117,15 +127,65 @@ export class MockProjectRoom {
     return result;
   }
 
-  /** Starts a generation job for each node (after the run was approved). */
-  startJobs(nodeIds: string[], options: { fail?: string[] } = {}) {
+  /**
+   * Starts a generation job for each node (after the run was approved). Holds
+   * `costs[nodeId]` credits per job; refuses the whole run when the balance
+   * does not cover it (the API answers `INSUFFICIENT_CREDITS`).
+   */
+  startJobs(nodeIds: string[], options: { fail?: string[]; costs?: Record<string, number> } = {}): { ok: true } | { ok: false; code: 'INSUFFICIENT_CREDITS'; needed: number } {
+    const total = nodeIds.reduce((s, id) => s + (options.costs?.[id] ?? 0), 0);
+    if (total > this.credits.balance) return { ok: false, code: 'INSUFFICIENT_CREDITS', needed: total - this.credits.balance };
     for (const nodeId of nodeIds) {
-      const job: Job = { id: newId('job'), nodeId, progress: 0, fail: options.fail?.includes(nodeId) ?? false };
+      const cost = options.costs?.[nodeId] ?? 0;
+      if (cost) {
+        this.holds.set(nodeId, cost);
+        this.credits = { balance: this.credits.balance - cost, held: this.credits.held + cost };
+      }
+      // Everything upstream of this node that is part of the run (keyframes before the videos they feed).
+      const waitFor = this.upstream(nodeId).filter((id) => nodeIds.includes(id) || this.jobs.has(id));
+      const job: Job = { id: newId('job'), nodeId, progress: 0, fail: this.opts.failAll || (options.fail?.includes(nodeId) ?? false), waitFor };
       this.jobs.set(nodeId, job);
-      this.patchNode(nodeId, { status: 'generating', progress: 0 });
-      this.broadcast(this.envelope('job.progress', { jobId: job.id, nodeId, progress: 0 }));
+      if (waitFor.length) {
+        this.patchNode(nodeId, { status: 'queued', progress: 0 });
+        this.broadcast(this.envelope('job.queued', { jobId: job.id, nodeId }));
+      } else {
+        this.patchNode(nodeId, { status: 'generating', progress: 0 });
+        this.broadcast(this.envelope('job.progress', { jobId: job.id, nodeId, progress: 0 }));
+      }
     }
+    if (total) this.broadcastCredits();
     this.ensureTicking();
+    return { ok: true };
+  }
+
+  /** A completed top-up (Stripe webhook → CreditAccount grant). */
+  grant(amount: number) {
+    this.credits = { ...this.credits, balance: this.credits.balance + amount };
+    this.broadcastCredits();
+  }
+
+  /** Switches the node's active version (`POST /api/nodes/:id/versions/:n/activate`). */
+  setVersion(nodeId: string, n: number) {
+    const node = this.state.nodes.find((x) => x.id === nodeId);
+    if (!node?.version || n < 1 || n > node.version.total) return false;
+    const version = { n, total: node.version.total };
+    this.patchNode(nodeId, { version });
+    this.broadcast(this.envelope('node.version', { nodeId, version }));
+    return true;
+  }
+
+  private broadcastCredits() {
+    this.broadcast(this.envelope('credits.changed', { ...this.credits }));
+  }
+
+  /** Settles (done) or releases (failed) the node's hold. */
+  private closeHold(nodeId: string, settle: boolean): number {
+    const held = this.holds.get(nodeId);
+    if (held === undefined) return 0;
+    this.holds.delete(nodeId);
+    this.credits = { balance: this.credits.balance + (settle ? 0 : held), held: this.credits.held - held };
+    this.broadcastCredits();
+    return held;
   }
 
   private patchNode(nodeId: string, patch: Partial<GraphState['nodes'][number]>) {
@@ -137,9 +197,29 @@ export class MockProjectRoom {
     this.timer = setInterval(() => this.advance(), this.opts.tick);
   }
 
+  private upstream(nodeId: string): string[] {
+    const out = new Set<string>();
+    const stack = [nodeId];
+    while (stack.length) {
+      const id = stack.pop()!;
+      for (const e of this.state.edges) if (e.to.node === id && !out.has(e.from.node)) {
+        out.add(e.from.node);
+        stack.push(e.from.node);
+      }
+    }
+    return [...out];
+  }
+
   /** Moves every running job one step (also callable from tests). */
   advance(step = this.opts.step) {
     for (const job of [...this.jobs.values()]) {
+      if (job.waitFor.some((id) => this.jobs.has(id))) continue;
+      if (job.waitFor.length) {
+        job.waitFor = [];
+        this.patchNode(job.nodeId, { status: 'generating', progress: 0 });
+        this.broadcast(this.envelope('job.progress', { jobId: job.id, nodeId: job.nodeId, progress: 0 }));
+        continue;
+      }
       job.progress = Math.min(1, job.progress + step);
       if (job.fail && job.progress >= 0.4) {
         this.failJob(job.nodeId);
@@ -166,6 +246,7 @@ export class MockProjectRoom {
     const total = (node.version?.total ?? 0) + 1;
     const version = { n: total, total };
     this.patchNode(nodeId, { status: 'done', progress: 1, version });
+    this.closeHold(nodeId, true);
     this.broadcast(this.envelope('job.done', { jobId: job.id, nodeId, version }));
   }
 
@@ -175,9 +256,12 @@ export class MockProjectRoom {
     const node = this.state.nodes.find((n) => n.id === nodeId);
     if (!job || !node) return;
     this.jobs.delete(nodeId);
-    const refunded = node.cost ?? (typeof node.params.runCost === 'number' ? node.params.runCost : 0);
+    const held = this.holds.has(nodeId) ? this.closeHold(nodeId, false) : undefined;
+    const refunded = held ?? node.cost ?? (typeof node.params.runCost === 'number' ? node.params.runCost : 0);
     this.patchNode(nodeId, { status: 'failed', refunded });
     this.broadcast(this.envelope('job.failed', { jobId: job.id, nodeId, refunded, reason }));
+    // Queued jobs that needed this result cannot run: release their holds too.
+    for (const other of [...this.jobs.values()]) if (other.waitFor.includes(nodeId)) this.failJob(other.nodeId, 'Upstream failed');
   }
 
   dispose() {
