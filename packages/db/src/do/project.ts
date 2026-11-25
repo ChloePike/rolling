@@ -35,6 +35,10 @@ export const nodes = sqliteTable(
     status: text("status").notNull().default("idle"),
     createdBy: text("created_by").notNull(),
     updatedAt: integer("updated_at").notNull(),
+    /** Bypassed: passes its input through when types match (DO migration 3). */
+    bypass: integer("bypass", { mode: "boolean" }).notNull().default(false),
+    /** Collapsed on the canvas (view only). */
+    collapsed: integer("collapsed", { mode: "boolean" }).notNull().default(false),
   },
   (t) => [
     check(
@@ -84,12 +88,21 @@ export const timelines = sqliteTable("timelines", {
   revision: integer("revision").notNull(),
 });
 
-/** Undo/redo and audit. */
+/**
+ * Undo/redo and audit. `ops` are the normalized ops that were applied,
+ * `inverse` the ops that revert them. `kind` is patch | undo | redo; `target`
+ * is the revision an undo/redo row reverts; `undone` marks a patch/redo row
+ * that was undone or an undo row that was redone.
+ */
 export const patchLog = sqliteTable("patch_log", {
   revision: integer("revision").primaryKey(),
   actor: text("actor").notNull(),
   ops: text("ops").notNull(),
   createdAt: integer("created_at").notNull(),
+  kind: text("kind", { enum: ["patch", "undo", "redo"] }).notNull().default("patch"),
+  inverse: text("inverse").notNull().default("[]"),
+  target: integer("target"),
+  undone: integer("undone", { mode: "boolean" }).notNull().default(false),
 });
 
 export const projectSchema = { meta, canvases, nodes, edges, nodeVersions, groups, timelines, patchLog };
@@ -107,6 +120,26 @@ CREATE TABLE node_versions (id TEXT PRIMARY KEY, node_id TEXT NOT NULL, n INTEGE
 CREATE TABLE groups (id TEXT PRIMARY KEY, canvas_id TEXT NOT NULL, title TEXT NOT NULL, color TEXT);
 CREATE TABLE timelines (canvas_id TEXT PRIMARY KEY, edl TEXT NOT NULL, revision INTEGER NOT NULL);
 CREATE TABLE patch_log (revision INTEGER PRIMARY KEY, actor TEXT NOT NULL, ops TEXT NOT NULL, created_at INTEGER NOT NULL);
+`,
+  },
+  {
+    version: 2,
+    name: "undo_log",
+    sql: `
+ALTER TABLE patch_log ADD COLUMN kind TEXT NOT NULL DEFAULT 'patch' CHECK (kind IN ('patch','undo','redo'));
+ALTER TABLE patch_log ADD COLUMN inverse TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE patch_log ADD COLUMN target INTEGER;
+ALTER TABLE patch_log ADD COLUMN undone INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX patch_log_actor ON patch_log (actor, revision);
+CREATE INDEX node_versions_node ON node_versions (node_id, n);
+`,
+  },
+  {
+    version: 3,
+    name: "node_flags",
+    sql: `
+ALTER TABLE nodes ADD COLUMN bypass INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE nodes ADD COLUMN collapsed INTEGER NOT NULL DEFAULT 0;
 `,
   },
 ];

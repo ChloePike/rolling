@@ -355,6 +355,7 @@ export const ledgerLines = sqliteTable(
 
 export const assetKinds = ["image", "video", "audio", "text"] as const;
 export const assetSources = ["mine", "team", "builtin", "public", "generated"] as const;
+export const assetStatuses = ["uploading", "processing", "ready", "failed"] as const;
 
 export const assets = sqliteTable(
   "assets",
@@ -370,9 +371,18 @@ export const assets = sqliteTable(
     projectId: text("project_id"),
     createdBy: text("created_by"),
     createdAt: integer("created_at").notNull(),
+    /** Upload lifecycle (migration 0006): uploading -> processing -> ready | failed. */
+    status: text("status", { enum: assetStatuses }).notNull().default("ready"),
+    /** D-005: mature outputs are only signed for allowed users and never shown publicly. */
+    mature: integer("mature", { mode: "boolean" }).notNull().default(false),
+    size: integer("size"),
+    contentType: text("content_type"),
   },
   (t) => [
     index("assets_ws").on(t.workspaceId, t.kind, sql`${t.createdAt} DESC`),
+    index("assets_source").on(t.source, t.kind, sql`${t.createdAt} DESC`),
+    index("assets_project").on(t.projectId),
+    check("assets_status_check", sql`${t.status} IN ('uploading','processing','ready','failed')`),
     check("assets_kind_check", sql`${t.kind} IN ('image','video','audio','text')`),
     check(
       "assets_source_check",
@@ -418,15 +428,20 @@ export const publicItems = sqliteTable(
 export const assetSearchSql = (query: string, limit = 50) =>
   sql`SELECT id FROM asset_search WHERE asset_search MATCH ${query} ORDER BY rank LIMIT ${limit}`;
 
-export const characters = sqliteTable("characters", {
-  id: text("id").primaryKey(),
-  workspaceId: text("workspace_id").notNull(),
-  name: text("name").notNull(),
-  meta: text("meta"),
-  coverAssetId: text("cover_asset_id"),
-  versions: text("versions").notNull().default("[]"),
-  createdAt: integer("created_at").notNull(),
-});
+export const characters = sqliteTable(
+  "characters",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id").notNull(),
+    name: text("name").notNull(),
+    meta: text("meta"),
+    coverAssetId: text("cover_asset_id"),
+    versions: text("versions").notNull().default("[]"),
+    createdAt: integer("created_at").notNull(),
+    createdBy: text("created_by"),
+  },
+  (t) => [index("characters_ws").on(t.workspaceId, sql`${t.createdAt} DESC`)],
+);
 
 export const voices = sqliteTable(
   "voices",
@@ -440,7 +455,7 @@ export const voices = sqliteTable(
     providerRef: text("provider_ref"),
     sampleAssetId: text("sample_asset_id"),
   },
-  (t) => [check("voices_kind_check", sql`${t.kind} IN ('builtin','cloned')`)],
+  (t) => [index("voices_ws").on(t.workspaceId), check("voices_kind_check", sql`${t.kind} IN ('builtin','cloned')`)],
 );
 
 export const templates = sqliteTable("templates", {
@@ -460,7 +475,10 @@ export const shareLinks = sqliteTable("share_links", {
   snapshotKey: text("snapshot_key").notNull(),
   allowDownload: integer("allow_download", { mode: "boolean" }).notNull().default(false),
   revokedAt: integer("revoked_at"),
-});
+  workspaceId: text("workspace_id"),
+  createdBy: text("created_by"),
+  createdAt: integer("created_at").notNull().default(0),
+}, (t) => [index("share_links_project").on(t.projectId)]);
 
 export const agentThreads = sqliteTable("agent_threads", {
   id: text("id").primaryKey(),

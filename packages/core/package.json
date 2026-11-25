@@ -8,6 +8,8 @@
     "./timeline": "./src/timeline/index.ts",
     "./credits": "./src/credits/index.ts",
     "./billing": "./src/billing/index.ts",
+    "./project": "./src/project/index.ts",
+    "./media": "./src/media/index.ts",
     "./*": "./src/*.ts"
   },
   "scripts": {
