@@ -1,4 +1,5 @@
 import { Link } from '@tanstack/react-router';
+import { useToast } from '@rolling/ui';
 import { useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { useToolFeed } from '../api';
@@ -9,6 +10,7 @@ import layout from '../shared/ToolLayout.module.css';
 import type { SettingsGroupDef } from '../shared/SettingsGroup';
 import { ToolSwitch } from '../shared/Switch';
 import { ToolLayout, type ToolOverlay } from '../shared/ToolLayout';
+import { useFilePicker } from '../shared/useFilePicker';
 import { useCreationMode } from '@/lib/prefs';
 import { quoteCredits, segModels, useToolModels } from '../shared/useToolModels';
 import type { PlanId } from '@rolling/core/pricing/config';
@@ -45,6 +47,15 @@ export function QuickCreatePage({ initialOverlay, models: modelsOverride, plan: 
   const [lines, setLines] = useState(quickLines.map((l) => l.text));
   const [ambience, setAmbience] = useState(true);
   const [text, setText] = useState(quickPrompt);
+  const toast = useToast();
+  const [slots, setSlots] = useState(() => quickSlots.map((x) => ({ ...x, file: undefined as string | undefined })));
+  const [slotTarget, setSlotTarget] = useState<string | null>(null);
+  const [lineLang, setLineLang] = useState('en-US');
+  const slotPicker = useFilePicker('image/*', (file) => {
+    if (!slotTarget) return;
+    setSlots((all) => all.map((x) => (x.name === slotTarget ? { ...x, uploaded: true, shots: x.shots ?? '1, 2, 3', file: file.name } : x)));
+    toast.show({ message: t('tools.toast.slotUploaded', { name: slotTarget, file: file.name }) });
+  });
 
   const modelLabel = (m: string) => (m === 'Auto' ? t('tools.model.auto') : m);
   const span = (a: number, b: number) => t('tools.span', { from: formatClock(intl, a), to: formatClock(intl, b) });
@@ -119,18 +130,27 @@ export function QuickCreatePage({ initialOverlay, models: modelsOverride, plan: 
         </Link>
       </AsideCard>
       <AsideCard title={t('tools.quick.swap')} hint={t('tools.quick.swap.hint')} testId="swap">
-        {quickSlots.map((s) => (
-          <div key={s.name} className={styles.slot}>
+        {slotPicker.input}
+        {slots.map((s) => (
+          <div key={s.name} className={styles.slot} data-slot={s.name}>
             <div className={styles.slotThumb} style={{ background: s.tone }}>
               {!s.uploaded && <ToolIcon name="upload" size={16} />}
             </div>
             <div className={styles.slotText}>
               <span className={styles.slotName}>@{s.name}</span>
               <span className={styles.slotState} style={{ color: s.uploaded ? 'var(--c-success)' : 'var(--c-text-3)' }}>
-                {s.uploaded ? t('tools.quick.slot.uploaded', { shots: s.shots ?? '' }) : t('tools.quick.slot.empty')}
+                {s.file ? s.file : s.uploaded ? t('tools.quick.slot.uploaded', { shots: s.shots ?? '' }) : t('tools.quick.slot.empty')}
               </span>
             </div>
-            <button type="button" className={layout.chipBtn}>
+            <button
+              type="button"
+              className={layout.chipBtn}
+              aria-label={t(s.uploaded ? 'tools.quick.slot.replace.label' : 'tools.quick.slot.upload.label', { name: s.name })}
+              onClick={() => {
+                setSlotTarget(s.name);
+                slotPicker.open();
+              }}
+            >
               <FormattedMessage id={s.uploaded ? 'tools.quick.slot.replace' : 'tools.quick.slot.upload'} />
             </button>
           </div>
@@ -140,7 +160,15 @@ export function QuickCreatePage({ initialOverlay, models: modelsOverride, plan: 
         title={t('tools.quick.lines')}
         testId="lines"
         end={
-          <select aria-label={t('tools.quick.lines.language')} className={layout.select} defaultValue="en-US">
+          <select
+            aria-label={t('tools.quick.lines.language')}
+            className={layout.select}
+            value={lineLang}
+            onChange={(e) => {
+              setLineLang(e.target.value);
+              toast.show({ message: t('tools.toast.linesLanguage', { language: e.target.selectedOptions[0]?.text ?? e.target.value }) });
+            }}
+          >
             <option value="en-US">English (US)</option>
             <option value="zh">Chinese (Mandarin)</option>
             <option value="ja">Japanese</option>
@@ -178,7 +206,7 @@ export function QuickCreatePage({ initialOverlay, models: modelsOverride, plan: 
     <ToolLayout
       testId="tool-quick"
       title={t('tools.quick.title', { template: quickTemplate.name })}
-      count={t('tools.results', { n: feed.length })}
+      count={(f) => t('tools.results', { n: f.length })}
       feedMin={210}
       feed={feed}
       aside={aside}
@@ -202,6 +230,16 @@ export function QuickCreatePage({ initialOverlay, models: modelsOverride, plan: 
       model={p.model}
       onModel={(m) => set('model', m)}
       confirm={{ cost, label: go }}
+      run={{
+        aspect: '9/16',
+        video: true,
+        tags: ['9:16', dur, adv ? p.res : '720p'],
+        tiles: [],
+        steps: [t('tools.run.step.prepare'), modelLabel(adv ? p.model : 'Auto')],
+        generating: (pct) => t('tools.run.step.generating', { pct: pct / 100 }),
+        durationSec: quickTemplate.durationSec,
+      }}
+      actions={['redo', 'sliders', 'frame', 'down', 'star']}
       viewerAspect="9/16"
       initialOverlay={initialOverlay}
       isMember={isMember}

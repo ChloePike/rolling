@@ -1,3 +1,4 @@
+import { useToast } from '@rolling/ui';
 import { useState } from 'react';
 import { useIntl } from 'react-intl';
 import { useToolFeed } from '../api';
@@ -7,6 +8,7 @@ import { ToolIcon } from '../shared/icons';
 import layout from '../shared/ToolLayout.module.css';
 import type { SettingsGroupDef } from '../shared/SettingsGroup';
 import { ToolLayout, type ToolOverlay } from '../shared/ToolLayout';
+import { useFilePicker } from '../shared/useFilePicker';
 import { useCreationMode } from '@/lib/prefs';
 import { quoteCredits, segModels, useToolModels } from '../shared/useToolModels';
 import type { PlanId } from '@rolling/core/pricing/config';
@@ -87,6 +89,14 @@ export function CharacterPage({ initialOverlay, models: modelsOverride, plan: pl
   const cost = quoteCredits(models, adv ? p.model : 'Auto', { resolution: adv ? p.res : '2K', count: 2 }) ?? (adv ? RES_COST[p.res]! : 4);
   const go = t('tools.character.go');
 
+  const toast = useToast();
+  const [refs, setRefs] = useState<Record<'face' | 'outfit', string | null>>({ face: null, outfit: null });
+  const [refTarget, setRefTarget] = useState<'face' | 'outfit'>('face');
+  const refPicker = useFilePicker('image/*', (file) => {
+    setRefs((r) => ({ ...r, [refTarget]: file.name }));
+    toast.show({ message: t('tools.toast.refAdded', { name: file.name }) });
+  });
+
   const chipGroup = (key: 'hair' | 'body' | 'wear', list: string[]) => (
     <AsideCard testId={key}>
       <h2 className={layout.cardTitle}>{t(`tools.character.${key}`)}</h2>
@@ -104,14 +114,23 @@ export function CharacterPage({ initialOverlay, models: modelsOverride, plan: pl
     <>
       <AsideCard title={t('tools.character.reference')} hint={t('tools.character.reference.hint')} testId="reference">
         <div className={styles.refs}>
-          <button type="button" className={styles.refBtn}>
-            <ToolIcon name="upload" size={18} />
-            <span>{t('tools.character.reference.face')}</span>
-          </button>
-          <button type="button" className={styles.refBtn}>
-            <ToolIcon name="shirt" size={18} />
-            <span>{t('tools.character.reference.outfit')}</span>
-          </button>
+          {refPicker.input}
+          {(['face', 'outfit'] as const).map((k) => (
+            <button
+              key={k}
+              type="button"
+              className={styles.refBtn}
+              data-ref-slot={k}
+              aria-label={refs[k] ? t('tools.character.reference.replace', { file: refs[k]! }) : undefined}
+              onClick={() => {
+                setRefTarget(k);
+                refPicker.open();
+              }}
+            >
+              <ToolIcon name={refs[k] ? 'check' : k === 'face' ? 'upload' : 'shirt'} size={18} />
+              <span>{refs[k] ?? t(`tools.character.reference.${k}`)}</span>
+            </button>
+          ))}
         </div>
       </AsideCard>
       <AsideCard row gap={8} testId="measures">
@@ -154,7 +173,7 @@ export function CharacterPage({ initialOverlay, models: modelsOverride, plan: pl
     <ToolLayout
       testId="tool-character"
       title={t('tools.character.title')}
-      count={t('tools.sets', { n: feed.length })}
+      count={(f) => t('tools.sets', { n: f.length })}
       feedMin={400}
       feed={feed}
       aside={aside}
@@ -178,6 +197,15 @@ export function CharacterPage({ initialOverlay, models: modelsOverride, plan: pl
       model={p.model}
       onModel={(m) => set('model', m)}
       confirm={{ cost, label: go }}
+      run={{
+        aspect: '2/3',
+        video: false,
+        tags: summary.slice(0, 5),
+        tiles: [t('tools.character.tile.full'), t('tools.character.tile.face')],
+        steps: [t('tools.run.step.describe'), p.model === 'Auto' || !adv ? t('tools.model.auto') : p.model],
+        generating: (n) => t('tools.run.step.generating', { pct: n / 100 }),
+      }}
+      actions={['redo', 'sliders', 'save', 'down', 'star']}
       viewerAspect="2/3"
       initialOverlay={initialOverlay}
       isMember={isMember}

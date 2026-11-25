@@ -71,3 +71,12 @@
 }
 .secondary:hover{background:var(--c-surface-6)}
 @media (prefers-reduced-motion:reduce){.primary:active{transform:none}}
+.act[aria-pressed="true"]{color:var(--c-warning)}
+.failed{display:flex;align-items:center;gap:8px}
+.failedText{flex:1;font-size:12px;color:var(--c-danger)}
+.retry{
+  height:28px;padding:0 12px;border-radius:var(--r-pill);border:0;background:var(--c-text-1);color:var(--c-bg);font:inherit;font-size:12px;font-weight:700;cursor:pointer;
+  transition:background-color var(--m-fast) var(--m-ease-standard),transform var(--m-instant) var(--m-ease-standard);
+}
+.retry:hover{background:var(--c-primary-hover)}
+.retry:active{transform:scale(.97)}

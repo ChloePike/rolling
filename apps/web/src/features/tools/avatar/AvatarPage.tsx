@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useToast } from '@rolling/ui';
+import { useEffect, useRef, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { useToolFeed } from '../api';
 import { AsideCard } from '../shared/AsideCard';
@@ -7,6 +8,9 @@ import { ToolIcon } from '../shared/icons';
 import layout from '../shared/ToolLayout.module.css';
 import type { SettingsGroupDef } from '../shared/SettingsGroup';
 import { ToolLayout, type ToolOverlay } from '../shared/ToolLayout';
+import { PickPopover } from '../shared/PickPopover';
+import { useFilePicker } from '../shared/useFilePicker';
+import type { FeedItem, ScriptDraft } from '../types';
 import { useCreationMode } from '@/lib/prefs';
 import { quoteCredits, segModels, useToolModels } from '../shared/useToolModels';
 import type { PlanId } from '@rolling/core/pricing/config';
@@ -14,7 +18,7 @@ import type { ToolModel } from '../shared/models';
 import { resolutionOptions, useToolPlan } from '../shared/plan';
 import type { ComposerPill } from '../types';
 import styles from './Avatar.module.css';
-import { avatarClone, avatarLooks, avatarPersonas, avatarPrompt, avatarVoices } from './mocks';
+import { avatarClone, avatarLookOptions, avatarLooks, avatarPersonas, avatarPrompt, avatarVoices } from './mocks';
 
 const RES_COST: Record<string, number> = { '480p': 6, '720p': 10, '1080p': 18 };
 /** Lip-sync methods; "Wan 2.2 S2V" runs on the `lumina/wan2.7-i2v-spicy` candidate (D-002). */
@@ -45,10 +49,38 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
   const [persona, setPersona] = useState('Expert presenter');
   const [voice, setVoice] = useState('Clear female');
   const [text, setText] = useState(avatarPrompt);
-  const feed = rawFeed.map((f) =>
-    f.kind === 'draft' ? { ...f, title: t('tools.avatar.draft.title'), meta: t('tools.avatar.draft.meta', { persona, voice, sec: 9, of: 10 }) } : f,
-  );
-  const example = (avatarPersonas.find(([n]) => n === persona) ?? avatarPersonas[0]!)[1];
+  const feed = rawFeed;
+  const mapItem = (f: FeedItem): FeedItem =>
+    f.kind === 'draft' ? { ...f, title: t('tools.avatar.draft.title'), meta: t('tools.avatar.draft.meta', { persona, voice, sec: 9, of: 10 }) } : f;
+  const toast = useToast();
+  const [looks, setLooks] = useState<Record<string, string>>(() => Object.fromEntries(avatarLooks.map((x) => [x.id, x.value])));
+  const [lookTarget, setLookTarget] = useState<string | null>(null);
+  const lookPicker = useFilePicker('image/*', (file) => {
+    if (!lookTarget) return;
+    setLooks((cur) => ({ ...cur, [lookTarget]: t('tools.avatar.look.uploaded', { file: file.name }) }));
+    toast.show({ message: t('tools.toast.presetUploaded', { file: file.name }) });
+  });
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customText, setCustomText] = useState('');
+  const [customPersonas, setCustomPersonas] = useState<Array<[string, string]>>([]);
+  const personas = [...avatarPersonas, ...customPersonas];
+  const [voiceLang, setVoiceLang] = useState('en');
+  const [playing, setPlaying] = useState<string | null>(null);
+  const playTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(playTimer.current), []);
+  const preview = (name: string) => {
+    window.clearTimeout(playTimer.current);
+    if (playing === name) return setPlaying(null);
+    setPlaying(name);
+    playTimer.current = window.setTimeout(() => setPlaying(null), 2500);
+  };
+  const rewrite = (d: ScriptDraft): ScriptDraft => {
+    const i = personas.findIndex(([n]) => n === persona);
+    const [nextName, nextLine] = personas[(i + 1) % personas.length]!;
+    setPersona(nextName);
+    return { ...d, lines: d.lines.map((l, k) => (k === 1 ? { ...l, text: nextLine } : l)) };
+  };
+  const example = (personas.find(([n]) => n === persona) ?? avatarPersonas[0]!)[1];
   const fixed = (v: number, d: number) => intl.formatNumber(v, { minimumFractionDigits: d, maximumFractionDigits: d });
 
   const advGroups: SettingsGroupDef[] = [
@@ -88,28 +120,68 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
   const aside = (
     <>
       <AsideCard title={t('tools.avatar.look')} testId="look">
+        {lookPicker.input}
         {avatarLooks.map((x) => (
-          <button key={x.id} type="button" className={controls.pickRow}>
-            <span className={controls.pickThumb} style={{ background: x.tone }} />
-            <span className={controls.pickText}>
-              <span className={controls.pickLabel}>{t(`tools.avatar.look.${x.id}`)}</span>
-              <span className={controls.pickValue}>{x.value}</span>
-            </span>
-            <span className={controls.chev}>›</span>
-          </button>
+          <PickPopover
+            key={x.id}
+            label={t(`tools.avatar.look.${x.id}`)}
+            value={looks[x.id]!}
+            options={avatarLookOptions[x.id].map((v) => ({ value: v, label: v }))}
+            onChange={(v) => {
+              setLooks((cur) => ({ ...cur, [x.id]: v }));
+              toast.show({ message: t('tools.toast.presetSet', { name: t(`tools.avatar.look.${x.id}`), value: v }) });
+            }}
+            extra={{ label: t('tools.remix.preset.upload'), onSelect: () => (setLookTarget(x.id), lookPicker.open()) }}
+            trigger={(tp) => (
+              <button {...tp} type="button" className={controls.pickRow} style={{ flex: 1 }} data-look={x.id}>
+                <span className={controls.pickThumb} style={{ background: x.tone }} />
+                <span className={controls.pickText}>
+                  <span className={controls.pickLabel}>{t(`tools.avatar.look.${x.id}`)}</span>
+                  <span className={controls.pickValue}>{looks[x.id]}</span>
+                </span>
+                <span className={controls.chev}>›</span>
+              </button>
+            )}
+          />
         ))}
       </AsideCard>
       <AsideCard title={t('tools.avatar.persona')} hint={t('tools.avatar.persona.hint')} testId="persona">
         <div className={controls.chips}>
-          {avatarPersonas.map(([name, eg]) => (
+          {personas.map(([name, eg]) => (
             <button key={name} type="button" className={controls.chip} aria-pressed={persona === name} title={eg} onClick={() => setPersona(name)}>
               {name}
             </button>
           ))}
-          <button type="button" className={styles.custom}>
+          <button type="button" className={styles.custom} aria-expanded={customOpen} onClick={() => setCustomOpen((v) => !v)}>
             <FormattedMessage id="tools.avatar.persona.custom" />
           </button>
         </div>
+        {customOpen && (
+          <form
+            className={styles.customForm}
+            onSubmit={(e) => {
+              e.preventDefault();
+              const name = customText.trim();
+              if (!name) return;
+              setCustomPersonas((c) => [...c, [name, t('tools.avatar.persona.customExample', { name })]]);
+              setPersona(name);
+              setCustomText('');
+              setCustomOpen(false);
+            }}
+          >
+            <input
+              autoFocus
+              className={styles.customInput}
+              aria-label={t('tools.avatar.persona.customLabel')}
+              placeholder={t('tools.avatar.persona.customPlaceholder')}
+              value={customText}
+              onChange={(e) => setCustomText(e.target.value)}
+            />
+            <button type="submit" className={styles.customAdd} disabled={!customText.trim()}>
+              <FormattedMessage id="tools.avatar.persona.add" />
+            </button>
+          </form>
+        )}
         <div className={styles.example}>
           <FormattedMessage id="tools.avatar.persona.example" values={{ text: example }} />
         </div>
@@ -118,7 +190,7 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
         title={t('tools.avatar.voice')}
         testId="voice"
         end={
-          <select aria-label={t('tools.avatar.voice.language')} className={layout.select} defaultValue="en">
+          <select aria-label={t('tools.avatar.voice.language')} className={layout.select} value={voiceLang} onChange={(e) => setVoiceLang(e.target.value)}>
             <option value="en">English</option>
             <option value="yue">Cantonese</option>
             <option value="en-2">English</option>
@@ -127,8 +199,8 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
       >
         {avatarVoices.map(([name, desc]) => (
           <div key={name} className={voice === name ? `${styles.voice} ${styles.voiceOn}` : styles.voice}>
-            <button type="button" className={styles.preview} aria-label={t('tools.avatar.voice.preview', { name })}>
-              <ToolIcon name="play" size={11} filled color="var(--c-text-1)" />
+            <button type="button" className={styles.preview} aria-label={t('tools.avatar.voice.preview', { name })} aria-pressed={playing === name} onClick={() => preview(name)}>
+              <ToolIcon name={playing === name ? 'volume' : 'play'} size={11} filled={playing !== name} color="var(--c-text-1)" />
             </button>
             <button type="button" className={styles.voicePick} aria-pressed={voice === name} onClick={() => setVoice(name)}>
               <span className={styles.voiceName}>{name}</span>
@@ -163,7 +235,9 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
     <ToolLayout
       testId="tool-avatar"
       title={t('tools.avatar.title')}
-      count={t('tools.results', { n: feed.filter((f) => f.kind === 'media').length })}
+      count={(f) => t('tools.results', { n: f.filter((x) => x.kind === 'media').length })}
+      mapItem={mapItem}
+      onRewriteDraft={rewrite}
       feedMin={210}
       feed={feed}
       aside={aside}
@@ -187,6 +261,16 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
       model={p.model}
       onModel={(m) => set('model', m)}
       confirm={{ cost, label: go }}
+      run={{
+        aspect: '9/16',
+        video: true,
+        tags: ['9:16', t('tools.seconds', { n: 10 }), voice],
+        tiles: [],
+        steps: [t('tools.run.step.script'), t('tools.run.step.tts')],
+        generating: (n) => t('tools.run.step.lipSync', { pct: n / 100 }),
+        durationSec: 10,
+      }}
+      actions={['redo', 'sliders', 'frame', 'down', 'star']}
       viewerAspect="9/16"
       initialOverlay={initialOverlay}
       isMember={isMember}

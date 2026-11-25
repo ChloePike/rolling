@@ -59,9 +59,23 @@ export async function setMode(page: Page, mode: 'simple' | 'advanced') {
   }, mode);
 }
 
+/** Sets the "Confirm before running" preference (lib/prefs): 0 = always confirm. */
+export async function setThreshold(page: Page, credits: number) {
+  await page.addInitScript((n) => {
+    try {
+      const raw = window.localStorage.getItem('rolling.prefs');
+      window.localStorage.setItem('rolling.prefs', JSON.stringify({ ...(raw ? JSON.parse(raw) : {}), confirmThreshold: n }));
+    } catch {
+      /* ignore */
+    }
+  }, credits);
+}
+
 export async function openApp(page: Page, s: ToolState) {
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
   await setMode(page, s.mode);
+  // The confirm state is drawn for a run at or above the threshold; the mock quote is 10 credits.
+  if (s.id.endsWith('-confirm')) await setThreshold(page, 0);
   // The preview server is shared by parallel suites; retry a failed navigation once.
   await page.goto(s.path).catch(() => page.goto(s.path));
   await page.getByTestId(`tool-${s.tool}`).waitFor();

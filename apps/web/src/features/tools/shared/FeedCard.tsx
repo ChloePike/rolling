@@ -14,30 +14,57 @@ const ACTION_LABEL: Partial<Record<ToolIconName, string>> = {
   star: 'tools.feed.action.favorite',
 };
 
+export type DraftAction = 'confirm' | 'revise' | 'rewrite';
+
 interface Props {
   item: FeedItem;
   index: number;
+  favorite?: boolean;
   onOpen: (item: MediaRun) => void;
-  onConfirmDraft: (item: ScriptDraft) => void;
+  onAction?: (item: MediaRun, action: ToolIconName) => void;
+  onCancel?: (item: MediaRun) => void;
+  onRetry?: (item: MediaRun) => void;
+  onDraft: (item: ScriptDraft, action: DraftAction) => void;
 }
 
-export function FeedCard({ item, index, onOpen, onConfirmDraft }: Props) {
+export function FeedCard({ item, index, favorite, onOpen, onAction, onCancel, onRetry, onDraft }: Props) {
   const style = { '--i': index } as CSSProperties;
   if (item.kind === 'draft') {
     return (
       <article className={`${styles.card} ${styles.full}`} style={style} data-feed={item.id}>
-        <Draft item={item} onConfirm={() => onConfirmDraft(item)} />
+        <Draft item={item} onAction={(a) => onDraft(item, a)} />
       </article>
     );
   }
   return (
-    <article className={styles.card} style={style} data-feed={item.id}>
-      <Media item={item} onOpen={() => onOpen(item)} />
+    <article className={styles.card} style={style} data-feed={item.id} data-state={item.failed ? 'failed' : item.progress !== undefined ? 'running' : 'done'}>
+      <Media
+        item={item}
+        favorite={!!favorite}
+        onOpen={() => onOpen(item)}
+        onAction={(a) => onAction?.(item, a)}
+        onCancel={() => onCancel?.(item)}
+        onRetry={() => onRetry?.(item)}
+      />
     </article>
   );
 }
 
-function Media({ item, onOpen }: { item: MediaRun; onOpen: () => void }) {
+function Media({
+  item,
+  favorite,
+  onOpen,
+  onAction,
+  onCancel,
+  onRetry,
+}: {
+  item: MediaRun;
+  favorite: boolean;
+  onOpen: () => void;
+  onAction: (a: ToolIconName) => void;
+  onCancel: () => void;
+  onRetry: () => void;
+}) {
   const intl = useIntl();
   const running = item.progress !== undefined;
   const pct = running ? intl.formatNumber(item.progress! / 100, { style: 'percent' }) : '';
@@ -93,18 +120,37 @@ function Media({ item, onOpen }: { item: MediaRun; onOpen: () => void }) {
               </span>
             ))}
             <span className={styles.spacer} />
-            <button type="button" className={styles.cancel}>
+            <button type="button" className={styles.cancel} onClick={onCancel}>
               <FormattedMessage id="tools.feed.cancel" />
             </button>
           </div>
         )}
-        {!running && (
+        {item.failed && (
+          <div className={styles.failed} role="note">
+            <span className={styles.failedText}>
+              <FormattedMessage id="tools.feed.failed" values={{ n: item.failed.refunded }} />
+            </span>
+            <button type="button" className={styles.retry} onClick={onRetry}>
+              <FormattedMessage id="tools.feed.retry" />
+            </button>
+          </div>
+        )}
+        {!running && !item.failed && (
           <div className={styles.done}>
             <span className={styles.time}>{item.finishedAgoMin !== undefined ? formatAgo(intl, item.finishedAgoMin) : ''}</span>
             {item.actions.map((a) => {
               const label = intl.formatMessage({ id: ACTION_LABEL[a] ?? 'tools.feed.action.regenerate' });
               return (
-                <button key={a} type="button" className={styles.act} aria-label={label} title={label}>
+                <button
+                  key={a}
+                  type="button"
+                  className={styles.act}
+                  aria-label={label}
+                  title={label}
+                  aria-pressed={a === 'star' ? favorite : undefined}
+                  data-action={a}
+                  onClick={() => onAction(a)}
+                >
                   <ToolIcon name={a} size={15} />
                 </button>
               );
@@ -116,7 +162,7 @@ function Media({ item, onOpen }: { item: MediaRun; onOpen: () => void }) {
   );
 }
 
-function Draft({ item, onConfirm }: { item: ScriptDraft; onConfirm: () => void }) {
+function Draft({ item, onAction }: { item: ScriptDraft; onAction: (a: DraftAction) => void }) {
   return (
     <div className={styles.draft}>
       <div className={styles.draftHead}>
@@ -149,13 +195,13 @@ function Draft({ item, onConfirm }: { item: ScriptDraft; onConfirm: () => void }
         ))}
       </div>
       <div className={styles.btns}>
-        <button type="button" className={styles.primary} onClick={onConfirm}>
+        <button type="button" className={styles.primary} onClick={() => onAction('confirm')}>
           <FormattedMessage id="tools.draft.confirm" />
         </button>
-        <button type="button" className={styles.secondary}>
+        <button type="button" className={styles.secondary} onClick={() => onAction('revise')}>
           <FormattedMessage id="tools.draft.revise" />
         </button>
-        <button type="button" className={styles.secondary}>
+        <button type="button" className={styles.secondary} onClick={() => onAction('rewrite')}>
           <FormattedMessage id="tools.draft.rewrite" />
         </button>
       </div>

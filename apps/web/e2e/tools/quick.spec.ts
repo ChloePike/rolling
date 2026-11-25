@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { asPlan } from '../support/session';
-import { animationsOf, EXIT, MODAL, MODEL_PANEL, registerFidelity, setMode, STANDARD } from './support/toolSpec';
+import { animationsOf, EXIT, MODAL, MODEL_PANEL, registerFidelity, setMode, setThreshold, STANDARD } from './support/toolSpec';
 
 test.describe('Quick Create /create/quick', () => {
   registerFidelity('quick');
@@ -71,6 +71,7 @@ test.describe('Quick Create /create/quick', () => {
 
   test('send opens the run confirm (standard enter, shorter exit-curve exit) with the quote; a result opens the viewer', async ({ page }) => {
     await setMode(page, 'simple');
+    await setThreshold(page, 0);
     await page.goto('/create/quick');
     await page.getByTestId('tool-composer').getByRole('button', { name: 'Generate video', exact: true }).click();
     const confirm = page.locator(MODAL);
@@ -106,6 +107,7 @@ test.describe('Quick Create /create/quick', () => {
   test('reduced motion: popover, panel and cards fade only (no movement)', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await setMode(page, 'advanced');
+    await setThreshold(page, 0);
     await page.goto('/create/quick');
     for (const t of (await animationsOf(page, 'main aside [data-group="model"]'))[0]?.transforms ?? []) expect(t).toMatch(/^(none|translateY\(0px\))$/);
     for (const t of (await animationsOf(page, 'main article'))[0]?.transforms ?? []) expect(t).toMatch(/^(none|translateY\(0px\))$/);

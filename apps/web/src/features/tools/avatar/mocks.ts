@@ -6,6 +6,12 @@ export const avatarLooks = [
   { id: 'scene', value: 'Office · Uploaded', tone: 'var(--c-tone-indigo)' },
 ] as const;
 
+/** Choices behind the look rows. */
+export const avatarLookOptions: Record<(typeof avatarLooks)[number]['id'], string[]> = {
+  character: ['Product advisor', 'Friendly host', 'Lab coat expert', 'Casual creator'],
+  scene: ['Office · Uploaded', 'Bright studio', 'Home kitchen', 'Bookshelf'],
+};
+
 export const avatarPersonas: Array<[string, string]> = [
   ['Expert presenter', 'First, how it’s divided. Then, how to use it.'],
   ['Friendly lifestyle creator', 'This is where all my everyday stuff goes.'],

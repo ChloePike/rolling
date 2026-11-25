@@ -20,6 +20,7 @@ import {
   RunConfirm,
   type ImageParams,
   type ModelOption,
+  type ResultActionId,
   type VideoParams,
 } from '@/features/overlays';
 import type { ParamKind, PickerKind } from '../types';
@@ -128,9 +129,11 @@ interface ConfirmProps {
   /** Image runs (Characters) quote the pair of views. */
   views?: boolean;
   onClose: () => void;
+  /** Starts the run (the host closes the dialog). */
+  onConfirm: () => void;
 }
 
-export function ToolRunConfirm({ open, cost, label, views, onClose }: ConfirmProps) {
+export function ToolRunConfirm({ open, cost, label, views, onClose, onConfirm }: ConfirmProps) {
   const intl = useIntl();
   return (
     <RunConfirm
@@ -151,7 +154,7 @@ export function ToolRunConfirm({ open, cost, label, views, onClose }: ConfirmPro
       eta="~2 min"
       subtitle="Auto → Seedance 2.5"
       actionLabel={label}
-      onConfirm={onClose}
+      onConfirm={onConfirm}
     />
   );
 }
@@ -159,10 +162,13 @@ export function ToolRunConfirm({ open, cost, label, views, onClose }: ConfirmPro
 interface ViewerProps {
   open: boolean;
   aspect: string;
+  /** Prompt of the opened result; the mock text otherwise. */
+  prompt?: string;
   onClose: () => void;
+  onAction: (id: ResultActionId) => void;
 }
 
-export function ToolResultViewer({ open, aspect, onClose }: ViewerProps) {
+export function ToolResultViewer({ open, aspect, prompt, onClose, onAction }: ViewerProps) {
   const intl = useIntl();
   const [version, setVersion] = useState('v3');
   const t = (id: string) => intl.formatMessage({ id });
@@ -180,7 +186,7 @@ export function ToolResultViewer({ open, aspect, onClose }: ViewerProps) {
       currentVersionId="v3"
       durationSec={15}
       positionSec={4}
-      prompt="In shot 2, change the white daylight outside the window to warm golden-hour light. Keep the action and camera position."
+      prompt={prompt ?? 'In shot 2, change the white daylight outside the window to warm golden-hour light. Keep the action and camera position.'}
       params={[
         { label: t('tools.viewer.model'), value: 'Seedance 2.5' },
         { label: t('tools.viewer.mode'), value: t('tools.viewer.fromTemplate') },
@@ -196,7 +202,7 @@ export function ToolResultViewer({ open, aspect, onClose }: ViewerProps) {
         { id: 'ast_room', name: 'Kitchen set', tone: 'var(--c-tone-teal)' },
       ]}
       actions={mockResultActions}
-      onAction={() => onClose()}
+      onAction={(id) => onAction(id)}
     />
   );
 }

@@ -1,3 +1,4 @@
+import { useToast } from '@rolling/ui';
 import { useState } from 'react';
 import { useIntl } from 'react-intl';
 import { useToolFeed } from '../api';
@@ -6,13 +7,15 @@ import controls from '../shared/controls.module.css';
 import { ToolIcon } from '../shared/icons';
 import type { SettingsGroupDef } from '../shared/SettingsGroup';
 import { ToolLayout, type ToolOverlay } from '../shared/ToolLayout';
+import { PickPopover } from '../shared/PickPopover';
+import { useFilePicker } from '../shared/useFilePicker';
 import { useCreationMode } from '@/lib/prefs';
 import { quoteCredits, segModels, useToolModels } from '../shared/useToolModels';
 import type { PlanId } from '@rolling/core/pricing/config';
 import type { ToolModel } from '../shared/models';
 import { resolutionOptions, useToolPlan } from '../shared/plan';
 import type { ComposerPill } from '../types';
-import { remixParsed, remixPresets, remixPrompt, remixSlotTones } from './mocks';
+import { remixParsed, remixPresetOptions, remixPresets, remixPrompt, remixSlotTones } from './mocks';
 import styles from './Remix.module.css';
 
 const RES_COST: Record<string, number> = { '480p': 6, '720p': 10, '1080p': 18 };
@@ -41,14 +44,28 @@ export function RemixPage({ initialOverlay, models: modelsOverride, plan: planPr
   const set = <K extends keyof typeof p>(k: K, v: (typeof p)[K]) => setP((cur) => ({ ...cur, [k]: v }));
   const [people, setPeople] = useState(2);
   const [text, setText] = useState(remixPrompt);
+  const toast = useToast();
+  const [presets, setPresets] = useState<Record<string, string>>(() => Object.fromEntries(remixPresets.map((x) => [x.id, x.value])));
+  const [uploads, setUploads] = useState<Record<number, string>>({});
+  const [target, setTarget] = useState<{ kind: 'slot'; i: number } | { kind: 'preset'; id: string } | null>(null);
+  const picker = useFilePicker('image/*,video/*', (file) => {
+    if (!target) return;
+    if (target.kind === 'slot') {
+      setUploads((u) => ({ ...u, [target.i]: file.name }));
+      toast.show({ message: t('tools.toast.slotUploaded', { name: charName(target.i), file: file.name }) });
+    } else {
+      setPresets((cur) => ({ ...cur, [target.id]: file.name }));
+      toast.show({ message: t('tools.toast.presetUploaded', { file: file.name }) });
+    }
+  });
 
   const charName = (i: number) => t('tools.remix.character', { n: i + 1 });
   const slots = Array.from({ length: people }, (_, i) => ({
     name: charName(i),
     tone: i < 2 ? remixSlotTones[i]! : 'var(--c-surface-3)',
     placeholder: i < 2 ? '' : t('tools.remix.slot.placeholder'),
-    state: i === 0 ? t('tools.remix.slot.template') : i === 1 ? t('tools.remix.slot.uploaded') : t('tools.remix.slot.notSet'),
-    set: i < 2,
+    state: uploads[i] ?? (i === 0 ? t('tools.remix.slot.template') : i === 1 ? t('tools.remix.slot.uploaded') : t('tools.remix.slot.notSet')),
+    set: i < 2 || uploads[i] !== undefined,
   }));
   const fields: Array<[string, string]> = [
     [t('tools.remix.parsed.camera'), remixParsed.camera],
@@ -96,17 +113,31 @@ export function RemixPage({ initialOverlay, models: modelsOverride, plan: planPr
   const aside = (
     <>
       <AsideCard title={t('tools.remix.presets')} testId="presets">
+        {picker.input}
         {remixPresets.map((x) => (
-          <button key={x.id} type="button" className={controls.pickRow}>
-            <span className={controls.pickThumb} style={{ background: x.tone }}>
-              <ToolIcon name={x.icon} size={18} color="var(--c-text-2)" />
-            </span>
-            <span className={controls.pickText}>
-              <span className={controls.pickLabel}>{t(`tools.remix.preset.${x.id}`)}</span>
-              <span className={controls.pickValue}>{x.value}</span>
-            </span>
-            <span className={controls.chev}>›</span>
-          </button>
+          <PickPopover
+            key={x.id}
+            label={t(`tools.remix.preset.${x.id}`)}
+            value={presets[x.id]!}
+            options={remixPresetOptions[x.id].map((v) => ({ value: v, label: v }))}
+            onChange={(v) => {
+              setPresets((cur) => ({ ...cur, [x.id]: v }));
+              toast.show({ message: t('tools.toast.presetSet', { name: t(`tools.remix.preset.${x.id}`), value: v }) });
+            }}
+            extra={x.id === 'action' ? undefined : { label: t('tools.remix.preset.upload'), onSelect: () => (setTarget({ kind: 'preset', id: x.id }), picker.open()) }}
+            trigger={(tp) => (
+              <button {...tp} type="button" className={controls.pickRow} style={{ flex: 1 }} data-preset={x.id}>
+                <span className={controls.pickThumb} style={{ background: x.tone }}>
+                  <ToolIcon name={x.icon} size={18} color="var(--c-text-2)" />
+                </span>
+                <span className={controls.pickText}>
+                  <span className={controls.pickLabel}>{t(`tools.remix.preset.${x.id}`)}</span>
+                  <span className={controls.pickValue}>{presets[x.id]}</span>
+                </span>
+                <span className={controls.chev}>›</span>
+              </button>
+            )}
+          />
         ))}
       </AsideCard>
       <AsideCard title={t('tools.remix.characterTitle')} testId="characters">
@@ -118,8 +149,18 @@ export function RemixPage({ initialOverlay, models: modelsOverride, plan: planPr
           ))}
         </div>
         <div className={styles.slots}>
-          {slots.map((s) => (
-            <button key={s.name} type="button" className={styles.slot}>
+          {slots.map((s, i) => (
+            <button
+              key={s.name}
+              type="button"
+              className={styles.slot}
+              aria-label={t('tools.remix.slot.upload.label', { name: s.name })}
+              data-slot={i}
+              onClick={() => {
+                setTarget({ kind: 'slot', i });
+                picker.open();
+              }}
+            >
               <span className={styles.slotThumb} style={{ background: s.tone }}>
                 {s.placeholder}
               </span>
@@ -146,7 +187,7 @@ export function RemixPage({ initialOverlay, models: modelsOverride, plan: planPr
     <ToolLayout
       testId="tool-remix"
       title={t('tools.remix.title')}
-      count={t('tools.results', { n: feed.length })}
+      count={(f) => t('tools.results', { n: f.length })}
       feedMin={340}
       feed={feed}
       aside={aside}
@@ -170,6 +211,16 @@ export function RemixPage({ initialOverlay, models: modelsOverride, plan: planPr
       model={p.model}
       onModel={(m) => set('model', m)}
       confirm={{ cost, label: go }}
+      run={{
+        aspect: '16/9',
+        video: true,
+        tags: ['16:9', t('tools.seconds', { n: 10 }), adv ? p.res : '720p', t('tools.remix.people', { n: people })],
+        tiles: [],
+        steps: [t('tools.run.step.tidy'), adv && p.model !== 'Auto' ? p.model : t('tools.model.auto')],
+        generating: (n) => t('tools.run.step.generating', { pct: n / 100 }),
+        durationSec: 10,
+      }}
+      actions={['redo', 'sliders', 'frame', 'down', 'star']}
       viewerAspect="16/9"
       initialOverlay={initialOverlay}
       isMember={isMember}

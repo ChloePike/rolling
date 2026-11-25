@@ -30,6 +30,10 @@ export interface MediaRun {
   /** Minutes since the run finished. */
   finishedAgoMin?: number;
   actions: ToolIconName[];
+  /** Quoted credits held for a run started in this session. */
+  cost?: number;
+  /** The run failed; its hold was released (handoff 4: failures refund automatically). */
+  failed?: { refunded: number };
 }
 
 export interface DraftLine {

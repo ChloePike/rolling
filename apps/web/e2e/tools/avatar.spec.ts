@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { registerFidelity, setMode } from './support/toolSpec';
+import { registerFidelity, setMode, setThreshold } from './support/toolSpec';
 
 test.describe('Avatar /create/avatar', () => {
   registerFidelity('avatar');
@@ -18,6 +18,7 @@ test.describe('Avatar /create/avatar', () => {
 
   test('persona and voice choices update the example and the script draft', async ({ page }) => {
     await setMode(page, 'simple');
+    await setThreshold(page, 0);
     await page.goto('/create/avatar');
     await page.getByRole('button', { name: 'Comedian' }).click();
     await expect(page.locator('main aside')).toContainText('Example: “However messy the desk, small things need a home.”');

@@ -21,6 +21,10 @@ export interface ComposerProps {
   onSend: () => void;
   /** Refine goes through the agent (members only, D-007). */
   onRefine?: () => void;
+  /** `+`: add a reference from a file (the `@` picker covers library assets). */
+  onAdd?: () => void;
+  /** Refine is running (the agent rewrites the prompt). */
+  refining?: boolean;
   /** The pill row; anchored popovers ignore pointer down here so pills can toggle them. */
   pillsRef?: RefObject<HTMLDivElement | null>;
 }
@@ -48,7 +52,7 @@ export function Composer(p: ComposerProps) {
         )}
         <div className={styles.input}>
           {p.refs.map((r) => (
-            <div key={r.badge} className={styles.ref} style={{ background: r.tone }}>
+            <div key={r.badge} className={styles.ref} style={{ background: r.tone }} data-ref={r.badge}>
               <span className={styles.refBadge}>{r.badge}</span>
             </div>
           ))}
@@ -66,7 +70,7 @@ export function Composer(p: ComposerProps) {
         </div>
         <div className={styles.bar}>
           <div className={styles.left} ref={p.pillsRef}>
-            <button type="button" className={styles.add} aria-label={intl.formatMessage({ id: 'tools.composer.add' })}>
+            <button type="button" className={styles.add} aria-label={intl.formatMessage({ id: 'tools.composer.add' })} onClick={p.onAdd}>
               <ToolIcon name="plus" size={15} strokeWidth={2.2} />
             </button>
             {p.pills.map((pill, i) => (
@@ -92,8 +96,10 @@ export function Composer(p: ComposerProps) {
               aria-label={intl.formatMessage({ id: 'tools.composer.refine.label' })}
               title={intl.formatMessage({ id: 'tools.composer.refine.label' })}
               onClick={p.onRefine}
+              disabled={p.refining}
+              aria-busy={p.refining || undefined}
             >
-              <FormattedMessage id="tools.composer.refine" />
+              <FormattedMessage id={p.refining ? 'tools.composer.refining' : 'tools.composer.refine'} />
             </button>
             <span className={styles.cost}>
               <FormattedMessage id="tools.composer.cost" values={{ n: p.cost, b: (c) => <b>{c}</b> }} />

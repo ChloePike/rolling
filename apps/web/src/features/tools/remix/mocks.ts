@@ -7,6 +7,13 @@ export const remixPresets = [
   { id: 'scene', icon: 'scene', value: 'Daylight studio', tone: 'var(--c-tone-indigo)' },
 ] as const;
 
+/** Choices behind each preset row (mock of the template's preset catalog). */
+export const remixPresetOptions: Record<(typeof remixPresets)[number]['id'], string[]> = {
+  action: ['Table demo', 'Walk and talk', 'Unboxing', 'Product close-up'],
+  outfit: ['Smart casual', 'Streetwear', 'Business', 'Outdoor'],
+  scene: ['Daylight studio', 'Kitchen', 'Office', 'Outdoor café'],
+};
+
 export const remixSlotTones = ['var(--c-tone-plum)', 'var(--c-tone-teal)', 'var(--c-tone-indigo)', 'var(--c-tone-sand)', 'var(--c-tone-neutral)'];
 
 export const remixParsed = {
