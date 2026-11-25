@@ -17,7 +17,7 @@ interface MockUpload {
   size: number;
   partCount: number;
   parts: Map<number, { etag: string; size: number }>;
-  status: 'uploading' | 'processing';
+  status: 'uploading' | 'complete';
   expiresAt: number;
 }
 
@@ -88,11 +88,11 @@ export function createMockHttp(opts: MockOptions): Http & { uploads: Map<string,
     if (action === 'part-urls' && method === 'POST') {
       const exp = Date.now() + 3600_000;
       const nums = Array.isArray(body.partNumbers) ? (body.partNumbers as number[]) : [];
-      return json(200, { urls: nums.map((n) => ({ n, url: `https://mock-r2.invalid/${up.assetId}/${n}?exp=${exp}`, expiresAt: new Date(exp).toISOString() })) });
+      return json(200, { assetId: up.assetId, direct: true, urls: nums.map((n) => ({ n, url: `https://mock-r2.invalid/${up.assetId}/${n}?exp=${exp}`, expiresAt: new Date(exp).toISOString() })) });
     }
     if (action === 'complete' && method === 'POST') {
       if (up.parts.size !== up.partCount) return json(400, { error: { code: 'VALIDATION_FAILED', message: 'Every part must be uploaded once' } });
-      up.status = 'processing';
+      up.status = 'complete';
       return json(200, {
         asset: {
           id: up.assetId,

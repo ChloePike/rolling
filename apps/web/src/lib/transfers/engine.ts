@@ -818,7 +818,7 @@ export class TransferEngine {
     try {
       const r = await this.apiJson<StatusResponse>('GET', `/api/assets/uploads/${encodeURIComponent(s.assetId)}`);
       if (r.status && r.status !== 'uploading') {
-        if (r.asset || r.status === 'processing' || r.status === 'ready') {
+        if (r.asset || r.status === 'complete' || r.status === 'processing' || r.status === 'ready') {
           // Completed already (e.g. the tab closed during complete).
           s.etags = Object.fromEntries(Array.from({ length: s.partCount }, (_, i) => [i + 1, 'done']));
           return true;
@@ -871,6 +871,11 @@ export class TransferEngine {
               rt.proxied = true;
               return;
             }
+            if (err instanceof HttpError && err.status === 409) {
+              // The upload closed under us (completed elsewhere, aborted, expired): re-sync before going on.
+              rt.needsSync = true;
+              throw new HttpError(503, 'RESYNC', 'Upload changed on the server');
+            }
             throw err;
           } finally {
             rt.urlFetch = undefined;
@@ -899,9 +904,12 @@ export class TransferEngine {
       const url = await this.ensureUrl(rt, n);
       if (slot.abort.signal.aborted) throw new AbortError();
       armStall();
-      const res = await this.apiHttp.put(url ?? `${this.config.apiBase}/api/assets/uploads/${encodeURIComponent(s.assetId)}/parts/${n}`, blob, {
+      // Presigned R2 URLs are absolute and take no cookies; the development fallback hands out Worker paths.
+      const direct = !!url && /^https?:\/\//i.test(url) && !url.startsWith(`${this.config.apiBase}/api/`);
+      const target = url ? (direct ? url : `${url.startsWith('/') ? this.config.apiBase : ''}${url}`) : `${this.config.apiBase}/api/assets/uploads/${encodeURIComponent(s.assetId)}/parts/${n}`;
+      const res = await this.apiHttp.put(target, blob, {
         signal: slot.abort.signal,
-        credentials: url ? 'omit' : 'include',
+        credentials: direct ? 'omit' : 'include',
         onProgress: (loaded) => {
           slot.loaded = loaded;
           armStall();
@@ -912,7 +920,7 @@ export class TransferEngine {
       if (rt.inFlight.get(n) !== slot) return; // aborted by pause/cancel
       if (res.status >= 200 && res.status < 300) {
         let etag = res.header('etag');
-        if (!url) {
+        if (!etag || !direct) {
           try {
             const j = JSON.parse(res.text) as { etag?: string };
             etag = j.etag ?? etag;
@@ -931,7 +939,7 @@ export class TransferEngine {
         this.pump();
         return;
       }
-      if (url && (res.status === 403 || res.status === 401)) {
+      if (direct && (res.status === 403 || res.status === 401)) {
         // Presigned URL expired or was rejected: drop it and fetch a fresh batch.
         rt.urls.delete(n);
       }

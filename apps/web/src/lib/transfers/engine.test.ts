@@ -21,6 +21,9 @@ class FakeServer implements Http {
   partDelay = 20;
   partHook: PartHook | null = null;
   partUrlsSupported = true;
+  /** Development fallback of the real API: part URLs are Worker paths (`direct: false`). */
+  relativeUrls = false;
+  failComplete = false;
   files = new Map<string, { body: Uint8Array<ArrayBuffer>; etag: string }>();
   rangeHook: ((url: string, range: string | null) => Response | void) | null = null;
   seq = 0;
@@ -42,10 +45,12 @@ class FakeServer implements Http {
     if ((m = /^\/api\/assets\/uploads\/([^/]+)\/part-urls$/.exec(u.pathname))) {
       if (!this.partUrlsSupported) return json(404, { error: { code: 'NOT_FOUND' } });
       const id = m[1]!;
-      return json(200, { urls: (body.partNumbers as number[]).map((n) => ({ n, url: `https://r2.test/${id}/${n}`, expiresAt: new Date(Date.now() + 3600_000).toISOString() })) });
+      const url = (n: number) => (this.relativeUrls ? `/api/assets/uploads/${id}/parts/${n}` : `https://r2.test/${id}/${n}`);
+      return json(200, { assetId: id, direct: !this.relativeUrls, urls: (body.partNumbers as number[]).map((n) => ({ n, url: url(n), expiresAt: Date.now() + 3600_000 })) });
     }
     if ((m = /^\/api\/assets\/uploads\/([^/]+)\/complete$/.exec(u.pathname))) {
       const up = this.uploads.get(m[1]!)!;
+      if (this.failComplete) return json(503, { error: { code: 'INTERNAL' } });
       if (up.parts.size !== up.partCount) return json(400, { error: { code: 'VALIDATION_FAILED' } });
       up.status = 'processing';
       return json(200, { asset: { id: m[1], status: 'processing' } });
@@ -302,6 +307,31 @@ describe('uploads', () => {
     const a = req('a', PART * 3);
     send({ type: 'upload', requests: [a, { ...a, id: 'a2' }] });
     await until(() => uploaded(port).length === 2);
+    expect(server.uploads.size).toBe(1);
+  });
+
+  it('sends development-fallback part URLs (Worker paths) with credentials and reads the JSON etag', async () => {
+    const { send, port, server } = setup();
+    server.relativeUrls = true;
+    send({ type: 'upload', requests: [req('a', PART * 2)] });
+    await until(() => uploaded(port).length === 1);
+    const puts = server.log.filter((l) => l.startsWith('PUT'));
+    expect(puts).toHaveLength(2);
+    expect(puts.every((l) => l.startsWith('PUT proxied') && l.endsWith('include'))).toBe(true);
+  });
+
+  it('treats an upload the server already completed as done after a reload', async () => {
+    const persistence = new MemoryPersistence();
+    const server = new FakeServer();
+    const first = setup({ server, persistence, owner: 'eng_1' });
+    server.failComplete = true;
+    first.send({ type: 'upload', requests: [req('a', PART * 2)] });
+    await until(() => server.uploads.get('ast_1')?.parts.size === 2);
+    first.engine.dispose();
+    server.uploads.get('ast_1')!.status = 'complete';
+    server.failComplete = false;
+    const second = setup({ server, persistence, owner: 'eng_2' });
+    await until(() => uploaded(second.port).length === 1);
     expect(server.uploads.size).toBe(1);
   });
 
