@@ -39,7 +39,7 @@
 }
 .project:hover .projectThumb{box-shadow:inset 0 0 0 1px var(--c-surface-6)}
 .badge{
-  position:absolute;left:8px;top:8px;height:20px;padding:0 8px;border-radius:999px;background:rgba(11,11,12,.6);
+  position:absolute;left:8px;top:8px;height:20px;padding:0 8px;border-radius:999px;background:var(--c-media-chip);
   font-size:11px;font-weight:600;line-height:20px;color:var(--c-text-2);
 }
 .projectName{font-weight:600;font-size:13px;padding:0 2px}
@@ -61,16 +61,16 @@
   display:flex;flex-direction:column;justify-content:space-between;padding:10px;box-sizing:border-box;
 }
 .feedDur{
-  align-self:flex-start;height:20px;padding:0 8px;border-radius:999px;background:rgba(11,11,12,.6);
+  align-self:flex-start;height:20px;padding:0 8px;border-radius:999px;background:var(--c-media-chip);
   font-weight:600;font-size:11px;line-height:20px;
 }
 .feedFoot{display:flex;align-items:flex-end;gap:8px}
 .feedName{flex:1;font-size:13px;font-weight:600}
 .useBtn{
-  height:28px;padding:0 10px;border-radius:999px;background:rgba(245,245,245,.92);color:var(--c-bg);
+  height:28px;padding:0 10px;border-radius:999px;background:color-mix(in srgb,var(--c-text-1) 92%,transparent);color:var(--c-bg);
   font-size:12px;font-weight:700;line-height:28px;white-space:nowrap;
 }
-.feedCard:hover .useBtn{background:#FFFFFF}
+.feedCard:hover .useBtn{background:var(--c-primary-hover)}
 .feedCard:active .useBtn{transform:scale(var(--m-press-scale))}
 
 /* Option list for pills without a shared overlay. */

@@ -8,12 +8,12 @@
 .usage:hover{color:var(--c-text-1)}
 .bar{display:flex;height:6px;border-radius:999px;overflow:hidden;gap:2px}
 .barPlan{background:var(--c-text-1)}
-.barPurchased{background:#55555E}
+.barPurchased{background:var(--c-meter-2)}
 .split{display:flex;flex-direction:column;gap:6px;font-size:12px}
 .splitRow{display:flex;align-items:center;gap:8px}
 .swatch{width:8px;height:8px;border-radius:2px}
 .swatchPlan{background:var(--c-text-1)}
-.swatchPurchased{background:#55555E}
+.swatchPurchased{background:var(--c-meter-2)}
 .splitName{flex:1;color:var(--c-text-2)}
 .splitValue{font-weight:600}
 .splitNote{width:86px;text-align:right;color:var(--c-text-4)}
@@ -35,7 +35,7 @@
 .presetUsd{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums}
 .presetCredits{font-size:11px;color:var(--c-text-3);font-variant-numeric:tabular-nums;white-space:nowrap}
 .topUpButton{height:40px;border-radius:999px;border:0;background:var(--c-text-1);color:var(--c-bg);font:inherit;font-size:14px;font-weight:700;cursor:pointer}
-.topUpButton:hover{background:#FFFFFF}
+.topUpButton:hover{background:var(--c-primary-hover)}
 .note{font-size:11px;line-height:1.5;color:var(--c-text-4)}
 .joinButton{display:flex;align-items:center;justify-content:center;text-decoration:none}
 .topUpButton:disabled{cursor:progress;opacity:.72}

@@ -11,14 +11,14 @@
 .open:focus-visible{box-shadow:inset 0 0 0 2px var(--c-accent);border-radius:18px 18px 0 0}
 .tiles{display:grid;gap:2px}
 .tile{position:relative;display:flex;align-items:center;justify-content:center}
-.tileLabel{position:absolute;left:8px;top:8px;height:22px;padding:0 8px;border-radius:var(--r-pill);background:rgba(11,11,12,.6);font-size:11px;font-weight:600;line-height:22px}
+.tileLabel{position:absolute;left:8px;top:8px;height:22px;padding:0 8px;border-radius:var(--r-pill);background:var(--c-media-chip);font-size:11px;font-weight:600;line-height:22px}
 .play{
-  width:40px;height:40px;border-radius:var(--r-pill);background:rgba(11,11,12,.55);display:flex;align-items:center;justify-content:center;
+  width:40px;height:40px;border-radius:var(--r-pill);background:var(--c-media-disc);display:flex;align-items:center;justify-content:center;
   transition:background-color var(--m-fast) var(--m-ease-standard);
 }
-.open:hover .play{background:rgba(11,11,12,.75)}
+.open:hover .play{background:var(--c-media-disc-hover)}
 .pct{font-variant-numeric:normal;font-weight:600;font-size:13px;line-height:1;color:var(--c-text-2)}
-.dur{font-variant-numeric:normal;position:absolute;right:8px;bottom:8px;padding:3px 6px;border-radius:6px;background:rgba(11,11,12,.6);font-weight:600;font-size:11px;line-height:1}
+.dur{font-variant-numeric:normal;position:absolute;right:8px;bottom:8px;padding:3px 6px;border-radius:6px;background:var(--c-media-chip);font-weight:600;font-size:11px;line-height:1}
 /* Real progress: width follows the job, linear, no shimmer. */
 .bar{position:absolute;left:0;bottom:0;height:3px;background:var(--c-accent);transition:width var(--m-slow) linear}
 
@@ -28,8 +28,8 @@
 .tag{font-variant-numeric:normal;height:20px;padding:0 6px;border-radius:6px;background:var(--c-surface-4);font-weight:500;font-size:11px;line-height:20px;color:var(--c-text-3)}
 .steps{display:flex;gap:6px;flex-wrap:wrap}
 .step{height:24px;padding:0 8px;border-radius:var(--r-pill);font-size:11px;font-weight:600;display:flex;align-items:center;gap:5px;background:var(--c-surface-4);color:var(--c-text-4)}
-.stepDone{background:rgba(34,197,94,.14);color:var(--c-success)}
-.stepNow{background:var(--c-accent-soft);color:#93C5FD}
+.stepDone{background:var(--c-success-soft);color:var(--c-success)}
+.stepNow{background:var(--c-accent-soft);color:var(--c-link)}
 .spacer{flex:1}
 .cancel{
   height:24px;padding:0 8px;border-radius:var(--r-pill);border:0;background:none;color:var(--c-text-3);font:inherit;font-size:11px;cursor:pointer;
@@ -57,13 +57,13 @@
 .lineT{font-variant-numeric:normal;flex:none;width:44px;font-weight:500;font-size:11px;line-height:22px;color:var(--c-text-4)}
 .lineText{flex:1;font-size:15px;line-height:22px}
 .exact{padding:1px 6px;border-radius:6px;background:var(--c-surface-5);color:var(--c-text-2);font-size:11px;font-weight:600}
-.lineAct{flex:none;height:22px;padding:0 8px;border-radius:6px;background:var(--c-accent-soft);color:#93C5FD;font-size:11px;font-weight:600;line-height:22px}
+.lineAct{flex:none;height:22px;padding:0 8px;border-radius:6px;background:var(--c-accent-soft);color:var(--c-link);font-size:11px;font-weight:600;line-height:22px}
 .btns{display:flex;gap:8px;flex-wrap:wrap}
 .primary{
   height:36px;padding:0 16px;border-radius:var(--r-pill);border:0;background:var(--c-text-1);color:var(--c-bg);font:inherit;font-size:13px;font-weight:700;cursor:pointer;
   transition:background-color var(--m-fast) var(--m-ease-standard),transform var(--m-instant) var(--m-ease-standard);
 }
-.primary:hover{background:#FFFFFF}
+.primary:hover{background:var(--c-primary-hover)}
 .primary:active{transform:scale(.97)}
 .secondary{
   height:36px;padding:0 14px;border-radius:var(--r-pill);border:0;background:var(--c-surface-5);color:var(--c-text-1);font:inherit;font-size:13px;cursor:pointer;

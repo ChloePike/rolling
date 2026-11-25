@@ -12,7 +12,7 @@
 .spacer{flex:1}
 .status{transition:color var(--dur-fast) var(--ease-standard)}
 .status[data-status="outdated"]{color:var(--c-upgrade)}
-.status[data-status="generating"]{color:#4D9CFF}
+.status[data-status="generating"]{color:var(--c-generating)}
 .status[data-status="queued"]{color:var(--c-text-3)}
 .status[data-status="failed"]{color:var(--c-danger)}
 .statusIn{animation:rl-fade-in var(--dur-base) var(--ease-standard) both}
@@ -31,17 +31,17 @@
 .selected .body{box-shadow:0 0 0 2px var(--c-accent)}
 .media{display:flex;align-items:center;justify-content:center}
 .versionChip{
-  position:absolute;left:8px;top:8px;height:20px;padding:0 8px;border-radius:999px;background:rgba(11,11,12,.6);
+  position:absolute;left:8px;top:8px;height:20px;padding:0 8px;border-radius:999px;background:var(--c-media-chip);
   font-size:11px;font-weight:600;line-height:20px;
 }
-.playDisc{width:40px;height:40px;border-radius:999px;background:rgba(11,11,12,.55);display:flex;align-items:center;justify-content:center}
+.playDisc{width:40px;height:40px;border-radius:999px;background:var(--c-media-disc);display:flex;align-items:center;justify-content:center}
 .duration{
-  position:absolute;right:8px;bottom:8px;font:600 11px/1 var(--font-sans);padding:4px 6px;border-radius:6px;background:rgba(11,11,12,.6);
+  position:absolute;right:8px;bottom:8px;font:600 11px/1 var(--font-sans);padding:4px 6px;border-radius:6px;background:var(--c-media-chip);
 }
 
 /* Generating: real progress fills the card from the left (linear), then the result fades in place. */
 .progressBody{background:var(--c-surface-3);overflow:hidden}
-.progressFill{position:absolute;left:0;top:0;bottom:0;background:#202330;transition:width var(--dur-slow) linear}
+.progressFill{position:absolute;left:0;top:0;bottom:0;background:var(--c-tone-indigo);transition:width var(--dur-slow) linear}
 .progressLabel{position:absolute;left:12px;bottom:12px;font:600 12px/1 var(--font-sans);color:var(--c-text-2)}
 .reveal{position:absolute;inset:0;border-radius:inherit;display:flex;align-items:center;justify-content:center}
 
@@ -91,14 +91,14 @@
 .portActive{box-shadow:inset 0 0 0 2px var(--c-accent)}
 .port:global(.connectionindicator):hover{box-shadow:inset 0 0 0 2px var(--c-text-2)}
 /* While dragging a connection: valid targets turn blue, refused ones red. */
-:global(.react-flow__handle.connectingto).port{box-shadow:inset 0 0 0 2px var(--c-danger),0 0 0 4px rgba(248,113,113,.2)}
-:global(.react-flow__handle.connectingto.valid).port{box-shadow:inset 0 0 0 2px var(--c-accent),0 0 0 4px rgba(59,130,246,.25)}
-.portRefused{box-shadow:inset 0 0 0 2px var(--c-danger),0 0 0 4px rgba(248,113,113,.2)}
+:global(.react-flow__handle.connectingto).port{box-shadow:inset 0 0 0 2px var(--c-danger),0 0 0 4px color-mix(in srgb,var(--c-danger) 20%,transparent)}
+:global(.react-flow__handle.connectingto.valid).port{box-shadow:inset 0 0 0 2px var(--c-accent),0 0 0 4px color-mix(in srgb,var(--c-accent) 25%,transparent)}
+.portRefused{box-shadow:inset 0 0 0 2px var(--c-danger),0 0 0 4px color-mix(in srgb,var(--c-danger) 20%,transparent)}
 .portHidden{opacity:0}
 .node:hover .portHidden,.selected .portHidden{opacity:1}
 
 /* Group frame. */
 .group{
-  position:absolute;border-radius:20px;box-shadow:inset 0 0 0 1px var(--c-surface-5);background:rgba(245,245,245,.015);pointer-events:none;
+  position:absolute;border-radius:20px;box-shadow:inset 0 0 0 1px var(--c-surface-5);background:color-mix(in srgb,var(--c-text-1) 1.5%,transparent);pointer-events:none;
 }
 .groupTitle{position:absolute;left:14px;top:10px;font-size:12px;font-weight:600;color:var(--c-text-3)}

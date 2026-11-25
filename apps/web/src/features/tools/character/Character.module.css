@@ -5,7 +5,7 @@
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;cursor:pointer;padding:0;
   transition:background-color var(--m-fast) var(--m-ease-standard),color var(--m-fast) var(--m-ease-standard);
 }
-.refBtn:hover{background:#222226;color:var(--c-text-1)}
+.refBtn:hover{background:var(--c-surface-hover);color:var(--c-text-1)}
 .refBtn > span{font-size:12px;font-weight:600}
 .num{
   flex:1;border-radius:12px;background:var(--c-surface-4);padding:8px 10px;display:flex;flex-direction:column;gap:2px;

@@ -13,7 +13,7 @@
   animation:slotIn var(--m-base) var(--m-ease-standard) both;
   transition:background-color var(--m-fast) var(--m-ease-standard);
 }
-.slot:hover{background:#222226}
+.slot:hover{background:var(--c-surface-hover)}
 @keyframes slotIn{from{opacity:0;transform:scale(var(--m-scale-min))}to{opacity:1;transform:none}}
 .slotThumb{aspect-ratio:4/3;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--c-text-4)}
 .slotName{font-size:12px;font-weight:600}

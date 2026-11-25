@@ -44,7 +44,7 @@
 }
 .btn:hover{background:var(--c-surface-5)}
 .btnPrimary{background:var(--c-text-1);color:var(--c-bg)}
-.btnPrimary:hover{background:#FFFFFF;color:var(--c-bg)}
+.btnPrimary:hover{background:var(--c-primary-hover);color:var(--c-bg)}
 a.btn{display:inline-block;line-height:32px}
 .danger{background:transparent;color:var(--c-danger);padding:0}
 .danger:hover{background:transparent;color:var(--c-danger-strong)}
@@ -71,7 +71,7 @@ a.btn{display:inline-block;line-height:32px}
 .cardActions{display:flex;gap:6px}
 .split{display:flex;height:6px;border-radius:999px;overflow:hidden;gap:2px}
 .splitPlan{background:var(--c-text-1)}
-.splitBought{background:#55555E}
+.splitBought{background:var(--c-meter-2)}
 .splitRest{background:var(--c-surface-5)}
 .splitPart{transition:flex-grow var(--m-slow) var(--m-ease-standard)}
 .legend{display:flex;gap:14px;font-size:12px;color:var(--c-text-3)}

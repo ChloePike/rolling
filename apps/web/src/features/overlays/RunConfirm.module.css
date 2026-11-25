@@ -50,5 +50,5 @@
 }
 .cancel:hover{background:var(--c-surface-6)}
 .go{height:42px;padding:0 22px;border-radius:999px;border:0;background:var(--c-text-1);color:var(--c-bg);font:inherit;font-size:14px;font-weight:700;cursor:pointer}
-.go:hover:not(:disabled){background:#FFFFFF}
+.go:hover:not(:disabled){background:var(--c-primary-hover)}
 .go:disabled{background:var(--c-surface-5);color:var(--c-text-4);cursor:not-allowed}

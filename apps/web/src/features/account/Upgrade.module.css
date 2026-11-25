@@ -1,5 +1,5 @@
-/* Upgrade.dc.html */
-.page{max-width:1056px;margin:0 auto;padding:40px 0 8px;display:flex;flex-direction:column;gap:32px}
+/* /upgrade: page frame, hero and period switch (Upgrade.dc.html); the sections live in upgrade/Upgrade.parts.module.css. */
+.page{max-width:1056px;margin:0 auto;padding:40px 0 24px;display:flex;flex-direction:column;gap:40px}
 
 .hero{display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center}
 .title{margin:0;font-size:36px;font-weight:700;letter-spacing:-0.02em;line-height:normal}
@@ -14,50 +14,7 @@
 .period:hover{color:var(--c-text-1)}
 .period[aria-selected="true"]{color:var(--c-text-1)}
 .periodFill{inset:0;border-radius:7px;background:var(--c-surface-6)}
-.periodNote{font-size:12px;font-weight:500;color:var(--c-text-4)}
+.periodNote{font-size:11px;font-weight:700;color:var(--c-success);background:var(--c-success-soft);border-radius:6px;padding:2px 6px}
 
-.plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:14px}
-.plan{border-radius:18px;background:var(--c-surface-2);padding:24px;display:flex;flex-direction:column;gap:18px}
-.recommended{box-shadow:inset 0 0 0 1.5px var(--c-text-1)}
-.planHead{display:flex;align-items:center;gap:8px}
-.planName{margin:0;font-size:18px;font-weight:700}
-.badge{height:22px;padding:0 8px;border-radius:6px;background:var(--c-text-1);color:var(--c-bg);font-size:11px;font-weight:700;line-height:22px}
-.who{font-size:13px;line-height:1.5;color:var(--c-text-3);min-height:40px}
-.priceRow{display:flex;align-items:baseline;gap:6px}
-.price{font-size:34px;font-weight:700;letter-spacing:-0.02em}
-.per{font-size:13px;color:var(--c-text-4)}
-.credits{border-radius:12px;background:var(--c-surface-4);padding:12px 14px;display:flex;flex-direction:column;gap:4px}
-.creditsMain{font-size:16px;font-weight:700}
-.creditsEq{font-size:12px;color:var(--c-text-3)}
-
-.cta{
-  height:40px;padding:0 16px;border-radius:10px;border:0;font:inherit;font-size:14px;font-weight:700;cursor:pointer;
-  display:flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap;
-  background:var(--c-surface-4);color:var(--c-text-1);
-}
-.cta:hover{background:var(--c-surface-5)}
-.ctaPrimary{background:var(--c-text-1);color:var(--c-bg)}
-.ctaPrimary:hover{background:#FFFFFF}
-
-.feats{display:flex;flex-direction:column;gap:10px}
-.feat{display:flex;gap:10px;font-size:13px;line-height:1.45;color:var(--c-text-2)}
-.feat svg{flex:none;color:var(--c-text-3)}
-
-.rules{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr));gap:14px}
-.rule{border-radius:16px;background:var(--c-surface-2);padding:18px;display:flex;flex-direction:column;gap:6px}
-.ruleTitle{font-size:14px;font-weight:700}
-.ruleText{font-size:13px;line-height:1.55;color:var(--c-text-3)}
-
-.topUps{border-radius:18px;background:var(--c-surface-2);padding:24px;display:flex;flex-direction:column;gap:16px}
-.topUpsHead{display:flex;flex-direction:column;gap:6px}
-.h2{margin:0;font-size:18px;font-weight:700}
-.muted{font-size:13px;color:var(--c-text-3)}
-.topUpGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(180px,100%),1fr));gap:10px}
-/* Five top-up presets (D-006) do not fit the drawn one-line row at 1440, so the price sits under the amount. */
-.topUp{border-radius:12px;background:var(--c-surface-4);padding:16px;display:flex;flex-direction:column;align-items:flex-start;gap:10px}
-.topUpText{display:flex;flex-direction:column;gap:4px}
-.topUpCredits{font-size:18px;font-weight:700;white-space:nowrap}
-.topUpEq{font-size:12px;color:var(--c-text-4)}
-.topUpPrice{font-size:15px;font-weight:700}
-.note{font-size:12px;color:var(--c-text-4)}
+.plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:14px;align-items:stretch;scroll-margin-top:96px}
 .foot{margin:0;text-align:center;font-size:12px;color:var(--c-text-4)}

@@ -19,7 +19,7 @@
   font:inherit;text-align:left;cursor:pointer;
   transition:background-color var(--m-fast) var(--m-ease-standard);
 }
-.pickRow:hover{background:#222226}
+.pickRow:hover{background:var(--c-surface-hover)}
 .pickThumb{flex:none;width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center}
 .pickText{flex:1;display:flex;flex-direction:column;gap:3px}
 .pickLabel{font-size:11px;color:var(--c-text-4)}

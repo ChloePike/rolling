@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PLAN_ORDER, PLANS, type PlanId } from '@rolling/core/pricing/config';
-import { topUpPresets, type TopUpOption } from '@/lib/topUp';
+import { topUpFor, topUpPresets, type TopUpOption } from '@/lib/topUp';
 import { getSession, mockOverrides } from '@/lib/session';
 import { invoicesMock, meMock, membersMock } from './mocks';
-import type { Invoice, Me, Member, Prefs } from './types';
+import type { Invoice, Me, Member, Prefs, Role } from './types';
 
 /**
  * Account and billing client (`/api/me`, `/api/me/prefs`, `/api/billing/*`,
@@ -42,12 +42,123 @@ export async function patchAutoTopUp(enabled: boolean): Promise<Me> {
   return structuredClone(me);
 }
 
+let members: Member[] = structuredClone(membersMock);
+let invoices: Invoice[] = structuredClone(invoicesMock);
+
+/** Mock latency so pending states are visible; tests can set `window.__rollingMocks.delayMs`. */
+function wait(): Promise<void> {
+  const w = typeof window !== 'undefined' ? (window as unknown as { __rollingMocks?: { delayMs?: number } }).__rollingMocks : undefined;
+  const ms = typeof w?.delayMs === 'number' ? w.delayMs : 450;
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+/** API error with a code from docs/api.md (`NO_PLAN`, `VALIDATION`, ...). */
+export class ApiError extends Error {
+  constructor(
+    readonly code: 'NO_PLAN' | 'VALIDATION' | 'NOT_FOUND' | 'CARD_DECLINED',
+    message: string = code,
+  ) {
+    super(message);
+  }
+}
+
 export async function fetchMembers(): Promise<Member[]> {
-  return structuredClone(membersMock);
+  return structuredClone(members);
 }
 
 export async function fetchInvoices(): Promise<Invoice[]> {
-  return structuredClone(invoicesMock);
+  return structuredClone(invoices);
+}
+
+export const HANDLE_RE = /^[a-z0-9_]{3,24}$/;
+export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** `PATCH /api/me`: name, handle and email. */
+export async function patchProfile(patch: Partial<Pick<Me['user'], 'name' | 'handle' | 'email'>>): Promise<Me> {
+  await wait();
+  if (patch.handle !== undefined && !HANDLE_RE.test(patch.handle)) throw new ApiError('VALIDATION', 'handle');
+  if (patch.email !== undefined && !EMAIL_RE.test(patch.email)) throw new ApiError('VALIDATION', 'email');
+  if (patch.name !== undefined && !patch.name.trim()) throw new ApiError('VALIDATION', 'name');
+  const base = current();
+  me = { ...base, user: { ...base.user, ...patch } };
+  return structuredClone(me);
+}
+
+/** `POST /api/billing/topup` (members only, D-007): any amount, credits from `quoteTopUp`. */
+export async function buyTopUp(amountUsd: number): Promise<{ credits: number; me: Me }> {
+  await wait();
+  const base = current();
+  if (!base.plan || base.plan.status !== 'active') throw new ApiError('NO_PLAN');
+  const q = topUpFor(amountUsd, base.plan.id);
+  me = { ...base, balance: { ...base.balance, purchased: base.balance.purchased + q.credits } };
+  invoices = [{ id: `in_${Date.now()}`, kind: 'topUp', amountUsd, credits: q.credits }, ...invoices];
+  return { credits: q.credits, me: structuredClone(me) };
+}
+
+/** `POST /api/billing/cancel` or resume: the plan stays active until the period ends. */
+export async function patchCancel(cancelAtPeriodEnd: boolean): Promise<Me> {
+  await wait();
+  me = { ...current(), cancelAtPeriodEnd };
+  return structuredClone(me);
+}
+
+/** Stripe setup intent result (`POST /api/billing/payment-method`); the mock accepts any valid-looking card. */
+export async function patchPaymentMethod(card: { number: string; expires: string }): Promise<Me> {
+  await wait();
+  const digits = card.number.replace(/\D/g, '');
+  if (digits.length < 13 || !/^(0[1-9]|1[0-2])\/\d{2}$/.test(card.expires)) throw new ApiError('VALIDATION', 'card');
+  if (digits.endsWith('0002')) throw new ApiError('CARD_DECLINED');
+  const brand = digits.startsWith('4') ? 'Visa' : digits.startsWith('5') ? 'Mastercard' : digits.startsWith('3') ? 'Amex' : 'Card';
+  me = { ...current(), paymentMethod: { brand, last4: digits.slice(-4), expires: card.expires } };
+  return structuredClone(me);
+}
+
+/** `POST /api/workspace/members` (invite by email). */
+export async function inviteMember(input: { email: string; role: Role; monthlyCreditLimit: number | null }): Promise<Member[]> {
+  await wait();
+  if (!EMAIL_RE.test(input.email)) throw new ApiError('VALIDATION', 'email');
+  const name = input.email.split('@')[0]!;
+  members = [...members, { id: `mem_${Date.now()}`, name, email: input.email, role: input.role, monthlyCreditLimit: input.monthlyCreditLimit, invited: true }];
+  return structuredClone(members);
+}
+
+/** `PATCH /api/workspace/members/:id`: role and monthly credit limit. */
+export async function patchMember(id: string, patch: Partial<Pick<Member, 'role' | 'monthlyCreditLimit'>>): Promise<Member[]> {
+  await wait();
+  members = members.map((m) => (m.id === id ? { ...m, ...patch } : m));
+  return structuredClone(members);
+}
+
+/** `DELETE /api/workspace/members/:id`. */
+export async function removeMember(id: string): Promise<Member[]> {
+  await wait();
+  members = members.filter((m) => m.id !== id);
+  return structuredClone(members);
+}
+
+/**
+ * Invoice download (`GET /api/billing/invoices/:id.pdf` → a Stripe-hosted PDF).
+ * The mock builds a small text receipt so the download is real.
+ */
+export function invoiceFile(inv: Invoice, lines: string[]): { name: string; blob: Blob } {
+  return { name: `rolling-invoice-${inv.id}.txt`, blob: new Blob([lines.join('\n') + '\n'], { type: 'text/plain' }) };
+}
+
+/** Saves a blob through a temporary link (the browser's download flow). */
+export function saveFile(name: string, blob: Blob) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** `DELETE /api/me`: the mock signs out and forgets the session. */
+export async function deleteAccount(): Promise<void> {
+  await wait();
 }
 
 /** Top-up quotes live in lib/topUp (shared with the header and the paywall). */
@@ -95,13 +206,46 @@ export function useAutoTopUp() {
   });
 }
 
+export const membersKey = ['workspace', 'members'] as const;
+export const invoicesKey = ['billing', 'invoices'] as const;
+
 export function useMembers() {
-  return useQuery({ queryKey: ['workspace', 'members'], queryFn: fetchMembers, staleTime: Infinity });
+  return useQuery({ queryKey: membersKey, queryFn: fetchMembers, staleTime: Infinity });
 }
 
 export function useInvoices() {
-  return useQuery({ queryKey: ['billing', 'invoices'], queryFn: fetchInvoices, staleTime: Infinity });
+  return useQuery({ queryKey: invoicesKey, queryFn: fetchInvoices, staleTime: Infinity });
 }
+
+/** Mutations that return the new `Me` write it into the cache. */
+function useMeMutation<A>(fn: (a: A) => Promise<Me>) {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: fn, onSuccess: (next) => qc.setQueryData(meKey, next) });
+}
+
+export const usePatchProfile = () => useMeMutation(patchProfile);
+export const useCancelPlan = () => useMeMutation(patchCancel);
+export const usePaymentMethod = () => useMeMutation(patchPaymentMethod);
+
+export function useBuyTopUp() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: buyTopUp,
+    onSuccess: (r) => {
+      qc.setQueryData(meKey, r.me);
+      void qc.invalidateQueries({ queryKey: invoicesKey });
+    },
+  });
+}
+
+function useMembersMutation<A>(fn: (a: A) => Promise<Member[]>) {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: fn, onSuccess: (next) => qc.setQueryData(membersKey, next) });
+}
+
+export const useInviteMember = () => useMembersMutation(inviteMember);
+export const usePatchMember = () => useMembersMutation((a: { id: string; patch: Partial<Pick<Member, 'role' | 'monthlyCreditLimit'>> }) => patchMember(a.id, a.patch));
+export const useRemoveMember = () => useMembersMutation(removeMember);
 
 export function useTopUps(plan: PlanId | null) {
   return useQuery({ queryKey: ['billing', 'topups', plan], queryFn: () => fetchTopUps(plan), staleTime: Infinity });

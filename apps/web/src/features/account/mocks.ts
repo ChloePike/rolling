@@ -20,7 +20,8 @@ export const meMock: Me = {
   // 2,480 total, as in the header; plan credits are capped by the plan's monthly grant (D-006).
   balance: { plan: 620, purchased: 1860, held: 0 },
   autoTopUp: { enabled: true, below: AUTO_TOP_UP.belowCredits, amountUsd: AUTO_TOP_UP.amountUsd },
-  paymentMethod: { brand: 'Visa', last4: '4242' },
+  paymentMethod: { brand: 'Visa', last4: '4242', expires: '08/28' },
+  cancelAtPeriodEnd: false,
 };
 
 export const membersMock: Member[] = [

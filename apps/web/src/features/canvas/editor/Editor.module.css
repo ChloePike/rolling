@@ -29,7 +29,7 @@
 .icon:hover:not(:disabled){background:var(--c-surface-5);color:var(--c-text-1)}
 .icon[aria-pressed="true"]{background:var(--c-surface-6);color:var(--c-text-1)}
 .primary{background:var(--c-text-1);color:var(--c-bg);font-weight:700}
-.primary:hover:not(:disabled){background:#FFFFFF}
+.primary:hover:not(:disabled){background:var(--c-primary-hover)}
 .primary:active:not(:disabled){transform:scale(.97)}
 .secondary{background:var(--c-surface-4);color:var(--c-text-2);font-weight:600}
 .secondary:hover:not(:disabled){background:var(--c-surface-5);color:var(--c-text-1)}
@@ -64,7 +64,7 @@
 }
 .binItem:hover{background:var(--c-surface-3)}
 .binItem[aria-current="true"]{background:var(--c-surface-4)}
-.binThumb{flex:none;width:56px;height:36px;border-radius:5px;display:flex;align-items:center;justify-content:center;color:rgba(245,245,245,.45)}
+.binThumb{flex:none;width:56px;height:36px;border-radius:5px;display:flex;align-items:center;justify-content:center;color:color-mix(in srgb,var(--c-text-1) 45%,transparent)}
 .binText{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
 .binTitle{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .binMeta{font-size:11px;color:var(--c-text-4)}
@@ -74,13 +74,13 @@
 /* Program monitor */
 .monitor{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--c-bg)}
 .stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:14px}
-.frame{position:relative;height:100%;background:#1A2030;border-radius:2px;overflow:hidden}
+.frame{position:relative;height:100%;background:var(--c-scene-1-bg);border-radius:2px;overflow:hidden}
 .scene{position:absolute;inset:0}
 .ground{position:absolute;left:0;right:0;bottom:0;height:46%}
 .product{position:absolute;left:28%;bottom:22%;width:44%;height:34%;border-radius:6px 6px 4px 4px;transform-origin:50% 100%}
 .hatch{
   position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
-  background:repeating-linear-gradient(135deg,#1C1C1F 0 6px,#18181B 6px 12px);
+  background:repeating-linear-gradient(135deg,var(--c-tl-hatch-a) 0 6px,var(--c-tl-hatch-b) 6px 12px);
   font-size:12px;color:var(--c-text-3);
 }
 .hatchTitle{font-weight:600;color:var(--c-text-2)}
@@ -108,7 +108,7 @@
 .inspCta{padding:12px 14px;display:flex;flex-direction:column;gap:8px}
 .inspCtaButtons{display:flex;flex-direction:column;gap:6px}
 .regenerate{height:34px;padding:0 12px;border-radius:6px;font-size:13px;justify-content:space-between;white-space:nowrap}
-.regenerateCost{font-weight:500;color:#55555E}
+.regenerateCost{font-weight:500;color:var(--c-text-faint)}
 .openCanvas{height:34px;border-radius:6px;background:var(--c-surface-4);color:var(--c-text-1);font-size:12px;font-weight:600;white-space:nowrap}
 .openCanvas:hover{background:var(--c-surface-5)}
 .inspNote{font-size:11px;line-height:1.5;color:var(--c-text-4)}
@@ -136,7 +136,7 @@
 .agentLabel{font-size:12px;font-weight:600;color:var(--c-text-2);white-space:nowrap}
 .agentInput{flex:1;min-width:0;border:0;outline:0;background:none;color:var(--c-text-1);font:inherit;font-size:12px;padding:1px 2px}
 .agentInput:focus-visible{box-shadow:none}
-.agentInput::placeholder{color:#757575}
+.agentInput::placeholder{color:var(--c-placeholder)}
 .send{width:24px;height:24px;padding:1px 6px;border-radius:6px}
 .send[aria-busy="true"]{opacity:.5}
 .zoom{width:96px;height:4px;border-radius:999px;background:var(--c-surface-5);position:relative;flex:none;cursor:pointer;touch-action:none}
@@ -179,7 +179,7 @@
 
 .proposal{
   position:absolute;right:302px;bottom:312px;width:388px;border-radius:12px;background:var(--c-surface-4);
-  box-shadow:0 16px 40px rgba(0,0,0,.6);padding:14px;display:flex;flex-direction:column;gap:10px;z-index:2;
+  box-shadow:0 16px 40px var(--c-shadow);padding:14px;display:flex;flex-direction:column;gap:10px;z-index:2;
   /* Popover motion: y 6px (zero with reduced motion). */
   opacity:0;transform:translateY(calc(var(--m-move-sm) * 1.5));
   transition:opacity var(--m-fast) var(--m-ease-exit),transform var(--m-fast) var(--m-ease-exit);

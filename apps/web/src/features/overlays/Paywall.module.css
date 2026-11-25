@@ -41,7 +41,7 @@
 .checkbox{accent-color:var(--c-accent);width:16px;height:16px;margin:3px 3px 3px 4px}
 
 .cta{height:44px;border-radius:10px;border:0;background:var(--c-text-1);color:var(--c-bg);font:inherit;font-size:14px;font-weight:700;cursor:pointer}
-.cta:hover{background:#FFFFFF}
+.cta:hover{background:var(--c-primary-hover)}
 
 .foot{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--c-text-4)}
 .link{color:var(--c-text-2)}

@@ -31,7 +31,9 @@ export interface Me {
   plan: { id: PlanId; period: BillingPeriod; status: 'active' | 'canceled' } | null;
   balance: { plan: number; purchased: number; held: number };
   autoTopUp: { enabled: boolean; below: number; amountUsd: number };
-  paymentMethod: { brand: string; last4: string } | null;
+  paymentMethod: { brand: string; last4: string; expires: string } | null;
+  /** Canceled plans stay active until the end of the paid period. */
+  cancelAtPeriodEnd: boolean;
 }
 
 export interface Member {
@@ -41,6 +43,8 @@ export interface Member {
   role: Role;
   /** Credits per month; null means no limit. Viewers cannot spend. */
   monthlyCreditLimit: number | null;
+  /** Invited by email, not joined yet. */
+  invited?: boolean;
 }
 
 export interface Invoice {
@@ -50,4 +54,6 @@ export interface Invoice {
   period?: BillingPeriod;
   /** Top-up amount for `kind: 'topUp'`. */
   amountUsd?: number;
+  /** Credits granted, for top-ups bought in this session. */
+  credits?: number;
 }

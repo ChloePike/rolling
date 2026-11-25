@@ -58,11 +58,11 @@
 }
 .act:hover{background:var(--c-surface-6)}
 .actPrimary{background:var(--c-text-1);color:var(--c-bg)}
-.actPrimary:hover{background:#FFFFFF}
+.actPrimary:hover{background:var(--c-primary-hover)}
 
 .error{
-  margin:0 16px 12px 66px;border-radius:12px;background:rgba(255,77,77,.08);padding:10px 12px;
-  display:flex;gap:10px;align-items:center;font-size:12px;color:#FF9C9C;
+  margin:0 16px 12px 66px;border-radius:12px;background:var(--c-failed-bg);padding:10px 12px;
+  display:flex;gap:10px;align-items:center;font-size:12px;color:var(--c-failed-text);
 }
 .errorText{flex:1}
 .refund{color:var(--c-text-3)}
