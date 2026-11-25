@@ -25,12 +25,13 @@ async function openHome(page: Page, mocks: Record<string, unknown> = {}) {
   await page.locator('[data-testid="app-header"]').waitFor();
 }
 
-test('Home agent LLM picker shows turns left per model (Starter: $1.20 a month)', async ({ page }) => {
+test('Home agent LLM picker shows turns left per metered model (Starter: $1.20 a month); DeepSeek is unmetered', async ({ page }) => {
   await asPlan(page, 'starter');
   await openHome(page);
   await page.getByRole('button', { name: /DeepSeek V4\.1 Flash/ }).first().click();
   const list = page.getByRole('dialog').filter({ hasText: 'Claude Opus 5.5' });
-  await expect(list.getByRole('button', { name: /DeepSeek V4\.1 Flash/ })).toContainText('~1,081 turns left');
+  // D-012 amendment: DeepSeek models do not draw on the allowance, so no turn count.
+  await expect(list.getByRole('button', { name: /DeepSeek V4\.1 Flash/ })).not.toContainText('turns left');
   await expect(list.getByRole('button', { name: /Claude Opus 5\.5/ })).toContainText('~18 turns left');
   await expect(list.getByRole('button', { name: /GPT-6 Astra/ })).toContainText('~7 turns left');
   await expect(page.getByText(/Agent allowance for this month is used up/)).toHaveCount(0);

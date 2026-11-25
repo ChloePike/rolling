@@ -26,6 +26,8 @@ export function creditsAt(points: readonly CreditPoint[], resolution: string | n
 
 export interface Rates {
   video: { name: string; resolution: string; seconds: number; credits: number };
+  /** The same model at 480p, for balances below one 720p shot (Starter). Null when unpriced. */
+  video480: { name: string; resolution: string; seconds: number; credits: number } | null;
   /** Null when the catalog has no image price yet. */
   image: { name: string; resolution: string | null; credits: number } | null;
 }
@@ -35,15 +37,43 @@ export function ratesFrom(video: readonly CatalogModel[] | undefined, image: rea
   const credits = ref ? creditsAt(ref.credits, REFERENCE_VIDEO.resolution, REFERENCE_VIDEO.seconds) : null;
   const img = image?.find((m) => m.default && !m.matureOnly) ?? image?.find((m) => !m.matureOnly && m.credits.length > 0);
   const imgCredits = img ? creditsAt(img.credits, img.defaultResolution, null) : null;
+  const low = ref ? creditsAt(ref.credits.filter((p) => p.resolution === LOW_RES), LOW_RES, REFERENCE_VIDEO.seconds) : null;
+  const videoCredits = credits && credits > 0 ? credits : REFERENCE_VIDEO_FALLBACK_CREDITS;
   return {
     video: {
       name: ref?.name ?? REFERENCE_VIDEO.name,
       resolution: REFERENCE_VIDEO.resolution,
       seconds: REFERENCE_VIDEO.seconds,
-      credits: credits && credits > 0 ? credits : REFERENCE_VIDEO_FALLBACK_CREDITS,
+      credits: videoCredits,
     },
+    video480:
+      low && low > 0
+        ? { name: ref?.name ?? REFERENCE_VIDEO.name, resolution: LOW_RES, seconds: REFERENCE_VIDEO.seconds, credits: low }
+        : // Without a catalog price, scale the 720p price by pixel area (854×480 vs 1280×720); only used when no image price exists either.
+          !ref
+          ? { name: REFERENCE_VIDEO.name, resolution: LOW_RES, seconds: REFERENCE_VIDEO.seconds, credits: Math.ceil(videoCredits * ((854 * 480) / (1280 * 720))) }
+          : null,
     image: img && imgCredits && imgCredits > 0 ? { name: img.name, resolution: img.defaultResolution, credits: imgCredits } : null,
   };
+}
+
+const LOW_RES = '480p';
+
+/**
+ * What a balance buys, in a unit that is never zero: 720p shots when at least
+ * one fits, else 480p shots, else images. Null only when nothing is priced.
+ */
+export type Equivalence =
+  | { unit: 'shots'; n: number; rate: Rates['video']; images: number | null }
+  | { unit: 'images'; n: number; model: string };
+
+export function equivalentFor(credits: number, rates: Rates): Equivalence | null {
+  const images = rates.image ? howMany(credits, rates.image.credits) : null;
+  const shots = howMany(credits, rates.video.credits);
+  if (shots >= 1) return { unit: 'shots', n: shots, rate: rates.video, images };
+  if (rates.video480 && howMany(credits, rates.video480.credits) >= 1) return { unit: 'shots', n: howMany(credits, rates.video480.credits), rate: rates.video480, images };
+  if (rates.image && images && images >= 1) return { unit: 'images', n: images, model: rates.image.name };
+  return null;
 }
 
 /** Whole outputs a balance covers (never rounds up: credits are money). */

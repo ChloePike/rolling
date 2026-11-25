@@ -53,9 +53,9 @@ test.describe('auth screens (Login.dc.html)', () => {
     await expect(page.getByRole('alert')).toHaveText('Enter a valid email address.');
     await toCodeStep(page);
     await expect(page.getByText('We sent a 6-digit code to alex@ridgeline.co. It expires in 10 minutes.')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Resend in 1:00' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Resend in 0:30' })).toBeDisabled();
     await page.clock.runFor(18_000);
-    await expect(page.getByRole('button', { name: 'Resend in 0:42' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Resend in 0:12' })).toBeVisible();
     await page.keyboard.type('48a2');
     await expect(page.getByLabel('Verification code').locator('input')).toHaveValue('482');
     await page.getByRole('button', { name: '← Back' }).click();
@@ -80,10 +80,10 @@ test.describe('auth screens (Login.dc.html)', () => {
     await expect(page.getByRole('alert')).toHaveText('That code isn’t right. Check the email or resend a new code.');
     await expect(page.getByLabel('Verification code').locator('input')).toHaveValue('');
     await expect(page.getByLabel('Verification code').locator('input')).toHaveAttribute('aria-invalid', 'true');
-    await page.clock.runFor(61_000);
+    await page.clock.runFor(31_000);
     await page.getByRole('button', { name: 'Resend code' }).click();
     await expect(page.getByText('New code sent to alex@ridgeline.co.')).toBeVisible();
-    await expect(page.getByRole('button', { name: /Resend in 1:00|Resend in 0:59/ })).toBeDisabled();
+    await expect(page.getByRole('button', { name: /Resend in 0:30|Resend in 0:29/ })).toBeDisabled();
     await page.getByLabel('Verification code').locator('input').focus();
     await page.keyboard.type('123456');
     await expect(page).toHaveURL(/\/$/);

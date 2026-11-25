@@ -4,7 +4,7 @@ import { FormattedMessage, useIntl } from 'react-intl';
 import { formatUsd } from '@/lib/topUp';
 import type { BillingPeriod } from '../types';
 import { motion, PathIcon, paths, Swap } from '../shared';
-import { howMany, secondsOf, type Rates } from './equivalents';
+import { equivalentFor, type Rates } from './equivalents';
 import styles from './Upgrade.parts.module.css';
 
 const cx = (...c: Array<string | false | undefined>) => c.filter(Boolean).join(' ');
@@ -26,21 +26,19 @@ function perks(plan: PlanConfig): Array<{ id: string; values?: Record<string, st
   return out;
 }
 
-/** Shot / image equivalent of a credit amount, as one line. */
+/** Shot / image equivalent of a credit amount, as one line (never "0 shots" or a few seconds). */
 export function Equivalent({ credits, rates }: { credits: number; rates: Rates }) {
-  const shots = howMany(credits, rates.video.credits);
-  const v = rates.video;
+  const eq = equivalentFor(credits, rates);
+  if (!eq) return null;
+  if (eq.unit === 'images') return <FormattedMessage id="account.upgrade.eq.imagesOnly" values={{ n: eq.n, model: eq.model }} />;
+  const v = eq.rate;
   return (
     <>
-      {shots >= 1 ? (
-        <FormattedMessage id="account.upgrade.eq.shots" values={{ n: shots, seconds: v.seconds, res: v.resolution, model: v.name }} />
-      ) : (
-        <FormattedMessage id="account.upgrade.eq.seconds" values={{ n: secondsOf(credits, v), res: v.resolution, model: v.name }} />
-      )}
-      {rates.image && (
+      <FormattedMessage id="account.upgrade.eq.shots" values={{ n: eq.n, seconds: v.seconds, res: v.resolution, model: v.name }} />
+      {rates.image && eq.images !== null && eq.images >= 1 && (
         <>
           {' '}
-          <FormattedMessage id="account.upgrade.eq.images" values={{ n: howMany(credits, rates.image.credits), model: rates.image.name }} />
+          <FormattedMessage id="account.upgrade.eq.images" values={{ n: eq.images, model: rates.image.name }} />
         </>
       )}
     </>

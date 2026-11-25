@@ -63,8 +63,8 @@ test.describe('upgrade /upgrade', () => {
     await expect(card(page, 'starter')).not.toContainText('Recommended');
     await expect(page.getByTestId('eq-plus')).toHaveText('≈ 2 Seedance 2.5 shots of 5s at 720p or ≈ 88 images with Seedream 5.0 Lite');
     await expect(page.getByTestId('eq-pro')).toHaveText('≈ 7 Seedance 2.5 shots of 5s at 720p or ≈ 277 images with Seedream 5.0 Lite');
-    // 200 credits buy less than one 347-credit shot: say how many seconds instead.
-    await expect(page.getByTestId('eq-starter')).toHaveText('≈ 2s of Seedance 2.5 video at 720p or ≈ 22 images with Seedream 5.0 Lite');
+    // 200 credits buy less than one 347-credit shot and the catalog has no 480p price: images, never "0 shots" or seconds.
+    await expect(page.getByTestId('eq-starter')).toHaveText('≈ 22 images with Seedream 5.0 Lite');
     await expect(card(page, 'plus')).toContainText('800 credits');
     await expect(card(page, 'plus')).toContainText('Worth $8');
     const caps = async (id: string, kind: 'Video' | 'Images') =>
@@ -204,7 +204,7 @@ test.describe('upgrade /upgrade', () => {
     await expect(row('seats')).toHaveText(['Just you', 'Just you', 'Just you', 'Any number, $25 each']);
     await expect(row('credits')).toHaveText(['200', '800', '2,500', '2,500 + 500 per extra seat']);
     await expect(row('price')).toHaveText(['$5 a month', '$15 a month', '$49 a month', '$79 a month + $25 per extra seat']);
-    await expect(row('shots')).toHaveText(['0', '2', '7', '7 + 1 per extra seat']);
+    await expect(row('shots')).toHaveText(['22 images', '2', '7', '7 + 1 per extra seat']);
     await expect(row('voice')).toHaveText(['Not included', 'Included', 'Included', 'Included']);
     await expect(row('topUpBonus')).toHaveText(['Not included', '+5%', '+10%', '+10%']);
     await expect(row('agent')).toHaveText(['Included', 'Included', 'Included', 'Included']);
@@ -212,7 +212,10 @@ test.describe('upgrade /upgrade', () => {
     const otherBg = await page.locator('[data-row="jobs"] [data-col="pro"]').evaluate((e) => getComputedStyle(e).backgroundColor);
     expect(recBg).not.toBe(otherBg);
 
-    await expect(page.locator('[data-model]')).toHaveText(['Seedance 2.5', 'MiniMax H3', 'Seedream 5.0 Lite'].map((n) => new RegExp(`${n}$`)));
+    // Not "same models on every plan": MiniMax H3 starts at 768p, above Starter's 720p cap (D-006).
+    await expect(page.getByRole('heading', { name: 'Models by plan' })).toBeVisible();
+    await expect(page.locator('[data-model]')).toHaveText([/Seedance 2\.5All plans$/, /MiniMax H3Plus and up$/, /Seedream 5\.0 LiteAll plans$/]);
+    await expect(page.locator('[data-model="minimax/minimax-h3"]')).toHaveAttribute('data-min-plan', 'plus');
 
     const q = page.getByRole('button', { name: 'Do credits expire?' });
     const panel = page.getByRole('region', { name: 'Do credits expire?' });

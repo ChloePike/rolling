@@ -3,8 +3,9 @@ import { Dialog, useToast } from '@rolling/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
-import { changeSeats, checkoutPlan, mockPeriod, MockFlowError, useSession } from '@/lib/session';
-import { meKey } from '../api';
+import { isMockApi } from '@/lib/api/mode';
+import { changeSeats, checkoutPlan, mockPeriod, useSession } from '@/lib/session';
+import { errorCode, meKey, useBilling, useSeatsPreview } from '../api';
 import { motion, Segmented } from '../shared';
 import type { BillingPeriod } from '../types';
 import settings from '../Settings.module.css';
@@ -19,7 +20,20 @@ const cx = (...c: Array<string | false | undefined>) => c.filter(Boolean).join('
  * being invited; Continue runs the Team checkout (or the in-place switch) and
  * `onStarted` resumes the invite flow.
  */
-export function StartTeamDialog({ open, onClose, used, onStarted }: { open: boolean; onClose: () => void; used: number; onStarted: (seats: number) => void }) {
+export function StartTeamDialog({
+  open,
+  onClose,
+  used,
+  onStarted,
+  returnTo = '/settings/team?resume=invite',
+}: {
+  open: boolean;
+  onClose: () => void;
+  used: number;
+  onStarted: (seats: number) => void;
+  /** Where Stripe returns after a new Team checkout (the in-place switch resolves here). */
+  returnTo?: string;
+}) {
   const intl = useIntl();
   const toast = useToast();
   const qc = useQueryClient();
@@ -34,13 +48,19 @@ export function StartTeamDialog({ open, onClose, used, onStarted }: { open: bool
     setPending(true);
     setError(null);
     try {
-      await checkoutPlan('team', period, seats);
-      await qc.invalidateQueries({ queryKey: meKey });
+      // Real API: a personal plan switches in place (resolves); otherwise the page leaves for Stripe.
+      await checkoutPlan('team', period, seats, { returnTo });
+      if (isMockApi()) await qc.invalidateQueries({ queryKey: meKey });
       toast.show({ message: intl.formatMessage({ id: 'account.team.toast.started' }, { n: seats }) });
       onStarted(seats);
     } catch (e) {
-      void e;
-      setError(intl.formatMessage({ id: 'account.team.toast.failed' }));
+      const code = errorCode(e);
+      setError(
+        intl.formatMessage(
+          { id: code === 'SEATS_REQUIRED' ? 'account.team.start.seatsRequired' : code === 'PAYMENT_FAILED' ? 'account.team.toast.failed' : code === 'FORBIDDEN' ? 'account.team.ownerOnly' : 'account.team.toast.failed' },
+          { n: used },
+        ),
+      );
     } finally {
       setPending(false);
     }
@@ -123,11 +143,15 @@ export function SeatsDialog({
   const [error, setError] = useState<string | null>(null);
   const min = Math.max(TEAM_SEATS.min, used);
   const added = Math.max(0, seats - current);
-  const p = mockPeriod();
+  // Real API: the server's estimate (`GET /api/billing/seats/preview`); mock: the calendar month.
+  const preview = useSeatsPreview(seats, seats !== current);
+  const billing = useBilling();
+  const mp = mockPeriod();
+  const p = { start: billing.data?.periodStart ?? mp.start, end: billing.data?.periodEnd ?? preview.data?.periodEnd ?? mp.end };
   const now = Date.now();
-  const dueToday = prorate(Math.round(added * seatUsd(period) * 100), p.start, p.end, now) / 100;
+  const dueToday = preview.data ? preview.data.prorationCents / 100 : prorate(Math.round(added * seatUsd(period) * 100), p.start, p.end, now) / 100;
   const creditsNow = prorate(added * SEAT_PRICE.monthlyCredits, p.start, p.end, now);
-  const next = teamPriceCents(seats, teamInterval(period)) / 100;
+  const next = preview.data ? preview.data.renewalCents / 100 : teamPriceCents(seats, teamInterval(period)) / 100;
   const lowering = seats < current;
 
   async function save() {
@@ -135,18 +159,21 @@ export function SeatsDialog({
     setError(null);
     try {
       const r = await changeSeats(seats, used);
-      await qc.invalidateQueries({ queryKey: meKey });
+      if (isMockApi()) await qc.invalidateQueries({ queryKey: meKey });
+      else void qc.invalidateQueries({ queryKey: ['billing'] });
       toast.show({
         message: intl.formatMessage({ id: r.seats < r.previous ? 'account.team.add.toastLower' : 'account.team.add.toast' }, { n: r.seats, credits: r.granted }),
       });
       onDone?.(r.seats);
       onClose();
     } catch (e) {
-      const code = e instanceof MockFlowError ? e.code : null;
+      const code = errorCode(e);
       setError(
         code === 'SEATS_IN_USE'
           ? intl.formatMessage({ id: 'account.team.add.min' }, { n: used })
-          : intl.formatMessage({ id: 'account.team.toast.failed' }),
+          : code === 'PAYMENT_FAILED'
+            ? intl.formatMessage({ id: 'account.team.toast.failed' })
+            : intl.formatMessage({ id: 'account.team.toast.failed' }),
       );
     } finally {
       setPending(false);

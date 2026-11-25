@@ -4,7 +4,7 @@ import { FormattedMessage, useIntl } from 'react-intl';
 import { formatUsd } from '@/lib/topUp';
 import type { BillingPeriod } from '../types';
 import { PathIcon, paths, Swap } from '../shared';
-import { howMany, type Rates } from './equivalents';
+import { equivalentFor, howMany, type Rates } from './equivalents';
 import { monthlyPrice } from './PlanCard';
 import styles from './Upgrade.parts.module.css';
 
@@ -23,6 +23,16 @@ function Yes({ on }: { on: boolean }) {
       <span className="rl-visually-hidden">{intl.formatMessage({ id: 'account.upgrade.compare.no' })}</span>
     </span>
   );
+}
+
+/** 720p shots, or (below one shot) 480p shots or images: never a bare 0. */
+function ShotsCell({ credits, rates }: { credits: number; rates: Rates }) {
+  const intl = useIntl();
+  const eq = equivalentFor(credits, rates);
+  if (!eq) return <>—</>;
+  if (eq.unit === 'images') return <FormattedMessage id="account.upgrade.compare.shotsImages" values={{ n: eq.n }} />;
+  if (eq.rate.resolution !== rates.video.resolution) return <FormattedMessage id="account.upgrade.compare.shotsAt" values={{ n: eq.n, res: eq.rate.resolution }} />;
+  return <>{intl.formatNumber(eq.n)}</>;
 }
 
 /** Feature comparison, every value from the plan config (D-006); Team cells show the base and what each extra seat adds (D-013). */
@@ -65,7 +75,7 @@ export function Compare({ period, rates, recommended }: { period: BillingPeriod;
         p.kind === 'team' ? (
           <FormattedMessage id="account.upgrade.compare.teamShots" values={{ n: howMany(p.monthlyCredits, rates.video.credits), perSeat: howMany(SEAT_PRICE.monthlyCredits, rates.video.credits) }} />
         ) : (
-          intl.formatNumber(howMany(p.monthlyCredits, rates.video.credits))
+          <ShotsCell credits={p.monthlyCredits} rates={rates} />
         ),
     },
     {

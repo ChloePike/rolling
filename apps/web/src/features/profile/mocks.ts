@@ -5,6 +5,8 @@ export interface ProfileWork {
   kind: 'published' | 'template';
   /** D-005: mature outputs never appear on public surfaces. */
   mature: boolean;
+  /** Content rating of the output; suggestive and explicit are never public. */
+  rating?: 'safe' | 'suggestive' | 'explicit';
 }
 
 export interface PublicProfile {
@@ -15,7 +17,7 @@ export interface PublicProfile {
   works: ProfileWork[];
 }
 
-/** Profile.dc.html, plus one mature work that the API must never return publicly. */
+/** Profile.dc.html, plus a mature and a suggestive work that must never be listed publicly. */
 export const profileMock: PublicProfile = {
   name: 'Alex Chen',
   handle: 'alexmakes',
@@ -30,6 +32,7 @@ export const profileMock: PublicProfile = {
     { id: 'w7', title: 'Rainy street mood', durationSec: 9, kind: 'published', mature: false },
     { id: 'w8', title: 'Café window portrait', durationSec: 6, kind: 'published', mature: false },
     { id: 'w9', title: 'Late night set', durationSec: 12, kind: 'published', mature: true },
+    { id: 'w10', title: 'Beach shoot', durationSec: 8, kind: 'published', mature: false, rating: 'suggestive' },
     { id: 't1', title: 'Two-person product demo', durationSec: 15, kind: 'template', mature: false },
     { id: 't2', title: 'Talking head, desk', durationSec: 10, kind: 'template', mature: false },
   ],

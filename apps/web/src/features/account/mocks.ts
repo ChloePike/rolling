@@ -22,6 +22,9 @@ export const meMock: Me = {
   autoTopUp: { enabled: true, below: AUTO_TOP_UP.belowCredits, amountUsd: AUTO_TOP_UP.amountUsd },
   paymentMethod: { brand: 'Visa', last4: '4242', expires: '08/28' },
   cancelAtPeriodEnd: false,
+  periodEnd: new Date(2026, 11, 1).getTime(),
+  periodStart: new Date(2026, 10, 1).getTime(),
+  seats: null,
 };
 
 export const membersMock: Member[] = [
@@ -32,7 +35,7 @@ export const membersMock: Member[] = [
 ];
 
 export const invoicesMock: Invoice[] = [
-  { id: 'in_3', kind: 'plan', planId: 'pro', period: 'monthly' },
-  { id: 'in_2', kind: 'topUp', amountUsd: 25 },
-  { id: 'in_1', kind: 'plan', planId: 'pro', period: 'monthly' },
+  { id: 'in_3', kind: 'plan', planId: 'pro', period: 'monthly', createdAt: new Date(2026, 10, 1).getTime() },
+  { id: 'in_2', kind: 'topUp', amountUsd: 25, createdAt: new Date(2026, 9, 14).getTime() },
+  { id: 'in_1', kind: 'plan', planId: 'pro', period: 'monthly', createdAt: new Date(2026, 9, 1).getTime() },
 ];

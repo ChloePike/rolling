@@ -1,7 +1,8 @@
 import { planMonthlyCredits, PLANS, TOP_UP, teamPriceCents } from '@rolling/core/pricing/config';
 import { Dialog, Switch, useToast } from '@rolling/ui';
-import { Link, useNavigate } from '@tanstack/react-router';
-import { useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { Link, useNavigate, useSearch } from '@tanstack/react-router';
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { pickerModels, useModels } from '@/lib/models';
 import {
@@ -19,13 +20,26 @@ import {
   type CurrencyCode,
   type ThemePref,
 } from '@/lib/prefs';
-import { useCredits, useSession } from '@/lib/session';
+import { isApiError } from '@/lib/api/errors';
+import { isMockApi } from '@/lib/api/mode';
+import type { LedgerLine } from '@/lib/api/types';
+import { openBillingPortal, useCredits, useSession } from '@/lib/session';
 import { parseTopUpAmount } from '@/lib/topUp';
 import { motion, PathIcon, paths, Segmented } from './shared';
 import { SelectMenu } from './shared/SelectMenu';
 import {
+  accountsKey,
   ApiError,
+  canDeleteAccount,
+  canEditEmail,
+  canEditHandle,
   EMAIL_RE,
+  errorCode,
+  fetchLedgerPage,
+  linkProvider,
+  unlinkProvider,
+  useLedger,
+  useLinkedAccounts,
   HANDLE_RE,
   deleteAccount,
   formatUsd,
@@ -135,10 +149,10 @@ function Row({ label, hint, children, labelFor }: { label: ReactNode; hint?: Rea
   );
 }
 
-function SwitchRow({ label, hint, checked, onChange }: { label: string; hint?: string; checked: boolean; onChange: (v: boolean) => void }) {
+function SwitchRow({ label, hint, checked, onChange, disabled }: { label: string; hint?: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
     <Row label={label} hint={hint}>
-      <Switch size="sm" className={styles.switch} checked={checked} onCheckedChange={onChange} aria-label={label} />
+      <Switch size="sm" className={styles.switch} checked={checked} onCheckedChange={onChange} aria-label={label} disabled={disabled} />
     </Row>
   );
 }
@@ -151,6 +165,12 @@ function DialogActions({ children }: { children: ReactNode }) {
 function useT() {
   const intl = useIntl();
   return (id: string, values?: Record<string, string | number>) => intl.formatMessage({ id }, values);
+}
+
+/** "Dec 1" for an epoch ms (period ends, invoice dates); an em dash when unknown. */
+function useShortDate() {
+  const intl = useIntl();
+  return (ms: number | null | undefined) => (ms ? intl.formatDate(ms, { month: 'short', day: 'numeric', year: new Date(ms).getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined }) : '—');
 }
 
 const PROFILE_FIELDS = ['name', 'handle', 'email'] as const;
@@ -169,12 +189,14 @@ function AccountSection({ me }: { me: Me }) {
   const [signInOpen, setSignInOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const dirty = PROFILE_FIELDS.some((k) => form[k] !== initial[k]);
+  // Real API: only the name is editable (handles and email changes have no route yet).
+  const editable: Record<ProfileField, boolean> = { name: true, handle: canEditHandle(), email: canEditEmail() };
 
   function validate() {
     const e: Partial<Record<ProfileField, string>> = {};
     if (!form.name.trim()) e.name = t('account.settings.account.error.name');
-    if (!HANDLE_RE.test(form.handle.replace(/^@/, ''))) e.handle = t('account.settings.account.error.handle');
-    if (!EMAIL_RE.test(form.email.trim())) e.email = t('account.settings.account.error.email');
+    if (editable.handle && !HANDLE_RE.test(form.handle.replace(/^@/, ''))) e.handle = t('account.settings.account.error.handle');
+    if (editable.email && !EMAIL_RE.test(form.email.trim())) e.email = t('account.settings.account.error.email');
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -183,7 +205,11 @@ function AccountSection({ me }: { me: Me }) {
     ev.preventDefault();
     if (!validate()) return;
     try {
-      await save.mutateAsync({ name: form.name.trim(), handle: form.handle.replace(/^@/, ''), email: form.email.trim() });
+      await save.mutateAsync({
+        name: form.name.trim(),
+        ...(editable.handle ? { handle: form.handle.replace(/^@/, '') } : {}),
+        ...(editable.email ? { email: form.email.trim() } : {}),
+      });
       toast.show({ message: t(form.email.trim() !== me.user.email ? 'account.settings.account.savedEmail' : 'account.settings.account.saved') });
     } catch {
       toast.show({ message: t('account.settings.account.saveFailed') });
@@ -197,8 +223,11 @@ function AccountSection({ me }: { me: Me }) {
         type={type}
         className={styles.field}
         value={form[k]}
+        readOnly={!editable[k]}
+        aria-readonly={!editable[k] || undefined}
+        title={!editable[k] ? t(`account.settings.account.${k}.readOnly`) : undefined}
         aria-invalid={!!errors[k]}
-        aria-describedby={errors[k] ? `${id}-err` : undefined}
+        aria-describedby={errors[k] ? `${id}-err` : !editable[k] ? `${id}-ro` : undefined}
         onChange={(e) => {
           setForm((f) => ({ ...f, [k]: e.target.value }));
           setErrors((er) => ({ ...er, [k]: undefined }));
@@ -208,6 +237,11 @@ function AccountSection({ me }: { me: Me }) {
       {errors[k] && (
         <span id={`${id}-err`} role="alert" className={cx(styles.fieldError, motion.enter)}>
           {errors[k]}
+        </span>
+      )}
+      {!editable[k] && (
+        <span id={`${id}-ro`} className="rl-visually-hidden">
+          {t(`account.settings.account.${k}.readOnly`)}
         </span>
       )}
     </span>
@@ -240,9 +274,11 @@ function AccountSection({ me }: { me: Me }) {
             e.target.value = '';
           }}
         />
-        <button type="button" className={cx(styles.btn, motion.hover)} onClick={() => fileRef.current?.click()}>
-          <FormattedMessage id="account.settings.account.changePhoto" />
-        </button>
+        {isMockApi() && (
+          <button type="button" className={cx(styles.btn, motion.hover)} onClick={() => fileRef.current?.click()}>
+            <FormattedMessage id="account.settings.account.changePhoto" />
+          </button>
+        )}
       </div>
       <Row label={<FormattedMessage id="account.settings.account.name" />} labelFor="acc-name">
         {field('name', 'acc-name', 'name')}
@@ -302,8 +338,36 @@ function AccountSection({ me }: { me: Me }) {
 function SignInDialog({ open, onClose, me }: { open: boolean; onClose: () => void; me: Me }) {
   const t = useT();
   const toast = useToast();
-  const [linked, setLinked] = useState<Record<'google' | 'apple' | 'email', boolean>>({ google: me.user.signIn === 'google', apple: me.user.signIn === 'apple', email: true });
+  const qc = useQueryClient();
+  const accounts = useLinkedAccounts();
+  const [mockLinked, setMockLinked] = useState<Record<'google' | 'apple' | 'email', boolean>>({ google: me.user.signIn === 'google', apple: me.user.signIn === 'apple', email: true });
+  const ids = (accounts.data ?? []).map((a) => a.providerId);
+  // Real API: email codes always work for the account's address; social methods come from `list-accounts`.
+  const linked = isMockApi() ? mockLinked : { google: ids.includes('google'), apple: ids.includes('apple'), email: true };
+  const [busy, setBusy] = useState<string | null>(null);
   const count = Object.values(linked).filter(Boolean).length;
+  async function toggle(p: 'google' | 'apple' | 'email', on: boolean) {
+    const name = t(`account.settings.signIn.${p}`);
+    if (isMockApi()) {
+      setMockLinked((l) => ({ ...l, [p]: !on }));
+      toast.show({ message: t(on ? 'account.settings.signIn.disconnected' : 'account.settings.signIn.linked', { provider: name }) });
+      return;
+    }
+    if (p === 'email') return;
+    setBusy(p);
+    try {
+      if (!on) await linkProvider(p);
+      else {
+        await unlinkProvider(p);
+        await qc.invalidateQueries({ queryKey: accountsKey });
+        toast.show({ message: t('account.settings.signIn.disconnected', { provider: name }) });
+      }
+    } catch {
+      toast.show({ message: t('account.settings.signIn.failed', { provider: name }) });
+    } finally {
+      setBusy(null);
+    }
+  }
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()} title={t('account.settings.signIn.title')} description={t('account.settings.signIn.lead')} closeLabel={t('account.settings.close')}>
       <div className={styles.dlgList}>
@@ -323,12 +387,10 @@ function SignInDialog({ open, onClose, me }: { open: boolean; onClose: () => voi
               <button
                 type="button"
                 className={cx(styles.btn, motion.hover)}
-                disabled={last}
-                title={last ? t('account.settings.signIn.lastMethod') : undefined}
-                onClick={() => {
-                  setLinked((l) => ({ ...l, [p]: !on }));
-                  toast.show({ message: t(on ? 'account.settings.signIn.disconnected' : 'account.settings.signIn.linked', { provider: t(`account.settings.signIn.${p}`) }) });
-                }}
+                disabled={last || busy !== null || (!isMockApi() && p === 'email')}
+                aria-busy={busy === p || undefined}
+                title={last ? t('account.settings.signIn.lastMethod') : !isMockApi() && p === 'email' ? t('account.settings.signIn.emailAlways') : undefined}
+                onClick={() => void toggle(p, on)}
               >
                 <FormattedMessage id={on ? 'account.settings.signIn.disconnect' : 'account.settings.signIn.connect'} />
               </button>
@@ -352,7 +414,21 @@ function DeleteDialog({ open, onClose, onDeleted }: { open: boolean; onClose: ()
   const [busy, setBusy] = useState(false);
   const word = t('account.settings.delete.word');
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()} title={t('account.settings.delete.title')} description={t('account.settings.delete.lead')} closeLabel={t('account.settings.close')}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => !o && onClose()}
+      title={t('account.settings.delete.title')}
+      description={t(canDeleteAccount() ? 'account.settings.delete.lead' : 'account.settings.delete.unavailable')}
+      closeLabel={t('account.settings.close')}
+    >
+      {!canDeleteAccount() ? (
+        <DialogActions>
+          <button type="button" className={cx(styles.btn, motion.hover)} onClick={onClose}>
+            <FormattedMessage id="account.settings.close" />
+          </button>
+        </DialogActions>
+      ) : (
+      <>
       <label htmlFor={id} className={styles.rowHint}>
         <FormattedMessage id="account.settings.delete.type" values={{ word }} />
       </label>
@@ -376,6 +452,8 @@ function DeleteDialog({ open, onClose, onDeleted }: { open: boolean; onClose: ()
           <FormattedMessage id={busy ? 'account.settings.delete.deleting' : 'account.settings.delete.confirm'} />
         </button>
       </DialogActions>
+      </>
+      )}
     </Dialog>
   );
 }
@@ -497,7 +575,22 @@ function BillingSection({ me }: { me: Me }) {
   const [topUpId, setTopUpId] = useState('topup_25');
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cardOpen, setCardOpen] = useState(false);
+  const [portal, setPortal] = useState(false);
+  const date = useShortDate();
+  const real = !isMockApi();
+  const isOwner = me.role === 'owner';
   const plan = me.plan ? PLANS[me.plan.id] : null;
+  const periodEnd = date(me.periodEnd);
+  /** Real API: card, plan change, cancel and resume live in the Stripe customer portal. */
+  async function toPortal() {
+    setPortal(true);
+    try {
+      await openBillingPortal('/settings/billing');
+    } catch (e) {
+      setPortal(false);
+      toast.show({ message: t(isApiError(e, 'NO_PLAN') ? 'account.settings.billing.portal.noCustomer' : 'account.settings.billing.portal.failed') });
+    }
+  }
   // Live balance shared with the header (lib/session).
   const credits = useCredits();
   const balance = { plan: credits.plan, purchased: credits.purchased };
@@ -531,11 +624,19 @@ function BillingSection({ me }: { me: Me }) {
       setCustom('');
       toast.show({ message: t('account.topUps.bought', { n: r.credits }) });
     } catch (e) {
-      toast.show({ message: t(e instanceof ApiError && e.code === 'NO_PLAN' ? 'account.topUps.membersOnly' : 'account.topUps.failed') });
+      const code = errorCode(e);
+      toast.show({ message: t(code === 'NO_PLAN' ? 'account.topUps.membersOnly' : code === 'VALIDATION_FAILED' ? 'account.topUps.invalidAmount' : 'account.topUps.failed') });
     }
   }
 
   function download(inv: Invoice) {
+    // Real API: the Stripe-hosted PDF (or the hosted invoice page).
+    const href = inv.pdfUrl ?? inv.url;
+    if (real) {
+      if (href) window.open(href, '_blank', 'noopener');
+      else toast.show({ message: t('account.settings.billing.pdf.missing') });
+      return;
+    }
     const label =
       inv.kind === 'plan'
         ? t(`account.settings.billing.invoice.plan.${inv.period ?? 'monthly'}`, { plan: PLANS[inv.planId ?? 'pro'].label })
@@ -560,9 +661,9 @@ function BillingSection({ me }: { me: Me }) {
           <span className={styles.cardText} data-testid="plan-status">
             {plan ? (
               me.cancelAtPeriodEnd ? (
-                <FormattedMessage id="account.settings.billing.cancels" values={{ date: '[DATE]' }} />
+                <FormattedMessage id="account.settings.billing.cancels" values={{ date: periodEnd }} />
               ) : (
-                <FormattedMessage id="account.settings.billing.renews" values={{ price: money(price), date: '[DATE]', credits: planCredits }} />
+                <FormattedMessage id="account.settings.billing.renews" values={{ price: money(price), date: periodEnd, credits: planCredits }} />
               )
             ) : (
               <FormattedMessage id="account.settings.billing.noPlan.text" />
@@ -573,12 +674,14 @@ function BillingSection({ me }: { me: Me }) {
               <FormattedMessage id={plan ? 'account.settings.billing.changePlan' : 'account.settings.billing.pickPlan'} />
             </Link>
             {plan &&
+              isOwner &&
               (me.cancelAtPeriodEnd ? (
                 <button
                   type="button"
                   className={cx(styles.btn, motion.hover)}
-                  disabled={cancel.isPending}
+                  disabled={cancel.isPending || portal}
                   onClick={async () => {
+                    if (real) return void toPortal();
                     await cancel.mutateAsync(false);
                     toast.show({ message: t('account.settings.billing.resumed') });
                   }}
@@ -606,7 +709,7 @@ function BillingSection({ me }: { me: Me }) {
           </div>
           <div className={styles.legend}>
             <span>
-              <FormattedMessage id="account.settings.billing.planCredits" values={{ n: balance.plan, date: '[DATE]' }} />
+              <FormattedMessage id="account.settings.billing.planCredits" values={{ n: balance.plan, date: periodEnd }} />
             </span>
             <span>
               <FormattedMessage id="account.settings.billing.purchasedCredits" values={{ n: balance.purchased }} />
@@ -691,51 +794,87 @@ function BillingSection({ me }: { me: Me }) {
       </div>
       <SwitchRow
         label={t('account.settings.billing.autoTopUp')}
-        hint={t('account.settings.billing.autoTopUp.hint', { below: me.autoTopUp.below, buy: auto.credits, price: money(auto.amountUsd) })}
+        hint={t(isOwner ? 'account.settings.billing.autoTopUp.hint' : 'account.settings.billing.ownerOnly', { below: me.autoTopUp.below, buy: auto.credits, price: money(auto.amountUsd) })}
         checked={me.autoTopUp.enabled}
-        onChange={(v) => autoTopUp.mutate(v, { onSuccess: () => toast.show({ message: t(v ? 'account.settings.billing.autoOn' : 'account.settings.billing.autoOff') }) })}
+        disabled={!isOwner || (!plan && !me.autoTopUp.enabled)}
+        onChange={(v) =>
+          autoTopUp.mutate(v, {
+            onSuccess: () => toast.show({ message: t(v ? 'account.settings.billing.autoOn' : 'account.settings.billing.autoOff') }),
+            onError: (e) => toast.show({ message: t(errorCode(e) === 'NO_PLAN' ? 'account.topUps.membersOnly' : 'account.settings.billing.autoFailed') }),
+          })
+        }
       />
       <Row label={<FormattedMessage id="account.settings.billing.payment" />} hint={<FormattedMessage id="account.settings.billing.payment.hint" />}>
         <span className={cx(styles.rowValue, styles.rowValueWide)}>
-          {me.paymentMethod ? (
+          {real ? (
+            <FormattedMessage id="account.settings.billing.cardInPortal" />
+          ) : me.paymentMethod ? (
             <span data-testid="card">
               <FormattedMessage id="account.settings.billing.card" values={{ brand: me.paymentMethod.brand, last4: me.paymentMethod.last4 }} />
             </span>
           ) : (
             <FormattedMessage id="account.settings.billing.noCard" />
           )}
-          <button type="button" className={cx(styles.btn, motion.hover)} onClick={() => setCardOpen(true)}>
-            <FormattedMessage id={me.paymentMethod ? 'account.settings.billing.update' : 'account.settings.billing.addCard'} />
-          </button>
+          {real ? (
+            <button
+              type="button"
+              className={cx(styles.btn, motion.hover)}
+              disabled={!isOwner || portal}
+              aria-busy={portal || undefined}
+              title={!isOwner ? t('account.settings.billing.ownerOnly') : undefined}
+              onClick={() => void toPortal()}
+            >
+              <FormattedMessage id={portal ? 'account.settings.billing.portal.opening' : 'account.settings.billing.manage'} />
+            </button>
+          ) : (
+            <button type="button" className={cx(styles.btn, motion.hover)} onClick={() => setCardOpen(true)}>
+              <FormattedMessage id={me.paymentMethod ? 'account.settings.billing.update' : 'account.settings.billing.addCard'} />
+            </button>
+          )}
         </span>
       </Row>
       <h3 className={cx(styles.h3, styles.h3Invoices)}>
         <FormattedMessage id="account.settings.billing.invoices" />
       </h3>
       <div className={styles.invoices}>
+        {invoices.length === 0 && (
+          <p className={styles.rowHint} data-testid="no-invoices">
+            <FormattedMessage id={isOwner ? 'account.settings.billing.invoices.empty' : 'account.settings.billing.invoices.ownerOnly'} />
+          </p>
+        )}
         {invoices.map((inv) => (
           <div key={inv.id} className={styles.invoice} data-invoice={inv.id}>
-            <span className={styles.invoiceDate}>[DATE]</span>
+            <span className={styles.invoiceDate}>{date(inv.createdAt)}</span>
             <span>
-              {inv.kind === 'plan' ? (
+              {inv.amountCents !== undefined ? (
+                <FormattedMessage id="account.settings.billing.invoice.number" values={{ number: inv.number ?? inv.id, status: inv.status ?? '' }} />
+              ) : inv.kind === 'plan' ? (
                 <FormattedMessage id={`account.settings.billing.invoice.plan.${inv.period ?? 'monthly'}`} values={{ plan: PLANS[inv.planId ?? 'pro'].label }} />
               ) : (
                 <FormattedMessage id="account.settings.billing.invoice.topUp" values={{ n: inv.credits ?? topUpFor(inv.amountUsd ?? 0, me.plan?.id ?? null).credits }} />
               )}
             </span>
-            <span className={styles.invoiceAmount}>{money(inv.kind === 'plan' ? Number(PLANS[inv.planId ?? 'pro'].priceMonthlyUsd) : (inv.amountUsd ?? 0))}</span>
+            <span className={styles.invoiceAmount}>
+              {inv.amountCents !== undefined
+                ? intl.formatNumber(inv.amountCents / 100, { style: 'currency', currency: inv.currency ?? 'USD' })
+                : money(inv.kind === 'plan' ? Number(PLANS[inv.planId ?? 'pro'].priceMonthlyUsd) : (inv.amountUsd ?? 0))}
+            </span>
             <button type="button" className={cx(styles.invoicePdf, motion.hover)} aria-label={t('account.settings.billing.pdf.label', { id: inv.id })} onClick={() => download(inv)}>
               <FormattedMessage id="account.settings.billing.pdf" />
             </button>
           </div>
         ))}
       </div>
+      {real && <LedgerList />}
       <CancelDialog
         open={cancelOpen}
         planLabel={plan?.label ?? ''}
-        pending={cancel.isPending}
+        date={periodEnd}
+        portal={real}
+        pending={cancel.isPending || portal}
         onClose={() => setCancelOpen(false)}
         onConfirm={async () => {
+          if (real) return void toPortal();
           await cancel.mutateAsync(true);
           setCancelOpen(false);
           toast.show({ message: t('account.settings.billing.canceled') });
@@ -746,14 +885,14 @@ function BillingSection({ me }: { me: Me }) {
   );
 }
 
-function CancelDialog(p: { open: boolean; planLabel: string; pending: boolean; onClose: () => void; onConfirm: () => void }) {
+function CancelDialog(p: { open: boolean; planLabel: string; date: string; portal: boolean; pending: boolean; onClose: () => void; onConfirm: () => void }) {
   const t = useT();
   return (
     <Dialog
       open={p.open}
       onOpenChange={(o) => !o && p.onClose()}
       title={t('account.settings.cancel.title', { plan: p.planLabel })}
-      description={t('account.settings.cancel.lead', { date: '[DATE]' })}
+      description={`${t('account.settings.cancel.lead', { date: p.date })}${p.portal ? ` ${t('account.settings.cancel.portal')}` : ''}`}
       closeLabel={t('account.settings.close')}
     >
       <DialogActions>
@@ -761,10 +900,68 @@ function CancelDialog(p: { open: boolean; planLabel: string; pending: boolean; o
           <FormattedMessage id="account.settings.cancel.keep" />
         </button>
         <button type="button" className={cx(styles.btn, styles.btnDanger, motion.press)} disabled={p.pending} onClick={p.onConfirm}>
-          <FormattedMessage id={p.pending ? 'account.settings.saving' : 'account.settings.cancel.confirm'} />
+          <FormattedMessage id={p.pending ? 'account.settings.saving' : p.portal ? 'account.settings.cancel.toPortal' : 'account.settings.cancel.confirm'} />
         </button>
       </DialogActions>
     </Dialog>
+  );
+}
+
+const LEDGER_KINDS = ['grant', 'purchase', 'hold', 'settle', 'release', 'refund', 'expire'] as const;
+
+/** Credit history (`GET /api/billing/ledger`, newest first, 25 a page). */
+function LedgerList() {
+  const intl = useIntl();
+  const date = useShortDate();
+  const first = useLedger();
+  const [more, setMore] = useState<LedgerLine[]>([]);
+  const [cursor, setCursor] = useState<string | null | undefined>(undefined);
+  const [loading, setLoading] = useState(false);
+  const lines = [...(first.data?.lines ?? []), ...more];
+  const next = cursor === undefined ? (first.data?.pageInfo.hasNextPage ? first.data.pageInfo.endCursor : null) : cursor;
+  return (
+    <section aria-labelledby="ledger-h" data-testid="ledger">
+      <h3 id="ledger-h" className={cx(styles.h3, styles.h3Invoices)}>
+        <FormattedMessage id="account.settings.billing.ledger" />
+      </h3>
+      <div className={styles.invoices}>
+        {first.isSuccess && lines.length === 0 && (
+          <p className={styles.rowHint}>
+            <FormattedMessage id="account.settings.billing.ledger.empty" />
+          </p>
+        )}
+        {lines.map((l) => (
+          <div key={l.id} className={styles.invoice} data-ledger={l.kind}>
+            <span className={styles.invoiceDate}>{date(l.createdAt)}</span>
+            <span>
+              <FormattedMessage id={`account.settings.billing.ledger.${(LEDGER_KINDS as readonly string[]).includes(l.kind) ? l.kind : 'other'}`} values={{ bucket: l.bucket }} />
+            </span>
+            <span className={styles.invoiceAmount}>{intl.formatNumber(l.amount, { signDisplay: 'exceptZero' })}</span>
+            <span />
+          </div>
+        ))}
+      </div>
+      {next && (
+        <button
+          type="button"
+          className={cx(styles.btn, motion.hover)}
+          disabled={loading}
+          aria-busy={loading || undefined}
+          onClick={async () => {
+            setLoading(true);
+            try {
+              const page = await fetchLedgerPage(next);
+              setMore((m) => [...m, ...page.lines]);
+              setCursor(page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null);
+            } finally {
+              setLoading(false);
+            }
+          }}
+        >
+          <FormattedMessage id="account.settings.billing.ledger.more" />
+        </button>
+      )}
+    </section>
   );
 }
 
@@ -832,20 +1029,38 @@ function TeamSection({ me }: { me: Me }) {
   const [removeFor, setRemoveFor] = useState<Member | null>(null);
   const session = useSession();
   const seats = session.seats;
-  const used = members.length;
-  // D-013: personal plans → "Start Team"; Team without a free seat → "Add seats"; then the invite resumes.
+  const used = me.seats?.used ?? members.length;
+  const isOwner = me.role === 'owner';
+  const date = useShortDate();
+  // D-013: personal plans → "Start Team"; Team without a free seat → "Add seats"; then the invite resumes
+  // (with the email typed so far, also when the server refuses: TEAM_REQUIRED / SEATS_REQUIRED).
   const [startOpen, setStartOpen] = useState(0);
   const [seatsFor, setSeatsFor] = useState<{ n: number; initial?: number; resume: boolean } | null>(null);
+  const [draft, setDraft] = useState<{ email: string; role: Role } | null>(null);
   function invite() {
     if (!session.isTeam) return setStartOpen((n) => n + 1);
     if (used >= seats) return setSeatsFor((s) => ({ n: (s?.n ?? 0) + 1, initial: used + 1, resume: true }));
     setInviteOpen(true);
   }
+  function blocked(code: 'TEAM_REQUIRED' | 'SEATS_REQUIRED', needed: number | undefined, d: { email: string; role: Role }) {
+    setDraft(d);
+    setInviteOpen(false);
+    if (code === 'TEAM_REQUIRED') setStartOpen((n) => n + 1);
+    else setSeatsFor((s) => ({ n: (s?.n ?? 0) + 1, initial: Math.max(needed ?? used + 1, used + 1), resume: true }));
+  }
+  // Back from a Team checkout started here (`/settings/team?resume=invite`): continue the invite.
+  const search = useSearch({ strict: false }) as { resume?: string };
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (search.resume !== 'invite' || !session.isTeam) return;
+    setInviteOpen(true);
+    void navigate({ to: '/settings/$section', params: { section: 'team' }, search: {}, replace: true });
+  }, [search.resume, session.isTeam, navigate]);
   return (
     <>
       <Head id="account.settings.section.team" sub={<FormattedMessage id="account.settings.team.sub" values={{ workspace: me.workspace.name }} />} />
       {members.map((m) => {
-        const self = m.email === me.user.email;
+        const self = m.isYou ?? m.email === me.user.email;
         return (
           <div key={m.id} className={styles.member} data-member={m.id}>
             <span className={styles.avatarSm} aria-hidden="true">
@@ -860,12 +1075,20 @@ function TeamSection({ me }: { me: Me }) {
                   </span>
                 )}
               </span>
-              <span className={styles.memberEmail}>{m.email}</span>
+              <span className={styles.memberEmail}>
+                {m.email}
+                {m.invited && m.expiresAt ? (
+                  <>
+                    {' · '}
+                    <FormattedMessage id="account.settings.team.expires" values={{ date: date(m.expiresAt) }} />
+                  </>
+                ) : null}
+              </span>
             </span>
             <button
               type="button"
               className={cx(styles.limit, styles.limitBtn, motion.hover)}
-              disabled={m.role === 'viewer'}
+              disabled={m.role === 'viewer' || !isOwner || (!isMockApi() && m.invited)}
               aria-label={t('account.settings.team.limit.edit', { name: m.name })}
               onClick={() => setLimitFor(m)}
             >
@@ -877,20 +1100,32 @@ function TeamSection({ me }: { me: Me }) {
                 <FormattedMessage id="account.settings.team.limit" values={{ n: m.monthlyCreditLimit }} />
               )}
             </button>
-            <SelectMenu<Role>
-              label={t('account.settings.team.role', { name: m.name })}
-              value={m.role}
-              options={ROLES.map((r) => ({ value: r, label: t(`account.settings.team.role.${r}`) }))}
-              onChange={(r) =>
-                patch.mutate({ id: m.id, patch: { role: r } }, { onSuccess: () => toast.show({ message: t('account.settings.team.roleChanged', { name: m.name, role: t(`account.settings.team.role.${r}`) }) }) })
-              }
-            />
+            {isOwner && !(m.invited && !isMockApi()) ? (
+              <SelectMenu<Role>
+                label={t('account.settings.team.role', { name: m.name })}
+                value={m.role}
+                options={ROLES.map((r) => ({ value: r, label: t(`account.settings.team.role.${r}`) }))}
+                onChange={(r) =>
+                  patch.mutate(
+                    { id: m.id, patch: { role: r } },
+                    {
+                      onSuccess: () => toast.show({ message: t('account.settings.team.roleChanged', { name: m.name, role: t(`account.settings.team.role.${r}`) }) }),
+                      onError: (e) => toast.show({ message: t(errorCode(e) === 'CONFLICT' ? 'account.settings.team.lastOwner' : 'account.settings.team.failed') }),
+                    },
+                  )
+                }
+              />
+            ) : (
+              <span className={styles.rowHint} data-testid="member-role">
+                <FormattedMessage id={`account.settings.team.role.${m.role}`} />
+              </span>
+            )}
             <button
               type="button"
               className={cx(styles.iconBtn, motion.hover)}
-              disabled={self}
-              title={self ? t('account.settings.team.remove.self') : undefined}
-              aria-label={t('account.settings.team.remove', { name: m.name })}
+              disabled={self || !isOwner}
+              title={self ? t('account.settings.team.remove.self') : !isOwner ? t('account.settings.team.ownerOnly') : undefined}
+              aria-label={t(m.invited && !isMockApi() ? 'account.settings.team.revoke' : 'account.settings.team.remove', { name: m.name })}
               onClick={() => setRemoveFor(m)}
             >
               <PathIcon d={paths.trash} size={15} />
@@ -902,7 +1137,8 @@ function TeamSection({ me }: { me: Me }) {
         <button
           type="button"
           className={cx(styles.btn, styles.btnPrimary, motion.press)}
-          title={session.isTeam && used >= seats ? t('account.settings.team.seatsFull', { n: seats }) : undefined}
+          disabled={!isOwner}
+          title={!isOwner ? t('account.settings.team.ownerOnly') : session.isTeam && used >= seats ? t('account.settings.team.seatsFull', { n: seats }) : undefined}
           onClick={invite}
         >
           <FormattedMessage id="account.settings.team.invite" />
@@ -914,13 +1150,22 @@ function TeamSection({ me }: { me: Me }) {
             <FormattedMessage id="account.settings.team.membersOnly" values={{ n: used }} />
           )}
         </span>
-        {session.isTeam && (
+        {session.isTeam && isOwner && (
           <button type="button" className={cx(styles.btn, motion.hover)} onClick={() => setSeatsFor((s) => ({ n: (s?.n ?? 0) + 1, resume: false }))}>
             <FormattedMessage id="account.settings.team.changeSeats" />
           </button>
         )}
       </div>
-      <InviteDialog open={inviteOpen} onClose={() => setInviteOpen(false)} />
+      <InviteDialog
+        key={draft ? `draft-${draft.email}` : 'invite'}
+        open={inviteOpen}
+        initial={draft}
+        onClose={() => {
+          setInviteOpen(false);
+          setDraft(null);
+        }}
+        onBlocked={blocked}
+      />
       {startOpen > 0 && (
         <StartTeamDialog
           key={`start-${startOpen}`}
@@ -963,12 +1208,16 @@ function TeamSection({ me }: { me: Me }) {
             disabled={remove.isPending}
             onClick={() => {
               const m = removeFor!;
-              remove.mutate(m.id, {
-                onSuccess: () => {
-                  setRemoveFor(null);
-                  toast.show({ message: t('account.settings.team.removed', { name: m.name }) });
+              remove.mutate(
+                { id: m.id, invited: m.invited },
+                {
+                  onSuccess: () => {
+                    setRemoveFor(null);
+                    toast.show({ message: t(m.invited && !isMockApi() ? 'account.settings.team.revoked' : 'account.settings.team.removed', { name: m.name }) });
+                  },
+                  onError: (e) => toast.show({ message: t(errorCode(e) === 'CONFLICT' ? 'account.settings.team.lastOwner' : 'account.settings.team.failed') }),
                 },
-              });
+              );
             }}
           >
             <FormattedMessage id="account.settings.team.remove.confirm" />
@@ -979,12 +1228,23 @@ function TeamSection({ me }: { me: Me }) {
   );
 }
 
-function InviteDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+function InviteDialog({
+  open,
+  onClose,
+  initial,
+  onBlocked,
+}: {
+  open: boolean;
+  onClose: () => void;
+  initial?: { email: string; role: Role } | null;
+  /** The server needs Team or more seats first; the caller opens that dialog and resumes with the draft. */
+  onBlocked?: (code: 'TEAM_REQUIRED' | 'SEATS_REQUIRED', needed: number | undefined, draft: { email: string; role: Role }) => void;
+}) {
   const t = useT();
   const toast = useToast();
   const invite = useInviteMember();
-  const [email, setEmail] = useState('');
-  const [role, setRole] = useState<Role>('editor');
+  const [email, setEmail] = useState(initial?.email ?? '');
+  const [role, setRole] = useState<Role>(initial?.role ?? 'editor');
   const [limit, setLimit] = useState('');
   const [error, setError] = useState<string | null>(null);
   const emailId = useId();
@@ -993,7 +1253,16 @@ function InviteDialog({ open, onClose }: { open: boolean; onClose: () => void })
     e.preventDefault();
     if (!EMAIL_RE.test(email.trim())) return setError(t('account.settings.account.error.email'));
     const n = limit.trim() ? Number(limit) : null;
-    await invite.mutateAsync({ email: email.trim(), role, monthlyCreditLimit: role === 'viewer' ? null : n });
+    try {
+      await invite.mutateAsync({ email: email.trim(), role, monthlyCreditLimit: role === 'viewer' ? null : n });
+    } catch (err) {
+      const code = errorCode(err);
+      if ((code === 'TEAM_REQUIRED' || code === 'SEATS_REQUIRED') && onBlocked) {
+        const needed = isApiError(err) ? (err.data as { needed?: number }).needed : undefined;
+        return onBlocked(code, needed, { email: email.trim(), role });
+      }
+      return setError(t(code === 'CONFLICT' ? 'account.settings.team.alreadyMember' : code === 'VALIDATION' || code === 'VALIDATION_FAILED' ? 'account.settings.account.error.email' : 'account.settings.team.failed'));
+    }
     toast.show({ message: t('account.settings.team.inviteSent', { email: email.trim() }) });
     setEmail('');
     setLimit('');
@@ -1034,7 +1303,7 @@ function InviteDialog({ open, onClose }: { open: boolean; onClose: () => void })
           indicatorClassName={styles.segFill}
           options={(['editor', 'viewer'] as const).map((r) => ({ value: r, label: t(`account.settings.team.role.${r}`) }))}
         />
-        {role !== 'viewer' && (
+        {role !== 'viewer' && isMockApi() && (
           <>
             <label htmlFor={limitId} className={styles.dlgLabel}>
               <FormattedMessage id="account.settings.team.invite.limit" />

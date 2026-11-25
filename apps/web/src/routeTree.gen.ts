@@ -17,8 +17,10 @@ import { Route as ShellActivityRouteImport } from './routes/_shell/activity'
 import { Route as ShellTemplatesRouteImport } from './routes/_shell/templates'
 import { Route as ShellUpgradeRouteImport } from './routes/_shell/upgrade'
 import { Route as DevEditorRouteImport } from './routes/dev.editor'
+import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as PProjectIdRouteImport } from './routes/p/$projectId'
 import { Route as PreviewOverlaysRouteImport } from './routes/preview.overlays'
+import { Route as ShareIdRouteImport } from './routes/share.$id'
 import { Route as ShellAssetsIndexRouteImport } from './routes/_shell/assets/index'
 import { Route as ShellAssetsPublicRouteImport } from './routes/_shell/assets/public'
 import { Route as ShellCreateAvatarRouteImport } from './routes/_shell/create/avatar'
@@ -68,6 +70,11 @@ const DevEditorRoute = DevEditorRouteImport.update({
   path: '/dev/editor',
   getParentRoute: () => rootRouteImport,
 } as any)
+const InviteTokenRoute = InviteTokenRouteImport.update({
+  id: '/invite/$token',
+  path: '/invite/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PProjectIdRoute = PProjectIdRouteImport.update({
   id: '/p/$projectId',
   path: '/p/$projectId',
@@ -76,6 +83,11 @@ const PProjectIdRoute = PProjectIdRouteImport.update({
 const PreviewOverlaysRoute = PreviewOverlaysRouteImport.update({
   id: '/preview/overlays',
   path: '/preview/overlays',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ShareIdRoute = ShareIdRouteImport.update({
+  id: '/share/$id',
+  path: '/share/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ShellAssetsIndexRoute = ShellAssetsIndexRouteImport.update({
@@ -132,8 +144,10 @@ export interface FileRoutesByFullPath {
   '/templates': typeof ShellTemplatesRoute
   '/upgrade': typeof ShellUpgradeRoute
   '/dev/editor': typeof DevEditorRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/p/$projectId': typeof PProjectIdRoute
   '/preview/overlays': typeof PreviewOverlaysRoute
+  '/share/$id': typeof ShareIdRoute
   '/assets/public': typeof ShellAssetsPublicRoute
   '/create/avatar': typeof ShellCreateAvatarRoute
   '/create/character': typeof ShellCreateCharacterRoute
@@ -151,8 +165,10 @@ export interface FileRoutesByTo {
   '/templates': typeof ShellTemplatesRoute
   '/upgrade': typeof ShellUpgradeRoute
   '/dev/editor': typeof DevEditorRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/p/$projectId': typeof PProjectIdRoute
   '/preview/overlays': typeof PreviewOverlaysRoute
+  '/share/$id': typeof ShareIdRoute
   '/': typeof ShellIndexRoute
   '/assets/public': typeof ShellAssetsPublicRoute
   '/create/avatar': typeof ShellCreateAvatarRoute
@@ -173,8 +189,10 @@ export interface FileRoutesById {
   '/_shell/templates': typeof ShellTemplatesRoute
   '/_shell/upgrade': typeof ShellUpgradeRoute
   '/dev/editor': typeof DevEditorRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/p/$projectId': typeof PProjectIdRoute
   '/preview/overlays': typeof PreviewOverlaysRoute
+  '/share/$id': typeof ShareIdRoute
   '/_shell/': typeof ShellIndexRoute
   '/_shell/assets/public': typeof ShellAssetsPublicRoute
   '/_shell/create/avatar': typeof ShellCreateAvatarRoute
@@ -196,8 +214,10 @@ export interface FileRouteTypes {
     | '/templates'
     | '/upgrade'
     | '/dev/editor'
+    | '/invite/$token'
     | '/p/$projectId'
     | '/preview/overlays'
+    | '/share/$id'
     | '/assets/public'
     | '/create/avatar'
     | '/create/character'
@@ -215,8 +235,10 @@ export interface FileRouteTypes {
     | '/templates'
     | '/upgrade'
     | '/dev/editor'
+    | '/invite/$token'
     | '/p/$projectId'
     | '/preview/overlays'
+    | '/share/$id'
     | '/'
     | '/assets/public'
     | '/create/avatar'
@@ -236,8 +258,10 @@ export interface FileRouteTypes {
     | '/_shell/templates'
     | '/_shell/upgrade'
     | '/dev/editor'
+    | '/invite/$token'
     | '/p/$projectId'
     | '/preview/overlays'
+    | '/share/$id'
     | '/_shell/'
     | '/_shell/assets/public'
     | '/_shell/create/avatar'
@@ -255,8 +279,10 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   SignupRoute: typeof SignupRoute
   DevEditorRoute: typeof DevEditorRoute
+  InviteTokenRoute: typeof InviteTokenRoute
   PProjectIdRoute: typeof PProjectIdRoute
   PreviewOverlaysRoute: typeof PreviewOverlaysRoute
+  ShareIdRoute: typeof ShareIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -317,6 +343,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DevEditorRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/invite/$token': {
+      id: '/invite/$token'
+      path: '/invite/$token'
+      fullPath: '/invite/$token'
+      preLoaderRoute: typeof InviteTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/p/$projectId': {
       id: '/p/$projectId'
       path: '/p/$projectId'
@@ -329,6 +362,13 @@ declare module '@tanstack/react-router' {
       path: '/preview/overlays'
       fullPath: '/preview/overlays'
       preLoaderRoute: typeof PreviewOverlaysRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/share/$id': {
+      id: '/share/$id'
+      path: '/share/$id'
+      fullPath: '/share/$id'
+      preLoaderRoute: typeof ShareIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_shell/assets/': {
@@ -436,8 +476,10 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   SignupRoute: SignupRoute,
   DevEditorRoute: DevEditorRoute,
+  InviteTokenRoute: InviteTokenRoute,
   PProjectIdRoute: PProjectIdRoute,
   PreviewOverlaysRoute: PreviewOverlaysRoute,
+  ShareIdRoute: ShareIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

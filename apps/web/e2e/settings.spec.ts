@@ -38,7 +38,7 @@ test.describe('settings (Settings.dc.html)', () => {
   test('billing: D-006 plan price, credit split, top-up presets with bonus, custom amount validation, auto top-up', async ({ page }) => {
     await openApp(page, '/settings/billing');
     await expect(page.getByText('Pro, monthly')).toBeVisible();
-    await expect(page.getByText('$49 a month. Renews [DATE] with 2,500 bonus credits.')).toBeVisible();
+    await expect(page.getByText('$49 a month. Renews Dec 1 with 2,500 bonus credits.')).toBeVisible();
     await expect(page.getByRole('main').getByText('2,480')).toBeVisible();
     // Pro adds 10% to every tier bonus: $25 → 2,500 + 4% + 10%.
     const p25 = page.getByRole('radio', { name: /2,850/ });
@@ -210,9 +210,9 @@ test.describe('settings (Settings.dc.html)', () => {
     const dlg = page.getByRole('dialog', { name: 'Cancel Pro?' });
     await dlg.getByRole('button', { name: 'Cancel plan' }).click();
     await expect(page.getByText('Plan canceled. It stays active until the end of this period.')).toBeVisible();
-    await expect(page.getByTestId('plan-status')).toHaveText('Cancels on [DATE]. Your plan and credits stay until then.');
+    await expect(page.getByTestId('plan-status')).toHaveText('Cancels on Dec 1. Your plan and credits stay until then.');
     await page.getByRole('button', { name: 'Resume plan' }).click();
-    await expect(page.getByTestId('plan-status')).toContainText('Renews [DATE]');
+    await expect(page.getByTestId('plan-status')).toContainText('Renews Dec 1');
 
     await page.getByRole('button', { name: 'Update', exact: true }).click();
     const card = page.getByRole('dialog', { name: 'Update payment method' });

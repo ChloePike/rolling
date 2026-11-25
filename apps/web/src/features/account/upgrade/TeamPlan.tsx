@@ -4,6 +4,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { useState, type CSSProperties } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { checkoutPlan, useSession } from '@/lib/session';
+import { errorCode } from '../api';
 import { motion, PathIcon, paths } from '../shared';
 import type { BillingPeriod } from '../types';
 import { PerSeatNote, SeatStepper, TeamGets, TeamPriceBreakdown } from '../team/TeamPricing';
@@ -28,12 +29,20 @@ export function TeamPlan({ period, index }: { period: BillingPeriod; index: numb
 
   async function start() {
     if (onTeam) return void navigate({ to: '/settings/$section', params: { section: 'team' } });
+    if (session.status === 'signedOut') return void navigate({ to: '/signup', search: { redirect: '/upgrade' } });
     setPending(true);
     try {
-      await checkoutPlan('team', period, seats);
+      // Stripe returns to Settings → Team; a personal plan switches in place.
+      await checkoutPlan('team', period, seats, { returnTo: '/settings/team' });
       toast.show({ message: intl.formatMessage({ id: 'account.team.toast.started' }, { n: seats }) });
-    } catch {
-      toast.show({ message: intl.formatMessage({ id: 'account.team.toast.failed' }) });
+    } catch (e) {
+      const code = errorCode(e);
+      toast.show({
+        message: intl.formatMessage(
+          { id: code === 'SEATS_REQUIRED' ? 'account.team.start.seatsRequired' : code === 'PAYMENT_FAILED' ? 'account.team.toast.failed' : code === 'FORBIDDEN' ? 'account.team.ownerOnly' : 'account.team.toast.failed' },
+          { n: seats + 1 },
+        ),
+      });
     } finally {
       setPending(false);
     }

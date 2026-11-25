@@ -4,8 +4,9 @@ import { useEffect, useRef, type KeyboardEvent } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import styles from './AccountMenu.module.css';
 import { PLANS } from '@rolling/core/pricing/config';
-import { setActiveWorkspace, useActiveWorkspace, useSession } from '@/lib/session';
-import { placeholderAccount, placeholderHandle, placeholderWorkspaces } from './placeholder';
+import { useMembers } from '@/features/account/api';
+import { setActiveWorkspace, useSession } from '@/lib/session';
+import { accountHandle, accountInitial, accountName } from './account';
 
 const P = {
   profile: 'M18 20a6 6 0 0 0-12 0 M12 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8z',
@@ -35,13 +36,20 @@ function I({ d, size = 16, sw = 2 }: { d: string; size?: number; sw?: number }) 
  */
 export function AccountMenuContent({ onClose, onLogout, onHelp }: { onClose: () => void; onLogout?: () => void; onHelp?: () => void }) {
   const intl = useIntl();
-  // The active workspace persists (lib/session) until workspaces come from `GET /api/me`.
-  const workspace = useActiveWorkspace(placeholderWorkspaces[0]!.id);
+  // Workspaces come from `GET /api/me`; switching sets `x-workspace-id` and refetches (lib/session).
+  const session = useSession();
+  const workspace = session.workspace?.id ?? null;
   const setWorkspace = setActiveWorkspace;
   const rootRef = useRef<HTMLDivElement>(null);
-  const account = placeholderAccount;
-  const { planId } = useSession();
-  const planLabel = planId ? PLANS[planId].label : null;
+  const { planId, plan } = session;
+  const planLabel = planId ? (plan?.label ?? PLANS[planId].label) : null;
+  const members = useMembers();
+  const memberCount = members.data ? members.data.filter((m) => !m.invited).length : null;
+  const workspaces = session.workspaces.map((w) => ({
+    ...w,
+    mark: accountInitial({ user: { id: w.id, email: null, name: w.name, image: null } }),
+    tone: w.kind === 'personal' ? 'var(--c-tone-graphite)' : 'var(--c-tone-fern)',
+  }));
 
   useEffect(() => {
     rootRef.current?.querySelector<HTMLElement>('[role^="menuitem"]')?.focus();
@@ -61,23 +69,32 @@ export function AccountMenuContent({ onClose, onLogout, onHelp }: { onClose: () 
   };
 
   const links = [
-    { id: 'profile', to: '/u/$handle', params: { handle: placeholderHandle }, d: P.profile },
+    { id: 'profile', to: '/u/$handle', params: { handle: accountHandle(session) }, d: P.profile },
     { id: 'settings', to: '/settings/$section', params: { section: 'account' }, d: P.settings },
     { id: 'plans', to: '/upgrade', d: P.plans, note: planLabel ?? undefined },
     { id: 'billing', to: '/settings/$section', params: { section: 'billing' }, d: P.billing },
-    { id: 'members', to: '/settings/$section', params: { section: 'team' }, d: P.members, note: intl.formatNumber(5) },
+    { id: 'members', to: '/settings/$section', params: { section: 'team' }, d: P.members, note: memberCount !== null ? intl.formatNumber(memberCount) : undefined },
   ] as const;
 
   return (
     <div ref={rootRef} className={styles.menu} onKeyDown={onKeyDown}>
       <div className={styles.who}>
         <span className={styles.bigAvatar} aria-hidden="true">
-          {account.initial}
+          {accountInitial(session)}
         </span>
         <span className={styles.whoText}>
-          <span className={styles.whoName}>{account.initial}</span>
-          <span className={styles.whoPlan}>
-            {planLabel ? <FormattedMessage id="shell.account.planLine" values={{ plan: planLabel }} /> : <FormattedMessage id="shell.account.noPlan" />}
+          <span className={styles.whoName}>{accountName(session)}</span>
+          <span className={styles.whoPlan} data-testid="account-plan-line">
+            {planLabel && plan?.currentPeriodEnd ? (
+              <FormattedMessage
+                id={plan.cancelAtPeriodEnd ? 'shell.account.planEnds' : 'shell.account.planLine'}
+                values={{ plan: planLabel, date: intl.formatDate(plan.currentPeriodEnd, { month: 'short', day: 'numeric' }) }}
+              />
+            ) : planLabel ? (
+              <FormattedMessage id="shell.account.planOnly" values={{ plan: planLabel }} />
+            ) : (
+              <FormattedMessage id="shell.account.noPlan" />
+            )}
           </span>
         </span>
       </div>
@@ -85,7 +102,7 @@ export function AccountMenuContent({ onClose, onLogout, onHelp }: { onClose: () 
         <FormattedMessage id="shell.account.workspace" />
       </div>
       <div role="group" aria-label={intl.formatMessage({ id: 'shell.account.workspace' })} className={styles.group}>
-        {placeholderWorkspaces.map((w) => {
+        {workspaces.map((w) => {
           const on = w.id === workspace;
           return (
             <button
@@ -105,8 +122,10 @@ export function AccountMenuContent({ onClose, onLogout, onHelp }: { onClose: () 
                 <span className={styles.spaceMeta}>
                   {w.kind === 'personal' ? (
                     <FormattedMessage id="shell.account.personal.meta" />
+                  ) : on && memberCount !== null ? (
+                    <FormattedMessage id="shell.account.team.meta" values={{ members: memberCount }} />
                   ) : (
-                    <FormattedMessage id="shell.account.team.meta" values={{ members: w.members }} />
+                    <FormattedMessage id="shell.account.team.metaShort" />
                   )}
                 </span>
               </span>

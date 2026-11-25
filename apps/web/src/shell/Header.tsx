@@ -8,8 +8,8 @@ import styles from './Header.module.css';
 import { Icon, LogoMark } from './icons';
 import { isNavItemActive, navItems } from './nav';
 import { signOut, useCredits, useSession } from '@/lib/session';
+import { accountInitial } from './account';
 import { HelpDialog } from './HelpDialog';
-import { placeholderAccount } from './placeholder';
 import { SettingsPopoverContent } from './SettingsPopover';
 import { NARROW_NAV_QUERY, useMediaQuery } from './useMediaQuery';
 
@@ -32,18 +32,24 @@ export function Header() {
   const navRef = useRef<HTMLElement>(null);
   // The active pill slides between items (200ms, standard curve) on navigation.
   const pill = useIndicator(navRef, `${pathname}-${narrow}`, '[aria-current="page"]');
-  const account = placeholderAccount;
   const navigate = useNavigate();
   const toast = useToast();
   const [help, setHelp] = useState(false);
-  const { planId } = useSession();
+  const session = useSession();
+  const { planId } = session;
+  const initial = accountInitial(session);
   const logout = () => {
-    void signOut().then(() => {
-      void navigate({ to: '/login' });
-      toast.show({ message: intl.formatMessage({ id: 'shell.account.loggedOut' }) });
-    });
+    void signOut()
+      .catch(() => undefined)
+      .then(() => {
+        void navigate({ to: '/login' });
+        toast.show({ message: intl.formatMessage({ id: 'shell.account.loggedOut' }) });
+      });
   };
   const { available } = useCredits();
+  // Public pages (plans) are open to signed-out visitors: log in instead of credits and account.
+  const signedOut = session.status === 'signedOut';
+  const loading = session.status === 'loading';
 
   return (
     <header className={styles.header} data-testid="app-header">
@@ -80,73 +86,83 @@ export function Header() {
         })}
       </nav>
 
-      <div className={styles.actions}>
-        <Popover
-          open={open === 'credits'}
-          onOpenChange={toggle('credits')}
-          label={intl.formatMessage({ id: 'shell.credits.title' })}
-          align="end"
-          offset={5}
-          alignOffset={CREDITS_ALIGN_OFFSET}
-          className={styles.creditsLayer}
-          trigger={(p) => (
-            <button
-              {...p}
-              type="button"
-              className={styles.credits}
-              aria-label={intl.formatMessage({ id: 'header.credits.label' }, { balance: available })}
+      <div className={styles.actions} data-session={session.status}>
+        {signedOut ? (
+          <>
+            <Link to="/login" search={{ redirect: pathname }} className={styles.upgrade} data-testid="header-login">
+              <FormattedMessage id="header.login" />
+            </Link>
+          </>
+        ) : loading ? null : (
+          <>
+            <Popover
+              open={open === 'credits'}
+              onOpenChange={toggle('credits')}
+              label={intl.formatMessage({ id: 'shell.credits.title' })}
+              align="end"
+              offset={5}
+              alignOffset={CREDITS_ALIGN_OFFSET}
+              className={styles.creditsLayer}
+              trigger={(p) => (
+                <button
+                  {...p}
+                  type="button"
+                  className={styles.credits}
+                  aria-label={intl.formatMessage({ id: 'header.credits.label' }, { balance: available })}
+                >
+                  <Icon name="coin" size={15} className={styles.creditsCoin} />
+                  <span className={styles.creditsValue}>
+                    <FormattedNumber value={available} />
+                  </span>
+                  <span className={styles.creditsPlus}>
+                    <Icon name="plus" size={13} strokeWidth={2.2} />
+                  </span>
+                </button>
+              )}
             >
-              <Icon name="coin" size={15} className={styles.creditsCoin} />
-              <span className={styles.creditsValue}>
-                <FormattedNumber value={available} />
-              </span>
-              <span className={styles.creditsPlus}>
-                <Icon name="plus" size={13} strokeWidth={2.2} />
-              </span>
-            </button>
-          )}
-        >
-          <CreditsPopoverContent onNavigate={() => setOpen(null)} />
-        </Popover>
-        <Link to="/upgrade" className={styles.upgrade}>
-          <FormattedMessage id="header.upgrade" />
-        </Link>
-        <Popover
-          open={open === 'settings'}
-          onOpenChange={toggle('settings')}
-          label={intl.formatMessage({ id: 'settingsPopover.title' })}
-          align="end"
-          offset={5}
-          alignOffset={46}
-          trigger={(p) => (
-            <IconButton {...p} label={intl.formatMessage({ id: 'header.settings' })} icon={<Icon name="gear" size={17} />} />
-          )}
-        >
-          <SettingsPopoverContent onClose={() => setOpen(null)} />
-        </Popover>
-        <Popover
-          open={open === 'account'}
-          onOpenChange={toggle('account')}
-          label={intl.formatMessage({ id: 'shell.account.menu' })}
-          role="menu"
-          align="end"
-          offset={5}
-          alignOffset={4}
-          autoFocus={false}
-          className={styles.accountLayer}
-          trigger={(p) => (
-            <button {...p} type="button" className={styles.avatar} aria-label={intl.formatMessage({ id: 'header.account' })}>
-              <span aria-hidden="true">{account.initial}</span>
-              {planId === 'pro' ? (
-                <span className={styles.proBadge} aria-hidden="true">
-                  <FormattedMessage id="header.proBadge" />
-                </span>
-              ) : null}
-            </button>
-          )}
-        >
-          <AccountMenuContent onClose={() => setOpen(null)} onHelp={() => setHelp(true)} onLogout={logout} />
-        </Popover>
+              <CreditsPopoverContent onNavigate={() => setOpen(null)} />
+            </Popover>
+            <Link to="/upgrade" className={styles.upgrade}>
+              <FormattedMessage id="header.upgrade" />
+            </Link>
+            <Popover
+              open={open === 'settings'}
+              onOpenChange={toggle('settings')}
+              label={intl.formatMessage({ id: 'settingsPopover.title' })}
+              align="end"
+              offset={5}
+              alignOffset={46}
+              trigger={(p) => (
+                <IconButton {...p} label={intl.formatMessage({ id: 'header.settings' })} icon={<Icon name="gear" size={17} />} />
+              )}
+            >
+              <SettingsPopoverContent onClose={() => setOpen(null)} />
+            </Popover>
+            <Popover
+              open={open === 'account'}
+              onOpenChange={toggle('account')}
+              label={intl.formatMessage({ id: 'shell.account.menu' })}
+              role="menu"
+              align="end"
+              offset={5}
+              alignOffset={4}
+              autoFocus={false}
+              className={styles.accountLayer}
+              trigger={(p) => (
+                <button {...p} type="button" className={styles.avatar} aria-label={intl.formatMessage({ id: 'header.account' })}>
+                  <span aria-hidden="true">{initial}</span>
+                  {planId === 'pro' || planId === 'team' ? (
+                    <span className={styles.proBadge} aria-hidden="true" data-badge={planId}>
+                      <FormattedMessage id={planId === 'team' ? 'header.teamBadge' : 'header.proBadge'} />
+                    </span>
+                  ) : null}
+                </button>
+              )}
+            >
+              <AccountMenuContent onClose={() => setOpen(null)} onHelp={() => setHelp(true)} onLogout={logout} />
+            </Popover>
+          </>
+        )}
       </div>
       <HelpDialog open={help} onOpenChange={setHelp} />
     </header>

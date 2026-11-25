@@ -34,6 +34,11 @@ export interface Me {
   paymentMethod: { brand: string; last4: string; expires: string } | null;
   /** Canceled plans stay active until the end of the paid period. */
   cancelAtPeriodEnd: boolean;
+  /** Epoch ms the paid period ends (renewal or end date); null without a plan or in old mocks. */
+  periodEnd?: number | null;
+  periodStart?: number | null;
+  /** Team seats (D-013): purchased and in use (members + pending invites). */
+  seats?: { purchased: number; used: number } | null;
 }
 
 export interface Member {
@@ -45,6 +50,10 @@ export interface Member {
   monthlyCreditLimit: number | null;
   /** Invited by email, not joined yet. */
   invited?: boolean;
+  /** Real API: the signed-in user's own row. */
+  isYou?: boolean;
+  /** Real API: invite expiry (epoch ms) for pending invites. */
+  expiresAt?: number;
 }
 
 export interface Invoice {
@@ -56,4 +65,12 @@ export interface Invoice {
   amountUsd?: number;
   /** Credits granted, for top-ups bought in this session. */
   credits?: number;
+  /** Real API (Stripe invoices). */
+  number?: string | null;
+  createdAt?: number;
+  amountCents?: number;
+  currency?: string;
+  status?: string;
+  url?: string | null;
+  pdfUrl?: string | null;
 }

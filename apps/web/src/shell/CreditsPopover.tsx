@@ -3,6 +3,8 @@ import { Link } from '@tanstack/react-router';
 import { useMemo, useState } from 'react';
 import { FormattedDate, FormattedMessage, FormattedNumber, useIntl } from 'react-intl';
 import { useFormatPrice } from '@/lib/prefs';
+import { useUsedThisPeriod } from '@/features/account/api';
+import { isMockApi } from '@/lib/api/mode';
 import { checkoutTopUp, useCredits, useSession, type CreditsBreakdown } from '@/lib/session';
 import { topUpPresets } from '@/lib/topUp';
 import styles from './CreditsPopover.module.css';
@@ -36,7 +38,9 @@ export function CreditsPopoverContent({
   const intl = useIntl();
   const toast = useToast();
   const live = useCredits();
-  const credits = creditsProp ?? live;
+  // Real API: spent this billing period comes from the ledger (settled jobs).
+  const used = useUsedThisPeriod();
+  const credits = creditsProp ?? (used !== null ? { ...live, usedThisMonth: used } : live);
   const { isMember, planId } = useSession();
   const presets = useMemo(() => topUpPresets(planId), [planId]);
   const [amount, setAmount] = useState(DEFAULT_TOP_UP_USD);
@@ -89,10 +93,9 @@ export function CreditsPopoverContent({
             <FormattedNumber value={credits.plan} />
           </span>
           <span className={styles.splitNote}>
-            <FormattedMessage
-              id="shell.credits.expires"
-              values={{ date: <FormattedDate value={credits.planExpires} month="short" day="numeric" /> }}
-            />
+            {credits.planExpires.getTime() > 0 ? (
+              <FormattedMessage id="shell.credits.expires" values={{ date: <FormattedDate value={credits.planExpires} month="short" day="numeric" /> }} />
+            ) : null}
           </span>
         </div>
         <div className={styles.splitRow}>
@@ -160,7 +163,7 @@ export function CreditsPopoverContent({
               onClick={() => topUp(picked.amountUsd)}
             >
               {pending ? (
-                <FormattedMessage id="shell.credits.topUpPending" />
+                <FormattedMessage id={isMockApi() ? 'shell.credits.topUpPending' : 'shell.checkout.redirecting'} />
               ) : (
                 <FormattedMessage id="shell.credits.topUpButton" values={{ price: money(picked.amountUsd), credits: picked.credits }} />
               )}

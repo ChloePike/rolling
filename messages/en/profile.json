@@ -7,5 +7,7 @@
   "profile.tab.published": "Published",
   "profile.tab.template": "Templates",
   "profile.empty": "Nothing here yet.",
-  "profile.downloaded": "Download started."
+  "profile.downloaded": "Download started.",
+  "profile.bio.empty": "No bio yet.",
+  "profile.unavailable": "Public profiles open when publishing does. Only your own profile is visible for now."
 }

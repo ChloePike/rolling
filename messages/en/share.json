@@ -1,0 +1,20 @@
+{
+  "share.meta": "{n, plural, one {# item} other {# items}} · Shared {date}",
+  "share.open": "Open Rolling",
+  "share.signup": "Make your own",
+  "share.board": "Shared canvas",
+  "share.download": "Download",
+  "share.download.label": "Download {name}",
+  "share.empty": "Nothing to show in this share.",
+  "share.missing.title": "This link isn’t available",
+  "share.missing.sub": "It may have been turned off by its owner, or the address is wrong.",
+  "share.error.title": "Couldn’t load this share",
+  "share.error.sub": "Check your connection and reload the page.",
+  "share.kind.script": "Script",
+  "share.kind.image": "Image",
+  "share.kind.video": "Video",
+  "share.kind.audio": "Audio",
+  "share.kind.asset": "Reference",
+  "share.kind.text": "Text",
+  "share.kind.other": "Step"
+}

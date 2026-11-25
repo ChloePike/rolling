@@ -4,6 +4,7 @@ import { useState, type CSSProperties } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { useMe } from '@/features/account/api';
 import { motion, ResultModal, Segmented } from '@/features/account/shared';
+import { isMockApi } from '@/lib/api/mode';
 import { useProfile } from './api';
 import styles from './Profile.module.css';
 
@@ -20,12 +21,21 @@ function timecode(sec: number) {
 export function ProfilePage({ handle }: { handle: string }) {
   const intl = useIntl();
   const toast = useToast();
-  const { data: profile } = useProfile(handle);
+  const { data: profile, isPending } = useProfile(handle);
   const { data: me } = useMe();
   const [tab, setTab] = useState<ProfileTab>('published');
   const [viewing, setViewing] = useState<{ title: string; durationSec: number } | null>(null);
   const navigate = useNavigate();
-  if (!profile) return null;
+  if (isPending) return null;
+  if (!profile) {
+    return (
+      <div className={styles.page}>
+        <p className={styles.empty} data-testid="profile-unavailable">
+          <FormattedMessage id="profile.unavailable" />
+        </p>
+      </div>
+    );
+  }
   const own = me?.user.handle === profile.handle;
   const count = (k: ProfileTab) => profile.works.filter((w) => w.kind === k).length;
   const works = profile.works.filter((w) => w.kind === tab);
@@ -51,7 +61,7 @@ export function ProfilePage({ handle }: { handle: string }) {
             {profile.name}
           </h1>
           <span className={styles.handle}>@{profile.handle}</span>
-          <p className={styles.bio}>{profile.bio ?? intl.formatMessage({ id: 'profile.bio.placeholder' })}</p>
+          <p className={styles.bio}>{profile.bio ?? intl.formatMessage({ id: isMockApi() ? 'profile.bio.placeholder' : 'profile.bio.empty' })}</p>
         </div>
         <div className={styles.actions}>
           {own && (

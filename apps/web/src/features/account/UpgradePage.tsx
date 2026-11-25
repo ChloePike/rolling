@@ -1,8 +1,10 @@
 import { PERSONAL_PLAN_ORDER, PLAN_ORDER, PLANS, type PlanId } from '@rolling/core/pricing/config';
 import { useToast } from '@rolling/ui';
+import { useNavigate } from '@tanstack/react-router';
 import { useRef, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
-import { checkoutPlan, useSession } from '@/lib/session';
+import { isApiError } from '@/lib/api/errors';
+import { checkoutPlan, openBillingPortal, useSession } from '@/lib/session';
 import { motion, Segmented } from './shared';
 import type { BillingPeriod } from './types';
 import { Compare } from './upgrade/Compare';
@@ -11,20 +13,21 @@ import { ModelMark } from './upgrade/ModelMark';
 import { PlanCard } from './upgrade/PlanCard';
 import { TeamPlan } from './upgrade/TeamPlan';
 import { TopUpCalculator } from './upgrade/TopUpCalculator';
-import { useFeaturedModels, useRates } from './upgrade/useRates';
+import { lowestPlanForModel, useFeaturedModels, useRates } from './upgrade/useRates';
 import styles from './Upgrade.module.css';
 import parts from './upgrade/Upgrade.parts.module.css';
 
 /** Plus carries the Recommended badge (the middle personal plan, as drawn). */
 export const RECOMMENDED: PlanId = PERSONAL_PLAN_ORDER[Math.floor(PERSONAL_PLAN_ORDER.length / 2)]!;
 
-/** Names shown until the catalog answers (D-002 launch models). */
+/** Shown until the catalog answers (D-002 launch models, D-009 display names), with their lowest resolution. */
 const FALLBACK_MODELS = [
-  { id: 'bytedance/seedance-2.5', name: 'Seedance 2.5' },
-  { id: 'minimax/minimax-h3', name: 'MiniMax H3' },
-  { id: 'alibaba/wan3.0', name: 'Wan 3.0' },
-  { id: 'bytedance/seedream-5.0-lite', name: 'Seedream 5.0 Lite' },
-  { id: 'qwen/qwen-image-2.0', name: 'Wan 2.7 Image' },
+  { id: 'bytedance/seedance-2.5', name: 'Seedance 2.5', kind: 'video', resolutions: ['480p', '720p', '1080p'] },
+  { id: 'minimax/minimax-h3', name: 'MiniMax H3', kind: 'video', resolutions: ['768p', '1080p'] },
+  { id: 'lumina/berry-1.0', name: 'Wan 3.0', kind: 'video', resolutions: ['720p', '1080p'] },
+  { id: 'lumina/berry-1.0-pro', name: 'Wan 3.0 Pro', kind: 'video', resolutions: ['1080p', '4K'] },
+  { id: 'bytedance/seedream-5.0-lite', name: 'Seedream 5.0 Lite', kind: 'image', resolutions: ['2K'] },
+  { id: 'qwen/qwen-image-2.0', name: 'Qwen Image 2.0', kind: 'image', resolutions: ['2K'] },
 ];
 
 /**
@@ -39,7 +42,8 @@ export function UpgradePage({ initialPeriod = 'monthly' }: { initialPeriod?: Bil
   const session = useSession();
   const rates = useRates();
   const featured = useFeaturedModels();
-  const models = featured.length ? featured.map((m) => ({ id: m.id, name: m.name })) : FALLBACK_MODELS;
+  const models = (featured.length ? featured : FALLBACK_MODELS).map((m) => ({ id: m.id, name: m.name, plan: lowestPlanForModel(m) }));
+  const navigate = useNavigate();
   const [period, setPeriod] = useState<BillingPeriod>(session.plan?.period ?? initialPeriod);
   const [pending, setPending] = useState<PlanId | null>(null);
   const plansRef = useRef<HTMLDivElement>(null);
@@ -47,13 +51,25 @@ export function UpgradePage({ initialPeriod = 'monthly' }: { initialPeriod?: Bil
   const yearlyDiscount = Math.max(...PLAN_ORDER.map((id) => Number(PLANS[id].yearlyDiscount) || 0));
 
   async function choose(id: PlanId) {
+    // Signed-out visitors (the page is public): sign up first, then come back here.
+    if (session.status === 'signedOut') return void navigate({ to: '/signup', search: { redirect: '/upgrade' } });
     setPending(id);
     const wasMember = session.isMember;
     try {
-      await checkoutPlan(id, period);
+      await checkoutPlan(id, period, 1, { returnTo: '/upgrade' });
       toast.show({
         message: intl.formatMessage({ id: wasMember ? 'account.upgrade.toast.switched' : 'account.upgrade.toast.joined' }, { plan: PLANS[id].label }),
       });
+    } catch (e) {
+      // Changing a live personal plan happens in the Stripe portal (prorations, cancel).
+      if (isApiError(e, 'CONFLICT')) {
+        toast.show({ message: intl.formatMessage({ id: 'account.upgrade.toast.portal' }) });
+        await openBillingPortal('/upgrade').catch(() => toast.show({ message: intl.formatMessage({ id: 'account.upgrade.toast.failed' }) }));
+      } else if (isApiError(e, 'FORBIDDEN')) {
+        toast.show({ message: intl.formatMessage({ id: 'account.upgrade.toast.ownerOnly' }) });
+      } else {
+        toast.show({ message: intl.formatMessage({ id: 'account.upgrade.toast.failed' }) });
+      }
     } finally {
       setPending(null);
     }
@@ -128,10 +144,17 @@ export function UpgradePage({ initialPeriod = 'monthly' }: { initialPeriod?: Bil
           </span>
         </div>
         <ul className={parts.modelList}>
-          {models.slice(0, 8).map((m, i) => (
-            <li key={m.id} className={`${parts.model} ${motion.stagger}`} style={{ ['--i' as string]: i }} data-model={m.id}>
+          {models.slice(0, 10).map((m, i) => (
+            <li key={m.id} className={`${parts.model} ${motion.stagger}`} style={{ ['--i' as string]: i }} data-model={m.id} data-min-plan={m.plan ?? undefined}>
               <ModelMark id={m.id} name={m.name} />
-              {m.name}
+              <span className={parts.modelName}>{m.name}</span>
+              <span className={m.plan && m.plan !== 'starter' ? parts.modelPlanUp : parts.modelPlan}>
+                {m.plan === null ? null : m.plan === 'starter' ? (
+                  <FormattedMessage id="account.upgrade.models.allPlans" />
+                ) : (
+                  <FormattedMessage id="account.upgrade.models.fromPlan" values={{ plan: PLANS[m.plan].label }} />
+                )}
+              </span>
             </li>
           ))}
         </ul>
