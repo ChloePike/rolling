@@ -52,6 +52,8 @@ export interface TransferItem {
   /** Upload fields. */
   assetId?: string;
   projectId?: string;
+  /** Audio/video length the browser reported; sent on create so quotes work before probing. */
+  durationMs?: number;
   purpose?: Purpose;
   fingerprint?: string;
   /** The bytes are stored in IndexedDB (≤ persistBlobMaxBytes) and survive reload. */
@@ -86,6 +88,7 @@ export interface UploadRequest {
   lastModified: number;
   contentType: string;
   projectId?: string;
+  durationMs?: number;
   purpose: Purpose;
   priority: Priority;
 }

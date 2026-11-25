@@ -101,7 +101,8 @@ async function assetUrl(env: Env, ctx: JobContext, assetId: string): Promise<{ u
     status: string;
     name: string;
   }>();
-  if (!row || row.status !== "ready" || (row.workspace_id !== null && row.workspace_id !== ctx.workspaceId)) return null;
+  // `processing` uploads are usable: the object is complete in R2, probing only adds metadata.
+  if (!row || (row.status !== "ready" && row.status !== "processing") || (row.workspace_id !== null && row.workspace_id !== ctx.workspaceId)) return null;
   const origin: ImageSource = row.source === "generated" || row.source === "public" || row.source === "builtin" ? row.source : row.source === "team" ? "team" : "upload";
   if (row.r2_key.startsWith("public/") && env.PUBLIC_MEDIA_BASE_URL) return { url: publicMediaUrl(row.r2_key, env.PUBLIC_MEDIA_BASE_URL), origin, key: row.r2_key, name: row.name };
   const ws = row.workspace_id && keyBelongsTo(row.r2_key, row.workspace_id) ? row.workspace_id : "_";
@@ -119,6 +120,30 @@ async function posterUrl(env: Env, ctx: JobContext, assetId: string): Promise<{ 
   const url = await signMediaUrl(env, key, { workspaceId: ctx.workspaceId, expiresIn: SIGNED_INPUT_TTL, absolute: true });
   const origin: ImageSource = row.source === "generated" ? "generated" : row.source === "team" ? "team" : "upload";
   return { url: url.startsWith("http") ? url : new URL(url, env.PUBLIC_APP_URL).toString(), origin, key, name: `${row.name} (poster)` };
+}
+
+/** How much longer than the browser-reported length a probed file may be before the quote no longer holds. */
+export function durationOverrun(declaredSec: number, probedSec: number): boolean {
+  return probedSec > declaredSec + Math.max(1, declaredSec * 0.1);
+}
+
+/**
+ * Re-checks lengths the item was quoted with before probing (the upload's
+ * browser-reported `durationMs`): once probed, a file clearly longer than
+ * reported would make the provider bill more than the hold, so the job fails
+ * (refunded) and the user quotes again. Not probed yet → the declared length stands.
+ */
+async function checkDeclaredDurations(env: Env, ctx: JobContext): Promise<void> {
+  const declared = ctx.spec.declaredDurations;
+  if (!declared) return;
+  for (const [assetId, declaredSec] of Object.entries(declared)) {
+    const row = await env.DB.prepare("SELECT meta FROM assets WHERE id = ?").bind(assetId).first<{ meta: string | null }>();
+    const meta = parseJson<{ durationSec?: unknown; durationSource?: unknown }>(row?.meta ?? null, {});
+    if (meta.durationSource !== "probe" || typeof meta.durationSec !== "number") continue;
+    if (durationOverrun(declaredSec, meta.durationSec)) {
+      fail("input_changed", `The file is ${Math.round(meta.durationSec)}s long, longer than the ${Math.round(declaredSec)}s it was quoted for. Quote again.`);
+    }
+  }
 }
 
 export interface Prepared {
@@ -147,6 +172,7 @@ export async function prepareJob(env: Env, ctx: JobContext, modelId: string): Pr
     // Edited since the quote: the run uses the quoted settings, so the version shows "Input changed".
     digest = !isRoomError(d) && (ctx.paramsHash === null || paramsHash(node) === ctx.paramsHash) ? d.digest : `dg_changed_${ctx.jobId}`;
   }
+  await checkDeclaredDurations(env, ctx);
   const resolved: ResolvedInput[] = [];
   const references: SafetyReference[] = [];
   for (const input of ctx.spec.inputs as GenInput[]) {

@@ -72,6 +72,9 @@ async function processAv(env: Env, row: AssetRow, meta: Record<string, unknown>)
   const url = await signMediaUrl(env, row.r2_key, { workspaceId: ws, expiresIn: 900, absolute: true });
   const probe = (await (await container(env, "/probe", { url })).json()) as { durationSec?: number; width?: number; height?: number; hasAudio?: boolean };
   const next: Record<string, unknown> = { ...meta, ...probe };
+  // The probed length replaces the browser-reported one; jobs quoted with the latter re-check it (`prepare`).
+  if (typeof probe.durationSec === "number" && probe.durationSec > 0) next.durationSource = "probe";
+  else if (meta.durationSource === "declared") next.durationSec = meta.durationSec;
   const dir = dirOf(row.r2_key);
   if (row.kind === "video") {
     const thumb = await container(env, "/thumb", { url, width: THUMB_WIDTH, at: Math.min(1, (probe.durationSec ?? 0) / 2) });

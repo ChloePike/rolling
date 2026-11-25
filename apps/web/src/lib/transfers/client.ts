@@ -5,6 +5,7 @@
 import type { DeepPartial, TransfersConfig, ValidationResult } from './config';
 import { validateUpload } from './config';
 import { connectTransport, type Transport } from './transport';
+import { durationField, isTimed, mediaDurationMs } from './duration';
 import type {
   ClientMessage,
   EngineMessage,
@@ -247,7 +248,15 @@ export class TransfersClient {
         priority: opts.priority ?? 'normal',
       });
     }
-    if (requests.length) this.post({ type: 'upload', requests });
+    if (requests.length) {
+      // Audio/video: read the length in this tab first (metadata only, bounded wait) so a
+      // quote right after the upload has a duration before the server probed the file.
+      if (requests.some((r) => isTimed(r.contentType))) {
+        void Promise.all(requests.map(async (r) => (isTimed(r.contentType) ? { ...r, ...durationField(await mediaDurationMs(r.file)) } : r))).then((rs) =>
+          this.post({ type: 'upload', requests: rs }),
+        );
+      } else this.post({ type: 'upload', requests });
+    }
     if (rejected.length) for (const l of this.rejectListeners) l(rejected);
     return { items, rejected };
   }

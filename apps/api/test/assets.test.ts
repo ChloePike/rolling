@@ -43,8 +43,8 @@ async function makeMatureMember(u: string): Promise<void> {
   ]);
 }
 
-async function upload(u: string, bytes: Uint8Array, contentType: string, filename: string) {
-  const start = await api(u, "/api/assets/uploads", { method: "POST", json: { filename, contentType, size: bytes.byteLength } });
+async function upload(u: string, bytes: Uint8Array, contentType: string, filename: string, extra: Record<string, unknown> = {}) {
+  const start = await api(u, "/api/assets/uploads", { method: "POST", json: { filename, contentType, size: bytes.byteLength, ...extra } });
   expect(start.status, await start.clone().text()).toBe(201);
   const { assetId, partSize, partCount } = (await start.json()) as { assetId: string; partSize: number; partCount: number };
   await putParts(u, assetId, bytes, partSize, Array.from({ length: partCount }, (_, i) => i + 1));
@@ -128,6 +128,23 @@ describe("multipart uploads", () => {
     const asset = ((await (await api(alice, `/api/assets/${assetId}`)).json()) as any).asset;
     expect(asset).toMatchObject({ status: "ready", kind: "image" });
     expect(asset.thumbUrl).toMatch(/^\/media\//);
+  });
+
+  it("keeps the browser-reported length of audio/video until probing replaces it", async () => {
+    const alice = user("alice");
+    await ensureWorkspace(alice);
+    const { assetId, asset } = await upload(alice, new Uint8Array(4096).fill(7), "audio/mpeg", "voice.mp3", { durationMs: 6400 });
+    expect(asset).toMatchObject({ status: "processing", meta: { durationSec: 6.4 } });
+    const row = await env.DB.prepare("SELECT r2_key, meta FROM assets WHERE id = ?").bind(assetId).first<{ r2_key: string; meta: string }>();
+    expect(JSON.parse(row!.meta)).toMatchObject({ durationSec: 6.4, durationSource: "declared", declaredDurationSec: 6.4 });
+    // No container: still the declared length.
+    expect(await processAsset(env, { assetId, r2Key: row!.r2_key, kind: "audio" })).toBe("pending");
+    const after = await env.DB.prepare("SELECT meta FROM assets WHERE id = ?").bind(assetId).first<{ meta: string }>();
+    expect(JSON.parse(after!.meta)).toMatchObject({ durationSec: 6.4, durationSource: "declared", processing: "pending" });
+    // Images ignore it; nonsense is refused.
+    const img = await upload(alice, pngBytes(), "image/png", "a.png", { durationMs: 5000 });
+    expect(img.asset.meta.durationSec).toBeUndefined();
+    expect((await api(alice, "/api/assets/uploads", { method: "POST", json: { filename: "a.mp3", contentType: "audio/mpeg", size: 10, durationMs: -1 } })).status).toBe(400);
   });
 
   it("enforces type and size limits and part sizes", async () => {

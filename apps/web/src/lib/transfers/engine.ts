@@ -5,7 +5,7 @@
  * worker per tab, or the main thread; it only sees ports.
  *
  * Upload contract (direct to R2, presigned):
- *   POST /api/assets/uploads {filename, contentType, size, fingerprint, projectId?}
+ *   POST /api/assets/uploads {filename, contentType, size, fingerprint, projectId?, durationMs?}
  *     → {assetId, uploadId, partSize, partCount, expiresAt, parts:[{n,size,etag}]}
  *   POST /api/assets/uploads/:assetId/part-urls {partNumbers} → {urls:[{n,url,expiresAt}]}
  *   PUT <presigned url> (credentials omitted) → ETag header
@@ -602,6 +602,7 @@ export class TransferEngine {
         contentType: r.contentType,
         priority: r.priority,
         projectId: r.projectId,
+        ...(r.durationMs !== undefined && { durationMs: r.durationMs }),
         purpose: r.purpose,
         status: 'preparing',
       });
@@ -791,6 +792,7 @@ export class TransferEngine {
           size: rt.item.size,
           fingerprint: rt.item.fingerprint,
           ...(rt.item.projectId ? { projectId: rt.item.projectId } : {}),
+          ...(rt.item.durationMs ? { durationMs: rt.item.durationMs } : {}),
         };
         const r = await this.apiJson<CreateResponse>('POST', '/api/assets/uploads', body);
         rt.session = normalizeCreate(r, rt.item.size);

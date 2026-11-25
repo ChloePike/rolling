@@ -92,23 +92,33 @@ const LEDGER_BLOCK: Record<string, { code: string; reason: string }> = {
   resolution_locked: { code: "resolution_locked", reason: "This resolution needs a higher plan." },
 };
 
-async function assetOrigins(env: Env, workspaceId: string, spec: PromptSpec): Promise<Map<string, SpecAsset>> {
+/**
+ * Input assets of a tool spec. `ready` assets of the workspace (and builtin/public
+ * ones) are usable; so are the caller's own uploads still `processing`: their
+ * bytes are in R2 once the multipart upload completed, and probing only adds
+ * the length (the browser-reported one stands in until then, re-checked in
+ * `prepare`). `uploading` / `failed` / removed assets block the item.
+ */
+async function assetOrigins(env: Env, workspaceId: string, userId: string, spec: PromptSpec): Promise<Map<string, SpecAsset>> {
   const ids = specAssetIds(spec);
   const out = new Map<string, SpecAsset>();
   if (ids.length === 0) return out;
   const rows = await env.DB.prepare(
-    `SELECT id, kind, source, workspace_id, meta FROM assets WHERE id IN (${ids.map(() => "?").join(",")}) AND (workspace_id = ? OR workspace_id IS NULL) AND status = 'ready'`,
+    `SELECT id, kind, source, workspace_id, meta, status FROM assets WHERE id IN (${ids.map(() => "?").join(",")}) AND (workspace_id = ? OR workspace_id IS NULL)
+       AND (status = 'ready' OR (status = 'processing' AND created_by = ? AND kind IN ('image','video','audio')))`,
   )
-    .bind(...ids, workspaceId)
-    .all<{ id: string; kind: string; source: string; workspace_id: string | null; meta: string | null }>();
+    .bind(...ids, workspaceId, userId)
+    .all<{ id: string; kind: string; source: string; workspace_id: string | null; meta: string | null; status: string }>();
   for (const r of rows.results) {
     if (r.kind !== "image" && r.kind !== "video" && r.kind !== "audio") continue;
     const origin: ImageSource = r.source === "generated" || r.source === "public" || r.source === "builtin" ? r.source : r.source === "team" ? "team" : "upload";
-    const meta = parseJson<{ durationSec?: unknown; thumbKey?: unknown }>(r.meta, {});
+    const meta = parseJson<{ durationSec?: unknown; durationSource?: unknown; thumbKey?: unknown }>(r.meta, {});
+    const hasDuration = typeof meta.durationSec === "number" && meta.durationSec > 0;
     out.set(r.id, {
       origin,
       media: r.kind,
-      ...(typeof meta.durationSec === "number" && meta.durationSec > 0 && { durationSec: meta.durationSec }),
+      ...(hasDuration && { durationSec: meta.durationSec as number }),
+      ...(hasDuration && meta.durationSource === "declared" && { durationDeclared: true }),
       ...(r.kind === "video" && typeof meta.thumbKey === "string" && { poster: true }),
     });
   }
@@ -157,7 +167,7 @@ export async function quoteRun(env: Env, auth: AuthContext, req: QuoteRequest): 
       ...(req.priorAssets && Object.keys(req.priorAssets).length > 0 && { priorAssets: req.priorAssets }),
       ...(req.retryOf && { retryOf: req.retryOf }),
     };
-    const origins = await assetOrigins(env, auth.workspaceId, req.promptSpec);
+    const origins = await assetOrigins(env, auth.workspaceId, auth.userId, req.promptSpec);
     items = (
       await planPromptSpec({
         spec: req.promptSpec,

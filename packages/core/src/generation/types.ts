@@ -69,6 +69,12 @@ export interface GenSpec {
   inputs: GenInput[];
   /** Total length of the reference videos in ms, when known (priced by models that meter input video). */
   inputVideoMs?: number;
+  /**
+   * Lengths (seconds, by asset id) this item was quoted with that came from the
+   * browser at upload, before probing. `prepare` re-checks them against the
+   * probed length and fails (refunded) when the file is clearly longer.
+   */
+  declaredDurations?: Record<string, number>;
 }
 
 export interface PlanItem {

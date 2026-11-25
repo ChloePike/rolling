@@ -693,15 +693,15 @@ describe("runs: GraphQL", () => {
 });
 
 /** A ready media asset (an upload) with optional meta (durationSec, thumbKey). */
-async function mediaAsset(ws: string, user: string, kind: "image" | "video" | "audio", meta: Record<string, unknown> = {}): Promise<string> {
+async function mediaAsset(ws: string, user: string, kind: "image" | "video" | "audio", meta: Record<string, unknown> = {}, status = "ready"): Promise<string> {
   const id = `ast_${crypto.randomUUID().replace(/-/g, "").slice(0, 26)}`;
   const ext = kind === "image" ? "png" : kind === "video" ? "mp4" : "mp3";
   const key = `ws/${ws}/uploads/${id}.${ext}`;
   await env.MEDIA.put(key, kind === "image" ? PNG : MP4, { httpMetadata: { contentType: kind === "image" ? "image/png" : kind === "video" ? "video/mp4" : "audio/mpeg" } });
   await env.DB.prepare(
-    "INSERT INTO assets (id, workspace_id, kind, source, name, r2_key, meta, created_by, created_at, status, mature) VALUES (?, ?, ?, 'mine', ?, ?, ?, ?, ?, 'ready', 0)",
+    "INSERT INTO assets (id, workspace_id, kind, source, name, r2_key, meta, created_by, created_at, status, mature) VALUES (?, ?, ?, 'mine', ?, ?, ?, ?, ?, ?, 0)",
   )
-    .bind(id, ws, kind, `${kind} upload`, key, JSON.stringify(meta), user, Date.now())
+    .bind(id, ws, kind, `${kind} upload`, key, JSON.stringify(meta), user, Date.now(), status)
     .run();
   return id;
 }
@@ -772,6 +772,57 @@ describe("runs: tool specs (remix, avatar, character)", () => {
     expect(saved.versions).toHaveLength(1);
     expect(saved.versions[0].assetIds).toHaveLength(2);
     expect(saved.coverAssetId).toBe(saved.versions[0].assetIds[1]);
+  });
+});
+
+describe("runs: inputs right after upload", () => {
+  it("quotes and runs with the caller's own uploads still processing; uploading and failed ones block", async () => {
+    const { user, ws } = await member("fresh");
+    const fresh = await mediaAsset(ws, user, "image", {}, "processing");
+    const q = await quote(user, { promptSpec: { kind: "image", model: "Seedream 5.0 Lite", prompt: "A red bike", resolution: "2K", inputs: { inputAssetIds: [fresh] } } });
+    expect(q.items).toEqual([expect.objectContaining({ ref: "spec", action: "run" })]);
+    const { runId } = (await (await start(user, q.quoteId)).json()) as { runId: string };
+    expect((await finalRun(runId)).status).toBe("succeeded");
+    expect(JSON.stringify(fake.jobs[0]!.body)).toContain(fresh);
+
+    for (const status of ["uploading", "failed"]) {
+      const id = await mediaAsset(ws, user, "image", {}, status);
+      const blocked = await quote(user, { promptSpec: { kind: "image", prompt: "A red bike", inputs: { inputAssetIds: [id] } } });
+      expect(blocked).toMatchObject({ quoteId: null, items: [{ action: "blocked", code: "missing_input", reason: "An input file is not available." }] });
+    }
+    // Another user's upload that is still processing is not usable.
+    const other = await member("fresh-other");
+    const theirs = await mediaAsset(other.ws, other.user, "image", {}, "processing");
+    const foreign = await quote(user, { promptSpec: { kind: "image", prompt: "A red bike", inputs: { inputAssetIds: [theirs] } } });
+    expect(foreign.items[0]).toMatchObject({ action: "blocked", code: "missing_input" });
+  });
+
+  it("uses the browser-reported length before probing and refunds when the probed file is clearly longer", async () => {
+    const { user, ws } = await member("declared");
+    const photo = await imageAsset(ws, user);
+    const voice = await mediaAsset(ws, user, "audio", { durationSec: 6.4, durationSource: "declared", declaredDurationSec: 6.4 }, "processing");
+    const spec = { promptSpec: { kind: "avatar", resolution: "720p", inputs: { photoAssetId: photo, audioAssetId: voice } } };
+    const q = await quote(user, spec);
+    expect(q.items).toEqual([expect.objectContaining({ ref: "avatar", action: "run" })]);
+    const stored = await env.DB.prepare("SELECT items FROM quotes WHERE id = ?").bind(q.quoteId).first<{ items: string }>();
+    expect(JSON.parse(stored!.items)[0].spec).toMatchObject({ seconds: 7, declaredDurations: { [voice]: 6.4 } });
+
+    // Probing found 20 s: the job fails before the provider call and nothing is charged.
+    const before = await available(ws);
+    await env.DB.prepare("UPDATE assets SET status = 'ready', meta = ? WHERE id = ?")
+      .bind(JSON.stringify({ durationSec: 20, durationSource: "probe", declaredDurationSec: 6.4, processing: "done" }), voice)
+      .run();
+    const { runId } = (await (await start(user, q.quoteId)).json()) as { runId: string };
+    expect((await finalRun(runId)).status).toBe("failed");
+    expect(fake.jobs).toHaveLength(0);
+    expect((await runView(user, runId)).items[0]).toMatchObject({ status: "failed", errorCode: "input_changed" });
+    expect(await available(ws)).toBe(before);
+
+    // A fresh quote uses the probed length; a probe within tolerance keeps the declared quote valid.
+    const again = await quote(user, spec);
+    const againItems = await env.DB.prepare("SELECT items FROM quotes WHERE id = ?").bind(again.quoteId).first<{ items: string }>();
+    expect(JSON.parse(againItems!.items)[0].spec.seconds).toBeGreaterThanOrEqual(10);
+    expect(JSON.parse(againItems!.items)[0].spec.declaredDurations).toBeUndefined();
   });
 });
 

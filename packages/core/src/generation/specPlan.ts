@@ -32,8 +32,10 @@ export const AVATAR_DEFAULT_PROMPT = 'The person in the picture speaks to the ca
 export interface SpecAsset {
   origin: ImageSource;
   media: 'image' | 'video' | 'audio';
-  /** Video/audio length when probed. */
+  /** Video/audio length: probed, or the browser-reported length of an upload still being processed. */
   durationSec?: number;
+  /** `durationSec` is the length the browser reported at upload (not probed yet): re-checked in `prepare`. */
+  durationDeclared?: boolean;
   /** Video has a poster frame (thumbnail) that can stand in as a picture. */
   poster?: boolean;
 }
@@ -93,7 +95,7 @@ async function planOne(
   prompt: string,
   settings: NodeSettings,
   inputs: GenInput[],
-  extra: { inputVideoMs?: number } = {},
+  extra: { inputVideoMs?: number; declaredDurations?: Record<string, number> } = {},
 ): Promise<PlanItem> {
   const built = await buildSpec({
     kind,
@@ -116,7 +118,11 @@ async function planOne(
       ...(built.lowestPlan !== undefined && { lowestPlan: built.lowestPlan }),
     };
   }
-  const spec = extra.inputVideoMs !== undefined ? { ...built.spec, inputVideoMs: extra.inputVideoMs } : built.spec;
+  const spec = {
+    ...built.spec,
+    ...(extra.inputVideoMs !== undefined && { inputVideoMs: extra.inputVideoMs }),
+    ...(extra.declaredDurations && Object.keys(extra.declaredDurations).length > 0 && { declaredDurations: extra.declaredDurations }),
+  };
   return {
     ...base,
     action: 'run',
@@ -196,6 +202,7 @@ async function planAvatar(input: PlanSpecInput): Promise<RunPlan> {
   if (isBlock(model)) return { items: [blockedItem(base, model)] };
   let seconds = spec.seconds;
   if (voice.a.durationSec !== undefined && voice.a.durationSec > 0) seconds = Math.ceil(voice.a.durationSec);
+  const declared = voice.a.durationDeclared && voice.a.durationSec !== undefined ? { declaredDurations: { [voice.id]: voice.a.durationSec } } : {};
   if (model.seconds) seconds = Math.min(model.seconds.max, Math.max(model.seconds.min, seconds ?? model.defaultSeconds ?? model.seconds.min));
   const inputs: GenInput[] = [
     { role: 'frame', media: 'image', from: { assetId: photo.id, origin: photo.a.origin } },
@@ -204,7 +211,7 @@ async function planAvatar(input: PlanSpecInput): Promise<RunPlan> {
   const prompt = spec.prompt.trim() || AVATAR_DEFAULT_PROMPT;
   const settings = settingsOfSpec(spec, { audio: true, refsMode: false, ...(seconds !== undefined && { seconds }) });
   delete settings.n;
-  return { items: [{ ...(await planOne(input, base, 'video', model.id, prompt, settings, inputs)), modelName: model.displayName }] };
+  return { items: [{ ...(await planOne(input, base, 'video', model.id, prompt, settings, inputs, declared)), modelName: model.displayName }] };
 }
 
 const REMIX_DIRECTION =
@@ -256,11 +263,12 @@ async function planRemix(input: PlanSpecInput): Promise<RunPlan> {
     const settings = settingsOfSpec(spec, { refsMode: true, ...(seconds !== undefined && { seconds }) });
     delete settings.n;
     const inputVideoMs = total !== undefined ? Math.round(total * 1000) : undefined;
-    let item = await planOne(input, base, 'video', spec.model, prompt, settings, inputs, inputVideoMs !== undefined ? { inputVideoMs } : {});
+    const declared = video.a.durationDeclared && total !== undefined ? { declaredDurations: { [video.id]: total } } : {};
+    let item = await planOne(input, base, 'video', spec.model, prompt, settings, inputs, { ...(inputVideoMs !== undefined && { inputVideoMs }), ...declared });
     // Models without reference-video input: the clip's poster frame stands in as a picture.
     if (item.action === 'blocked' && (item.code === 'no_capable_model' || item.code === 'unsupported') && video.a.poster) {
       const framed: GenInput[] = [{ role: 'reference', media: 'image', from: { assetId: video.id, origin: video.a.origin, poster: true } }, ...inputs.slice(1)];
-      const second = await planOne(input, base, 'video', spec.model, prompt, settings, framed);
+      const second = await planOne(input, base, 'video', spec.model, prompt, settings, framed, declared);
       if (second.action === 'run') item = second;
     }
     items.push(item);
