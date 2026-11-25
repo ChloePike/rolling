@@ -1,5 +1,5 @@
 { "name": "@rolling/agent", "private": true, "type": "module",
   "exports": { ".": "./src/index.ts" },
-  "scripts": { "typecheck": "tsc -p .", "test": "vitest run" },
+  "scripts": { "typecheck": "tsc -p .", "test": "vitest run --passWithNoTests" },
   "dependencies": { "@rolling/core": "workspace:*", "zod": "^3.25.76" },
   "devDependencies": { "vitest": "^4.1.0", "typescript": "^5.9.3" } }

@@ -6,3 +6,5 @@ onlyBuiltDependencies:
   - esbuild
   - workerd
   - sharp
+overrides:
+  "@cloudflare/workers-types": "^5.20261123.1"
