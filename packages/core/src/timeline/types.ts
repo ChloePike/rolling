@@ -68,6 +68,12 @@ export const IDENTITY_TRANSFORM: ClipTransform = { scale: 1, x: 0, y: 0, rotatio
 export const MIN_SPEED = 0.25;
 export const MAX_SPEED = 4;
 
+/** Transform limits for `setTransform` (values outside are clamped by `applyOps`, refused by the schema). */
+export const TRANSFORM_LIMITS = { scale: [0.1, 4], rotation: [-360, 360], opacity: [0, 1], offset: [-16384, 16384] } as const;
+
+/** Output format limits for `setFormat` (and any stored EDL). */
+export const FRAME_LIMITS = { minSide: 16, maxSide: 4096, minFps: 1, maxFps: 60 } as const;
+
 export type Clip = CaptionClip | MediaClip;
 
 export interface CaptionTrack {
@@ -105,7 +111,15 @@ export type TimelineOp =
   | { op: 'setFade'; clipId: string; fadeIn: number }
   | { op: 'setTransition'; clipId: string; transition: Transition | null }
   /** Adds a clip to a track; refused when it overlaps. */
-  | { op: 'insert'; trackId: string; clip: Clip };
+  | { op: 'insert'; trackId: string; clip: Clip }
+  /** Output frame size and rate. */
+  | { op: 'setFormat'; width: number; height: number; fps: number }
+  /**
+   * Replaces the whole EDL (undo/redo of compound edits). `baseRevision` is the
+   * revision the client built it on; the server refuses it when the timeline
+   * moved on since (pure `applyOps` ignores it).
+   */
+  | { op: 'replaceEdl'; edl: Edl; baseRevision: number };
 
 export function isCaptionClip(clip: Clip): clip is CaptionClip {
   return 'text' in clip;

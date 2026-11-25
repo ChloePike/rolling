@@ -440,4 +440,41 @@ describe("projects REST and the D1 index", () => {
     expect((await api(user("bob"), `/api/canvases/${canvasId}/timeline`)).status).toBe(404);
     a.ws.close();
   });
+
+  it("accepts every editor op (effects, speed, fades, transitions, insert, format) and replaceEdl for undo", async () => {
+    const alice = user("alice");
+    const { projectId } = await seed(alice);
+    const canvasId = `cnv_${projectId.slice(4)}`;
+    const patch = (baseRevision: number, ops: unknown[]) => api(alice, `/api/canvases/${canvasId}/timeline/patch`, { method: "POST", json: { baseRevision, ops } });
+    const before = (await (await api(alice, `/api/canvases/${canvasId}/timeline`)).json()) as any;
+    const ops = [
+      { op: "setTransform", clipId: "v1", transform: { scale: 1.5, x: 40, rotation: 5, opacity: 0.9 } },
+      { op: "setSpeed", clipId: "v1", speed: 2, reverse: true },
+      { op: "setFade", clipId: "v1", fadeIn: 0.5 },
+      { op: "setTransition", clipId: "v1", transition: { type: "dissolve", dur: 0.5 } },
+      { op: "insert", trackId: before.edl.tracks.find((t: any) => t.kind === "video").id, clip: { id: "v9", assetId: "ast_x", in: 0, out: 2, start: 10 } },
+      { op: "setFormat", width: 1920, height: 1080, fps: 25 },
+    ];
+    const res = await patch(0, ops);
+    expect(res.status).toBe(200);
+    const after = (await res.json()) as any;
+    expect(after.edl).toMatchObject({ width: 1920, height: 1080, fps: 25 });
+    expect(after.edl.tracks.find((t: any) => t.kind === "video").clips).toMatchObject([
+      { id: "v1", speed: 2, reverse: true, fadeIn: 0.5, transitionOut: { type: "dissolve", dur: 0.5 }, transform: { scale: 1.5, x: 40, y: 0, rotation: 5, opacity: 0.9 } },
+      { id: "v9", start: 10 },
+    ]);
+    // Out-of-range values are refused, as the shared schema says.
+    expect((await patch(1, [{ op: "setSpeed", clipId: "v1", speed: 9 }])).status).toBe(422);
+    // Undo of the compound edit: the whole previous EDL, based on the current revision.
+    const stale = await patch(1, [{ op: "replaceEdl", edl: before.edl, baseRevision: 0 }]);
+    expect(stale.status).toBe(409);
+    const undo = await patch(1, [{ op: "replaceEdl", edl: before.edl, baseRevision: 1 }]);
+    expect(undo.status).toBe(200);
+    expect(((await undo.json()) as any).edl).toEqual(before.edl);
+    const overlap = structuredClone(before.edl);
+    overlap.tracks.find((t: any) => t.kind === "video").clips.push({ id: "v2", assetId: null, in: 0, out: 2, start: 1 });
+    const bad = await patch(2, [{ op: "replaceEdl", edl: overlap, baseRevision: 2 }]);
+    expect(bad.status).toBe(422);
+    expect(((await bad.json()) as any).error.data).toMatchObject({ reason: "TIMELINE_INVALID" });
+  });
 });

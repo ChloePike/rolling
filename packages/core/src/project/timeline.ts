@@ -1,38 +1,13 @@
 /**
- * Zod schemas for timeline patches (TimelineOp from `@rolling/core/timeline`)
- * and the EDL a client may store, plus the first assembly from a graph.
+ * First assembly of the editor's EDL from a graph. The timeline op and EDL
+ * schemas live in `@rolling/core/timeline` (one schema for client and
+ * server); they are re-exported here for existing imports.
  */
-import { z } from 'zod';
 import type { GraphState } from '../graph/types';
 import { assembleFromScript, type ScriptShot } from '../timeline/assemble';
-import type { Edl, MediaClip, TimelineOp } from '../timeline/types';
+import type { Edl, MediaClip } from '../timeline/types';
 
-const ClipId = z.string().min(1).max(64);
-const Seconds = z.number().finite().min(0).max(24 * 3600);
-
-export const TimelineOpSchema = z.discriminatedUnion('op', [
-  z.object({ op: z.literal('trim'), clipId: ClipId, in: Seconds.optional(), out: Seconds.optional() }),
-  z.object({ op: z.literal('move'), clipId: ClipId, start: Seconds }),
-  z.object({ op: z.literal('split'), clipId: ClipId, at: Seconds }),
-  z.object({ op: z.literal('remove'), clipId: ClipId, ripple: z.boolean() }),
-  z.object({ op: z.literal('setGain'), clipId: ClipId, gainDb: z.number().finite().min(-96).max(24) }),
-  z.object({ op: z.literal('setCaption'), clipId: ClipId, text: z.string().max(2000) }),
-  z.object({ op: z.literal('replaceShot'), clipId: ClipId, nodeId: z.string().min(1).max(80), assetId: z.string().min(1).max(80).optional() }),
-]);
-
-export const TimelinePatchSchema = z.object({
-  baseRevision: z.number().int().nonnegative(),
-  ops: z.array(TimelineOpSchema).min(1).max(500),
-});
-
-export function parseTimelineOps(raw: unknown): { ok: true; ops: TimelineOp[] } | { ok: false; message: string } {
-  const parsed = z.array(TimelineOpSchema).max(500).safeParse(raw);
-  if (!parsed.success) {
-    const issue = parsed.error.issues[0];
-    return { ok: false, message: `Invalid timeline op: ${issue ? `${issue.path.join('.')} ${issue.message}` : 'unknown shape'}` };
-  }
-  return { ok: true, ops: parsed.data as TimelineOp[] };
-}
+export { TimelineOpSchema, TimelinePatchSchema, parseTimelineOps, EdlSchema, parseEdl } from '../timeline/schema';
 
 const DEFAULT_SHOT_SECONDS = 5;
 

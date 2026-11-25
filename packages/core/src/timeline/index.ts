@@ -7,3 +7,5 @@ export * from './geometry';
 export * from './timecode';
 export * from './assemble';
 export * from './plan';
+export * from './schema';
+export * from './range';

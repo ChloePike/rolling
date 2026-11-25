@@ -497,7 +497,8 @@ export class ProjectRoom extends DurableObject<Env> {
     if (!parsed.ok) return { ok: false, code: "TIMELINE_INVALID", message: parsed.message };
     const result = this.ctx.storage.transactionSync((): { ok: true; timeline: TimelineState } | RoomError => {
       const current = this.ensureTimeline();
-      if (patch.baseRevision !== current.revision) {
+      // A whole-EDL replace (undo/redo of compound edits) must be based on the current revision too.
+      if (patch.baseRevision !== current.revision || parsed.ops.some((o) => o.op === "replaceEdl" && o.baseRevision !== current.revision)) {
         return { ok: false, code: "CONFLICT", message: "Timeline changed since your last update", timeline: current };
       }
       const applied = applyTimelineOps(current.edl, parsed.ops);

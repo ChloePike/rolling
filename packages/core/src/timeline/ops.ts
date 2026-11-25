@@ -1,10 +1,12 @@
 import {
   clipEnd,
   findClip,
+  FRAME_LIMITS,
   IDENTITY_TRANSFORM,
   isCaptionClip,
   MAX_SPEED,
   MIN_SPEED,
+  TRANSFORM_LIMITS,
   type CaptionClip,
   type Clip,
   type Edl,
@@ -51,6 +53,21 @@ export function nextClipId(edl: Edl, base: string): string {
 
 /** Returns an error message when two clips overlap on a track or a clip is too short. */
 export function validateEdl(edl: Edl): string | null {
+  const { minSide, maxSide, minFps, maxFps } = FRAME_LIMITS;
+  const side = (v: number) => Number.isInteger(v) && v >= minSide && v <= maxSide;
+  if (!side(edl.width) || !side(edl.height)) return 'Frame size is out of range';
+  if (!Number.isInteger(edl.fps) || edl.fps < minFps || edl.fps > maxFps) return 'Frame rate is out of range';
+  const ids = new Set<string>();
+  const trackIds = new Set<string>();
+  for (const track of edl.tracks) {
+    if (trackIds.has(track.id)) return `Track ${track.id} appears twice`;
+    trackIds.add(track.id);
+    for (const c of track.clips as Clip[]) {
+      if (ids.has(c.id)) return `Clip ${c.id} appears twice`;
+      ids.add(c.id);
+      if ((track.kind === 'caption') !== isCaptionClip(c)) return `Clip ${c.id} does not fit ${track.id}`;
+    }
+  }
   for (const track of edl.tracks) {
     const clips = [...(track.clips as Clip[])].sort((a, b) => a.start - b.start);
     for (let i = 0; i < clips.length; i++) {
@@ -68,6 +85,16 @@ export function validateEdl(edl: Edl): string | null {
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 function applyUnchecked(edl: Edl, op: TimelineOp, opts: ApplyOptions): ApplyResult {
+  if (op.op === 'replaceEdl') {
+    return { ok: true, edl: structuredClone(op.edl) };
+  }
+  if (op.op === 'setFormat') {
+    const { minSide, maxSide, minFps, maxFps } = FRAME_LIMITS;
+    const side = (v: number) => Number.isInteger(v) && v >= minSide && v <= maxSide;
+    if (!side(op.width) || !side(op.height)) return { ok: false, error: 'Frame size is out of range' };
+    if (!Number.isInteger(op.fps) || op.fps < minFps || op.fps > maxFps) return { ok: false, error: 'Frame rate is out of range' };
+    return { ok: true, edl: { ...edl, width: op.width, height: op.height, fps: op.fps } };
+  }
   if (op.op === 'insert') {
     const trackIndex = edl.tracks.findIndex((t) => t.id === op.trackId);
     const track = edl.tracks[trackIndex];
@@ -175,12 +202,13 @@ function applyUnchecked(edl: Edl, op: TimelineOp, opts: ApplyOptions): ApplyResu
     case 'setTransform': {
       if (track.kind !== 'video' || !media) return { ok: false, error: `Clip ${clip.id} has no picture` };
       const t = { ...IDENTITY_TRANSFORM, ...media.transform, ...op.transform };
+      const L = TRANSFORM_LIMITS;
       const transform = {
-        scale: round(clamp(t.scale, 0.1, 4)),
-        x: round(t.x),
-        y: round(t.y),
-        rotation: round(clamp(t.rotation, -360, 360)),
-        opacity: round(clamp(t.opacity, 0, 1)),
+        scale: round(clamp(t.scale, L.scale[0], L.scale[1])),
+        x: round(clamp(t.x, L.offset[0], L.offset[1])),
+        y: round(clamp(t.y, L.offset[0], L.offset[1])),
+        rotation: round(clamp(t.rotation, L.rotation[0], L.rotation[1])),
+        opacity: round(clamp(t.opacity, L.opacity[0], L.opacity[1])),
       };
       return { ok: true, edl: replaceClip(edl, trackIndex, (cs) => cs.map((c) => (c.id === clip.id ? { ...media, transform } : c))) };
     }
