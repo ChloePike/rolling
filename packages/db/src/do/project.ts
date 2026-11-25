@@ -109,7 +109,34 @@ export const patchLog = sqliteTable("patch_log", {
   undone: integer("undone", { mode: "boolean" }).notNull().default(false),
 });
 
-export const projectSchema = { meta, canvases, nodes, edges, nodeVersions, groups, timelines, patchLog };
+/** D-014: UserHub gateways (one per user id) subscribed to this project's events (DO migration 6). */
+export const hubSubscribers = sqliteTable("hub_subscribers", {
+  userId: text("user_id").primaryKey(),
+  subscribedAt: integer("subscribed_at").notNull(),
+});
+
+/**
+ * D-014: ring of recent replayable project events for catch-up on resubscribe
+ * (`seq` is the event cursor; `revision` the graph revision when it was sent).
+ * Pruned to the newest 500 (DO migration 6).
+ */
+export const eventRing = sqliteTable("event_ring", {
+  seq: integer("seq").primaryKey(),
+  revision: integer("revision").notNull(),
+  type: text("type").notNull(),
+  payload: text("payload").notNull(),
+  createdAt: integer("created_at").notNull(),
+});
+
+/** Agent threads bound to this project, told about new revisions so pending proposals rebase eagerly (DO migration 6). */
+export const agentThreads = sqliteTable("agent_threads", {
+  threadId: text("thread_id").primaryKey(),
+  /** JSON AgentCaller of the turn that left a pending proposal (used for `AgentSession.onRevision`). */
+  caller: text("caller").notNull(),
+  registeredAt: integer("registered_at").notNull(),
+});
+
+export const projectSchema = { meta, canvases, nodes, edges, nodeVersions, groups, timelines, patchLog, hubSubscribers, eventRing, agentThreads };
 
 export const projectMigrations: readonly DoMigration[] = [
   {
@@ -159,6 +186,15 @@ ALTER TABLE edges ADD COLUMN reroutes TEXT;
     sql: `
 ALTER TABLE node_versions ADD COLUMN rating TEXT;
 UPDATE node_versions SET rating = json_extract(output, '$.rating') WHERE output IS NOT NULL AND json_valid(output) AND json_type(output, '$.rating') = 'text';
+`,
+  },
+  {
+    version: 6,
+    name: "gateway_and_threads",
+    sql: `
+CREATE TABLE hub_subscribers (user_id TEXT PRIMARY KEY, subscribed_at INTEGER NOT NULL);
+CREATE TABLE event_ring (seq INTEGER PRIMARY KEY, revision INTEGER NOT NULL, type TEXT NOT NULL, payload TEXT NOT NULL, created_at INTEGER NOT NULL);
+CREATE TABLE agent_threads (thread_id TEXT PRIMARY KEY, caller TEXT NOT NULL, registered_at INTEGER NOT NULL);
 `,
   },
 ];

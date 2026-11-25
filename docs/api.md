@@ -57,7 +57,41 @@ Signed-out callers of member routes get `401 UNAUTHENTICATED`. The current works
 - `balance` from `CreditAccount.balance()`; zeros until that RPC is available.
 - Prefs values: `language` ∈ en, ja, zh-TW, zh-HK, ko, id, th, vi, es, pt-BR, de, fr; `currency` ∈ USD, EUR, GBP, JPY, TWD, HKD, KRW, IDR, THB, VND, BRL; `creationMode` ∈ simple, advanced; `defaultRatio` ∈ 16:9, 9:16, 1:1, 4:5, 21:9; `theme` ∈ system, light, dark (D-010); `confirmThreshold` integer 0–100000 credits (0 = always confirm); `notifications` partial `{ done, low, renewal, product }` booleans, merged. Sign-up defaults: language and currency from `Accept-Language` (unsupported → en / USD), the rest as shown above.
 
-WebSocket `/api/ws` (UserHub) needs a session (`401` otherwise). Server messages include `hello`, `prefs.changed { prefs }`, `credits.changed`, `activity.updated`, `notification`.
+WebSocket `/api/ws` (UserHub) is the global socket (D-014): one per browser, multiplexed by channel — see **Global WebSocket** below. It needs a session (refused with close code `4401` otherwise). User-channel messages: `hello`, `prefs.changed { prefs }`, `credits.changed`, `activity.updated`, `agent.allowance`, `notification`.
+
+### WebSocket close codes (refused upgrades)
+
+Browsers cannot read the status or body of a failed upgrade, so every WebSocket route (`/api/ws`, `/api/projects/:id/ws`, `/api/agent/threads/:id/ws`) **accepts** a refused upgrade, sends one `error { code, message, data }` envelope and closes at once with `4000 + HTTP status`:
+
+| Close code | Meaning | `error.code` |
+|---|---|---|
+| `4401` | Not signed in (no/expired session) | `UNAUTHENTICATED` |
+| `4402` | No active plan (agent thread socket, D-007) | `NO_PLAN` |
+| `4403` | Not a member of the `?workspaceId=` workspace, or role too low | `FORBIDDEN` |
+| `4404` | Project or thread missing or in another workspace | `NOT_FOUND` |
+| `4410` | Project deleted while connected (project socket) | `PROJECT_DELETED` |
+
+A request without `Upgrade: websocket` still gets HTTP `426`. Clients should not auto-reconnect after `4401`/`4403`/`4404` (sign in, switch workspace or leave the project first).
+
+### Global WebSocket (`/api/ws`, D-014)
+
+One connection per browser, held by the client's SharedWorker; the user's `UserHub` DO is the gateway (hibernation API). Envelope `{ type, id, payload, channel?, projectId?, seq? }`: server messages carry `channel: 'user' | 'project'`; project messages also carry `projectId` and, for replayable events, `seq` (the project's event cursor). Replies carry the client message `id`.
+
+| Client → gateway | Payload | Reply (same `id`) |
+|---|---|---|
+| `subscribe` | `{ channel: 'project', projectId, lastRevision?, lastSeq? }` | `subscribed { projectId, revision, seq, canEdit, snapshot? , events? }` · `error { projectId, code: NOT_FOUND }` (not a member of the project's workspace, or missing) |
+| `unsubscribe` | `{ projectId }` | `unsubscribed { projectId }` |
+| `patch` | `{ projectId, baseRevision, ops }` | `ack { revision, idMap, statuses }` · `conflict { snapshot }` · `error { projectId, code, message, data? }` |
+| `undo` / `redo` | `{ projectId }` | `ack { revision, ops, statuses }` · `error { projectId, code: NOTHING_TO_UNDO \| NOTHING_TO_REDO \| FORBIDDEN }` |
+| `timeline.patch` | `{ canvasId, baseRevision, ops }` | `ack { revision, canvasId }` · `conflict { timeline }` · `error { projectId, code: TIMELINE_INVALID }` |
+| `snapshot` | `{ projectId }` | `snapshot` (as on the project socket) |
+| `ping` | `null` | `pong` (a raw `ping` text frame gets `pong` without waking the hub) |
+
+- **Auth:** the connection needs a session (close codes above). Each `subscribe` checks membership of the project's workspace in D1 (viewers read, editors+ write; membership is re-read before writes when the last check is older than 60 s). Per-subscription failures are `error { projectId, code }` and leave the connection open; commands for a project the socket has not subscribed → `error { code: NOT_SUBSCRIBED }`.
+- **Project channel:** after `subscribe`, the socket receives every project event: `graph.patched`, `node.version`, `job.queued`, `job.progress`, `job.done`, `job.failed`, `timeline.patched`, `proposal.created`/`proposal.updated`, `agent.*` of canvas/editor threads, `credits.changed`, and `error { projectId, code: PROJECT_DELETED }` (subscription ended). The connection that sent a `patch`/`undo`/`redo` gets the `ack` and not its own `graph.patched`; the user's other sockets and other users get `graph.patched`.
+- **User channel:** `credits.changed`, `prefs.changed`, `activity.updated`, `agent.allowance`, `notification` and Home/tool agent streams go to all of the user's sockets.
+- **Catch-up:** ProjectRoom keeps a ring of the newest 500 replayable events (everything except `job.progress`, `agent.delta`, `credits.changed`, `error`). On `subscribe` with `lastSeq` still in the ring, `events: [{ seq, type, payload }]` holds the gap; with only `lastRevision`, the events after that revision's `graph.patched` (a few already-applied events may repeat; they are idempotent); otherwise `snapshot`. Events can arrive before `subscribed`: buffer project events until it arrives, then apply the snapshot or `events`, then the buffered ones with `seq > subscribed.seq` (and those without `seq`).
+- Server side: the room keeps the subscribed hub ids (`hub_subscribers`) and calls `UserHub.deliver` per event; a hub with no subscribed socket answers `subscribed: false` and is dropped.
 
 ## Account and billing
 
@@ -213,9 +247,11 @@ Every project belongs to a workspace. Reads need membership of that workspace (a
 - Staleness: each node has an input digest (kind, params, and for each input its upstream's active version, digest and bypass flag). A version records the digest it was made with; `status` is derived: `done` when the active version matches, `outdated` (“Input changed”) when not, `idle` without a version; `queued`/`generating`/`failed` are runtime states set by jobs. Changed statuses come back as `statuses: { nodeId: status }`.
 - Bypass/collapse are node columns (`bypass`, `collapsed` as 0/1 in snapshot rows). A bypassed node passes through its first input of its own output type; otherwise its dependents are blocked in run plans.
 
-### ProjectRoom WebSocket (`/api/projects/:id/ws`)
+### ProjectRoom WebSocket (`/api/projects/:id/ws`) — deprecated
 
-Envelope `{ type, id, payload }` both ways. Auth: session cookie (dev header `x-dev-user` / `?devUser=` in development); optional `?workspaceId=`. Not signed in → `401`, not a member → `404` (HTTP, before the upgrade). Viewers get a read-only socket (`hello.canEdit = false`; writes answer `error { code: FORBIDDEN }`). A raw `ping` text frame is answered `pong` without waking the room.
+**Deprecated (D-014):** use `subscribe` on the global socket `/api/ws`. This per-project socket stays until the web client has switched, then it is removed.
+
+Envelope `{ type, id, payload }` both ways. Auth: session cookie (dev header `x-dev-user` / `?devUser=` in development); optional `?workspaceId=`. Not signed in → close `4401`, not a member or missing → close `4404` (accepted, `error`, closed; see close codes). Viewers get a read-only socket (`hello.canEdit = false`; writes answer `error { code: FORBIDDEN }`). A raw `ping` text frame is answered `pong` without waking the room.
 
 Server → client, on connect: `hello { actor, canEdit }`, then `snapshot`:
 ```ts
@@ -242,7 +278,9 @@ Clients should apply `statuses` maps (on `ack`, `graph.patched`, `node.version`)
 ### ProjectRoom RPC (server-side callers: runs, workflows, agent)
 
 Get the stub with `projectRoom(env, projectId)` (`apps/api/src/lib/access.ts`). `caller = { userId, workspaceId, canEdit }`; the room re-checks the workspace on every call and returns `{ ok: false, code, message }` errors (`lib/room.ts` `unwrap`/`orFail` map them to REST errors).
-- `applyPatch(caller, { baseRevision, ops, origin? })` → `{ ok, revision, ops, idMap, statuses }` (broadcasts `graph.patched`; `origin: 'agent'` marks created nodes as agent-made)
+- `applyPatch(caller, { baseRevision, ops, origin? }, { except? })` → `{ ok, revision, ops, idMap, statuses }` (broadcasts `graph.patched`; `origin: 'agent'` marks created nodes as agent-made; `except: { userId, connId }` = the gateway connection that gets the ack instead). `undo(caller, { except? })` / `redo(caller, { except? })` likewise
+- `hubSubscribe(caller, { lastRevision?, lastSeq? })` / `hubUnsubscribe(userId)` — D-014 gateway registration and catch-up (UserHub only)
+- `registerThread(threadId, caller)` / `unregisterThread(threadId)` / `notifyThreads()` — agent threads with pending patch proposals; after commits (coalesced, 300 ms) the room calls `AgentSession.onRevision(caller)` so proposals rebase (or go stale) eagerly; a thread with nothing pending is dropped
 - `undo(caller)`, `redo(caller)`
 - `getSnapshot(caller)`, `getGraph(caller)` → `{ state: GraphState, assets: { nodeId: assetId } }`
 - `planRun(caller, { scope: 'node'|'selection'|'all'|'upTo'|'from', nodeIds? })` (`upTo`/`from` node sets come from `@rolling/core/graph` `runScopeNodes`, bypass from `bypassSource`, like the canvas) → `{ ok, revision, items: [{ nodeId, kind, title, action: 'run'|'reuse'|'blocked'|'bypassed'|'none', reason?, message?, model, params, inputDigest, inputs: [{ port, nodeId, assetId, pending }], dependsOn }] }` in dependency order. Pricing is the quote route's job.

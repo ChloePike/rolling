@@ -308,6 +308,7 @@ export class AgentSession extends DurableObject<Env> {
       this.setMeta("turn_count", String(turnCount));
     });
     await this.indexTurn(input.caller, result.proposal, input.text);
+    if (result.proposal && (result.proposal.kind === "graphPatch" || result.proposal.kind === "timelinePatch")) await this.registerWithRoom(input.caller);
     const charge = { turnCost: result.usage.chargedUsd, tokensIn: result.usage.promptTokens, tokensOut: result.usage.completionTokens };
     const close =
       input.allowance && (heldLlm || unmetered)
@@ -529,11 +530,33 @@ export class AgentSession extends DurableObject<Env> {
    * commit so pending proposals are rebased or marked stale right away.
    * Turns and `apply` also re-check lazily, so this is an optimization.
    */
-  async onRevision(caller: AgentCaller): Promise<{ ok: true }> {
-    if (this.denied(caller.workspaceId)) return { ok: true };
+  /**
+   * Called by ProjectRoom after commits (coalesced) for threads it has
+   * registered: rebases pending patch proposals now instead of at the next
+   * turn or apply. `pending` = patch proposals still open (0 → the room drops
+   * the registration).
+   */
+  async onRevision(caller: AgentCaller): Promise<{ ok: true; pending: number }> {
+    if (this.denied(caller.workspaceId)) return { ok: true, pending: 0 };
+    if (!this.pendingPatches().length) return { ok: true, pending: 0 };
     const ports = portsOverride ? await portsOverride(caller) : await agentPorts(this.env, caller);
     await this.refreshProposals(ports);
-    return { ok: true };
+    return { ok: true, pending: this.pendingPatches().length };
+  }
+
+  private pendingPatches(): Proposal[] {
+    return this.loadProposals().filter((p) => p.status === "proposed" && (p.kind === "graphPatch" || p.kind === "timelinePatch"));
+  }
+
+  /** Registers this thread with its project's room while it has pending patch proposals (eager rebase). */
+  private async registerWithRoom(caller: AgentCaller): Promise<void> {
+    const projectId = this.meta("project_id");
+    if (!projectId) return;
+    try {
+      await projectRoom(this.env, projectId).registerThread(this.meta("thread_id")!, caller);
+    } catch (err) {
+      console.warn(JSON.stringify({ msg: "agent: room registration failed", thread: this.meta("thread_id"), error: String(err) }));
+    }
   }
 
   private async applyFailure(p: Proposal, res: Failure): Promise<AgentError> {
@@ -584,7 +607,7 @@ export class AgentSession extends DurableObject<Env> {
 
   /** Rebases pending patch proposals onto the current revision, or marks them stale (told to the agent next turn). */
   private async refreshProposals(ports: AgentPorts): Promise<void> {
-    const pending = this.loadProposals().filter((p) => p.status === "proposed" && (p.kind === "graphPatch" || p.kind === "timelinePatch"));
+    const pending = this.pendingPatches();
     for (const p of pending) {
       if (p.body.kind === "graphPatch") {
         const g = await ports.canvas.getGraph(p.body.projectId);

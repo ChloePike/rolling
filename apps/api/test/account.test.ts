@@ -1,5 +1,6 @@
 import { createExecutionContext, createMessageBatch, env, getQueueResult, SELF, waitOnExecutionContext } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { refusedSocket } from "./ws-helpers";
 import worker from "../src/index";
 import { emailProviderName, handleNotifyEmail, setEmailProviderForTests } from "../src/auth/email";
 import { getAuth } from "../src/auth/betterAuth";
@@ -171,10 +172,16 @@ describe("workspaces, invites and roles", () => {
 });
 
 describe("WebSocket auth", () => {
-  it("/api/ws requires a session", async () => {
+  it("/api/ws requires a session (accepted, error, closed 4401)", async () => {
     const res = await SELF.fetch(`${BASE}/api/ws`, { headers: { Upgrade: "websocket" } });
-    expect(res.status).toBe(401);
-    expect(await res.json()).toMatchObject({ error: { code: "UNAUTHENTICATED" } });
+    const refused = await refusedSocket(res);
+    expect(refused).toMatchObject({ closeCode: 4401, error: { code: "UNAUTHENTICATED" } });
+  });
+
+  it("/api/ws refuses a workspace the user is not in with 4403", async () => {
+    const a = await signIn(freshEmail("wsf"), { "cf-connecting-ip": freshIp() });
+    const res = await SELF.fetch(`${BASE}/api/ws?workspaceId=ws_not_mine`, { headers: { Upgrade: "websocket", cookie: a.cookie } });
+    expect(await refusedSocket(res)).toMatchObject({ closeCode: 4403, error: { code: "FORBIDDEN" } });
   });
 
   it("/api/projects/:id/ws requires a session and workspace access", async () => {
@@ -185,16 +192,15 @@ describe("WebSocket auth", () => {
     await env.DB.prepare("INSERT INTO projects (id, workspace_id, title, created_by, updated_at) VALUES ('prj_ws_auth', ?1, 'P', ?2, 0)").bind(wsA, userA).run();
     const open = (cookie?: string) => SELF.fetch(`${BASE}/api/projects/prj_ws_auth/ws`, { headers: { Upgrade: "websocket", ...(cookie ? { cookie } : {}) } });
 
-    expect((await open()).status).toBe(401);
-    const foreign = await open(b.cookie);
-    expect(foreign.status).toBe(404);
-    expect(await foreign.json()).toMatchObject({ error: { code: "NOT_FOUND" } });
-    expect((await SELF.fetch(`${BASE}/api/projects/prj_missing/ws`, { headers: { Upgrade: "websocket", cookie: a.cookie } })).status).toBe(404);
+    expect(await refusedSocket(await open())).toMatchObject({ closeCode: 4401, error: { code: "UNAUTHENTICATED" } });
+    expect(await refusedSocket(await open(b.cookie))).toMatchObject({ closeCode: 4404, error: { code: "NOT_FOUND" } });
+    const missing = await SELF.fetch(`${BASE}/api/projects/prj_missing/ws`, { headers: { Upgrade: "websocket", cookie: a.cookie } });
+    expect((await refusedSocket(missing)).closeCode).toBe(4404);
     // A member passes the routing layer: the request reaches ProjectRoom, which owns the
-    // room state (this row was inserted directly, so the room itself answers not found).
+    // room state (this row was inserted directly, so the room itself refuses with 4404).
     const member = await open(a.cookie);
-    expect(member.status).not.toBe(401);
     expect(member.headers.get("content-type") ?? "").not.toContain("application/json");
+    expect((await refusedSocket(member)).closeCode).toBe(4404);
   });
 });
 

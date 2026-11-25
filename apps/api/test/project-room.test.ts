@@ -1,6 +1,7 @@
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { projectRoom } from "../src/lib/access";
+import { refusedSocket } from "./ws-helpers";
 
 const BASE = "https://example.com";
 
@@ -222,10 +223,9 @@ describe("ProjectRoom over WebSocket", () => {
     const alice = user("alice");
     const projectId = await createProject(alice);
     const anon = await api(null, `/api/projects/${projectId}/ws`, { headers: { Upgrade: "websocket" } });
-    expect(anon.status).toBe(401);
+    expect(await refusedSocket(anon)).toMatchObject({ closeCode: 4401, error: { code: "UNAUTHENTICATED" } });
     const bob = await api(user("bob"), `/api/projects/${projectId}/ws`, { headers: { Upgrade: "websocket" } });
-    expect(bob.status).toBe(404);
-    expect(await bob.json()).toMatchObject({ error: { code: "NOT_FOUND" } });
+    expect(await refusedSocket(bob)).toMatchObject({ closeCode: 4404, error: { code: "NOT_FOUND" } });
     const plain = await api(alice, `/api/projects/${projectId}/ws`);
     expect(plain.status).toBe(426);
   });

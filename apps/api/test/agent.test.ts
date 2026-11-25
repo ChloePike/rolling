@@ -3,12 +3,13 @@
  * proposals, apply as the user through ProjectRoom, discard, stale, cancel
  * and NO_PLAN. The agent allowance (D-012) is in agent-allowance.test.ts.
  */
-import { env, SELF } from "cloudflare:test";
+import { env, runInDurableObject, SELF } from "cloudflare:test";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import listing from "../../../packages/core/src/models/__fixtures__/hyperouter-models.json";
 import { ScriptedLlm, type ScriptedReply } from "@rolling/agent/testkit";
 import { planCutTo, edlDuration, type Edl } from "@rolling/core/timeline";
 import { personalWorkspaceId } from "../src/auth/workspace";
+import { projectRoom } from "../src/lib/access";
 import { setAgentLlmForTests } from "../src/do/AgentSession";
 import { syncModels } from "../src/models/sync";
 
@@ -192,6 +193,32 @@ describe("canvas graph patch", () => {
     const t3 = await body(await api(user, `/api/agent/threads/${id}/messages`, { json: { text: "shot 1 to 6 seconds" } }), 200);
     await body(await api(user, `/api/agent/proposals/${t3.proposal.id}/discard`, { method: "POST" }), 200);
     expect((await api(user, `/api/agent/proposals/${t3.proposal.id}/apply`, { json: {} })).status).toBe(409);
+  });
+});
+
+describe("eager rebase (ProjectRoom → AgentSession.onRevision)", () => {
+  it("rebases pending proposals after commits and marks them stale without waiting for apply", async () => {
+    const { user } = await member("rebase");
+    const { projectId, ids, revision } = await projectWithShots(user);
+    const id = await thread(user, { surface: "canvas", projectId });
+    useLlm([{ toolCalls: [{ name: "propose.graphPatch", args: { projectId, baseRevision: revision, ops: [{ op: "updateNode", nodeId: ids.s3, params: { seconds: 8 } }], summary: "Longer shot 3" } }] }]);
+    const turn = await body(await api(user, `/api/agent/threads/${id}/messages`, { json: { text: "make shot 3 longer" } }), 200);
+    const room = env.PROJECT.get(env.PROJECT.idFromName(projectId));
+    const registered = () => runInDurableObject(room, (_i, state) => state.storage.sql.exec("SELECT thread_id FROM agent_threads").toArray().map((r) => r.thread_id));
+    expect(await registered()).toEqual([id]);
+    const proposal = async () => (await body(await api(user, `/api/agent/threads/${id}`), 200)).thread.proposals.find((p: any) => p.id === turn.proposal.id);
+
+    // An unrelated edit: the proposal follows the new revision.
+    await body(await api(user, `/api/projects/${projectId}/patch`, { json: { baseRevision: revision, ops: [{ op: "updateNode", nodeId: ids.s1, params: { seconds: 6 } }] } }), 200);
+    await projectRoom(env, projectId).notifyThreads();
+    expect(await proposal()).toMatchObject({ status: "proposed", baseRevision: revision + 1 });
+    expect(await registered()).toEqual([id]);
+
+    // Its node is removed: stale right away (coalesced timer), and the room drops the thread.
+    await body(await api(user, `/api/projects/${projectId}/patch`, { json: { baseRevision: revision + 1, ops: [{ op: "removeNode", nodeId: ids.s3 }] } }), 200);
+    await new Promise((r) => setTimeout(r, 700));
+    expect((await proposal()).status).toBe("stale");
+    expect(await registered()).toEqual([]);
   });
 });
 

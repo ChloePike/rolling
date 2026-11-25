@@ -7,3 +7,6 @@ CREATE TABLE node_versions (id TEXT PRIMARY KEY, node_id TEXT NOT NULL, n INTEGE
 CREATE TABLE groups (id TEXT PRIMARY KEY, canvas_id TEXT NOT NULL, title TEXT NOT NULL, color TEXT);
 CREATE TABLE timelines (canvas_id TEXT PRIMARY KEY, edl TEXT NOT NULL, revision INTEGER NOT NULL);
 CREATE TABLE patch_log (revision INTEGER PRIMARY KEY, actor TEXT NOT NULL, ops TEXT NOT NULL, created_at INTEGER NOT NULL, kind TEXT NOT NULL DEFAULT 'patch' CHECK (kind IN ('patch','undo','redo')), inverse TEXT NOT NULL DEFAULT '[]', target INTEGER, undone INTEGER NOT NULL DEFAULT 0);  -- undo/redo and audit (DO migration 2 adds kind/inverse/target/undone)
+CREATE TABLE hub_subscribers (user_id TEXT PRIMARY KEY, subscribed_at INTEGER NOT NULL);  -- D-014: UserHub gateways subscribed to this project (DO migration 6)
+CREATE TABLE event_ring (seq INTEGER PRIMARY KEY, revision INTEGER NOT NULL, type TEXT NOT NULL, payload TEXT NOT NULL, created_at INTEGER NOT NULL);  -- D-014: newest 500 replayable events for resubscribe catch-up (DO migration 6)
+CREATE TABLE agent_threads (thread_id TEXT PRIMARY KEY, caller TEXT NOT NULL, registered_at INTEGER NOT NULL);  -- agent threads bound to this project, notified on new revisions (DO migration 6)

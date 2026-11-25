@@ -3,6 +3,7 @@ import { HTTPException } from "hono/http-exception";
 import type { AppEnv } from "./env";
 import { yoga } from "./graphql";
 import { ApiError, errorResponse } from "./lib/errors";
+import { isWebSocketUpgrade, refuseWebSocket } from "./lib/wsRefusal";
 import { authMiddleware } from "./auth/context";
 import { serveSpaFromR2 } from "./lib/r2Static";
 import { handleQueue } from "./queues";
@@ -81,6 +82,10 @@ app.notFound((c) => {
 });
 
 app.onError((err, c) => {
+  // Refused WebSocket upgrades (bad session, membership, missing project): accept, send `error`, close 4401/4403/4404.
+  if (err instanceof ApiError && err.status >= 400 && err.status < 500 && err.status !== 426 && isWebSocketUpgrade(c.req.raw)) {
+    return refuseWebSocket(err.status, err.code, err.message, err.data);
+  }
   if (err instanceof ApiError) return errorResponse(c, err.status, err.code, err.message, err.data);
   if (err instanceof HTTPException) {
     return errorResponse(c, err.status, err.status === 401 ? "UNAUTHENTICATED" : "BAD_REQUEST", err.message);

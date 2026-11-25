@@ -2,6 +2,18 @@
 
 Decisions made after the original spec. Where this file disagrees with `PRD.md`, `architecture.md`, `api.md` or `harness.md`, this file wins. Newest first.
 
+## D-014 — One global WebSocket per browser, multiplexed by channel (2026-11-25)
+
+Owner decision; refines D-003 (WebSocket-first realtime).
+
+- **One connection per browser**, held by a `SharedWorker` on the client and shared by every tab. It connects to `/api/ws`; the user's `UserHub` DO (hibernation API) is the gateway. Per-project sockets (`/api/projects/:id/ws`) are deprecated and removed once the web client has switched.
+- **Channels.** Every server message carries `channel: 'user' | 'project'`; project messages add `projectId` and, for replayable events, `seq` (the project's event cursor). User-channel events (`credits.changed`, `prefs.changed`, `activity.updated`, `agent.allowance`, `notification`, Home/tool agent streams) go to all of the user's sockets.
+- **Client messages:** `subscribe { channel: 'project', projectId, lastRevision?, lastSeq? }` (workspace membership checked; reply `subscribed { projectId, revision, seq, canEdit, snapshot | events }`), `unsubscribe { projectId }`, `patch { projectId, baseRevision, ops }` (run as the user through `ProjectRoom.applyPatch`; reply `ack` / `conflict` with the client message id), `undo` / `redo { projectId }`, `timeline.patch { canvasId, baseRevision, ops }`, `snapshot { projectId }`, `ping`.
+- **Fan-out.** ProjectRoom keeps the set of subscribed UserHub ids and sends every event (`graph.patched`, `node.version`, `job.*`, `timeline.patched`, `proposal.*`, `agent.*`) to them by RPC; each hub forwards to its sockets subscribed to that project (the sender of a patch gets the `ack`, not its own `graph.patched`). A hub without subscribed sockets is dropped.
+- **Catch-up.** ProjectRoom keeps a ring of the newest 500 replayable events (`seq`, revision). A resubscribe with `lastSeq` (or `lastRevision`) gets the gap when the ring still covers it, else a fresh snapshot.
+- **Errors.** Connection-level refusals are accepted then closed with `4401` / `4403` / `4404` after one `error` message (browsers cannot read failed-upgrade responses); per-subscription errors arrive as `error { projectId, code }` on the open connection.
+- Contract: `docs/api.md` → Global WebSocket; envelope schema in `packages/core/src/graph/envelope.ts`.
+
 ## D-013 — Team plan with purchased seats; personal plans have one seat (2026-11-25)
 
 Owner decision. Values live in `packages/core/pricing/config.ts` (`PLANS.team`, `SEAT_PRICE`, `teamIncludedCredits`, `teamConcurrentJobs`, `teamAgentAllowanceUsd`, `teamPriceCents`, `planMonthlyCredits/ConcurrentJobs/AgentAllowanceUsd(plan, seats)`); `team.test.ts` enforces the margin floor.

@@ -31,6 +31,7 @@ import {
 } from "@rolling/core/project";
 import { applyOps as applyTimelineOps, type Edl, type TimelineOp } from "@rolling/core/timeline";
 import { newId } from "@rolling/core/ids";
+import { refuseWebSocket } from "../lib/wsRefusal";
 
 /** Who is calling a ProjectRoom RPC. The Worker resolves it from the auth context; the DO re-checks the workspace. */
 export interface RoomCaller {
@@ -103,6 +104,54 @@ interface SocketInfo {
   canEdit: boolean;
 }
 
+/** D-014: the gateway connection (UserHub user id + its socket's connection id) that sent a command. */
+export interface HubExcept {
+  userId: string;
+  connId: string;
+}
+
+interface EmitExcept {
+  /** Legacy project socket that sent the command. */
+  ws?: WebSocket;
+  hub?: HubExcept;
+}
+
+/** One replayable project event (D-014 ring). */
+export interface RingEvent {
+  seq: number;
+  type: ServerMessageType;
+  payload: unknown;
+}
+
+export interface HubSubscribeOk {
+  ok: true;
+  projectId: string;
+  revision: number;
+  /** The project's event cursor now. */
+  seq: number;
+  /** Fresh state when the gap is unknown or too old. */
+  snapshot?: RoomSnapshot;
+  /** Missed events since `lastSeq` / `lastRevision` when the ring still holds them (may repeat events the client already applied). */
+  events?: RingEvent[];
+}
+
+/** UserHub gateway RPC the room calls (typed structurally). */
+interface HubDeliverApi {
+  deliver(input: { projectId: string; type: ServerMessageType; payload: unknown; seq?: number; exceptConn?: string; drop?: boolean }): Promise<{ subscribed: boolean }>;
+}
+
+/** AgentSession RPC the room calls after commits (typed structurally). */
+interface ThreadRevisionApi {
+  onRevision(caller: unknown): Promise<{ ok: true; pending?: number }>;
+}
+
+/** Events that are not kept in the ring (high volume, superseded by the next one or by a snapshot). */
+const TRANSIENT_EVENTS: ReadonlySet<string> = new Set(["job.progress", "agent.delta", "credits.changed", "error"]);
+/** Newest ring entries kept. */
+export const EVENT_RING_SIZE = 500;
+/** Coalesces agent-thread rebase notifications after bursts of commits. */
+const THREAD_NOTIFY_DELAY_MS = 300;
+
 interface ActiveVersion {
   versionId: string;
   digest: string;
@@ -136,6 +185,9 @@ export function projectIdForCanvas(canvasId: string): string | null {
  * Mirrors the project into the D1 `projects` index after commits (debounced alarm).
  */
 export class ProjectRoom extends DurableObject<Env> {
+  private hubStubs = new Map<string, HubDeliverApi>();
+  private threadTimer: ReturnType<typeof setTimeout> | null = null;
+
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     ctx.blockConcurrencyWhile(async () => {
@@ -190,6 +242,15 @@ export class ProjectRoom extends DurableObject<Env> {
         // Already closing.
       }
     }
+    // Gateway subscribers (D-014): `error { projectId, code: PROJECT_DELETED }`, subscription dropped.
+    const projectId = this.getMeta("project_id") ?? "";
+    await Promise.all(
+      this.subscriberIds().map((userId) =>
+        this.hub(userId)
+          .deliver({ projectId, type: "error", payload: { projectId, code: "PROJECT_DELETED", message: "This project was deleted" }, drop: true })
+          .catch(() => undefined),
+      ),
+    );
     await this.ctx.storage.deleteAlarm();
     await this.ctx.storage.deleteAll();
     return { ok: true };
@@ -216,29 +277,30 @@ export class ProjectRoom extends DurableObject<Env> {
     return { state, assets, ratings };
   }
 
-  async applyPatch(caller: RoomCaller, patch: { baseRevision: number; ops: unknown[]; origin?: Origin }): Promise<PatchOk | RoomError> {
+  /** `opts.except`: the gateway socket that sent the patch gets an `ack` instead of `graph.patched` (D-014). */
+  async applyPatch(caller: RoomCaller, patch: { baseRevision: number; ops: unknown[]; origin?: Origin }, opts: { except?: HubExcept } = {}): Promise<PatchOk | RoomError> {
     const denied = this.check(caller, true);
     if (denied) return denied;
     const parsed = parseOps(patch.ops);
     if (!parsed.ok) return { ok: false, code: "REFUSED", message: parsed.refusal.message, refusal: parsed.refusal };
     const result = this.commit({ userId: caller.userId, ops: parsed.ops, origin: patch.origin ?? "user", kind: "patch", base: patch.baseRevision });
-    if (result.ok) this.afterCommit(result, caller.userId, patch.origin ?? "user", null);
+    if (result.ok) this.afterCommit(result, caller.userId, patch.origin ?? "user", opts.except ? { hub: opts.except } : null);
     return result;
   }
 
-  async undo(caller: RoomCaller): Promise<PatchOk | RoomError> {
+  async undo(caller: RoomCaller, opts: { except?: HubExcept } = {}): Promise<PatchOk | RoomError> {
     const denied = this.check(caller, true);
     if (denied) return denied;
     const result = this.undoRedo(caller.userId, "undo");
-    if (result.ok) this.afterCommit(result, caller.userId, "user", null, "undo");
+    if (result.ok) this.afterCommit(result, caller.userId, "user", opts.except ? { hub: opts.except } : null, "undo");
     return result;
   }
 
-  async redo(caller: RoomCaller): Promise<PatchOk | RoomError> {
+  async redo(caller: RoomCaller, opts: { except?: HubExcept } = {}): Promise<PatchOk | RoomError> {
     const denied = this.check(caller, true);
     if (denied) return denied;
     const result = this.undoRedo(caller.userId, "redo");
-    if (result.ok) this.afterCommit(result, caller.userId, "user", null, "redo");
+    if (result.ok) this.afterCommit(result, caller.userId, "user", opts.except ? { hub: opts.except } : null, "redo");
     return result;
   }
 
@@ -291,7 +353,7 @@ export class ProjectRoom extends DurableObject<Env> {
     });
     if (!result) return { ok: false, code: "NOT_FOUND", message: "Node not found" };
     const version = this.versionsOf(input.nodeId).find((v) => v.id === result.id)!;
-    this.fanOut(envelope("node.version", { nodeId: input.nodeId, version: this.versionPayload(version), statuses: result.statuses }));
+    this.emit("node.version", { nodeId: input.nodeId, version: this.versionPayload(version), statuses: result.statuses });
     void this.scheduleIndex();
     return { ok: true, version, statuses: result.statuses };
   }
@@ -332,7 +394,7 @@ export class ProjectRoom extends DurableObject<Env> {
     });
     if (!statuses) return { ok: false, code: "NOT_FOUND", message: "Version not found" };
     const version = this.versionsOf(nodeId).find((v) => v.id === versionId)!;
-    this.fanOut(envelope("node.version", { nodeId, version: this.versionPayload(version), statuses }));
+    this.emit("node.version", { nodeId, version: this.versionPayload(version), statuses });
     void this.scheduleIndex();
     return { ok: true, version, statuses };
   }
@@ -365,7 +427,7 @@ export class ProjectRoom extends DurableObject<Env> {
     const status = input.status ?? "generating";
     const hit = this.ctx.storage.sql.exec("UPDATE nodes SET status = ? WHERE id = ?", status, input.nodeId).rowsWritten > 0;
     if (!hit) return { ok: false };
-    this.fanOut(envelope("job.progress", { jobId: input.jobId, nodeId: input.nodeId, progress: input.progress ?? 0, status }));
+    this.emit("job.progress", { jobId: input.jobId, nodeId: input.nodeId, progress: input.progress ?? 0, status });
     return { ok: true };
   }
 
@@ -373,7 +435,7 @@ export class ProjectRoom extends DurableObject<Env> {
   async markQueued(input: { nodeId: string; jobId: string; reason?: string }): Promise<{ ok: boolean }> {
     const hit = this.ctx.storage.sql.exec("UPDATE nodes SET status = 'queued' WHERE id = ?", input.nodeId).rowsWritten > 0;
     if (!hit) return { ok: false };
-    this.fanOut(envelope("job.queued", { jobId: input.jobId, nodeId: input.nodeId, ...(input.reason ? { reason: input.reason } : {}) }));
+    this.emit("job.queued", { jobId: input.jobId, nodeId: input.nodeId, ...(input.reason ? { reason: input.reason } : {}) });
     return { ok: true };
   }
 
@@ -392,15 +454,13 @@ export class ProjectRoom extends DurableObject<Env> {
     });
     if (!result) return { ok: false };
     const active = this.activeVersions().get(input.nodeId);
-    this.fanOut(
-      envelope("node.version", {
-        nodeId: input.nodeId,
-        version: active ? { id: active.versionId, n: active.n, total: active.total, assetId: active.assetId } : null,
-        status: result.status,
-        statuses: result.statuses,
-        ...(input.reason ? { reason: input.reason } : {}),
-      }),
-    );
+    this.emit("node.version", {
+      nodeId: input.nodeId,
+      version: active ? { id: active.versionId, n: active.n, total: active.total, assetId: active.assetId, rating: active.rating } : null,
+      status: result.status,
+      statuses: result.statuses,
+      ...(input.reason ? { reason: input.reason } : {}),
+    });
     return { ok: true, status: result.status };
   }
 
@@ -408,7 +468,7 @@ export class ProjectRoom extends DurableObject<Env> {
   async markFailed(input: { nodeId: string; jobId: string; refunded: number; reason: string }): Promise<{ ok: boolean }> {
     const hit = this.ctx.storage.sql.exec("UPDATE nodes SET status = 'failed', updated_at = ? WHERE id = ?", Date.now(), input.nodeId).rowsWritten > 0;
     if (!hit) return { ok: false };
-    this.fanOut(envelope("job.failed", { jobId: input.jobId, nodeId: input.nodeId, refunded: input.refunded, reason: input.reason }));
+    this.emit("job.failed", { jobId: input.jobId, nodeId: input.nodeId, refunded: input.refunded, reason: input.reason });
     return { ok: true };
   }
 
@@ -418,9 +478,8 @@ export class ProjectRoom extends DurableObject<Env> {
    * callers only (workflows, AgentSession); never exposed to clients.
    */
   async broadcast(type: ServerMessageType, payload: unknown): Promise<{ sent: number }> {
-    const message = envelope(type, payload);
-    this.fanOut(message);
-    return { sent: this.ctx.getWebSockets().length };
+    const hubs = this.emit(type, payload);
+    return { sent: this.ctx.getWebSockets().length + hubs };
   }
 
   // ---------------------------------------------------------------- timeline
@@ -448,9 +507,7 @@ export class ProjectRoom extends DurableObject<Env> {
       return { ok: true, timeline };
     });
     if (!result.ok) return result;
-    this.fanOut(
-      envelope("timeline.patched", { canvasId: result.timeline.canvasId, revision: result.timeline.revision, ops: parsed.ops, actor: "user", userId: caller.userId }),
-    );
+    this.emit("timeline.patched", { canvasId: result.timeline.canvasId, revision: result.timeline.revision, ops: parsed.ops, actor: "user", userId: caller.userId });
     void this.scheduleIndex();
     return { ok: true, timeline: result.timeline, ops: parsed.ops };
   }
@@ -467,9 +524,151 @@ export class ProjectRoom extends DurableObject<Env> {
       this.saveTimeline(next);
       return next;
     });
-    this.fanOut(envelope("timeline.patched", { canvasId: timeline.canvasId, revision: timeline.revision, ops: null, edl: timeline.edl, actor: "user", userId: caller.userId }));
+    this.emit("timeline.patched", { canvasId: timeline.canvasId, revision: timeline.revision, ops: null, edl: timeline.edl, actor: "user", userId: caller.userId });
     void this.scheduleIndex();
     return { ok: true, timeline };
+  }
+
+  // ---------------------------------------------------------------- gateway (D-014)
+
+  /**
+   * A user's UserHub subscribes to this project's events. Registers the hub
+   * and returns the catch-up: with `lastSeq` still in the ring, the events
+   * after it; with `lastRevision`, the events after that revision's
+   * `graph.patched` (replaying a few already applied ones is harmless); else a
+   * fresh snapshot.
+   */
+  async hubSubscribe(caller: RoomCaller, input: { lastRevision?: number; lastSeq?: number } = {}): Promise<HubSubscribeOk | RoomError> {
+    const denied = this.check(caller, false);
+    if (denied) return denied;
+    const sql = this.ctx.storage.sql;
+    sql.exec("INSERT INTO hub_subscribers (user_id, subscribed_at) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET subscribed_at = excluded.subscribed_at", caller.userId, Date.now());
+    const projectId = this.getMeta("project_id") ?? "";
+    const revision = this.revision();
+    const seq = this.eventSeq();
+    const base = { ok: true as const, projectId, revision, seq };
+    const after = this.catchUpCursor(input, revision, seq);
+    if (after === null) return { ...base, snapshot: this.snapshot() };
+    const events = sql
+      .exec<{ seq: number; type: string; payload: string }>("SELECT seq, type, payload FROM event_ring WHERE seq > ? ORDER BY seq", after)
+      .toArray()
+      .map((r) => ({ seq: Number(r.seq), type: r.type as ServerMessageType, payload: JSON.parse(r.payload) as unknown }));
+    return { ...base, events };
+  }
+
+  /** The hub has no socket subscribed to this project any more. */
+  async hubUnsubscribe(userId: string): Promise<{ ok: true }> {
+    this.ctx.storage.sql.exec("DELETE FROM hub_subscribers WHERE user_id = ?", userId);
+    return { ok: true };
+  }
+
+  /** Seq after which the ring replays the gap, or null when a snapshot is needed. */
+  private catchUpCursor(input: { lastRevision?: number; lastSeq?: number }, revision: number, seq: number): number | null {
+    const sql = this.ctx.storage.sql;
+    const oldest = sql.exec<{ s: number | null }>("SELECT MIN(seq) AS s FROM event_ring").one().s;
+    const covered = (cursor: number) => cursor === seq || (oldest !== null && Number(oldest) <= cursor + 1);
+    if (input.lastSeq !== undefined) {
+      if (input.lastSeq > seq) return null;
+      return covered(input.lastSeq) ? input.lastSeq : null;
+    }
+    if (input.lastRevision === undefined || input.lastRevision > revision) return null;
+    if (input.lastRevision === 0 && oldest !== null && Number(oldest) === 1) return 0;
+    const at = sql
+      .exec<{ s: number }>("SELECT seq AS s FROM event_ring WHERE type = 'graph.patched' AND revision = ? ORDER BY seq LIMIT 1", input.lastRevision)
+      .toArray()[0];
+    return at ? Number(at.s) : null;
+  }
+
+  private eventSeq(): number {
+    return Number(this.getMeta("event_seq") ?? 0);
+  }
+
+  private subscriberIds(): string[] {
+    return this.ctx.storage.sql.exec<{ user_id: string }>("SELECT user_id FROM hub_subscribers").toArray().map((r) => r.user_id);
+  }
+
+  private hub(userId: string): HubDeliverApi {
+    let stub = this.hubStubs.get(userId);
+    if (!stub) {
+      // One cached stub per hub keeps deliveries in order (E-order per stub).
+      stub = this.env.USER_HUB.get(this.env.USER_HUB.idFromName(userId)) as unknown as HubDeliverApi;
+      this.hubStubs.set(userId, stub);
+    }
+    return stub;
+  }
+
+  /**
+   * Sends one project event to the legacy project sockets and to every
+   * subscribed gateway hub (D-014). Replayable events get the next `seq` and
+   * go into the ring. Returns the number of hubs it was sent to.
+   */
+  private emit(type: ServerMessageType, payload: unknown, except: EmitExcept = {}): number {
+    const sql = this.ctx.storage.sql;
+    let seq: number | undefined;
+    if (!TRANSIENT_EVENTS.has(type)) {
+      seq = this.eventSeq() + 1;
+      this.setMeta("event_seq", String(seq));
+      sql.exec("INSERT INTO event_ring (seq, revision, type, payload, created_at) VALUES (?, ?, ?, ?, ?)", seq, this.revision(), type, JSON.stringify(payload ?? null), Date.now());
+      if (seq % 50 === 0) sql.exec("DELETE FROM event_ring WHERE seq <= ?", seq - EVENT_RING_SIZE);
+    }
+    this.fanOut(envelope(type, payload), except.ws);
+    const projectId = this.getMeta("project_id") ?? "";
+    const hubs = this.subscriberIds();
+    for (const userId of hubs) {
+      const exceptConn = except.hub?.userId === userId ? except.hub.connId : undefined;
+      this.hub(userId)
+        .deliver({ projectId, type, payload, ...(seq !== undefined ? { seq } : {}), ...(exceptConn ? { exceptConn } : {}) })
+        .then((r) => {
+          if (!r.subscribed) this.ctx.storage.sql.exec("DELETE FROM hub_subscribers WHERE user_id = ?", userId);
+        })
+        .catch((err: unknown) => console.warn(JSON.stringify({ msg: "project: hub delivery failed", projectId, userId, type, error: String(err) })));
+    }
+    return hubs.length;
+  }
+
+  // ---------------------------------------------------------------- agent threads
+
+  /** An agent thread bound to this project has pending patch proposals: tell it about new revisions. */
+  async registerThread(threadId: string, caller: unknown): Promise<{ ok: true }> {
+    this.ctx.storage.sql.exec(
+      "INSERT INTO agent_threads (thread_id, caller, registered_at) VALUES (?, ?, ?) ON CONFLICT(thread_id) DO UPDATE SET caller = excluded.caller, registered_at = excluded.registered_at",
+      threadId,
+      JSON.stringify(caller),
+      Date.now(),
+    );
+    return { ok: true };
+  }
+
+  async unregisterThread(threadId: string): Promise<{ ok: true }> {
+    this.ctx.storage.sql.exec("DELETE FROM agent_threads WHERE thread_id = ?", threadId);
+    return { ok: true };
+  }
+
+  /** Coalesced: after a burst of commits, each registered thread rebases its pending proposals once. */
+  private notifyThreadsSoon(): void {
+    if (this.threadTimer) return;
+    if (this.ctx.storage.sql.exec<{ c: number }>("SELECT COUNT(*) AS c FROM agent_threads").one().c === 0) return;
+    this.threadTimer = setTimeout(() => {
+      this.threadTimer = null;
+      void this.notifyThreads();
+    }, THREAD_NOTIFY_DELAY_MS);
+  }
+
+  /** Calls `AgentSession.onRevision` for every registered thread; drops threads with nothing pending. Test/ops hook. */
+  async notifyThreads(): Promise<{ notified: number }> {
+    const rows = this.ctx.storage.sql.exec<{ thread_id: string; caller: string }>("SELECT thread_id, caller FROM agent_threads").toArray();
+    await Promise.all(
+      rows.map(async (r) => {
+        try {
+          const session = this.env.AGENT.get(this.env.AGENT.idFromName(r.thread_id)) as unknown as ThreadRevisionApi;
+          const res = await session.onRevision(JSON.parse(r.caller));
+          if (res.pending === 0) this.ctx.storage.sql.exec("DELETE FROM agent_threads WHERE thread_id = ?", r.thread_id);
+        } catch (err) {
+          console.warn(JSON.stringify({ msg: "project: thread rebase failed", threadId: r.thread_id, error: String(err) }));
+        }
+      }),
+    );
+    return { notified: rows.length };
   }
 
   // ---------------------------------------------------------------- WebSocket
@@ -483,7 +682,7 @@ export class ProjectRoom extends DurableObject<Env> {
     const workspaceId = request.headers.get("x-workspace-id");
     const canEdit = request.headers.get("x-can-edit") === "1";
     if (!userId || !workspaceId || this.getMeta("workspace_id") !== workspaceId) {
-      return new Response("Project not found", { status: 404 });
+      return refuseWebSocket(404, "NOT_FOUND", "Project not found");
     }
     const { 0: client, 1: server } = new WebSocketPair();
     this.ctx.acceptWebSocket(server, [`user:${userId}`]);
@@ -529,7 +728,7 @@ export class ProjectRoom extends DurableObject<Env> {
       case "redo": {
         const denied = this.check(caller, true);
         const result = denied ?? this.undoRedo(caller.userId, msg.type);
-        if (result.ok) this.afterCommit(result, caller.userId, "user", ws, msg.type);
+        if (result.ok) this.afterCommit(result, caller.userId, "user", { ws }, msg.type);
         this.reply(ws, msg.id, result, true);
         return;
       }
@@ -614,7 +813,7 @@ export class ProjectRoom extends DurableObject<Env> {
     const parsed = parseOps(patch.ops);
     if (!parsed.ok) return { ok: false, code: "REFUSED", message: parsed.refusal.message, refusal: parsed.refusal };
     const result = this.commit({ userId: caller.userId, ops: parsed.ops, origin, kind: "patch", base: patch.baseRevision });
-    if (result.ok) this.afterCommit(result, caller.userId, origin, ws);
+    if (result.ok) this.afterCommit(result, caller.userId, origin, { ws });
     return result;
   }
 
@@ -632,18 +831,20 @@ export class ProjectRoom extends DurableObject<Env> {
   }
 
   /** Broadcast + index after a committed graph patch. `except` (the sender) gets an ack instead. */
-  private afterCommit(result: PatchOk, userId: string, origin: Origin, except: WebSocket | null, kind: "patch" | "undo" | "redo" = "patch"): void {
-    this.fanOut(
-      envelope("graph.patched", {
+  private afterCommit(result: PatchOk, userId: string, origin: Origin, except: EmitExcept | null, kind: "patch" | "undo" | "redo" = "patch"): void {
+    this.emit(
+      "graph.patched",
+      {
         revision: result.revision,
         ops: result.ops,
         actor: origin,
         userId,
         ...(kind !== "patch" ? { kind } : {}),
         ...(Object.keys(result.statuses).length ? { statuses: result.statuses } : {}),
-      }),
-      except ?? undefined,
+      },
+      except ?? {},
     );
+    this.notifyThreadsSoon();
     void this.scheduleIndex();
   }
 

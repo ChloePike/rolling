@@ -122,6 +122,11 @@ export type ProjectRoomApi = Pick<
   | "patchTimeline"
   | "reassembleTimeline"
   | "flushIndex"
+  | "hubSubscribe"
+  | "hubUnsubscribe"
+  | "registerThread"
+  | "unregisterThread"
+  | "notifyThreads"
 >;
 
 /**

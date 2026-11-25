@@ -2,13 +2,27 @@
  * WebSocket envelope shared by ProjectRoom and UserHub (D-003). Every message
  * in both directions is `{ type, id, payload }`. The Worker validates with
  * these schemas; the canvas types its messages with `TypedEnvelope`.
+ *
+ * D-014: one global socket per browser (`/api/ws`, UserHub gateway),
+ * multiplexed by channel. Server messages on it carry `channel`
+ * (`user` | `project`) and, for project events, `projectId` and `seq` (the
+ * project's event cursor for catch-up on resubscribe).
  */
 import { z } from 'zod';
+
+export const WsChannel = z.enum(['user', 'project']);
+export type WsChannel = z.infer<typeof WsChannel>;
 
 export const WsEnvelope = z.object({
   type: z.string().min(1).max(64),
   id: z.string().min(1).max(128),
   payload: z.unknown(),
+  /** D-014 gateway: which channel a server message belongs to. */
+  channel: WsChannel.optional(),
+  /** D-014 gateway: the project of a `project` channel message. */
+  projectId: z.string().min(1).max(64).optional(),
+  /** D-014 gateway: the project's event cursor (replayable project events only). */
+  seq: z.number().int().nonnegative().optional(),
 });
 export type WsEnvelope = z.infer<typeof WsEnvelope>;
 
@@ -26,7 +40,40 @@ export const PatchPayload = z.object({
 });
 export type PatchPayload = z.infer<typeof PatchPayload>;
 
-/** Message types the server sends. Client -> server types: `patch`, `ping`. */
+const ProjectId = z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/);
+
+/** D-014 client -> gateway: subscribe to a project's events (membership checked). */
+export const SubscribePayload = z.object({
+  channel: z.literal('project'),
+  projectId: ProjectId,
+  /** Last graph revision the client applied; the reply carries the gap or a fresh snapshot. */
+  lastRevision: z.number().int().nonnegative().optional(),
+  /** Last project event `seq` the client saw (exact catch-up when still in the ring). */
+  lastSeq: z.number().int().nonnegative().optional(),
+});
+export type SubscribePayload = z.infer<typeof SubscribePayload>;
+
+/** D-014 client -> gateway: `unsubscribe`, `undo`, `redo`, `snapshot` name the project. */
+export const ProjectRefPayload = z.object({ projectId: ProjectId });
+export type ProjectRefPayload = z.infer<typeof ProjectRefPayload>;
+
+/** D-014 client -> gateway: graph patch for one project. */
+export const GatewayPatchPayload = PatchPayload.extend({ projectId: ProjectId });
+export type GatewayPatchPayload = z.infer<typeof GatewayPatchPayload>;
+
+/** Client -> server: timeline patch (`timeline.patch`); on the gateway the project comes from `canvasId`. */
+export const TimelinePatchPayload = z.object({
+  canvasId: z.string().min(1).max(64),
+  baseRevision: z.number().int().nonnegative(),
+  ops: z.unknown(),
+});
+export type TimelinePatchPayload = z.infer<typeof TimelinePatchPayload>;
+
+/** Message types clients send. Project sockets: `patch`, `undo`, `redo`, `timeline.patch`, `snapshot`, `ping`; the gateway adds `subscribe`, `unsubscribe`. */
+export const ClientMessageType = z.enum(['subscribe', 'unsubscribe', 'patch', 'undo', 'redo', 'timeline.patch', 'snapshot', 'ping']);
+export type ClientMessageType = z.infer<typeof ClientMessageType>;
+
+/** Message types the server sends. */
 export const ServerMessageType = z.enum([
   'snapshot',
   'hello',
@@ -52,11 +99,30 @@ export const ServerMessageType = z.enum([
   'activity.updated',
   'notification',
   'prefs.changed',
+  'subscribed',
+  'unsubscribed',
 ]);
 export type ServerMessageType = z.infer<typeof ServerMessageType>;
 
 export function envelope(type: ServerMessageType, payload: unknown, id: string = crypto.randomUUID()): string {
   return JSON.stringify({ type, id, payload } satisfies WsEnvelope);
+}
+
+/** D-014 gateway envelope: `channel`, plus `projectId` / `seq` on project messages. */
+export function channelEnvelope(
+  type: ServerMessageType,
+  payload: unknown,
+  route: { channel: WsChannel; projectId?: string; seq?: number },
+  id: string = crypto.randomUUID(),
+): string {
+  return JSON.stringify({
+    type,
+    id,
+    payload,
+    channel: route.channel,
+    ...(route.projectId !== undefined ? { projectId: route.projectId } : {}),
+    ...(route.seq !== undefined ? { seq: route.seq } : {}),
+  } satisfies WsEnvelope);
 }
 
 export type ParseResult =
