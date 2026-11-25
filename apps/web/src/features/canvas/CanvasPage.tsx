@@ -353,6 +353,19 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
     });
   }, [graph, selected, refused, session, proposed, wire, mediaVersion]);
 
+  // Real mode: the first time the graph shows, frame it in the area left of the agent panel.
+  const framed = useRef(false);
+  useEffect(() => {
+    if (isMockApi() || framed.current || !rfNodes.length || !rfNodes.every((n) => n.measured?.width)) return;
+    framed.current = true;
+    const b = flow.getNodesBounds(rfNodes);
+    const pad = 48;
+    const w = Math.max(200, size.w - (agentOpen ? AGENT_INSET : 16) - pad * 2);
+    const h = Math.max(200, size.h - 160 - pad);
+    const zoom = Math.min(1, w / Math.max(1, b.width), h / Math.max(1, b.height));
+    void flow.setViewport({ x: pad - b.x * zoom, y: 96 + (h - b.height * zoom) / 2 - b.y * zoom, zoom });
+  }, [rfNodes, flow, size, agentOpen]);
+
   const rfEdges = useMemo<WireEdge[]>(() => {
     const byId = new Map(graph.nodes.map((n) => [n.id, n]));
     return graph.edges.map((e) => {

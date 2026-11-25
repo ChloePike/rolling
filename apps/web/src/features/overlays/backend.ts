@@ -116,6 +116,8 @@ export function openProjectChannel(projectId: string): ProjectChannel {
   const statuses = new Set<(s: { open: boolean; fatalCode?: number }) => void>();
   /** Project events that arrive before `subscribed` (D-014 catch-up): applied after it. */
   let buffer: Array<{ type: string; id: string; payload: unknown }> | null = [];
+  /** This handle has applied a full snapshot (a second subscriber of a project the hub already follows gets only `events`). */
+  let hasSnapshot = false;
   const emit = (type: string, id: string, payload: unknown) => {
     const raw = JSON.stringify({ type, id, payload });
     for (const l of raws) l(raw);
@@ -134,8 +136,12 @@ export function openProjectChannel(projectId: string): ProjectChannel {
       const p = payload as { canEdit?: boolean; snapshot?: { revision: number }; events?: Array<{ seq: number; type: string; payload: unknown }> };
       emit('hello', id, { actor: '', canEdit: p.canEdit !== false });
       if (p.snapshot) {
+        hasSnapshot = true;
         emit('snapshot', id, p.snapshot);
         track('snapshot', p.snapshot);
+      } else if (!hasSnapshot) {
+        // Catch-up only makes sense on top of a snapshot this handle has: ask for one.
+        channel.send('snapshot', {});
       }
       for (const e of p.events ?? []) {
         emit(e.type, `${id}:${e.seq}`, e.payload);
@@ -147,6 +153,7 @@ export function openProjectChannel(projectId: string): ProjectChannel {
       return;
     }
     if (type === 'unsubscribed') return;
+    if (type === 'snapshot') hasSnapshot = true;
     if (type === 'error' && !mine) {
       const code = (payload as { code?: string })?.code ?? '';
       if (FATAL_CODES[code]) for (const l of statuses) l({ open: false, fatalCode: FATAL_CODES[code] });
@@ -158,10 +165,16 @@ export function openProjectChannel(projectId: string): ProjectChannel {
     emit(type, mine ?? id, payload);
     track(type, payload);
   });
+  let lastStatus: string = realtime.realtime.user.status;
   const offStatus = realtime.realtime.user.onEvent('status', (st) => {
-    // After a reconnect the hub re-subscribes; buffer until its `subscribed` answer.
-    if (st !== 'open') buffer ??= [];
-    for (const l of statuses) l({ open: st === 'open' });
+    const was = lastStatus;
+    lastStatus = st;
+    if (st === was) return;
+    // A dropped connection: the hub re-subscribes on reconnect; buffer until its `subscribed` answer.
+    if (was === 'open' && (st === 'retrying' || st === 'closed')) {
+      buffer ??= [];
+      for (const l of statuses) l({ open: false });
+    }
   });
   const offClosed = realtime.realtime.user.onEvent('closed', (code) => {
     if (code >= 4400 && code < 4500) for (const l of statuses) l({ open: false, fatalCode: code });

@@ -74,7 +74,7 @@ export class ProjectSync {
   /** The transport lost or regained its connection (real socket only). */
   setConnected(connected: boolean) {
     if (!connected) this.setStatus('offline');
-    else if (this.status === 'offline') this.setStatus(this.pending.length ? 'saving' : 'connecting');
+    else if (this.status === 'offline') this.setStatus(this.pending.length ? 'saving' : this.confirmed ? 'saved' : 'connecting');
   }
 
   /** Active result asset per node, for thumbnails and the result viewer. */
