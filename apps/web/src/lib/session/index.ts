@@ -1,4 +1,4 @@
-import { PLANS, type PlanId } from '@rolling/core/pricing/config';
+import { planMonthlyCredits, PLANS, prorate, SEAT_PRICE, TEAM_SEATS, type PlanId } from '@rolling/core/pricing/config';
 import { topUpFor } from '@/lib/topUp';
 import { useSyncExternalStore } from 'react';
 
@@ -13,6 +13,9 @@ import { useSyncExternalStore } from 'react';
  *   another plan, `{ workspace: { matureAllowed: false } }`;
  * - `?member=0` in the URL at load: signed up, no plan;
  * - localStorage `rolling.mock.isMember` = `false`: same.
+ *
+ * Team (D-013): `plan: { id: 'team', seats: 5, ... }` for a Team workspace;
+ * `seats` is the purchased count (members incl. the owner), 1 on personal plans.
  */
 
 export type BillingPeriod = 'monthly' | 'yearly';
@@ -21,6 +24,8 @@ export interface SessionPlan {
   id: PlanId;
   period: BillingPeriod;
   status: 'active' | 'canceled';
+  /** Purchased seats on Team (D-013); personal plans have 1. */
+  seats?: number;
 }
 
 export interface Session {
@@ -34,6 +39,10 @@ export interface Session {
   matureAllowed: boolean;
   /** The workspace setting alone (`workspaces.matureAllowed`). */
   workspaceMatureAllowed: boolean;
+  /** Purchased seats (D-013): Team's seat count, 1 otherwise. */
+  seats: number;
+  /** The workspace is on Team and may invite people. */
+  isTeam: boolean;
 }
 
 export interface SessionMockOverrides {
@@ -79,7 +88,9 @@ function guestFlag(): boolean {
 
 function derive(plan: SessionPlan | null, workspaceMatureAllowed: boolean): Session {
   const isMember = plan?.status === 'active';
-  return { plan, planId: isMember ? plan!.id : null, isMember, matureAllowed: isMember && workspaceMatureAllowed, workspaceMatureAllowed };
+  const isTeam = isMember && plan!.id === 'team';
+  const seats = isTeam ? Math.max(1, plan!.seats ?? 1) : 1;
+  return { plan, planId: isMember ? plan!.id : null, isMember, matureAllowed: isMember && workspaceMatureAllowed, workspaceMatureAllowed, seats, isTeam };
 }
 
 let state: Session | null = null;
@@ -117,7 +128,7 @@ const latency = () => mocks().latencyMs ?? 600;
 
 /** Error a mock flow rejects with; `code` follows docs/api.md error codes. */
 export class MockFlowError extends Error {
-  constructor(public code: 'PAYMENT_FAILED' | 'NO_PLAN' | 'INSUFFICIENT_CREDITS' | 'RUN_FAILED') {
+  constructor(public code: 'PAYMENT_FAILED' | 'NO_PLAN' | 'INSUFFICIENT_CREDITS' | 'RUN_FAILED' | 'TEAM_REQUIRED' | 'SEATS_IN_USE') {
     super(code);
   }
 }
@@ -128,19 +139,70 @@ export class MockFlowError extends Error {
  * `planId` and grants the plan's monthly credits. Rejects with
  * `PAYMENT_FAILED` when `__rollingMocks.checkout` is `fail`.
  */
-export async function checkoutPlan(planId: string, period: BillingPeriod = 'monthly'): Promise<Session> {
+export async function checkoutPlan(planId: string, period: BillingPeriod = 'monthly', seats = 1): Promise<Session> {
   const id = (Object.keys(PLANS) as PlanId[]).includes(planId as PlanId) ? (planId as PlanId) : DEFAULT_PLAN.id;
+  const n = id === 'team' ? clampSeats(seats) : 1;
   await wait(latency());
   if (mocks().checkout === 'fail') throw new MockFlowError('PAYMENT_FAILED');
   const cur = getSession();
   const wasMember = cur.isMember;
-  set(derive({ id, period, status: 'active' }, cur.workspaceMatureAllowed));
-  if (!wasMember) {
+  const toTeam = id === 'team' && cur.planId !== 'team';
+  set(derive({ id, period, status: 'active', ...(id === 'team' ? { seats: n } : {}) }, cur.workspaceMatureAllowed));
+  // A new member gets the plan's credits; a switch to Team (D-013) is granted by its paid invoice.
+  if (!wasMember || toTeam) {
     const c = getCredits();
-    const grant = PLANS[id].monthlyCredits;
-    setCredits({ ...c, plan: c.plan + grant, available: c.available + grant });
+    const grant = planMonthlyCredits(id, n);
+    const plan = wasMember ? grant : c.plan + grant;
+    setCredits({ ...c, plan, available: plan + c.purchased });
   }
   return getSession();
+}
+
+export function clampSeats(n: number): number {
+  return Math.min(TEAM_SEATS.max, Math.max(TEAM_SEATS.min, Math.round(Number.isFinite(n) ? n : 1)));
+}
+
+/** Mock billing period for prorations: the current calendar month. */
+export function mockPeriod(now = Date.now()): { start: number; end: number } {
+  const d = new Date(now);
+  return { start: new Date(d.getFullYear(), d.getMonth(), 1).getTime(), end: new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime() };
+}
+
+export interface SeatChange {
+  seats: number;
+  previous: number;
+  /** Prorated plan credits granted for added seats (D-013). */
+  granted: number;
+}
+
+let seatHighWater: number | null = null;
+
+/**
+ * Team seats (`PATCH /api/billing/seats`, D-013). Increases are charged now
+ * and grant the prorated share of 500 credits per added seat for the rest of
+ * the month, once per month (removing and re-adding grants nothing new);
+ * decreases apply now without a refund. `used` = members + pending invites:
+ * lowering below it rejects with `SEATS_IN_USE`.
+ */
+export async function changeSeats(seats: number, used: number): Promise<SeatChange> {
+  const cur = getSession();
+  if (!cur.isTeam || !cur.plan) throw new MockFlowError('TEAM_REQUIRED');
+  const n = clampSeats(seats);
+  if (n < used) throw new MockFlowError('SEATS_IN_USE');
+  await wait(latency());
+  const previous = cur.seats;
+  if (n > previous && mocks().checkout === 'fail') throw new MockFlowError('PAYMENT_FAILED');
+  const high = seatHighWater ?? previous;
+  let granted = 0;
+  if (n > high) {
+    const p = mockPeriod();
+    granted = prorate((n - high) * SEAT_PRICE.monthlyCredits, p.start, p.end, Date.now());
+    seatHighWater = n;
+    const c = getCredits();
+    setCredits({ ...c, plan: c.plan + granted, available: c.available + granted });
+  } else if (seatHighWater === null) seatHighWater = previous;
+  set(derive({ ...cur.plan, seats: n }, cur.workspaceMatureAllowed));
+  return { seats: n, previous, granted };
 }
 
 // Credits (mock of `GET /api/credits` + the CreditAccount ledger). The real
@@ -292,4 +354,5 @@ export async function signOut(): Promise<void> {
 export function resetSessionForTests() {
   state = null;
   credits = null;
+  seatHighWater = null;
 }

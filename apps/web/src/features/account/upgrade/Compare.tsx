@@ -1,4 +1,4 @@
-import { PLAN_ORDER, PLANS, type PlanConfig, type PlanId } from '@rolling/core/pricing/config';
+import { PLAN_ORDER, PLANS, SEAT_PRICE, type PlanConfig, type PlanId } from '@rolling/core/pricing/config';
 import type { ReactNode } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { formatUsd } from '@/lib/topUp';
@@ -25,7 +25,7 @@ function Yes({ on }: { on: boolean }) {
   );
 }
 
-/** Feature comparison, every value from the plan config (D-006). */
+/** Feature comparison, every value from the plan config (D-006); Team cells show the base and what each extra seat adds (D-013). */
 export function Compare({ period, rates, recommended }: { period: BillingPeriod; rates: Rates; recommended: PlanId }) {
   const intl = useIntl();
   const money = (n: number) => formatUsd(n, (v, o) => intl.formatNumber(v, o));
@@ -34,6 +34,14 @@ export function Compare({ period, rates, recommended }: { period: BillingPeriod;
       id: 'price',
       cell: (p) => {
         const price = money(monthlyPrice(p, period));
+        if (p.kind === 'team') {
+          const seat = money(period === 'yearly' ? Math.round((SEAT_PRICE.priceYearlyUsd / 12) * 100) / 100 : SEAT_PRICE.priceMonthlyUsd);
+          return (
+            <Swap id={`${price}-${seat}`}>
+              <FormattedMessage id={period === 'yearly' ? 'account.upgrade.compare.teamPriceYearly' : 'account.upgrade.compare.teamPrice'} values={{ base: price, seat }} />
+            </Swap>
+          );
+        }
         return (
           <Swap id={price}>
             <FormattedMessage id="account.upgrade.compare.priceValue" values={{ price }} />
@@ -41,17 +49,46 @@ export function Compare({ period, rates, recommended }: { period: BillingPeriod;
         );
       },
     },
-    { id: 'credits', cell: (p) => intl.formatNumber(p.monthlyCredits) },
+    {
+      id: 'credits',
+      cell: (p) =>
+        p.kind === 'team' ? (
+          <FormattedMessage id="account.upgrade.compare.teamCredits" values={{ credits: p.monthlyCredits, perSeat: SEAT_PRICE.monthlyCredits }} />
+        ) : (
+          intl.formatNumber(p.monthlyCredits)
+        ),
+    },
     {
       id: 'shots',
       values: { model: rates.video.name, seconds: rates.video.seconds, res: rates.video.resolution },
-      cell: (p) => intl.formatNumber(howMany(p.monthlyCredits, rates.video.credits)),
+      cell: (p) =>
+        p.kind === 'team' ? (
+          <FormattedMessage id="account.upgrade.compare.teamShots" values={{ n: howMany(p.monthlyCredits, rates.video.credits), perSeat: howMany(SEAT_PRICE.monthlyCredits, rates.video.credits) }} />
+        ) : (
+          intl.formatNumber(howMany(p.monthlyCredits, rates.video.credits))
+        ),
     },
-    { id: 'jobs', cell: (p) => intl.formatNumber(p.concurrentJobs) },
+    {
+      id: 'jobs',
+      cell: (p) =>
+        p.kind === 'team' ? (
+          <FormattedMessage id="account.upgrade.compare.teamJobs" values={{ jobs: p.concurrentJobs, perSeat: SEAT_PRICE.concurrentJobs, max: SEAT_PRICE.maxConcurrentJobs }} />
+        ) : (
+          intl.formatNumber(p.concurrentJobs)
+        ),
+    },
     { id: 'video', cell: (p) => p.maxVideoResolution },
     { id: 'image', cell: (p) => p.maxImageResolution },
     { id: 'voice', cell: (p) => <Yes on={p.voiceCloning} /> },
-    { id: 'seats', cell: (p) => intl.formatNumber(p.seats) },
+    {
+      id: 'seats',
+      cell: (p) =>
+        p.kind === 'team' ? (
+          <FormattedMessage id="account.upgrade.compare.teamSeats" values={{ price: money(period === 'yearly' ? SEAT_PRICE.priceYearlyUsd : SEAT_PRICE.priceMonthlyUsd) }} />
+        ) : (
+          <FormattedMessage id="account.upgrade.compare.oneSeat" />
+        ),
+    },
     { id: 'topUpBonus', cell: (p) => (p.topUpBonus > 0 ? `+${intl.formatNumber(p.topUpBonus, { style: 'percent' })}` : <Yes on={false} />) },
     { id: 'agent', cell: () => <Yes on /> },
     { id: 'refunds', cell: () => <Yes on /> },

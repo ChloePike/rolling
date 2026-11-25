@@ -233,7 +233,10 @@ test.describe('settings (Settings.dc.html)', () => {
 
   test('team: invite dialog validates and adds an invited row; limit edit; remove with confirm', async ({ page }) => {
     await page.addInitScript(() => {
-      (window as unknown as { __rollingMocks: Record<string, unknown> }).__rollingMocks = { delayMs: 50 };
+      (window as unknown as { __rollingMocks: Record<string, unknown> }).__rollingMocks = {
+        delayMs: 50,
+        me: { plan: { id: 'team', period: 'monthly', status: 'active', seats: 10 } },
+      };
     });
     await openApp(page, '/settings/team');
     await expect(page.getByText('4 of 10 seats used')).toBeVisible();

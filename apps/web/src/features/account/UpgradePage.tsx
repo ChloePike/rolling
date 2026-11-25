@@ -1,4 +1,4 @@
-import { PLAN_ORDER, PLANS, type PlanId } from '@rolling/core/pricing/config';
+import { PERSONAL_PLAN_ORDER, PLAN_ORDER, PLANS, type PlanId } from '@rolling/core/pricing/config';
 import { useToast } from '@rolling/ui';
 import { useRef, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
@@ -9,13 +9,14 @@ import { Compare } from './upgrade/Compare';
 import { Faq } from './upgrade/Faq';
 import { ModelMark } from './upgrade/ModelMark';
 import { PlanCard } from './upgrade/PlanCard';
+import { TeamPlan } from './upgrade/TeamPlan';
 import { TopUpCalculator } from './upgrade/TopUpCalculator';
 import { useFeaturedModels, useRates } from './upgrade/useRates';
 import styles from './Upgrade.module.css';
 import parts from './upgrade/Upgrade.parts.module.css';
 
-/** Plus carries the Recommended badge (the middle plan, as drawn). */
-export const RECOMMENDED: PlanId = PLAN_ORDER[Math.floor(PLAN_ORDER.length / 2)]!;
+/** Plus carries the Recommended badge (the middle personal plan, as drawn). */
+export const RECOMMENDED: PlanId = PERSONAL_PLAN_ORDER[Math.floor(PERSONAL_PLAN_ORDER.length / 2)]!;
 
 /** Names shown until the catalog answers (D-002 launch models). */
 const FALLBACK_MODELS = [
@@ -99,7 +100,7 @@ export function UpgradePage({ initialPeriod = 'monthly' }: { initialPeriod?: Bil
       </div>
 
       <div className={styles.plans} ref={plansRef} id="plans">
-        {PLAN_ORDER.map((id, i) => (
+        {PERSONAL_PLAN_ORDER.map((id, i) => (
           <PlanCard
             key={id}
             id={id}
@@ -114,6 +115,8 @@ export function UpgradePage({ initialPeriod = 'monthly' }: { initialPeriod?: Bil
           />
         ))}
       </div>
+
+      <TeamPlan period={period} index={PERSONAL_PLAN_ORDER.length} />
 
       <section className={parts.models} aria-labelledby="upgrade-models">
         <div className={parts.modelsText}>

@@ -1,4 +1,4 @@
-import { PLANS, TOP_UP } from '@rolling/core/pricing/config';
+import { planMonthlyCredits, PLANS, TOP_UP, teamPriceCents } from '@rolling/core/pricing/config';
 import { Dialog, Switch, useToast } from '@rolling/ui';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
@@ -47,6 +47,7 @@ import {
 } from './api';
 import { setNotifyPref, useNotifyPrefs, type NotifyKey } from './notifyPrefs';
 import type { Invoice, Me, Member, Role } from './types';
+import { SeatsDialog, StartTeamDialog } from './team/TeamDialogs';
 import styles from './Settings.module.css';
 
 const cx = (...c: Array<string | false | undefined>) => c.filter(Boolean).join(' ');
@@ -501,8 +502,19 @@ function BillingSection({ me }: { me: Me }) {
   const credits = useCredits();
   const balance = { plan: credits.plan, purchased: credits.purchased };
   const total = credits.available;
-  const rest = plan ? Math.max(0, plan.monthlyCredits - balance.plan) : 0;
-  const price = plan ? (me.plan!.period === 'yearly' ? Math.round((Number(plan.priceYearlyUsd) / 12) * 100) / 100 : Number(plan.priceMonthlyUsd)) : 0;
+  // Team prices and credits follow purchased seats (D-013).
+  const seats = me.plan?.id === 'team' ? Math.max(1, me.plan.seats ?? 1) : 1;
+  const planCredits = me.plan ? planMonthlyCredits(me.plan.id, seats) : 0;
+  const rest = plan ? Math.max(0, planCredits - balance.plan) : 0;
+  const price = !plan
+    ? 0
+    : me.plan!.id === 'team'
+      ? me.plan!.period === 'yearly'
+        ? Math.round(teamPriceCents(seats, 'year') / 12) / 100
+        : teamPriceCents(seats, 'month') / 100
+      : me.plan!.period === 'yearly'
+        ? Math.round((Number(plan.priceYearlyUsd) / 12) * 100) / 100
+        : Number(plan.priceMonthlyUsd);
   const [custom, setCustom] = useState('');
   const parsed = parseTopUpAmount(custom);
   const customActive = parsed !== null;
@@ -550,7 +562,7 @@ function BillingSection({ me }: { me: Me }) {
               me.cancelAtPeriodEnd ? (
                 <FormattedMessage id="account.settings.billing.cancels" values={{ date: '[DATE]' }} />
               ) : (
-                <FormattedMessage id="account.settings.billing.renews" values={{ price: money(price), date: '[DATE]', credits: plan.monthlyCredits }} />
+                <FormattedMessage id="account.settings.billing.renews" values={{ price: money(price), date: '[DATE]', credits: planCredits }} />
               )
             ) : (
               <FormattedMessage id="account.settings.billing.noPlan.text" />
@@ -818,7 +830,17 @@ function TeamSection({ me }: { me: Me }) {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [limitFor, setLimitFor] = useState<Member | null>(null);
   const [removeFor, setRemoveFor] = useState<Member | null>(null);
-  const seats = me.plan ? PLANS[me.plan.id].seats : 1;
+  const session = useSession();
+  const seats = session.seats;
+  const used = members.length;
+  // D-013: personal plans → "Start Team"; Team without a free seat → "Add seats"; then the invite resumes.
+  const [startOpen, setStartOpen] = useState(0);
+  const [seatsFor, setSeatsFor] = useState<{ n: number; initial?: number; resume: boolean } | null>(null);
+  function invite() {
+    if (!session.isTeam) return setStartOpen((n) => n + 1);
+    if (used >= seats) return setSeatsFor((s) => ({ n: (s?.n ?? 0) + 1, initial: used + 1, resume: true }));
+    setInviteOpen(true);
+  }
   return (
     <>
       <Head id="account.settings.section.team" sub={<FormattedMessage id="account.settings.team.sub" values={{ workspace: me.workspace.name }} />} />
@@ -880,17 +902,49 @@ function TeamSection({ me }: { me: Me }) {
         <button
           type="button"
           className={cx(styles.btn, styles.btnPrimary, motion.press)}
-          disabled={members.length >= seats}
-          title={members.length >= seats ? t('account.settings.team.seatsFull', { n: seats }) : undefined}
-          onClick={() => setInviteOpen(true)}
+          title={session.isTeam && used >= seats ? t('account.settings.team.seatsFull', { n: seats }) : undefined}
+          onClick={invite}
         >
           <FormattedMessage id="account.settings.team.invite" />
         </button>
-        <span className={styles.rowHint}>
-          <FormattedMessage id="account.settings.team.seats" values={{ used: members.length, n: seats }} />
+        <span className={styles.rowHint} data-testid="team-seats">
+          {session.isTeam ? (
+            <FormattedMessage id="account.settings.team.seatsOf" values={{ used, n: seats }} />
+          ) : (
+            <FormattedMessage id="account.settings.team.membersOnly" values={{ n: used }} />
+          )}
         </span>
+        {session.isTeam && (
+          <button type="button" className={cx(styles.btn, motion.hover)} onClick={() => setSeatsFor((s) => ({ n: (s?.n ?? 0) + 1, resume: false }))}>
+            <FormattedMessage id="account.settings.team.changeSeats" />
+          </button>
+        )}
       </div>
       <InviteDialog open={inviteOpen} onClose={() => setInviteOpen(false)} />
+      {startOpen > 0 && (
+        <StartTeamDialog
+          key={`start-${startOpen}`}
+          open
+          used={used}
+          onClose={() => setStartOpen(0)}
+          onStarted={() => {
+            setStartOpen(0);
+            setInviteOpen(true);
+          }}
+        />
+      )}
+      {seatsFor && (
+        <SeatsDialog
+          key={`seats-${seatsFor.n}`}
+          open
+          used={used}
+          initial={seatsFor.initial}
+          onClose={() => setSeatsFor(null)}
+          onDone={(n) => {
+            if (seatsFor.resume && n > used) setInviteOpen(true);
+          }}
+        />
+      )}
       <LimitDialog member={limitFor} onClose={() => setLimitFor(null)} />
       <Dialog
         open={!!removeFor}

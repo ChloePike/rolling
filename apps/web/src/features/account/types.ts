@@ -28,7 +28,7 @@ export interface Me {
   role: Role;
   prefs: Prefs;
   /** Null when the workspace has no active plan. */
-  plan: { id: PlanId; period: BillingPeriod; status: 'active' | 'canceled' } | null;
+  plan: { id: PlanId; period: BillingPeriod; status: 'active' | 'canceled'; seats?: number } | null;
   balance: { plan: number; purchased: number; held: number };
   autoTopUp: { enabled: boolean; below: number; amountUsd: number };
   paymentMethod: { brand: string; last4: string; expires: string } | null;

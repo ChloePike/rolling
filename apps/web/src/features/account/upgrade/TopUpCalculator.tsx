@@ -1,4 +1,4 @@
-import { PLAN_ORDER, PLANS, quoteTopUp, TOP_UP, type PlanId } from '@rolling/core/pricing/config';
+import { PERSONAL_PLAN_ORDER, PLANS, quoteTopUp, TOP_UP, type PlanId } from '@rolling/core/pricing/config';
 import { useToast } from '@rolling/ui';
 import { useId, useState, type CSSProperties } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
@@ -163,7 +163,7 @@ export function TopUpCalculator({ rates, memberPlan, onPickPlan }: TopUpCalculat
             className={styles.planSeg}
             optionClassName={styles.planSegOption}
             indicatorClassName={styles.planSegFill}
-            options={PLAN_ORDER.map((id) => ({
+            options={(memberPlan === 'team' ? [...PERSONAL_PLAN_ORDER, 'team' as const] : PERSONAL_PLAN_ORDER).map((id) => ({
               value: id,
               label: (
                 <>

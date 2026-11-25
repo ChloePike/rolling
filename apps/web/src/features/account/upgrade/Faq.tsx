@@ -1,11 +1,11 @@
-import { PLANS, TOP_UP } from '@rolling/core/pricing/config';
+import { PLANS, SEAT_PRICE, TOP_UP } from '@rolling/core/pricing/config';
 import { useId, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { formatUsd } from '@/lib/topUp';
 import { PathIcon, paths } from '../shared';
 import styles from './Upgrade.parts.module.css';
 
-export const FAQ_IDS = ['billing', 'refunds', 'expiry', 'cancel', 'change', 'resolution'] as const;
+export const FAQ_IDS = ['billing', 'refunds', 'expiry', 'cancel', 'change', 'team', 'resolution'] as const;
 
 /**
  * Accordion: each question is a button with aria-expanded; the answer opens in
@@ -22,6 +22,11 @@ export function Faq() {
     starter: PLANS.starter.maxVideoResolution,
     plus: PLANS.plus.maxVideoResolution,
     pro: PLANS.pro.maxVideoResolution,
+    base: money(Number(PLANS.team.priceMonthlyUsd)),
+    seat: money(SEAT_PRICE.priceMonthlyUsd),
+    credits: SEAT_PRICE.monthlyCredits,
+    jobs: SEAT_PRICE.concurrentJobs,
+    agent: money(SEAT_PRICE.agentAllowanceUsd),
   };
   return (
     <section className={styles.faq} aria-labelledby="upgrade-faq">

@@ -1,4 +1,4 @@
-import { PLAN_ORDER, PLANS, TOP_UP, type PlanId } from '@rolling/core/pricing/config';
+import { PERSONAL_PLAN_ORDER, PLANS, TOP_UP, type PlanId } from '@rolling/core/pricing/config';
 import { cx, Dialog, staggerStyle } from '@rolling/ui';
 import { Link } from '@tanstack/react-router';
 import { useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
@@ -49,7 +49,8 @@ const money = (intl: IntlShape, usd: number) => formatPrice(intl, usd, getPrefs(
 
 /** Plans from the pricing config (D-006): name, monthly credits and video cap, monthly price. */
 export function defaultPaywallOptions(intl: IntlShape): PaywallOption[] {
-  return PLAN_ORDER.map((id) => {
+  // The join paywall offers the personal plans; Team starts from /upgrade or Settings → Team (D-013).
+  return PERSONAL_PLAN_ORDER.map((id) => {
     const p = PLANS[id];
     return {
       id,

@@ -1,0 +1,38 @@
+/* Team (D-013): seat stepper, price breakdown, what seats add. Tokens only; motion per Motion.dc.html. */
+.stepper{display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:10px;background:var(--c-surface-4)}
+.stepBtn{
+  width:32px;height:32px;border-radius:7px;border:0;background:transparent;color:var(--c-text-2);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:background-color var(--m-fast) var(--m-ease-standard),color var(--m-fast) var(--m-ease-standard),transform var(--m-instant) var(--m-ease-standard);
+}
+.stepBtn:hover:not(:disabled){background:var(--c-surface-6);color:var(--c-text-1)}
+.stepBtn:active:not(:disabled){transform:scale(.97)}
+.stepBtn:disabled{opacity:.4;cursor:default}
+.stepBtn:focus-visible,.stepInput:focus-visible{outline:0;box-shadow:inset 0 0 0 1.5px var(--c-accent)}
+.stepInput{
+  width:52px;height:32px;border:0;border-radius:7px;background:transparent;text-align:center;
+  font:inherit;font-size:15px;font-weight:700;color:var(--c-text-1);font-variant-numeric:tabular-nums;
+}
+@media (prefers-reduced-motion:reduce){.stepBtn:active:not(:disabled){transform:none}}
+
+.seatsRow{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.seatsText{display:flex;flex-direction:column;gap:2px}
+.seatsLabel{font-size:13px;font-weight:600;color:var(--c-text-1)}
+.seatsHint{font-size:12px;color:var(--c-text-4)}
+
+.breakdown{display:flex;flex-direction:column;gap:8px;margin:0;padding:12px 0 0;border-top:1px solid var(--c-border)}
+.line{display:flex;justify-content:space-between;gap:12px;font-size:13px;color:var(--c-text-3)}
+.line dd{margin:0;color:var(--c-text-2);font-variant-numeric:tabular-nums}
+.line dt{margin:0}
+.total{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding-top:8px;border-top:1px solid var(--c-border);font-size:14px;font-weight:700;color:var(--c-text-1)}
+.total dd{margin:0;font-variant-numeric:tabular-nums;text-align:right}
+.totalSub{display:block;font-size:12px;font-weight:500;color:var(--c-text-4)}
+
+.gets{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
+.getsItem{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--c-text-2)}
+.getsItem svg{color:var(--c-text-3);flex:none}
+.getsKey{font-size:12px;font-weight:600;color:var(--c-text-3)}
+.note{margin:0;font-size:12px;line-height:1.5;color:var(--c-text-4)}
+.warn{margin:0;font-size:12px;line-height:1.5;color:var(--c-text-3)}
+
+.dlgBody{display:flex;flex-direction:column;gap:14px;align-self:stretch}

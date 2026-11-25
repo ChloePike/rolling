@@ -77,7 +77,8 @@ test.describe('upgrade /upgrade', () => {
     await expect(card(page, 'plus').locator('[data-cap="4K"]').first()).toHaveAttribute('title', '4K needs Pro');
     await expect(card(page, 'plus')).toContainText('Voice cloning');
     await expect(card(page, 'starter')).not.toContainText('Voice cloning');
-    await expect(card(page, 'pro')).toContainText('10 seats, roles and per-member limits');
+    // D-013: personal plans have one seat; seats are on Team.
+    await expect(card(page, 'pro')).not.toContainText('seats');
     await expect(card(page, 'pro')).toContainText('+10% bonus on every top-up');
     await expect(page.getByText('[PRICE]')).toHaveCount(0);
   });
@@ -197,14 +198,16 @@ test.describe('upgrade /upgrade', () => {
   test('comparison table, model row and FAQ accordion', async ({ page }) => {
     await openApp(page, '/upgrade');
     const row = (id: string) => page.locator(`[data-row="${id}"] td`);
-    await expect(row('jobs')).toHaveText(['2', '5', '10']);
-    await expect(row('video')).toHaveText(['720p', '1080p', '4K']);
-    await expect(row('image')).toHaveText(['2K', '2K', '4K']);
-    await expect(row('seats')).toHaveText(['1', '1', '10']);
-    await expect(row('shots')).toHaveText(['0', '2', '7']);
-    await expect(row('voice')).toHaveText(['Not included', 'Included', 'Included']);
-    await expect(row('topUpBonus')).toHaveText(['Not included', '+5%', '+10%']);
-    await expect(row('agent')).toHaveText(['Included', 'Included', 'Included']);
+    await expect(row('jobs')).toHaveText(['2', '5', '10', '10 + 2 per extra seat, up to 30']);
+    await expect(row('video')).toHaveText(['720p', '1080p', '4K', '4K']);
+    await expect(row('image')).toHaveText(['2K', '2K', '4K', '4K']);
+    await expect(row('seats')).toHaveText(['Just you', 'Just you', 'Just you', 'Any number, $25 each']);
+    await expect(row('credits')).toHaveText(['200', '800', '2,500', '2,500 + 500 per extra seat']);
+    await expect(row('price')).toHaveText(['$5 a month', '$15 a month', '$49 a month', '$79 a month + $25 per extra seat']);
+    await expect(row('shots')).toHaveText(['0', '2', '7', '7 + 1 per extra seat']);
+    await expect(row('voice')).toHaveText(['Not included', 'Included', 'Included', 'Included']);
+    await expect(row('topUpBonus')).toHaveText(['Not included', '+5%', '+10%', '+10%']);
+    await expect(row('agent')).toHaveText(['Included', 'Included', 'Included', 'Included']);
     const recBg = await page.locator('[data-row="jobs"] [data-col="plus"]').evaluate((e) => getComputedStyle(e).backgroundColor);
     const otherBg = await page.locator('[data-row="jobs"] [data-col="pro"]').evaluate((e) => getComputedStyle(e).backgroundColor);
     expect(recBg).not.toBe(otherBg);
@@ -257,7 +260,7 @@ test.describe('upgrade /upgrade', () => {
     await openApp(page, '/upgrade');
     await page.locator('[data-plan="pro"]').waitFor();
     const delays = await page.$$eval('[data-plan]', (els) => els.map((el) => getComputedStyle(el).animationDelay));
-    expect(delays).toEqual(['0s', '0.03s', '0.06s']);
+    expect(delays).toEqual(['0s', '0.03s', '0.06s', '0.09s']);
     expect(await animationTiming(page, '[data-plan="plus"]')).toMatchObject({ duration: 200, easing: STANDARD });
     await settle(page);
     const marker = page.locator('[role="tablist"] [aria-hidden="true"]');

@@ -55,7 +55,7 @@ function wait(): Promise<void> {
 /** API error with a code from docs/api.md (`NO_PLAN`, `VALIDATION`, ...). */
 export class ApiError extends Error {
   constructor(
-    readonly code: 'NO_PLAN' | 'VALIDATION' | 'NOT_FOUND' | 'CARD_DECLINED',
+    readonly code: 'NO_PLAN' | 'VALIDATION' | 'NOT_FOUND' | 'CARD_DECLINED' | 'TEAM_REQUIRED' | 'SEATS_REQUIRED',
     message: string = code,
   ) {
     super(message);
@@ -116,10 +116,17 @@ export async function patchPaymentMethod(card: { number: string; expires: string
   return structuredClone(me);
 }
 
-/** `POST /api/workspace/members` (invite by email). */
+/**
+ * `POST /api/workspace/invites` (invite by email). D-013: only Team invites
+ * (`TEAM_REQUIRED`), and members + pending invites must fit the purchased seats
+ * (`SEATS_REQUIRED`).
+ */
 export async function inviteMember(input: { email: string; role: Role; monthlyCreditLimit: number | null }): Promise<Member[]> {
   await wait();
   if (!EMAIL_RE.test(input.email)) throw new ApiError('VALIDATION', 'email');
+  const s = getSession();
+  if (!s.isTeam) throw new ApiError('TEAM_REQUIRED');
+  if (members.length >= s.seats) throw new ApiError('SEATS_REQUIRED');
   const name = input.email.split('@')[0]!;
   members = [...members, { id: `mem_${Date.now()}`, name, email: input.email, role: input.role, monthlyCreditLimit: input.monthlyCreditLimit, invited: true }];
   return structuredClone(members);
@@ -170,6 +177,11 @@ export { formatUsd, topUpFor, type TopUpOption } from '@/lib/topUp';
 /** Preset top-ups (`GET /api/billing/plans`) for a member of `plan`, or list amounts without a plan bonus. */
 export async function fetchTopUps(plan: PlanId | null): Promise<TopUpOption[]> {
   return topUpPresets(plan);
+}
+
+/** Seats used by members and pending invites (D-013). */
+export function seatsUsed(list: Member[]): number {
+  return list.length;
 }
 
 /** Plans in display order with their config (D-006). */
