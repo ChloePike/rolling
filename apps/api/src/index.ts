@@ -9,6 +9,7 @@ import { handleQueue } from "./queues";
 import { handleScheduled } from "./scheduled";
 import { health } from "./routes/health";
 import { me } from "./routes/me";
+import { media } from "./routes/media";
 import { models } from "./routes/models";
 import { realtime } from "./routes/realtime";
 
@@ -26,6 +27,7 @@ export const app = new Hono<AppEnv>();
 const api = new Hono<AppEnv>()
   .route("/health", health)
   .route("/me", me)
+  .route("/media", media)
   .route("/models", models)
   .route("/", realtime)
   .on(["GET", "POST"], "/graphql", async (c) =>

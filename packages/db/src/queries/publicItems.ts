@@ -1,5 +1,5 @@
 /** Public library queries (D1). Lives here so the drizzle-orm instance matches the schema. */
-import { and, asc, eq, gt, like, or, type SQL } from "drizzle-orm";
+import { and, asc, count, eq, gt, like, or, type SQL } from "drizzle-orm";
 import { drizzle, type AnyD1Database } from "drizzle-orm/d1";
 import { publicItems, type PublicItem } from "../d1/schema";
 
@@ -11,6 +11,7 @@ export interface PublicItemsPage {
 
 export interface PublicItemsQuery {
   category?: string | null;
+  sub?: string | null;
   q?: string | null;
   first: number;
   after?: string | null;
@@ -36,6 +37,7 @@ export async function listPublicItems(d1: AnyD1Database, query: PublicItemsQuery
   const db = drizzle(d1);
   const where: SQL[] = [eq(publicItems.mature, false)];
   if (query.category) where.push(eq(publicItems.category, query.category));
+  if (query.sub) where.push(eq(publicItems.sub, query.sub));
   if (query.q) {
     const pattern = `%${query.q.replace(/[%_\\]/g, (m) => `\\${m}`)}%`;
     where.push(or(like(publicItems.title, pattern), like(publicItems.promptEn, pattern))!);
@@ -57,4 +59,41 @@ export async function listPublicItems(d1: AnyD1Database, query: PublicItemsQuery
   const items = rows.slice(0, query.first);
   const last = items.at(-1);
   return { items, hasNextPage: rows.length > query.first, endCursor: last ? encodeCursor(last) : null };
+}
+
+/** Sub-categories with item counts for one category (non-mature items only). */
+export async function listPublicSubs(
+  d1: AnyD1Database,
+  category: string,
+): Promise<{ sub: string; count: number }[]> {
+  const db = drizzle(d1);
+  const rows = await db
+    .select({ sub: publicItems.sub, count: count() })
+    .from(publicItems)
+    .where(and(eq(publicItems.category, category), eq(publicItems.mature, false)))
+    .groupBy(publicItems.sub)
+    .orderBy(asc(publicItems.sub));
+  return rows.filter((r): r is { sub: string; count: number } => typeof r.sub === "string");
+}
+
+/** Category item counts (non-mature items only). */
+export async function listPublicCategoryCounts(d1: AnyD1Database): Promise<{ category: string; count: number }[]> {
+  const db = drizzle(d1);
+  return db
+    .select({ category: publicItems.category, count: count() })
+    .from(publicItems)
+    .where(eq(publicItems.mature, false))
+    .groupBy(publicItems.category)
+    .orderBy(asc(publicItems.category));
+}
+
+/** Whether a public item may be served on public surfaces (exists and is not mature). */
+export async function isPublicItemServable(d1: AnyD1Database, id: string, category: string): Promise<boolean> {
+  const db = drizzle(d1);
+  const rows = await db
+    .select({ id: publicItems.id })
+    .from(publicItems)
+    .where(and(eq(publicItems.id, id), eq(publicItems.category, category), eq(publicItems.mature, false)))
+    .limit(1);
+  return rows.length > 0;
 }

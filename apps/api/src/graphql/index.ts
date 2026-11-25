@@ -5,7 +5,8 @@
 import { createSchema, createYoga } from "graphql-yoga";
 import { GraphQLError } from "graphql";
 import type { PublicItem } from "@rolling/db/d1";
-import { encodeCursor, listPublicItems } from "@rolling/db/queries/publicItems";
+import { encodeCursor, listPublicCategoryCounts, listPublicItems, listPublicSubs } from "@rolling/db/queries/publicItems";
+import { publicMediaUrl } from "../routes/media";
 import type { SessionUser } from "../lib/session";
 import { listPublicModels } from "../models/catalog";
 
@@ -17,7 +18,11 @@ export interface GraphQLContext {
 const typeDefs = /* GraphQL */ `
   type Query {
     health: Health!
-    publicItems(category: String, q: String, first: Int = 24, after: String): PublicItemConnection!
+    publicItems(category: String, sub: String, q: String, first: Int = 24, after: String): PublicItemConnection!
+    "Sub-categories of a public-library category with item counts (non-mature)."
+    publicSubCategories(category: String!): [PublicFacet!]!
+    "Public-library categories with item counts (non-mature)."
+    publicCategories: [PublicFacet!]!
     "Synced model catalog (D-002). Mature-only models only for callers allowed to see them (D-005)."
     models(kind: ModelKind): [Model!]!
   }
@@ -93,6 +98,22 @@ const typeDefs = /* GraphQL */ `
     assetId: ID!
     license: License!
     source: String!
+    "Cover image URL (first angle)."
+    thumbUrl: String
+    "Depth map URL of the cover angle, for pose items."
+    depthUrl: String
+    angles: [PublicAngle!]!
+  }
+
+  type PublicAngle {
+    name: String!
+    url: String!
+    depthUrl: String
+  }
+
+  type PublicFacet {
+    key: String!
+    count: Int!
   }
 
   type PublicItemEdge {
@@ -122,12 +143,38 @@ function parseTags(raw: string): string[] {
   }
 }
 
+/** `angles` JSON written by the PoseWear importer: [{ name, r2Key, depthR2Key? }]. */
+function parseAngles(raw: string | null): { name: string; url: string; depthUrl: string | null }[] {
+  if (!raw) return [];
+  try {
+    const v: unknown = JSON.parse(raw);
+    if (!Array.isArray(v)) return [];
+    return v.flatMap((a: { name?: unknown; r2Key?: unknown; depthR2Key?: unknown }) =>
+      typeof a?.name === "string" && typeof a?.r2Key === "string"
+        ? [
+            {
+              name: a.name,
+              url: publicMediaUrl(a.r2Key),
+              depthUrl: typeof a.depthR2Key === "string" ? publicMediaUrl(a.depthR2Key) : null,
+            },
+          ]
+        : [],
+    );
+  } catch {
+    return [];
+  }
+}
+
 const resolvers = {
   Query: {
     health: (_: unknown, __: unknown, ctx: GraphQLContext) => ({ ok: true, environment: ctx.env.ENVIRONMENT }),
+    publicSubCategories: async (_: unknown, args: { category: string }, ctx: GraphQLContext) =>
+      (await listPublicSubs(ctx.env.DB, args.category)).map((r) => ({ key: r.sub, count: r.count })),
+    publicCategories: async (_: unknown, __: unknown, ctx: GraphQLContext) =>
+      (await listPublicCategoryCounts(ctx.env.DB)).map((r) => ({ key: r.category, count: r.count })),
     publicItems: async (
       _: unknown,
-      args: { category?: string | null; q?: string | null; first?: number | null; after?: string | null },
+      args: { category?: string | null; sub?: string | null; q?: string | null; first?: number | null; after?: string | null },
       ctx: GraphQLContext,
     ) => {
       const first = args.first ?? 24;
@@ -147,6 +194,9 @@ const resolvers = {
   PublicItem: {
     license: (item: PublicItem) => licenseEnum[item.license],
     tags: (item: PublicItem) => parseTags(item.tags),
+    angles: (item: PublicItem) => parseAngles(item.angles),
+    thumbUrl: (item: PublicItem) => parseAngles(item.angles)[0]?.url ?? null,
+    depthUrl: (item: PublicItem) => (item.depthKey ? publicMediaUrl(item.depthKey) : null),
   },
 };
 
