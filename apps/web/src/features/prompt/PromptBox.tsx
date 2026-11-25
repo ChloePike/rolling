@@ -257,6 +257,8 @@ export function PromptBox(props: PromptBoxProps) {
           : intl.formatNumber(Math.max(1, Math.round(f.size / 1000)), { style: 'unit', unit: 'kilobyte' });
       return intl.formatMessage({ id: 'prompt.upload.meta' }, { kind: uploadKind(f), size });
     });
+    // Files over the limits were refused; the transfers dock already said why.
+    if (!items.length) return;
     queryClient.setQueryData<RefItem[]>(promptKeys.references, (old) => [...items, ...(old ?? [])]);
     addRefs(items);
     onUploaded?.(items);

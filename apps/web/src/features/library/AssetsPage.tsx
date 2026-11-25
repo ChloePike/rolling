@@ -3,6 +3,7 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { ChipGroup, motion, PathIcon, paths, SearchField } from '@/features/account/shared';
+import { uploadFiles, useTransfers, validateUpload } from '@/lib/transfers';
 import { assetFromFile, useAssetMutations, useAssets, useCharacters, useFolders, useStorage, useUpload, useVoiceMutations, useVoices } from './assetsApi';
 import type { AssetItem, AssetType, FolderItem, VoiceState } from './assetsMocks';
 import styles from './Assets.module.css';
@@ -79,6 +80,23 @@ export function AssetsPage({ folder = 'all' }: { folder?: AssetFolder }) {
       timers.current.push(t);
       return;
     }
+    if (validateUpload(file).ok) {
+      // Media goes through the shared transfer queue (D-011): direct to R2, resumable.
+      const h = uploadFiles([file], { purpose: 'library', quiet: true }).items[0]!;
+      setUploads((u) => [...u, { id: h.id, file, progress: 0 }]);
+      h.done.then(
+        () => {
+          setUploads((u) => u.filter((x) => x.id !== h.id));
+          const a = assetFromFile(file, folder);
+          assetsMut.add(a);
+          setSel(a.id);
+          toast.show({ message: intl.formatMessage({ id: 'library.assets.uploaded' }, { name: file.name }) });
+        },
+        () => setUploads((u) => u.filter((x) => x.id !== h.id)),
+      );
+      return;
+    }
+    // Text notes stay local until text assets have an endpoint.
     const id = `up_${Date.now()}`;
     setUploads((u) => [...u, { id, file, progress: 0 }]);
     let pct = 0;
@@ -183,6 +201,11 @@ function Files({
   const intl = useIntl();
   const { data: assets = [] } = useAssets();
   const { data: upload } = useUpload();
+  const queue = useTransfers();
+  const progressOf = (u: { id: string; progress: number }) => {
+    const t = queue.items.find((i) => i.id === u.id);
+    return t ? (t.size ? t.bytesDone / t.size : 0) : u.progress;
+  };
   const [type, setType] = useState<TypeFilter>('all');
   const inFolder = (a: (typeof assets)[number]) => (folder === 'all' ? true : folder === 'favorites' ? !!a.favorite : a.folder === folder);
   const visible = assets
@@ -233,9 +256,9 @@ function Files({
             aria-label={intl.formatMessage({ id: 'library.assets.uploading' }, { name: u.file.name })}
             aria-valuemin={0}
             aria-valuemax={100}
-            aria-valuenow={Math.round(u.progress * 100)}
+            aria-valuenow={Math.round(progressOf(u) * 100)}
           >
-            <div className={cx(styles.fill, motion.progress)} style={{ width: `${u.progress * 100}%` }} />
+            <div className={cx(styles.fill, motion.progress)} style={{ width: `${progressOf(u) * 100}%` }} />
           </div>
         </div>
       ))}

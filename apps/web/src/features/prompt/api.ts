@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { uploadFiles } from '@/lib/transfers';
 import { MOCK_REFERENCES, MOCK_SKILLS } from './mocks';
 import type { PromptCommand, RefItem } from './types';
 
@@ -30,8 +31,6 @@ export function useSkills() {
   return useQuery({ queryKey: promptKeys.skills, queryFn: fetchSkills, initialData: MOCK_SKILLS });
 }
 
-let uploadSeq = 0;
-
 /** What an uploaded file becomes in the picker. */
 export function uploadKind(file: File): 'image' | 'video' | 'audio' | 'file' {
   const t = file.type.split('/')[0];
@@ -39,17 +38,20 @@ export function uploadKind(file: File): 'image' | 'video' | 'audio' | 'file' {
 }
 
 /**
- * Upload (`POST /api/uploads` → R2, then `GET /api/assets/:id`). The mock keeps
- * the files in memory: images preview through an object URL. `meta` formats the
- * card's detail line (localized by the caller).
+ * Upload through the shared transfer queue (D-011, `lib/transfers`): direct to
+ * R2, resumable, high priority because the user is about to reference them.
+ * Cards appear at once with the upload id as a provisional id; resolve it with
+ * `resolveAssetId` from `@/lib/transfers` before sending. Files over the limits
+ * are left out (the transfers dock explains why). Images preview through an
+ * object URL. `meta` formats the card's detail line (localized by the caller).
  */
 export async function uploadReferences(files: File[], meta: (file: File) => string): Promise<RefItem[]> {
-  return files.map((file) => {
-    uploadSeq += 1;
+  const { items } = uploadFiles(files, { purpose: 'reference', priority: 'high', quiet: true });
+  return items.map(({ id, file }) => {
     const kind = uploadKind(file);
     const thumbUrl = kind === 'image' && typeof URL.createObjectURL === 'function' ? URL.createObjectURL(file) : undefined;
     return {
-      id: `ast_upload${String(uploadSeq).padStart(3, '0')}`,
+      id,
       group: 'mine' as const,
       name: file.name.replace(/\.[^.]+$/, '') || file.name,
       meta: meta(file),

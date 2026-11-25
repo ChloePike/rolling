@@ -1,14 +1,23 @@
 import { useRef, type ReactNode } from 'react';
+import { uploadFiles, type UploadResult } from '@/lib/transfers';
 
 /**
  * A real file chooser behind any button: render `input` once, call `open()`
- * from the button. The chosen file goes to `onFile` (uploads are mocked until
- * `POST /api/uploads` lands; the caller turns it into a mock asset).
+ * from the button. The chosen file starts uploading through the shared
+ * transfer queue (D-011, high priority: the tool needs it) and goes to `onFile`
+ * at once; `onUploaded` gets the asset when the server has it. Files over the
+ * limits are refused (the transfers dock says why) and never reach `onFile`.
  */
-export function useFilePicker(accept: string, onFile: (file: File) => void): { open: () => void; input: ReactNode } {
+export function useFilePicker(
+  accept: string,
+  onFile: (file: File) => void,
+  onUploaded?: (file: File, result: UploadResult) => void,
+): { open: () => void; input: ReactNode } {
   const ref = useRef<HTMLInputElement>(null);
   const cb = useRef(onFile);
   cb.current = onFile;
+  const done = useRef(onUploaded);
+  done.current = onUploaded;
   const input = (
     <input
       ref={ref}
@@ -18,8 +27,12 @@ export function useFilePicker(accept: string, onFile: (file: File) => void): { o
       data-file-picker=""
       onChange={(e) => {
         const f = e.target.files?.[0];
-        if (f) cb.current(f);
         e.target.value = '';
+        if (!f) return;
+        const { items } = uploadFiles([f], { purpose: 'tool', priority: 'high', quiet: true });
+        if (!items[0]) return;
+        cb.current(f);
+        void items[0].done.then((r) => done.current?.(f, r));
       }}
     />
   );
