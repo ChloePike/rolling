@@ -24,7 +24,7 @@
 .cta:hover:not(:disabled){background:var(--c-surface-6)}
 .cta:disabled{cursor:default;color:var(--c-text-3)}
 .ctaPrimary{background:var(--c-text-1);color:var(--c-bg)}
-.ctaPrimary:hover:not(:disabled){background:var(--c-text-2)}
+.ctaPrimary:hover:not(:disabled){background:var(--c-primary-hover)}
 .ctaPrimary:disabled{background:var(--c-surface-5);color:var(--c-text-3)}
 
 .credits{border-radius:12px;background:var(--c-surface-4);padding:12px 14px;display:flex;flex-direction:column;gap:4px}

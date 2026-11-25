@@ -116,3 +116,29 @@ a.btn{display:inline-block;line-height:32px}
 .memberEmail{font-size:12px;color:var(--c-text-4)}
 .limit{width:150px;font-size:12px;color:var(--c-text-3)}
 .inviteWrap{padding-top:16px}
+
+/* Interaction pass: inline validation, save bar, dialogs, member actions. */
+.fieldWrap{display:flex;flex-direction:column;gap:4px;align-items:flex-start}
+.fieldError{margin:0;font-size:12px;color:var(--c-danger)}
+.fieldFull{width:100%}
+.saveBar{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:12px 0;border-bottom:1px solid var(--c-border)}
+.saveBar > span{margin-right:auto}
+.btn:disabled{cursor:default;opacity:.55}
+.btnDanger{background:var(--c-danger);color:var(--c-bg)}
+.btnDanger:hover{background:var(--c-danger-strong)}
+.dlgActions{display:flex;justify-content:flex-end;gap:8px;padding-top:6px}
+.dlgList{display:flex;flex-direction:column}
+.dlgRow{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--c-border)}
+.dlgRow:last-child{border-bottom:0}
+.dlgForm{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.dlgForm .dlgActions{align-self:stretch}
+.dlgLabel{font-size:12px;font-weight:600;color:var(--c-text-3);margin-top:4px}
+.invited{margin-left:8px;font-size:11px;font-weight:700;color:var(--c-link);background:var(--c-info-soft);border-radius:6px;padding:2px 6px}
+.limitBtn{height:30px;border:0;background:transparent;border-radius:8px;padding:0 8px;margin-left:-8px;text-align:left;font:inherit;font-size:12px;color:var(--c-text-3);cursor:pointer}
+.limitBtn:hover:not(:disabled){background:var(--c-surface-4);color:var(--c-text-1)}
+.limitBtn:disabled{cursor:default}
+.iconBtn{width:32px;height:32px;border-radius:8px;border:0;background:transparent;color:var(--c-text-3);display:flex;align-items:center;justify-content:center;cursor:pointer}
+.iconBtn:hover:not(:disabled){background:var(--c-surface-4);color:var(--c-danger)}
+.iconBtn:disabled{opacity:.35;cursor:default}
+.invoicePdf{border:0;background:none;font:inherit;font-size:13px;cursor:pointer;padding:0}
+.inviteWrap{display:flex;align-items:center;gap:12px}

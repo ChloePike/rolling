@@ -118,6 +118,162 @@ test.describe('settings (Settings.dc.html)', () => {
     await expect(page.getByRole('switch', { name: 'Plan renewal' })).toHaveAttribute('aria-checked', 'true');
   });
 
+  test('account: edits validate inline, save with a toast; photo uses a real file chooser', async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as unknown as { __rollingMocks: Record<string, unknown> }).__rollingMocks = { delayMs: 150 };
+    });
+    await openApp(page, '/settings/account');
+    await expect(page.getByTestId('save-bar')).toHaveCount(0);
+    const handle = page.getByLabel('Username');
+    await handle.fill('@Bad Name');
+    await expect(page.getByTestId('save-bar')).toBeVisible();
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.getByRole('alert')).toHaveText('Use 3–24 lowercase letters, numbers or underscores.');
+    await handle.fill('@alex_makes');
+    await page.getByLabel('Name', { exact: true }).fill('Alex C.');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.getByText('Profile saved.')).toBeVisible();
+    await expect(page.getByTestId('save-bar')).toHaveCount(0);
+    await expect(page.getByText('Alex C.', { exact: true })).toBeVisible();
+
+    const chooser = page.waitForEvent('filechooser');
+    await page.getByRole('button', { name: 'Change photo' }).click();
+    await (await chooser).setFiles({ name: 'me.png', mimeType: 'image/png', buffer: Buffer.from('89504e470d0a1a0a', 'hex') });
+    await expect(page.getByText('Photo updated.')).toBeVisible();
+  });
+
+  test('account: manage sign-in keeps one method; delete needs the confirm word and signs out', async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as unknown as { __rollingMocks: Record<string, unknown> }).__rollingMocks = { delayMs: 50 };
+    });
+    await openApp(page, '/settings/account');
+    await page.getByRole('button', { name: 'Manage sign-in' }).click();
+    const dlg = page.getByRole('dialog', { name: 'Sign-in methods' });
+    await dlg.locator('[data-provider="apple"]').getByRole('button', { name: 'Connect' }).click();
+    await expect(page.getByText('Apple connected.')).toBeVisible();
+    await dlg.locator('[data-provider="google"]').getByRole('button', { name: 'Disconnect' }).click();
+    await dlg.locator('[data-provider="apple"]').getByRole('button', { name: 'Disconnect' }).click();
+    await expect(dlg.locator('[data-provider="email"]').getByRole('button', { name: 'Disconnect' })).toBeDisabled();
+    await expect(dlg.getByText('Keep at least one way to sign in.').first()).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(dlg).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Delete account' }).click();
+    const del = page.getByRole('dialog', { name: 'Delete your account?' });
+    const confirm = del.getByRole('button', { name: 'Delete account' });
+    await expect(confirm).toBeDisabled();
+    await del.getByLabel('Type “delete” to confirm').fill('delete');
+    await confirm.click();
+    await expect(page).toHaveURL(/\/login$/);
+  });
+
+  test('preferences persist through lib/prefs after reload: language, currency, theme, ratio, model, threshold, mature', async ({ page }) => {
+    await openApp(page, '/settings/preferences');
+    await page.getByRole('button', { name: /^Currency: / }).click();
+    await page.getByRole('listbox', { name: 'Currency' }).getByRole('option', { name: /^EUR/ }).click();
+    await page.getByRole('radiogroup', { name: 'Theme' }).getByRole('radio', { name: 'Light' }).click();
+    await page.getByRole('button', { name: /^Default video model: / }).click();
+    await page.getByRole('listbox', { name: 'Default video model' }).getByRole('option', { name: 'MiniMax H3' }).click();
+    await page.getByRole('button', { name: /^Confirm before running: / }).click();
+    await page.getByRole('option', { name: 'Over 1,000 credits' }).click();
+    await page.getByRole('button', { name: 'Default aspect ratio: 9:16' }).click();
+    await page.getByRole('option', { name: '1:1' }).click();
+    await page.getByRole('switch', { name: 'Mature content' }).click();
+    await page.getByRole('button', { name: /^Language: / }).click();
+    await page.getByRole('option', { name: 'Deutsch' }).click();
+    await expect(page.getByText('Text stays in English for now; dates and numbers follow this language')).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Currency: EUR' })).toBeVisible();
+    await expect(page.getByRole('radiogroup', { name: 'Theme' }).getByRole('radio', { name: 'Light' })).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByRole('button', { name: 'Default video model: MiniMax H3' })).toBeVisible();
+    // German number format after switching the language (text stays English).
+    await expect(page.getByRole('button', { name: 'Confirm before running: Over 1.000 credits' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Default aspect ratio: 1:1' })).toBeVisible();
+    await expect(page.getByRole('switch', { name: 'Mature content' })).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByRole('button', { name: 'Language: Deutsch' })).toBeVisible();
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('rolling.prefs') ?? '{}'));
+    expect(stored).toMatchObject({ currency: 'EUR', theme: 'light', defaultModel: 'minimax/minimax-h3', confirmThreshold: 1000, defaultAspectRatio: '1:1', matureContent: true });
+  });
+
+  test('billing: top-up purchase, cancel and resume, card update with decline, invoice download', async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as unknown as { __rollingMocks: Record<string, unknown> }).__rollingMocks = { delayMs: 150 };
+    });
+    await openApp(page, '/settings/billing');
+    await page.getByRole('button', { name: 'Buy 2,850 credits for $25' }).click();
+    await expect(page.getByRole('button', { name: 'Buying…' })).toBeDisabled();
+    await expect(page.getByText('2,850 credits added. They never expire.')).toBeVisible();
+    await expect(page.getByTestId('balance')).toHaveText('5,330');
+    await expect(page.locator('[data-invoice]').first()).toContainText('Top-up, 2,850 credits');
+
+    await page.getByRole('button', { name: 'Cancel plan' }).click();
+    const dlg = page.getByRole('dialog', { name: 'Cancel Pro?' });
+    await dlg.getByRole('button', { name: 'Cancel plan' }).click();
+    await expect(page.getByText('Plan canceled. It stays active until the end of this period.')).toBeVisible();
+    await expect(page.getByTestId('plan-status')).toHaveText('Cancels on [DATE]. Your plan and credits stay until then.');
+    await page.getByRole('button', { name: 'Resume plan' }).click();
+    await expect(page.getByTestId('plan-status')).toContainText('Renews [DATE]');
+
+    await page.getByRole('button', { name: 'Update', exact: true }).click();
+    const card = page.getByRole('dialog', { name: 'Update payment method' });
+    await card.getByLabel('Card number').fill('4000 0000 0000 0002');
+    await card.getByLabel('Expires').fill('09/29');
+    await card.getByRole('button', { name: 'Save card' }).click();
+    await expect(card.getByRole('alert')).toHaveText('The card was declined. Try another card.');
+    await card.getByLabel('Card number').fill('5555 5555 5555 4444');
+    await card.getByRole('button', { name: 'Save card' }).click();
+    await expect(card).toHaveCount(0);
+    await expect(page.getByTestId('card')).toHaveText('Mastercard ending 4444');
+
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Download invoice in_3' }).click();
+    expect((await download).suggestedFilename()).toBe('rolling-invoice-in_3.txt');
+    await expect(page.getByText('Invoice downloaded.')).toBeVisible();
+  });
+
+  test('team: invite dialog validates and adds an invited row; limit edit; remove with confirm', async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as unknown as { __rollingMocks: Record<string, unknown> }).__rollingMocks = { delayMs: 50 };
+    });
+    await openApp(page, '/settings/team');
+    await expect(page.getByText('4 of 10 seats used')).toBeVisible();
+    await page.getByRole('button', { name: 'Invite member' }).click();
+    const dlg = page.getByRole('dialog', { name: 'Invite a member' });
+    await dlg.getByRole('button', { name: 'Send invite' }).click();
+    await expect(dlg.getByRole('alert')).toHaveText('Enter an email like name@example.com.');
+    await dlg.getByLabel('Email').fill('kai@ridgeline.co');
+    await dlg.getByLabel('Monthly credit limit').fill('750');
+    await dlg.getByRole('button', { name: 'Send invite' }).click();
+    await expect(page.getByText('Invite sent to kai@ridgeline.co.')).toBeVisible();
+    const kai = page.locator('[data-member]').filter({ hasText: 'kai@ridgeline.co' });
+    await expect(kai).toContainText('Invited');
+    await expect(kai).toContainText('750 a month');
+    await expect(page.getByText('5 of 10 seats used')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Monthly credit limit for Jordan Lee' }).click();
+    const lim = page.getByRole('dialog', { name: 'Credit limit for Jordan Lee' });
+    await lim.getByLabel('Monthly credit limit').fill('2000');
+    await lim.getByRole('button', { name: 'Save' }).click();
+    await expect(page.locator('[data-member="mem_jordan"]')).toContainText('2,000 a month');
+
+    await expect(page.getByRole('button', { name: 'Remove Alex Chen' })).toBeDisabled();
+    await page.getByRole('button', { name: 'Remove Sam Park' }).click();
+    await page.getByRole('dialog', { name: 'Remove Sam Park?' }).getByRole('button', { name: 'Remove' }).click();
+    await expect(page.getByText('Sam Park was removed.')).toBeVisible();
+    await expect(page.locator('[data-member="mem_sam"]')).toHaveCount(0);
+  });
+
+  test('notifications persist after reload; “Generation finished” is the header popover’s notify preference', async ({ page }) => {
+    await openApp(page, '/settings/notifications');
+    await page.getByRole('switch', { name: 'Product updates' }).click();
+    await page.getByRole('switch', { name: 'Generation finished' }).click();
+    await expect(page.getByText('Generation finished: off')).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole('switch', { name: 'Product updates' })).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByRole('switch', { name: 'Generation finished' })).toHaveAttribute('aria-checked', 'false');
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('rolling.prefs') ?? '{}').notifyWhenDone)).toBe(false);
+  });
+
   test('box measurements within 2px of the design (billing)', async ({ page }) => {
     await openDesign(page, 'Settings.dc.html');
     const design = await measure(page, PARTS);

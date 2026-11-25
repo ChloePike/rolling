@@ -13,3 +13,5 @@
 .option:hover,.option:focus-visible{background:var(--c-surface-5);color:var(--c-text-1)}
 .option[aria-selected="true"]{color:var(--c-text-1)}
 .optionLabel{flex:1}
+.menu{max-height:min(360px,calc(100vh - 160px));overflow-y:auto}
+.optionHint{font-size:12px;font-weight:500;color:var(--c-text-4)}
