@@ -1,14 +1,19 @@
 /**
  * Tiny HTTP server inside the FFmpeg container.
  * /health; /probe, /thumb, /waveform (M3, media.process) take `{ url }` of a
- * signed media URL and read the input over HTTP; /render answers 501 until M7.
+ * signed media URL and read the input over HTTP; /render (exports) runs a
+ * render job in the background (render.ts, graph.ts):
+ * `POST /render` job → 202 state; `GET /render/:id` → state;
+ * `GET /render/:id/file` → the MP4 when the job had no `putUrl`;
+ * `DELETE /render/:id`.
  * Must stay erasable TypeScript (no enums/namespaces) so Node can strip types.
  */
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { execFile } from "node:child_process";
+import { createReadStream } from "node:fs";
+import { Renderer, RenderError, validateJob } from "./render.ts";
 
 const PORT = Number(process.env.PORT ?? 8080);
-const STUB_ROUTES = new Set(["/render"]);
 const MEDIA_ROUTES = new Set(["/probe", "/thumb", "/waveform"]);
 const MAX_OUTPUT = 64 * 1024 * 1024;
 
@@ -26,16 +31,17 @@ function ffmpegVersion(): Promise<string | null> {
   });
 }
 
-function readJson(req: IncomingMessage): Promise<Record<string, unknown> | null> {
+function readJson(req: IncomingMessage, limit = 65536): Promise<Record<string, unknown> | null> {
   return new Promise((resolve) => {
     const chunks: Buffer[] = [];
     let size = 0;
     req.on("data", (c: Buffer) => {
       size += c.length;
-      if (size <= 65536) chunks.push(c);
+      if (size <= limit) chunks.push(c);
     });
     req.on("end", () => {
       try {
+        if (size > limit) return resolve(null);
         const v: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
         resolve(v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
       } catch {
@@ -63,8 +69,8 @@ function num(v: unknown, fallback: number, min: number, max: number): number {
 export async function probe(url: string) {
   const out = JSON.parse(
     (await run("ffprobe", ["-v", "error", "-print_format", "json", "-show_format", "-show_streams", url])).toString("utf8"),
-  ) as { format?: { duration?: string }; streams?: { codec_type?: string; width?: number; height?: number; codec_name?: string }[] };
-  const video = out.streams?.find((s) => s.codec_type === "video");
+  ) as { format?: { duration?: string }; streams?: { codec_type?: string; width?: number; height?: number; codec_name?: string; disposition?: { attached_pic?: number } }[] };
+  const video = out.streams?.find((s) => s.codec_type === "video" && !s.disposition?.attached_pic);
   const audio = out.streams?.find((s) => s.codec_type === "audio");
   const duration = Number(out.format?.duration);
   return {
@@ -74,6 +80,7 @@ export async function probe(url: string) {
     videoCodec: video?.codec_name ?? null,
     audioCodec: audio?.codec_name ?? null,
     hasAudio: !!audio,
+    hasVideo: !!video,
   };
 }
 
@@ -114,6 +121,38 @@ async function media(path: string, body: Record<string, unknown>, res: ServerRes
   sendJson(res, 200, { points, durationSec: pcm.length / 2 / 8000, peaks: peaks(pcm, points) });
 }
 
+export const renderer = new Renderer({ probe, concurrency: Number(process.env.RENDER_CONCURRENCY ?? 2) });
+
+async function renderRoute(req: IncomingMessage, res: ServerResponse, path: string): Promise<void> {
+  if (path === "/render") {
+    if (req.method !== "POST") return sendJson(res, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "Use POST", data: {} } });
+    const body = await readJson(req, 8 * 1024 * 1024);
+    if (!body) return sendJson(res, 400, { error: { code: "BAD_REQUEST", message: "Body must be JSON", data: {} } });
+    try {
+      return sendJson(res, 202, renderer.start(validateJob(body)));
+    } catch (err) {
+      if (err instanceof RenderError) return sendJson(res, 400, { error: { code: err.code, message: err.message, data: {} } });
+      throw err;
+    }
+  }
+  const m = /^\/render\/([A-Za-z0-9_-]{1,64})(\/file)?$/.exec(path);
+  if (!m) return sendJson(res, 404, { error: { code: "NOT_FOUND", message: "Route not found", data: { path } } });
+  const id = m[1]!;
+  if (m[2]) {
+    if (req.method !== "GET") return sendJson(res, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "Use GET", data: {} } });
+    const file = renderer.filePath(id);
+    if (!file) return sendJson(res, 404, { error: { code: "NOT_FOUND", message: "No file for this render", data: {} } });
+    res.writeHead(200, { "content-type": "video/mp4", "content-length": file.size });
+    createReadStream(file.path).pipe(res);
+    return;
+  }
+  if (req.method === "DELETE") return sendJson(res, 200, { ok: await renderer.remove(id) });
+  if (req.method !== "GET") return sendJson(res, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "Use GET or DELETE", data: {} } });
+  const state = renderer.get(id);
+  if (!state) return sendJson(res, 404, { error: { code: "NOT_FOUND", message: "No such render", data: {} } });
+  sendJson(res, 200, state);
+}
+
 export async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const path = new URL(req.url ?? "/", "http://container").pathname;
   if (path === "/health" && req.method === "GET") {
@@ -137,12 +176,8 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
     }
     return;
   }
-  if (STUB_ROUTES.has(path)) {
-    if (req.method !== "POST") {
-      sendJson(res, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "Use POST", data: {} } });
-      return;
-    }
-    sendJson(res, 501, { error: { code: "NOT_IMPLEMENTED", message: `${path} is not implemented yet`, data: {} } });
+  if (path === "/render" || path.startsWith("/render/")) {
+    await renderRoute(req, res, path);
     return;
   }
   sendJson(res, 404, { error: { code: "NOT_FOUND", message: "Route not found", data: { path } } });

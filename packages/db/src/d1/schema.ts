@@ -647,6 +647,39 @@ export const feedback = sqliteTable(
   (t) => [index("feedback_time").on(sql`${t.createdAt} DESC`), check("feedback_kind_check", sql`${t.kind} IN ('bug','idea','other')`)],
 );
 
+/** Migration 0014: MP4 exports of a project's timeline (ExportWorkflow + FfmpegRenderer). */
+export const exports = sqliteTable(
+  "exports",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id").notNull(),
+    projectId: text("project_id").notNull(),
+    canvasId: text("canvas_id").notNull(),
+    preset: text("preset", { enum: ["mp4_1080p", "mp4_720p"] }).notNull(),
+    rangeStart: real("range_start"),
+    rangeEnd: real("range_end"),
+    timelineRevision: integer("timeline_revision").notNull(),
+    status: text("status", { enum: ["queued", "running", "done", "failed"] }).notNull(),
+    progress: real("progress").notNull().default(0),
+    width: integer("width").notNull(),
+    height: integer("height").notNull(),
+    duration: real("duration").notNull(),
+    assetId: text("asset_id"),
+    r2Key: text("r2_key"),
+    size: integer("size"),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    createdBy: text("created_by").notNull(),
+    createdAt: integer("created_at").notNull(),
+    finishedAt: integer("finished_at"),
+  },
+  (t) => [
+    index("exports_project").on(t.projectId, sql`${t.createdAt} DESC`),
+    check("exports_preset_check", sql`${t.preset} IN ('mp4_1080p','mp4_720p')`),
+    check("exports_status_check", sql`${t.status} IN ('queued','running','done','failed')`),
+  ],
+);
+
 export const agentThreads = sqliteTable("agent_threads", {
   id: text("id").primaryKey(),
   workspaceId: text("workspace_id").notNull(),

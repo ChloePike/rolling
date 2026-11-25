@@ -3,7 +3,9 @@
   "compilerOptions": {
     "lib": ["ES2023"],
     "types": ["node"],
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    // Node runs src/*.ts by stripping types: no enums, namespaces or parameter properties.
+    "erasableSyntaxOnly": true
   },
   "include": ["src", "test"]
 }

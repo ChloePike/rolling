@@ -105,3 +105,15 @@ export async function listParts(cfg: S3Config, key: string, uploadId: string, fe
   }
   return all.sort((a, b) => a.n - b.n);
 }
+
+/**
+ * Presigned single-object `PUT` (exports: the FFmpeg container writes the MP4
+ * straight to R2; the Worker never carries the bytes). Only the host is signed,
+ * so the uploader may send `Content-Type` and `Content-Length` freely.
+ */
+export async function presignPut(cfg: S3Config, key: string, expiresIn = PART_URL_TTL_SECONDS, datetime?: string): Promise<string> {
+  const url = objectUrl(cfg, key);
+  url.searchParams.set("X-Amz-Expires", String(expiresIn));
+  const signed = await client(cfg).sign(url.toString(), { method: "PUT", aws: { signQuery: true, allHeaders: false, ...(datetime ? { datetime } : {}) } });
+  return signed.url;
+}

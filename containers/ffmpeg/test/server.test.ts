@@ -35,9 +35,17 @@ describe("ffmpeg container server", () => {
     expect(peaks(pcm, 2)).toEqual([0.5, 1]);
   });
 
-  it.each(["/render"])("stubs %s with 501", async (path) => {
-    const res = await fetch(`${base}${path}`, { method: "POST" });
-    expect(res.status).toBe(501);
-    expect(await res.json()).toMatchObject({ error: { code: "NOT_IMPLEMENTED" } });
+  it("validates /render jobs and answers 404 for unknown renders", async () => {
+    expect((await fetch(`${base}/render`)).status).toBe(405);
+    const bad = await fetch(`${base}/render`, { method: "POST", body: JSON.stringify({ id: "x y" }) });
+    expect(bad.status).toBe(400);
+    const file = await fetch(`${base}/render`, {
+      method: "POST",
+      body: JSON.stringify({ id: "exp_1", width: 720, height: 1280, fps: 24, duration: 1, edl: { fps: 24, width: 720, height: 1280, tracks: [] }, inputs: { a: { url: "file:///etc/passwd" } } }),
+    });
+    expect(file.status).toBe(400);
+    expect((await fetch(`${base}/render/exp_none`)).status).toBe(404);
+    expect((await fetch(`${base}/render/exp_none/file`)).status).toBe(404);
+    expect(await (await fetch(`${base}/render/exp_none`, { method: "DELETE" })).json()).toEqual({ ok: false });
   });
 });

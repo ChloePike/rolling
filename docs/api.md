@@ -516,9 +516,32 @@ One canvas per project: `canvasId = "cnv_" + <project ULID>` (from `snapshot.can
 | GET | `/api/canvases/:id/timeline` | `{ canvasId, revision, edl }`. Assembled on first open: the script node's `params.rows` (`{ n, visual, line?, seconds, nodeId? }`, `selected: false` rows skipped) become shots in order, each mapped to its `nodeId` or else to the video nodes left to right; a row's `line` becomes a caption; an audio node with an asset becomes the voiceover (`params.role: 'music'` → music). Without a script: the video nodes feeding a render node, else all video nodes left to right |
 | POST | `/api/canvases/:id/timeline/patch` | `{ baseRevision, ops: TimelineOp[] }` → `{ canvasId, revision, edl, ops }`; `409 CONFLICT data.timeline`; `422 VALIDATION_FAILED data.reason: TIMELINE_INVALID` (overlap, too short, unknown clip). Broadcasts `timeline.patched`. Also over the socket as `timeline.patch` |
 | POST | `/api/canvases/:id/timeline/reassemble` | rebuild from the graph, keeps manual trims (`in`/`out`) of shots whose node is still there → `{ canvasId, revision, edl }` |
-| POST | `/api/canvases/:id/export` | `{ preset: mp4_1080p }` → ExportWorkflow; result on the project WebSocket |
+| POST | `/api/canvases/:id/export` | `{ preset: "mp4_1080p" \| "mp4_720p", range?: { start, end } }` (seconds on the timeline; default the whole cut) → `201 { export: ExportView }` and ExportWorkflow starts. Editors and owners with an active plan (`402 NO_PLAN`). **Free of credits for now** (no quote, no hold; revisit with pricing). `422 VALIDATION_FAILED data.reason: EMPTY \| BAD_RANGE \| TOO_LONG` (15 min max). The cut is frozen at request time (stored at `ws/<ws>/exports/<id>/edl.json`) |
+| GET | `/api/exports/:id` | `{ export: ExportView }` for members of the project's workspace (others `404`); when done, `url` is a fresh signed download URL (D-008, ~1 h; `null` for mature exports the viewer may not see) — use it as the download's `refreshUrl` |
 
-`TimelineOp` and the EDL are `@rolling/core/timeline` (`trim`, `move`, `split`, `remove`, `setGain`, `setCaption`, `replaceShot { clipId, nodeId, assetId? }`); ops in a patch are all-or-nothing and only the final timeline is validated.
+`TimelineOp` and the EDL are `@rolling/core/timeline`. **One Zod schema for client and server** (`@rolling/core/timeline` → `TimelineOpSchema`, `EdlSchema`, `parseTimelineOps`; `@rolling/core/project` re-exports them). Ops: `trim`, `move`, `split`, `remove`, `setGain`, `setCaption`, `replaceShot { clipId, nodeId, assetId? }`, `setTransform { clipId, transform: Partial<{ scale 0.1–4, x, y, rotation −360–360, opacity 0–1 }> }`, `setSpeed { clipId, speed 0.25–4, reverse? }` (later clips on the track ripple), `setFade { clipId, fadeIn }`, `setTransition { clipId, transition: { type: "dissolve", dur } \| null }`, `insert { trackId, clip }`, `setFormat { width, height, fps }` (sides 16–4096, fps 1–60), and `replaceEdl { edl, baseRevision }` (whole timeline, for undo/redo of compound edits; `409 CONFLICT` unless `baseRevision` is the current revision; the result is checked by `validateEdl`). Ops in a patch are all-or-nothing and only the final timeline is validated (no overlaps, no clip under 0.1 s, unique ids, format in range).
+
+```ts
+type ExportView = {
+  id: string                 // exp_…
+  projectId: string; canvasId: string
+  preset: 'mp4_1080p' | 'mp4_720p'
+  range: { start: number; end: number } | null
+  status: 'queued' | 'running' | 'done' | 'failed'
+  progress: number           // 0..1
+  width: number; height: number   // short side 1080 / 720, the EDL's aspect ratio
+  duration: number           // seconds
+  assetId: string | null     // the MP4 as a `generated` video asset of the project, when done
+  size: number | null; fileName: string
+  url: string | null         // signed download URL when done
+  error: { code: string; message: string } | null
+  createdAt: number; finishedAt: number | null
+}
+```
+
+Events on the project channel (every payload has `exportId`, `projectId`, `canvasId`): `export.progress { status: queued|running, progress }` (monotonic), `export.done { status, progress: 1, assetId, url, fileName, size, duration, urlExpiresIn }` (`url` is `null` for mature exports: read `GET /api/exports/:id`), `export.failed { status, code, reason }` (codes: `renderer_unavailable`, `render_failed`, `ffmpeg_failed`, `input_unreadable`, `render_lost`, `upload_missing`, `timeout`, `SAFETY_BLOCKED`, `internal`). The asset is rated by the safety hook (`rateAsset`) on the poster frame; a hard-limit violation fails the export and deletes the file; any mature input makes the export mature (D-005).
+
+Rendering: ExportWorkflow signs every input (4 h), presigns a `PUT` for `ws/<ws>/exports/<id>/export.mp4` (R2 S3 API, `aws4fetch`; without S3 credentials the workflow pulls the file from the container instead) and calls the `FfmpegRenderer` container: `POST /render` (job: cropped EDL, output size and rate, inputs, `putUrl`) → `GET /render/:id` polled with backoff (2 s → 15 s) → `POST /thumb` for the poster → `DELETE /render/:id`. The container builds the filter graph (`containers/ffmpeg/src/graph.ts`: trims, `setpts`/`atempo` speed, reverse, scale/pad, transforms through `overlay`, fades, `xfade` dissolves, ASS captions, per-track `amix`, `sidechaincompress` ducking, keyframed gain) and writes H.264/AAC MP4 with `+faststart`. All renders run in one named container instance (`export`). Tests replace it with `setRendererForTests`; `MEDIA_CONTAINER=off` fails exports with `renderer_unavailable`. Local `wrangler dev`: the container must reach the signed media URLs, i.e. `PRIVATE_MEDIA_BASE_URL`/`PUBLIC_APP_URL` must be reachable from Docker.
 
 ## Sharing
 
