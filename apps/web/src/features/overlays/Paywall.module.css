@@ -46,3 +46,31 @@
 .foot{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--c-text-4)}
 .link{color:var(--c-text-2)}
 .link:hover{color:var(--c-text-1)}
+
+/* Credits variant (D-006): any-amount top-up. Preset chips, a custom amount and the quote line. */
+.amounts{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.amount{
+  border-radius:12px;border:0;background:var(--c-surface-2);padding:10px 8px;color:var(--c-text-1);font:inherit;cursor:pointer;
+  display:flex;flex-direction:column;align-items:flex-start;gap:4px;font-variant-numeric:tabular-nums;
+  transition:box-shadow var(--dur-fast) var(--ease-standard),background-color var(--dur-fast) var(--ease-standard);
+}
+.amount:hover:not([aria-checked="true"]){background:var(--c-surface-3)}
+.amount[aria-checked="true"]{box-shadow:inset 0 0 0 1.5px var(--c-text-1)}
+.amount:focus-visible{box-shadow:var(--focus-ring)}
+.amountUsd{font-size:15px;font-weight:700}
+.amountCredits{font-size:11px;color:var(--c-text-3)}
+.customRow{display:flex;align-items:center;gap:12px}
+.customLabel{flex:1;font-size:13px;color:var(--c-text-2)}
+.customField{
+  width:140px;height:36px;box-sizing:border-box;border-radius:10px;background:var(--c-surface-2);padding:0 12px;
+  display:flex;align-items:center;gap:6px;font-size:14px;color:var(--c-text-3);
+  transition:box-shadow var(--dur-fast) var(--ease-standard);
+}
+.customField:focus-within{box-shadow:inset 0 0 0 1.5px var(--c-accent)}
+.customField[data-invalid="true"]{box-shadow:inset 0 0 0 1.5px var(--c-danger)}
+.customInput{flex:1;min-width:0;border:0;outline:0;background:none;color:var(--c-text-1);font:inherit;padding:0;font-variant-numeric:tabular-nums}
+.customInput:focus-visible{box-shadow:none}
+.customInput::placeholder{color:var(--c-text-4)}
+.quote{margin-top:-8px;min-height:16px;font-size:12px;color:var(--c-text-3);font-variant-numeric:tabular-nums}
+.quoteError{color:var(--c-danger)}
+.cta:disabled{background:var(--c-surface-5);color:var(--c-text-4);cursor:default}

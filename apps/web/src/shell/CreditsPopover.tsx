@@ -1,7 +1,9 @@
 import { cx, staggerStyle } from '@rolling/ui';
 import { Link } from '@tanstack/react-router';
-import { useState } from 'react';
-import { FormattedDate, FormattedMessage, FormattedNumber } from 'react-intl';
+import { useMemo, useState } from 'react';
+import { FormattedDate, FormattedMessage, FormattedNumber, useIntl } from 'react-intl';
+import { useSession } from '@/lib/session';
+import { formatUsd, topUpPresets } from '@/lib/topUp';
 import styles from './CreditsPopover.module.css';
 import { placeholderCredits } from './placeholder';
 
@@ -13,13 +15,16 @@ export interface CreditsBreakdown {
   usedThisMonth: number;
   held: number;
   expiringThisMonth: number;
-  packs: number[];
-  defaultPack: number;
 }
+
+/** Preset selected when the popover opens (D-006 suggests $10–$250; $25 is the first with a tier bonus). */
+const DEFAULT_TOP_UP_USD = 25;
 
 /**
  * Header credits popover (Main.dc.html, credits button): balance, plan vs
- * purchased split, used / held / expiring, packs and top up. Members only buy packs.
+ * purchased split, used / held / expiring and top up. Top-ups (D-006) are
+ * any amount; the chips are the suggested amounts with credits (bonus
+ * included) from `quoteTopUp`. Only members top up; others get a link to plans.
  */
 export function CreditsPopoverContent({
   credits = placeholderCredits,
@@ -27,12 +32,17 @@ export function CreditsPopoverContent({
   onNavigate,
 }: {
   credits?: CreditsBreakdown;
-  /** Starts checkout for the chosen pack. */
-  onTopUp?: (credits: number) => void;
+  /** Starts checkout for the chosen amount (USD); the server re-quotes the credits. */
+  onTopUp?: (amountUsd: number) => void;
   /** Called when a link inside navigates away (closes the popover). */
   onNavigate?: () => void;
 }) {
-  const [pack, setPack] = useState(credits.defaultPack);
+  const intl = useIntl();
+  const { isMember, planId } = useSession();
+  const presets = useMemo(() => topUpPresets(planId), [planId]);
+  const [amount, setAmount] = useState(DEFAULT_TOP_UP_USD);
+  const picked = presets.find((p) => p.amountUsd === amount) ?? presets[0]!;
+  const money = (usd: number) => formatUsd(usd, (v, o) => intl.formatNumber(v, o));
   return (
     <div className={styles.panel}>
       <div className={styles.top}>
@@ -105,28 +115,35 @@ export function CreditsPopoverContent({
         <span className={styles.label}>
           <FormattedMessage id="shell.credits.topUp" />
         </span>
-        <div className={styles.packs}>
-          {credits.packs.map((n, i) => (
-            <button
-              key={n}
-              type="button"
-              aria-pressed={pack === n}
-              className={cx('rl-stagger', styles.pack)}
-              style={staggerStyle(i)}
-              onClick={() => setPack(n)}
-            >
-              <span className={styles.packN}>
-                <FormattedNumber value={n} />
-              </span>
-              <span className={styles.packPrice}>
-                <FormattedMessage id="shell.credits.packPrice" />
-              </span>
+        {isMember ? (
+          <>
+            <div className={styles.presets} role="radiogroup" aria-label={intl.formatMessage({ id: 'shell.credits.topUp' })}>
+              {presets.map((p, i) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={picked.id === p.id}
+                  className={cx('rl-stagger', styles.preset)}
+                  style={staggerStyle(i)}
+                  onClick={() => setAmount(p.amountUsd)}
+                >
+                  <span className={styles.presetUsd}>{money(p.amountUsd)}</span>
+                  <span className={styles.presetCredits}>
+                    <FormattedMessage id="shell.credits.presetCredits" values={{ credits: p.credits }} />
+                  </span>
+                </button>
+              ))}
+            </div>
+            <button type="button" className={cx('rl-press', styles.topUpButton)} onClick={() => onTopUp?.(picked.amountUsd)}>
+              <FormattedMessage id="shell.credits.topUpButton" values={{ price: money(picked.amountUsd), credits: picked.credits }} />
             </button>
-          ))}
-        </div>
-        <button type="button" className={cx('rl-press', styles.topUpButton)} onClick={() => onTopUp?.(pack)}>
-          <FormattedMessage id="shell.credits.topUpButton" values={{ credits: pack }} />
-        </button>
+          </>
+        ) : (
+          <Link to="/upgrade" className={cx('rl-press', styles.topUpButton, styles.joinButton)} onClick={onNavigate}>
+            <FormattedMessage id="shell.credits.join" />
+          </Link>
+        )}
         <span className={styles.note}>
           <FormattedMessage id="shell.credits.note" />
         </span>

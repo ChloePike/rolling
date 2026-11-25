@@ -18,15 +18,15 @@ function perks(plan: PlanConfig): Array<{ id: string; values?: Record<string, st
   ];
   if (plan.voiceCloning) out.push({ id: 'account.upgrade.perk.voice' });
   if (plan.seats > 1) out.push({ id: 'account.upgrade.perk.seats', values: { n: plan.seats } });
-  out.push(plan.topUpBonus > 0 ? { id: 'account.upgrade.perk.topUpBonus', values: { pct: plan.topUpBonus } } : { id: 'account.upgrade.perk.packs' });
+  out.push(plan.topUpBonus > 0 ? { id: 'account.upgrade.perk.topUpBonus', values: { pct: plan.topUpBonus } } : { id: 'account.upgrade.perk.topUps' });
   return out;
 }
 
-/** `/upgrade` (Upgrade.dc.html): monthly / yearly plans, rules, credit packs. */
+/** `/upgrade` (Upgrade.dc.html): monthly / yearly plans, rules, top-ups. */
 export function UpgradePage({ initialPeriod = 'monthly' }: { initialPeriod?: BillingPeriod }) {
   const intl = useIntl();
   const [period, setPeriod] = useState<BillingPeriod>(initialPeriod);
-  const { data: packs = [] } = useTopUps(null);
+  const { data: topUps = [] } = useTopUps(null);
   const money = (n: number) => formatUsd(n, (v, o) => intl.formatNumber(v, o));
   const yearlyDiscount = Math.max(...PLAN_ORDER.map((id) => Number(PLANS[id].yearlyDiscount) || 0));
 
@@ -148,45 +148,45 @@ export function UpgradePage({ initialPeriod = 'monthly' }: { initialPeriod?: Bil
         ))}
       </section>
 
-      <section className={styles.packs} aria-labelledby="upgrade-packs">
-        <div className={styles.packsHead}>
-          <h2 id="upgrade-packs" className={styles.h2}>
-            <FormattedMessage id="account.packs.title" />
+      <section className={styles.topUps} aria-labelledby="upgrade-topUps">
+        <div className={styles.topUpsHead}>
+          <h2 id="upgrade-topUps" className={styles.h2}>
+            <FormattedMessage id="account.topUps.title" />
           </h2>
           <span className={styles.muted}>
-            <FormattedMessage id="account.packs.lead" />
+            <FormattedMessage id="account.topUps.lead" />
           </span>
         </div>
-        <div className={styles.packGrid}>
-          {packs.map((p) => {
+        <div className={styles.topUpGrid}>
+          {topUps.map((p) => {
             const bonus = p.bonusRate;
             return (
-              <div key={p.id} className={styles.pack} data-topup={p.amountUsd}>
-                <span className={styles.packText}>
-                  <span className={styles.packCredits}>
-                    <FormattedMessage id="account.packs.credits" values={{ credits: p.credits }} />
+              <div key={p.id} className={styles.topUp} data-topup={p.amountUsd}>
+                <span className={styles.topUpText}>
+                  <span className={styles.topUpCredits}>
+                    <FormattedMessage id="account.topUps.credits" values={{ credits: p.credits }} />
                   </span>
-                  <span className={styles.packEq}>
+                  <span className={styles.topUpEq}>
                     {bonus > 0.001 ? (
-                      <FormattedMessage id="account.packs.bonus" values={{ pct: bonus }} />
+                      <FormattedMessage id="account.topUps.bonus" values={{ pct: bonus }} />
                     ) : (
-                      <FormattedMessage id="account.packs.noExpiry" />
+                      <FormattedMessage id="account.topUps.noExpiry" />
                     )}
                   </span>
                 </span>
-                <span className={styles.packPrice}>{money(p.amountUsd)}</span>
+                <span className={styles.topUpPrice}>{money(p.amountUsd)}</span>
               </div>
             );
           })}
         </div>
         <span className={styles.note}>
           <FormattedMessage
-            id="account.packs.note"
+            id="account.topUps.note"
             values={{
               min: money(TOP_UP.minUsd),
               bonuses: intl.formatList(
                 PLAN_ORDER.filter((id) => PLANS[id].topUpBonus > 0).map((id) =>
-                  intl.formatMessage({ id: 'account.packs.note.plan' }, { plan: PLANS[id].label, pct: PLANS[id].topUpBonus }),
+                  intl.formatMessage({ id: 'account.topUps.note.plan' }, { plan: PLANS[id].label, pct: PLANS[id].topUpBonus }),
                 ),
               ),
             }}

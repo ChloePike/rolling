@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { PLAN_ORDER, PLANS, quoteTopUp, TOP_UP, type PlanId } from '@rolling/core/pricing/config';
+import { PLAN_ORDER, PLANS, type PlanId } from '@rolling/core/pricing/config';
+import { topUpPresets, type TopUpOption } from '@/lib/topUp';
 import { getSession, mockOverrides } from '@/lib/session';
 import { invoicesMock, meMock, membersMock } from './mocks';
 import type { Invoice, Me, Member, Prefs } from './types';
@@ -49,31 +50,12 @@ export async function fetchInvoices(): Promise<Invoice[]> {
   return structuredClone(invoicesMock);
 }
 
-/**
- * One top-up option (D-006: any amount from TOP_UP.minUsd; presets shown as
- * cards). Credits come from `quoteTopUp`, so tier and plan bonuses follow the
- * pricing config; the server re-quotes at checkout.
- */
-export interface TopUpOption {
-  id: string;
-  amountUsd: number;
-  credits: number;
-  bonusCredits: number;
-  /** Tier bonus plus the plan bonus (0..1). */
-  bonusRate: number;
-}
-
-export function topUpFor(amountUsd: number, plan: PlanId | null): TopUpOption {
-  const q = quoteTopUp(Math.round(amountUsd * 100), plan ?? PLAN_ORDER[0]!);
-  const planBonus = plan ? q.planBonus : 0;
-  const bonusRate = q.tierBonus + planBonus;
-  const bonusCredits = Math.floor(q.baseCredits * (Math.round(bonusRate * 1e6) / 1e6));
-  return { id: `topup_${amountUsd}`, amountUsd, credits: q.baseCredits + bonusCredits, bonusCredits, bonusRate };
-}
+/** Top-up quotes live in lib/topUp (shared with the header and the paywall). */
+export { formatUsd, topUpFor, type TopUpOption } from '@/lib/topUp';
 
 /** Preset top-ups (`GET /api/billing/plans`) for a member of `plan`, or list amounts without a plan bonus. */
 export async function fetchTopUps(plan: PlanId | null): Promise<TopUpOption[]> {
-  return TOP_UP.presetsUsd.map((usd) => topUpFor(usd, plan));
+  return topUpPresets(plan);
 }
 
 /** Plans in display order with their config (D-006). */
@@ -123,13 +105,4 @@ export function useInvoices() {
 
 export function useTopUps(plan: PlanId | null) {
   return useQuery({ queryKey: ['billing', 'topups', plan], queryFn: () => fetchTopUps(plan), staleTime: Infinity });
-}
-
-/** USD through Intl; whole amounts without cents ($15), others with cents ($39.17). */
-export function formatUsd(
-  amount: number,
-  formatNumber: (n: number, o: { style: 'currency'; currency: string; minimumFractionDigits: number; maximumFractionDigits: number }) => string,
-): string {
-  const whole = Number.isInteger(amount);
-  return formatNumber(amount, { style: 'currency', currency: 'USD', minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2 });
 }

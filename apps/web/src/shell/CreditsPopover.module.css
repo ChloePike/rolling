@@ -23,17 +23,18 @@
 .statName{flex:1;color:var(--c-text-3)}
 .statValue{font-weight:600}
 .topUp{display:flex;flex-direction:column;gap:8px}
-.packs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
-.pack{
+.presets{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.preset{
   border-radius:12px;border:0;background:var(--c-surface-2);padding:10px 8px;color:var(--c-text-1);font:inherit;cursor:pointer;
   display:flex;flex-direction:column;align-items:flex-start;gap:4px;
   transition:box-shadow var(--dur-fast) var(--ease-standard),background-color var(--dur-fast) var(--ease-standard);
 }
-.pack:hover:not([aria-pressed="true"]){background:var(--c-surface-3)}
-.pack[aria-pressed="true"]{box-shadow:inset 0 0 0 1.5px var(--c-text-1)}
-.pack:focus-visible{box-shadow:var(--focus-ring)}
-.packN{font-size:15px;font-weight:700}
-.packPrice{font-size:11px;color:var(--c-text-3)}
+.preset:hover:not([aria-checked="true"]){background:var(--c-surface-3)}
+.preset[aria-checked="true"]{box-shadow:inset 0 0 0 1.5px var(--c-text-1)}
+.preset:focus-visible{box-shadow:var(--focus-ring)}
+.presetUsd{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums}
+.presetCredits{font-size:11px;color:var(--c-text-3);font-variant-numeric:tabular-nums;white-space:nowrap}
 .topUpButton{height:40px;border-radius:999px;border:0;background:var(--c-text-1);color:var(--c-bg);font:inherit;font-size:14px;font-weight:700;cursor:pointer}
 .topUpButton:hover{background:#FFFFFF}
 .note{font-size:11px;line-height:1.5;color:var(--c-text-4)}
+.joinButton{display:flex;align-items:center;justify-content:center;text-decoration:none}

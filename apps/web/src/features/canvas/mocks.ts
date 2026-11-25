@@ -192,7 +192,6 @@ export const MOCK_CREDITS = {
   usedThisMonth: 1284,
   held: 16,
   expiringThisMonth: 300,
-  packs: [1000, 3000, 10000],
 };
 
 export const MOCK_SHARE = {

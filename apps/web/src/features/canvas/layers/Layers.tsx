@@ -7,6 +7,7 @@ import type { NodeKind } from '@rolling/core/graph';
 import { CanvasIcon, type CanvasIconName } from '../icons';
 import { MOCK_CREDITS, MOCK_RUNS, SCRIPT_ROWS } from '../mocks';
 import styles from './layers.module.css';
+import { CreditsPopoverContent } from '@/shell/CreditsPopover';
 import { useLayer } from './useLayer';
 
 interface LayerProps {
@@ -326,7 +327,6 @@ export function CreditsPopover({ state, onClose }: LayerProps) {
   const intl = useIntl();
   const ref = useLayer<HTMLDivElement>(state === 'open', onClose);
   const c = MOCK_CREDITS;
-  const [pack, setPack] = useState(c.packs[1]!);
   return (
     <div
       ref={ref}
@@ -337,82 +337,19 @@ export function CreditsPopover({ state, onClose }: LayerProps) {
       className={cx(canvas.creditsPop, 'rl-pop')}
       {...presenceProps(state)}
     >
-      <div className={canvas.cpTop}>
-        <div className={canvas.cpBalance}>
-          <span className={canvas.cpLabel}>
-            <FormattedMessage id="canvas.credits.available" />
-          </span>
-          <span className={canvas.cpValue}>{intl.formatNumber(c.balance)}</span>
-        </div>
-        <a href="/activity" className={canvas.cpLink}>
-          <FormattedMessage id="canvas.credits.usage" />
-        </a>
-      </div>
-      <div className={canvas.cpBar}>
-        <span style={{ flex: c.plan, background: '#F5F5F5' }} />
-        <span style={{ flex: c.purchased, background: '#55555E' }} />
-      </div>
-      <div className={canvas.cpLines}>
-        <div className={canvas.cpLine}>
-          <span className={canvas.cpSwatch} style={{ background: '#F5F5F5' }} />
-          <span className={canvas.cpName}>
-            <FormattedMessage id="canvas.credits.plan" />
-          </span>
-          <span className={canvas.cpNum}>{intl.formatNumber(c.plan)}</span>
-          <span className={canvas.cpNote}>
-            <FormattedMessage id="canvas.credits.expires" values={{ date: c.planExpires }} />
-          </span>
-        </div>
-        <div className={canvas.cpLine}>
-          <span className={canvas.cpSwatch} style={{ background: '#55555E' }} />
-          <span className={canvas.cpName}>
-            <FormattedMessage id="canvas.credits.purchased" />
-          </span>
-          <span className={canvas.cpNum}>{intl.formatNumber(c.purchased)}</span>
-          <span className={canvas.cpNote}>
-            <FormattedMessage id="canvas.credits.neverExpire" />
-          </span>
-        </div>
-      </div>
-      <div className={canvas.cpRule} />
-      <div className={canvas.cpStats}>
-        {(
-          [
-            ['used', c.usedThisMonth],
-            ['held', c.held],
-            ['expiring', c.expiringThisMonth],
-          ] as const
-        ).map(([k, v]) => (
-          <div key={k} className={canvas.cpStat}>
-            <span>
-              <FormattedMessage id={`canvas.credits.${k}`} />
-            </span>
-            <span className={canvas.cpNum}>{intl.formatNumber(v)}</span>
-          </div>
-        ))}
-      </div>
-      <div className={canvas.cpRule} />
-      <div className={canvas.cpTopUp}>
-        <span className={canvas.cpLabel}>
-          <FormattedMessage id="canvas.credits.topUp" />
-        </span>
-        <div className={canvas.cpPacks}>
-          {c.packs.map((n) => (
-            <button key={n} type="button" aria-pressed={pack === n} className={canvas.cpPack} onClick={() => setPack(n)}>
-              <span className={canvas.cpPackN}>{intl.formatNumber(n)}</span>
-              <span className={canvas.cpPackPrice}>
-                <FormattedMessage id="canvas.credits.price" />
-              </span>
-            </button>
-          ))}
-        </div>
-        <button type="button" className={cx(canvas.cpBuy, 'rl-press')}>
-          <FormattedMessage id="canvas.credits.topUpAction" values={{ n: pack }} />
-        </button>
-        <span className={canvas.cpFoot}>
-          <FormattedMessage id="canvas.credits.note" />
-        </span>
-      </div>
+      {/* Same content as the shared header's credits popover (D-006 top-ups). */}
+      <CreditsPopoverContent
+        credits={{
+          available: c.balance,
+          plan: c.plan,
+          planExpires: c.planExpires,
+          purchased: c.purchased,
+          usedThisMonth: c.usedThisMonth,
+          held: c.held,
+          expiringThisMonth: c.expiringThisMonth,
+        }}
+        onNavigate={onClose}
+      />
     </div>
   );
 }

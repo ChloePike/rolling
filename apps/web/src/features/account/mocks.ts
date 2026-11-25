@@ -32,6 +32,6 @@ export const membersMock: Member[] = [
 
 export const invoicesMock: Invoice[] = [
   { id: 'in_3', kind: 'plan', planId: 'pro', period: 'monthly' },
-  { id: 'in_2', kind: 'pack', amountUsd: 25 },
+  { id: 'in_2', kind: 'topUp', amountUsd: 25 },
   { id: 'in_1', kind: 'plan', planId: 'pro', period: 'monthly' },
 ];

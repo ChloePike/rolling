@@ -17,8 +17,17 @@ export const NAV_LABEL_OVERRIDES: Record<string, string> = { Character: 'Charact
  * Builds a self-contained HTML page that renders a `.dc.html` design screen in
  * the browser with the same self-hosted Geist font the app uses.
  */
-export function buildDesignPage(screen: string, props: Record<string, unknown> = {}): string {
-  const source = readFileSync(SCREENS_DIR + screen, 'utf8');
+export function buildDesignPage(
+  screen: string,
+  props: Record<string, unknown> = {},
+  /** Copy decided after the screen was drawn (e.g. D-006 plans): exact `[from, to]` swaps in the design source. */
+  replace: ReadonlyArray<readonly [string, string]> = [],
+): string {
+  let source = readFileSync(SCREENS_DIR + screen, 'utf8');
+  for (const [from, to] of replace) {
+    if (!source.includes(from)) throw new Error(`Design ${screen} no longer contains ${JSON.stringify(from)}`);
+    source = source.split(from).join(to);
+  }
   const template = /<x-dc>([\s\S]*?)<\/x-dc>/.exec(source)?.[1];
   const scriptMatch = /<script type="text\/x-dc"[^>]*data-props='([^']*)'[^>]*>([\s\S]*?)<\/script>/.exec(source);
   if (!template || !scriptMatch) throw new Error(`Cannot parse design screen ${screen}`);

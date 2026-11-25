@@ -45,9 +45,9 @@ export interface Member {
 
 export interface Invoice {
   id: string;
-  kind: 'plan' | 'pack';
+  kind: 'plan' | 'topUp';
   planId?: PlanId;
   period?: BillingPeriod;
-  /** Top-up amount for `kind: 'pack'`. */
+  /** Top-up amount for `kind: 'topUp'`. */
   amountUsd?: number;
 }

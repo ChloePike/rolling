@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { buildDesignPage } from './support/design';
+import { asPlan } from './support/session';
 import { APP_PARTS, DESIGN_PARTS, measureHeader, pixelDiffRatio, type Box } from './support/measure';
 
 const SCREENS_OUT = fileURLToPath(new URL('./__screens__/', import.meta.url));
@@ -17,9 +18,23 @@ async function openApp(page: Page, width: number, path = '/') {
   await page.mouse.move(width / 2, 600);
 }
 
+/**
+ * D-006 replaced the drawn credit packs (1,000 / 3,000 / 10,000 at $[Price])
+ * with any-amount top-ups: five suggested amounts with the credits they buy
+ * (Pro member, bonus included). Same card style, five columns.
+ */
+const D006_TOP_UPS: ReadonlyArray<readonly [string, string]> = [
+  ['grid-template-columns:repeat(3,minmax(0,1fr));gap:6px">\n            <sc-for list="{{ packs }}"', 'grid-template-columns:repeat(5,minmax(0,1fr));gap:6px">\n            <sc-for list="{{ packs }}"'],
+  ['<span style="font-size:11px;color:#9A9AA0">$[Price]</span>', '<span style="font-size:11px;color:#9A9AA0">{{ k.c }}</span>'],
+  ['Top up {{ packN }} credits', 'Top up {{ packN }} · {{ packC }} credits'],
+  ["const pack = S.pack || '3,000';", "const pack = S.pack || '$25'; const credits = { '$10': '1,100', '$25': '2,850', '$50': '6,000', '$100': '12,500', '$250': '31,250' };"],
+  ['packN: pack,', 'packN: pack, packC: credits[pack],'],
+  ["packs: ['1,000', '3,000', '10,000'].map((n) => ({ n, ", "packs: ['$10', '$25', '$50', '$100', '$250'].map((n) => ({ n, c: credits[n], "],
+];
+
 async function openDesign(page: Page, width: number, props: Record<string, unknown> = {}) {
   await page.setViewportSize({ width, height: 900 });
-  await page.setContent(buildDesignPage('Main.dc.html', props));
+  await page.setContent(buildDesignPage('Main.dc.html', props, D006_TOP_UPS));
   await page.waitForFunction(() => (window as unknown as { __DC_READY__?: boolean }).__DC_READY__ === true);
   await page.evaluate(() => document.fonts.ready);
 }
@@ -248,17 +263,29 @@ test.describe('header popovers', () => {
     });
   }
 
-  test('credits popover: packs select, top-up label follows; only one popover open at a time', async ({ page }) => {
+  test('credits popover: top-up presets select, the button follows; only one popover open at a time', async ({ page }) => {
     await openApp(page, 1440);
     await page.getByRole('button', { name: /Credit balance/ }).click();
     const credits = page.getByRole('dialog', { name: 'Credits' });
-    await expect(credits.getByRole('button', { name: 'Top up 3,000 credits' })).toBeVisible();
-    await credits.getByRole('button', { name: /10,000/ }).click();
-    await expect(credits.getByRole('button', { name: 'Top up 10,000 credits' })).toBeVisible();
+    // D-006: suggested amounts with credits from quoteTopUp (Pro member: tier bonus + 10%).
+    await expect(credits.getByRole('radio')).toHaveText([/^\$10\s*1,100$/, /^\$25\s*2,850$/, /^\$50\s*6,000$/, /^\$100\s*12,500$/, /^\$250\s*31,250$/]);
+    await expect(credits.getByRole('button', { name: 'Top up $25 · 2,850 credits' })).toBeVisible();
+    await credits.getByRole('radio', { name: /^\$100/ }).click();
+    await expect(credits.getByRole('radio', { name: /^\$100/ })).toHaveAttribute('aria-checked', 'true');
+    await expect(credits.getByRole('button', { name: 'Top up $100 · 12,500 credits' })).toBeVisible();
     await expect(credits.getByText('Expires Nov 30')).toBeVisible();
     await page.getByRole('button', { name: 'Account' }).click();
     await expect(page.getByRole('menu', { name: 'Account' })).toBeVisible();
     await expect(page.getByRole('dialog', { name: 'Credits' })).toHaveCount(0);
+  });
+
+  test('credits popover: non-members see no top-ups, only a way to pick a plan (D-007)', async ({ page }) => {
+    await asPlan(page, null);
+    await openApp(page, 1440);
+    await page.getByRole('button', { name: /Credit balance/ }).click();
+    const credits = page.getByRole('dialog', { name: 'Credits' });
+    await expect(credits.getByRole('radio')).toHaveCount(0);
+    await expect(credits.getByRole('link', { name: 'Pick a plan to top up' })).toHaveAttribute('href', '/upgrade');
   });
 
   test('account menu: arrow keys move focus, workspace switch, Escape returns focus', async ({ page }) => {

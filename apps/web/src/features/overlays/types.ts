@@ -70,13 +70,16 @@ export interface RunPlanRow {
 }
 
 export interface PaywallOption {
+  /** Plan id (`starter`, `plus`, `pro`) or `topup_<usd>`. */
   id: string;
   name: string;
   meta: string;
-  /** Price label, placeholder until decided (e.g. "$[PRICE]/mo"). */
+  /** Formatted price, e.g. "$15/mo" or "$25". */
   price: string;
-  /** `upgrade` options change the CTA to "Upgrade and run". */
-  kind?: 'plan' | 'pack' | 'upgrade';
+  kind?: 'plan' | 'topup';
+  /** Top-ups: the amount and the credits it buys (bonus included; the server re-quotes). */
+  amountUsd?: number;
+  credits?: number;
 }
 
 export interface ResultVersion {

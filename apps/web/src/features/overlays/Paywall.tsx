@@ -1,27 +1,32 @@
+import { PLAN_ORDER, PLANS, TOP_UP, type PlanId } from '@rolling/core/pricing/config';
 import { cx, Dialog, staggerStyle } from '@rolling/ui';
 import { useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { FormattedMessage, FormattedNumber, useIntl, type IntlShape } from 'react-intl';
+import { useSession } from '@/lib/session';
+import { formatUsd, parseTopUpAmount, topUpFor, topUpPresets, type TopUpOption } from '@/lib/topUp';
 import { Svg } from './icons';
 import styles from './Paywall.module.css';
 import type { PaywallOption } from './types';
 
 export interface PaywallPanelProps {
-  /** `join`: no plan yet (pick a plan to generate). `credits`: member out of credits (top up). */
+  /** `join`: no plan yet (pick a plan to generate). `credits`: member out of credits (top up any amount). */
   variant: 'join' | 'credits';
-  /** Radio options. Defaults to the design's plans (join) or packs + upgrade (credits). */
+  /** Join: radio options. Defaults to the plans from the pricing config (Starter, Plus, Pro; D-006). */
   options?: PaywallOption[];
-  /** Initially selected option id (default: Pro for join, 1,000 credits for credits). */
+  /** Join: initially selected option id (default: Plus). Credits: preset id like `topup_25` (default: the smallest preset that covers the shortfall). */
   defaultOptionId?: string;
   /** Credits variant: cost of the run that triggered the paywall. */
   runCost?: number;
   /** Credits variant: current balance. */
   balance?: number;
+  /** Credits variant: plan whose top-up bonus applies. Defaults to the session's plan. */
+  plan?: PlanId | null;
   /** Credits variant: card label in the footer, e.g. "Visa ending 4242". */
   paymentMethod?: string;
   /** Credits variant: auto top-up checkbox. */
   autoTopUp?: boolean;
   onAutoTopUpChange?: (on: boolean) => void;
-  /** CTA: continue the same run after checkout with the chosen option. */
+  /** CTA: continue the same run after checkout with the chosen plan or top-up. */
   onContinue: (option: PaywallOption) => void;
   /** Close button. */
   onClose: () => void;
@@ -35,28 +40,42 @@ export interface PaywallProps extends Omit<PaywallPanelProps, 'onClose'> {
   onOpenChange: (open: boolean) => void;
 }
 
-/** Default options from Paywall.dc.html; prices stay placeholders until decided. */
-export function defaultPaywallOptions(variant: 'join' | 'credits', intl: IntlShape): PaywallOption[] {
-  const m = (id: string, v?: Record<string, number>) => intl.formatMessage({ id: `overlays.paywall.${id}` }, v);
-  if (variant === 'join') {
-    return (['starter', 'pro', 'studio'] as const).map((p) => ({
-      id: p,
-      name: m(`plan.${p}`),
-      meta: m(`plan.${p}.meta`),
-      price: m('pricePerMonth'),
+const money = (intl: IntlShape, usd: number) => formatUsd(usd, (v, o) => intl.formatNumber(v, o));
+
+/** Plans from the pricing config (D-006): name, monthly credits and video cap, monthly price. */
+export function defaultPaywallOptions(intl: IntlShape): PaywallOption[] {
+  return PLAN_ORDER.map((id) => {
+    const p = PLANS[id];
+    return {
+      id,
+      name: p.label,
+      meta: intl.formatMessage({ id: 'overlays.paywall.plan.meta' }, { credits: p.monthlyCredits, video: p.maxVideoResolution }),
+      price:
+        typeof p.priceMonthlyUsd === 'number'
+          ? intl.formatMessage({ id: 'overlays.paywall.pricePerMonth' }, { price: money(intl, p.priceMonthlyUsd) })
+          : intl.formatMessage({ id: 'overlays.paywall.pricePerMonth' }, { price: `$${p.priceMonthlyUsd}` }),
       kind: 'plan' as const,
-    }));
-  }
-  return [
-    { id: 'pack_1000', name: m('pack.name', { credits: 1000 }), meta: m('pack.1000.meta'), price: m('price'), kind: 'pack' },
-    { id: 'pack_3000', name: m('pack.name', { credits: 3000 }), meta: m('pack.3000.meta'), price: m('price'), kind: 'pack' },
-    { id: 'upgrade_studio', name: m('upgradeStudio'), meta: m('upgradeStudio.meta'), price: m('pricePerMonth'), kind: 'upgrade' },
-  ];
+    };
+  });
+}
+
+function topUpOption(intl: IntlShape, t: TopUpOption): PaywallOption {
+  return {
+    id: t.id,
+    name: intl.formatMessage({ id: 'overlays.paywall.credits.quote' }, { credits: t.credits }),
+    meta: '',
+    price: money(intl, t.amountUsd),
+    kind: 'topup',
+    amountUsd: t.amountUsd,
+    credits: t.credits,
+  };
 }
 
 /**
- * Paywall dialog (Paywall.dc.html, PaywallCredits.dc.html): radio options and a
- * CTA that continues the same run. Rises in 320ms; options stagger in.
+ * Paywall dialog (Paywall.dc.html, PaywallCredits.dc.html). `join` lists the
+ * plans; `credits` sells any-amount top-ups (D-006: preset chips plus a custom
+ * amount, bonus credits from `quoteTopUp`). The CTA continues the same run.
+ * Rises in 320ms; options stagger in.
  */
 export function Paywall({ open, onOpenChange, ...panel }: PaywallProps) {
   const intl = useIntl();
@@ -75,49 +94,11 @@ export function Paywall({ open, onOpenChange, ...panel }: PaywallProps) {
 }
 
 /** The dialog's panel without the modal layer. */
-export function PaywallPanel({
-  variant,
-  options: optionsProp,
-  defaultOptionId,
-  runCost = 18,
-  balance = 6,
-  paymentMethod = 'Visa ending 4242',
-  autoTopUp,
-  onAutoTopUpChange,
-  onContinue,
-  onClose,
-  plansHref = '/upgrade',
-  className,
-  titleId,
-}: PaywallPanelProps & { titleId?: string }) {
+export function PaywallPanel(props: PaywallPanelProps & { titleId?: string }) {
+  const { variant, onClose, plansHref = '/upgrade', className, titleId } = props;
   const intl = useIntl();
   const credits = variant === 'credits';
-  const options = useMemo(() => optionsProp ?? defaultPaywallOptions(variant, intl), [optionsProp, variant, intl]);
-  const [picked, setPicked] = useState(defaultOptionId ?? (credits ? options[0]?.id : options[1]?.id) ?? '');
-  const refs = useRef<Array<HTMLButtonElement | null>>([]);
-  const current = options.find((o) => o.id === picked) ?? options[0];
   const m = (id: string) => intl.formatMessage({ id: `overlays.paywall.${variant}.${id}` });
-
-  const onKey = (e: KeyboardEvent, i: number) => {
-    const d = e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -1 : 0;
-    if (!d) return;
-    e.preventDefault();
-    const next = (i + d + options.length) % options.length;
-    const o = options[next];
-    if (o) {
-      setPicked(o.id);
-      refs.current[next]?.focus();
-    }
-  };
-
-  const cta = !current
-    ? ''
-    : credits
-      ? current.kind === 'upgrade'
-        ? intl.formatMessage({ id: 'overlays.paywall.credits.cta.upgrade' })
-        : intl.formatMessage({ id: 'overlays.paywall.credits.cta.buy' }, { name: current.name })
-      : intl.formatMessage({ id: 'overlays.paywall.join.cta' }, { name: current.name });
-
   return (
     <div className={cx(styles.panel, className)}>
       <div className={styles.head}>
@@ -131,45 +112,52 @@ export function PaywallPanel({
           <Svg name="close" size={16} strokeLinejoin={undefined} />
         </button>
       </div>
+      {credits ? <TopUpBody {...props} /> : <JoinBody {...props} />}
+      <div className={styles.foot}>
+        <span>{credits ? intl.formatMessage({ id: 'overlays.paywall.credits.foot' }, { card: props.paymentMethod ?? 'Visa ending 4242' }) : m('foot')}</span>
+        <a href={plansHref} className={styles.link}>
+          {m('link')}
+        </a>
+      </div>
+    </div>
+  );
+}
 
-      {credits ? (
-        <div className={styles.numbers}>
-          <span className={styles.num}>
-            <span className={styles.numLabel}>
-              <FormattedMessage id="overlays.paywall.credits.thisRun" />
-            </span>
-            <span className={styles.numValue}>
-              <FormattedNumber value={runCost} />
-            </span>
-          </span>
-          <span className={styles.num}>
-            <span className={styles.numLabel}>
-              <FormattedMessage id="overlays.paywall.credits.youHave" />
-            </span>
-            <span className={styles.numValue}>
-              <FormattedNumber value={balance} />
-            </span>
-          </span>
-          <span className={styles.num}>
-            <span className={styles.numLabel}>
-              <FormattedMessage id="overlays.paywall.credits.shortBy" />
-            </span>
-            <span className={cx(styles.numValue, styles.short)}>
-              <FormattedNumber value={Math.max(0, runCost - balance)} />
-            </span>
-          </span>
-        </div>
-      ) : null}
+/** Arrow keys move the selection in a radio group (roving tabindex). */
+function useRoving<T extends { id: string }>(items: T[], pick: (item: T) => void) {
+  const refs = useRef<Array<HTMLButtonElement | null>>([]);
+  const onKey = (e: KeyboardEvent, i: number) => {
+    const d = e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -1 : 0;
+    if (!d) return;
+    e.preventDefault();
+    const next = (i + d + items.length) % items.length;
+    const o = items[next];
+    if (o) {
+      pick(o);
+      refs.current[next]?.focus();
+    }
+  };
+  const ref = (i: number) => (el: HTMLButtonElement | null) => {
+    refs.current[i] = el;
+  };
+  return { onKey, ref };
+}
 
-      <div role="radiogroup" aria-label={m('group')} className={styles.options}>
+function JoinBody({ options: optionsProp, defaultOptionId, onContinue }: PaywallPanelProps) {
+  const intl = useIntl();
+  const options = useMemo(() => optionsProp ?? defaultPaywallOptions(intl), [optionsProp, intl]);
+  const [picked, setPicked] = useState(defaultOptionId ?? options[1]?.id ?? options[0]?.id ?? '');
+  const current = options.find((o) => o.id === picked) ?? options[0];
+  const roving = useRoving(options, (o) => setPicked(o.id));
+  return (
+    <>
+      <div role="radiogroup" aria-label={intl.formatMessage({ id: 'overlays.paywall.join.group' })} className={styles.options}>
         {options.map((o, i) => {
           const on = o.id === current?.id;
           return (
             <button
               key={o.id}
-              ref={(el) => {
-                refs.current[i] = el;
-              }}
+              ref={roving.ref(i)}
               type="button"
               role="radio"
               aria-checked={on}
@@ -177,7 +165,7 @@ export function PaywallPanel({
               className={cx('rl-stagger', styles.option)}
               style={staggerStyle(i)}
               onClick={() => setPicked(o.id)}
-              onKeyDown={(e) => onKey(e, i)}
+              onKeyDown={(e) => roving.onKey(e, i)}
             >
               <span className={styles.dot} />
               <span className={styles.optText}>
@@ -189,24 +177,120 @@ export function PaywallPanel({
           );
         })}
       </div>
-
-      {credits ? (
-        <label className={styles.auto}>
-          <input type="checkbox" className={styles.checkbox} checked={autoTopUp ?? false} onChange={(e) => onAutoTopUpChange?.(e.target.checked)} />
-          <FormattedMessage id="overlays.paywall.credits.autoTopUp" />
-        </label>
-      ) : null}
-
       <button type="button" className={cx('rl-press', styles.cta)} onClick={() => current && onContinue(current)}>
-        {cta}
+        {current ? intl.formatMessage({ id: 'overlays.paywall.join.cta' }, { name: current.name }) : null}
       </button>
+    </>
+  );
+}
 
-      <div className={styles.foot}>
-        <span>{credits ? intl.formatMessage({ id: 'overlays.paywall.credits.foot' }, { card: paymentMethod }) : m('foot')}</span>
-        <a href={plansHref} className={styles.link}>
-          {m('link')}
-        </a>
+function TopUpBody({ runCost = 347, balance = 120, plan: planProp, defaultOptionId, autoTopUp, onAutoTopUpChange, onContinue }: PaywallPanelProps) {
+  const intl = useIntl();
+  const session = useSession();
+  const plan = planProp === undefined ? session.planId : planProp;
+  const presets = useMemo(() => topUpPresets(plan), [plan]);
+  const short = Math.max(0, runCost - balance);
+  const fallback = presets.find((p) => p.credits >= short) ?? presets[presets.length - 1]!;
+  const [picked, setPicked] = useState(defaultOptionId ?? fallback.id);
+  const [custom, setCustom] = useState('');
+  const customId = useId();
+  const lineId = useId();
+  const parsed = parseTopUpAmount(custom);
+  const error = parsed && 'error' in parsed ? parsed.error : null;
+  const preset = presets.find((p) => p.id === picked) ?? fallback;
+  const quote = parsed ? ('usd' in parsed ? topUpFor(parsed.usd, plan) : null) : preset;
+  const roving = useRoving(presets, (p) => {
+    setPicked(p.id);
+    setCustom('');
+  });
+  const numbers: Array<[string, number, boolean]> = [
+    ['thisRun', runCost, false],
+    ['youHave', balance, false],
+    ['shortBy', short, true],
+  ];
+  return (
+    <>
+      <div className={styles.numbers}>
+        {numbers.map(([id, n, danger]) => (
+          <span key={id} className={styles.num}>
+            <span className={styles.numLabel}>
+              <FormattedMessage id={`overlays.paywall.credits.${id}`} />
+            </span>
+            <span className={cx(styles.numValue, danger && styles.short)}>
+              <FormattedNumber value={n} />
+            </span>
+          </span>
+        ))}
       </div>
-    </div>
+
+      <div role="radiogroup" aria-label={intl.formatMessage({ id: 'overlays.paywall.credits.group' })} className={styles.amounts}>
+        {presets.map((p, i) => {
+          const on = !parsed && p.id === preset.id;
+          return (
+            <button
+              key={p.id}
+              ref={roving.ref(i)}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              tabIndex={on || (parsed && i === 0) ? 0 : -1}
+              className={cx('rl-stagger', styles.amount)}
+              style={staggerStyle(i)}
+              onClick={() => {
+                setPicked(p.id);
+                setCustom('');
+              }}
+              onKeyDown={(e) => roving.onKey(e, i)}
+            >
+              <span className={styles.amountUsd}>{money(intl, p.amountUsd)}</span>
+              <span className={styles.amountCredits}>
+                <FormattedNumber value={p.credits} />
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className={styles.customRow}>
+        <label htmlFor={customId} className={styles.customLabel}>
+          <FormattedMessage id="overlays.paywall.credits.custom" />
+        </label>
+        <span className={styles.customField} data-invalid={!!error}>
+          <span aria-hidden="true">$</span>
+          <input
+            id={customId}
+            inputMode="decimal"
+            className={styles.customInput}
+            placeholder={String(TOP_UP.minUsd)}
+            value={custom}
+            aria-invalid={!!error}
+            aria-describedby={lineId}
+            onChange={(e) => setCustom(e.target.value.replace(/[^\d.]/g, ''))}
+          />
+        </span>
+      </div>
+      <span id={lineId} className={cx(styles.quote, !!error && styles.quoteError)} role={error ? 'alert' : undefined} aria-live="polite">
+        {error ? (
+          <FormattedMessage
+            id={`overlays.paywall.credits.custom.${error}`}
+            values={{ min: money(intl, TOP_UP.minUsd), max: money(intl, TOP_UP.maxUsd) }}
+          />
+        ) : quote ? (
+          <FormattedMessage
+            id={quote.bonusCredits > 0 ? 'overlays.paywall.credits.quote.bonus' : 'overlays.paywall.credits.quote.plain'}
+            values={{ base: quote.credits - quote.bonusCredits, bonus: quote.bonusCredits, credits: quote.credits }}
+          />
+        ) : null}
+      </span>
+
+      <label className={styles.auto}>
+        <input type="checkbox" className={styles.checkbox} checked={autoTopUp ?? false} onChange={(e) => onAutoTopUpChange?.(e.target.checked)} />
+        <FormattedMessage id="overlays.paywall.credits.autoTopUp" />
+      </label>
+
+      <button type="button" className={cx('rl-press', styles.cta)} disabled={!quote} onClick={() => quote && onContinue(topUpOption(intl, quote))}>
+        {quote ? intl.formatMessage({ id: 'overlays.paywall.credits.cta.buy' }, { credits: quote.credits, price: money(intl, quote.amountUsd) }) : intl.formatMessage({ id: 'overlays.paywall.credits.cta.invalid' })}
+      </button>
+    </>
   );
 }

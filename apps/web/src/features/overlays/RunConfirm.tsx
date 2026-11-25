@@ -1,3 +1,4 @@
+import { DEFAULT_CONFIRM_THRESHOLD_CREDITS } from '@rolling/core/pricing/config';
 import { cx, Dialog, staggerStyle } from '@rolling/ui';
 import { useId } from 'react';
 import { FormattedMessage, FormattedNumber, useIntl } from 'react-intl';
@@ -25,7 +26,7 @@ export interface RunConfirmPanelProps {
   /** "Skip this step for runs under N credits" checkbox state. */
   skipUnderThreshold?: boolean;
   onSkipUnderThresholdChange?: (skip: boolean) => void;
-  /** The user's "Confirm before running" threshold (default 20). */
+  /** The user's "Confirm before running" threshold (default `DEFAULT_CONFIRM_THRESHOLD_CREDITS`, 300; D-006). */
   threshold?: number;
   /** Quote validity shown in the summary (default 10). */
   quoteValidMinutes?: number;
@@ -49,7 +50,7 @@ const KIND_TONE: Record<RunRowKind, string> = { video: '#202330', image: '#1F262
 /**
  * Run confirmation (RunConfirm.dc.html) as a modal: single run or run-all plan,
  * rows with run / reuse / blocked / nothing-to-generate states, total, balance
- * after, and "skip under 20 credits". The panel rises in 320ms; rows stagger in.
+ * after, and "skip under N credits" (the confirm threshold, 300 by default). The panel rises in 320ms; rows stagger in.
  */
 export function RunConfirm({ open, onOpenChange, ...panel }: RunConfirmProps) {
   const intl = useIntl();
@@ -79,7 +80,7 @@ export function RunConfirmPanel({
   blockedNote,
   skipUnderThreshold,
   onSkipUnderThresholdChange,
-  threshold = 20,
+  threshold = DEFAULT_CONFIRM_THRESHOLD_CREDITS,
   quoteValidMinutes = 10,
   onConfirm,
   onCancel,

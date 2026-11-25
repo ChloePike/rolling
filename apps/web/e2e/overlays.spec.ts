@@ -13,9 +13,9 @@ import { pixelDiffRatio, type Box } from './support/measure';
 const OUT = fileURLToPath(new URL('./__screens__/overlays/', import.meta.url));
 const MAX_DIFF = 0.01;
 
-async function openDesign(page: Page, screen: string, props: Record<string, unknown> = {}) {
+async function openDesign(page: Page, screen: string, props: Record<string, unknown> = {}, replace: Case['replace'] = []) {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.setContent(buildDesignPage(screen, props));
+  await page.setContent(buildDesignPage(screen, props, replace));
   await page.waitForFunction(() => (window as unknown as { __DC_READY__?: boolean }).__DC_READY__ === true);
   await page.addStyleTag({ content: 'html,body{background:#0B0B0C!important}' });
   await page.evaluate(() => document.fonts.ready);
@@ -52,7 +52,24 @@ interface Case {
   app: (p: Page) => Locator;
   /** Known copy deviations (see report) can raise the bar for one case. */
   maxDiff?: number;
+  /** Copy decided after the design was drawn, swapped into the design source before rendering. */
+  replace?: ReadonlyArray<readonly [string, string]>;
 }
+
+/**
+ * D-006 replaced the drawn plans (Starter / Pro / Studio, placeholder prices)
+ * with Starter / Plus / Pro from packages/core/pricing/config.ts. The layout is
+ * unchanged, so the design is compared with the decided copy swapped in.
+ */
+const D006_JOIN: Case['replace'] = [
+  [
+    "[['Starter', '1,000 credits a month', '$[PRICE]/mo'], ['Pro', '3,000 credits a month, images up to 4K', '$[PRICE]/mo'], ['Studio', '10,000 credits a month, 5 seats', '$[PRICE]/mo']]",
+    "[['Starter', '200 credits a month, video up to 720p', '$5/mo'], ['Plus', '800 credits a month, video up to 1080p', '$15/mo'], ['Pro', '2,500 credits a month, video up to 4K', '$49/mo']]",
+  ],
+  ["(credits ? '1,000 credits' : 'Pro')", "(credits ? '1,000 credits' : 'Plus')"],
+];
+/** D-006: the confirm threshold default is 300 credits (the PRD's 20, rescaled). */
+const D006_THRESHOLD: Case['replace'] = [['Skip this step for runs under 20 credits', 'Skip this step for runs under 300 credits']];
 
 const firstDialog = (p: Page) => p.locator('[role="dialog"]').first();
 
@@ -67,21 +84,21 @@ const CASES: Case[] = [
     screen: 'RunConfirm.dc.html',
     props: { variant: 'single', cost: 10, label: 'Generate video' },
     query: 'c=runConfirm&variant=single',
+    replace: D006_THRESHOLD,
     design: firstDialog,
     app: (p) => p.getByTestId('overlay-slot').locator('> div'),
     // The design's button reads "ConfirmGenerate video · 10 credits" (string
     // concatenation bug in RunConfirm.dc.html); we render "Generate video · 10 credits".
     maxDiff: 0.02,
   },
-  { name: 'run-confirm-graph', screen: 'RunConfirm.dc.html', props: { variant: 'graph' }, query: 'c=runConfirm&variant=graph', design: firstDialog, app: (p) => p.getByTestId('overlay-slot').locator('> div') },
-  { name: 'paywall-join', screen: 'Paywall.dc.html', props: { variant: 'join' }, query: 'c=paywall&variant=join', design: firstDialog, app: (p) => p.getByTestId('overlay-slot').locator('> div') },
-  { name: 'paywall-credits', screen: 'Paywall.dc.html', props: { variant: 'credits' }, query: 'c=paywall&variant=credits', design: firstDialog, app: (p) => p.getByTestId('overlay-slot').locator('> div') },
+  { name: 'run-confirm-graph', screen: 'RunConfirm.dc.html', props: { variant: 'graph' }, query: 'c=runConfirm&variant=graph', replace: D006_THRESHOLD, design: firstDialog, app: (p) => p.getByTestId('overlay-slot').locator('> div') },
+  { name: 'paywall-join', screen: 'Paywall.dc.html', props: { variant: 'join' }, query: 'c=paywall&variant=join', replace: D006_JOIN, design: firstDialog, app: (p) => p.getByTestId('overlay-slot').locator('> div') },
 ];
 
 test.describe('shared overlays match their design files', () => {
   for (const c of CASES) {
     test(`${c.name}: panel box within 2px and pixel diff under ${((c.maxDiff ?? MAX_DIFF) * 100).toFixed(0)}%`, async ({ page }) => {
-      await openDesign(page, c.screen, c.props);
+      await openDesign(page, c.screen, c.props, c.replace);
       const dBox = await box(c.design(page));
       const clip = { x: Math.round(dBox.x), y: Math.round(dBox.y), width: Math.round(dBox.width), height: Math.round(dBox.height) };
       const design = await page.screenshot({ clip });
@@ -174,7 +191,7 @@ test.describe('overlay behavior and states', () => {
     await expect(page.getByRole('note')).toContainText('“Shot C” is missing an input');
     await expect(page.getByText('2,480 → 2,462')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Run · 18 credits' })).toBeVisible();
-    const skip = page.getByRole('checkbox', { name: 'Skip this step for runs under 20 credits' });
+    const skip = page.getByRole('checkbox', { name: 'Skip this step for runs under 300 credits' });
     await skip.check();
     await expect(skip).toBeChecked();
   });
@@ -192,20 +209,46 @@ test.describe('overlay behavior and states', () => {
     await expect(page.locator('[role="dialog"]')).toHaveCount(0);
   });
 
-  test('paywall: radios, CTA follows the selection, credits shortfall', async ({ page }) => {
+  test('paywall (join): Starter / Plus / Pro from the pricing config, CTA follows the selection', async ({ page }) => {
     await openPreview(page, 'c=paywall&variant=join');
-    await expect(page.getByRole('radio', { name: /Pro/ })).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByRole('radio')).toHaveText([/Starter.*\$5\/mo/, /Plus.*\$15\/mo/, /Pro.*\$49\/mo/]);
+    await expect(page.getByRole('radio', { name: /Plus/ })).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByRole('button', { name: 'Continue with Plus' })).toBeVisible();
+    await page.getByRole('radio', { name: /^Pro/ }).click();
     await expect(page.getByRole('button', { name: 'Continue with Pro' })).toBeVisible();
-    await page.getByRole('radio', { name: /Studio/ }).click();
-    await expect(page.getByRole('button', { name: 'Continue with Studio' })).toBeVisible();
     await page.keyboard.press('ArrowUp');
-    await expect(page.getByRole('button', { name: 'Continue with Pro' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Continue with Plus' })).toBeVisible();
+    await expect(page.getByText('Studio')).toHaveCount(0);
+  });
 
+  /**
+   * PaywallCredits.dc.html predates D-006 (fixed packs and a Studio upgrade);
+   * the credits variant sells any amount, so it is checked by behavior and a
+   * saved screenshot instead of a pixel diff.
+   */
+  test('paywall (credits): shortfall, top-up presets with bonus from quoteTopUp, custom amount, CTA', async ({ page }) => {
     await openPreview(page, 'c=paywall&variant=credits');
-    await expect(page.getByRole('button', { name: 'Buy 1,000 credits and run' })).toBeVisible();
-    await page.getByRole('radio', { name: /Upgrade to Studio/ }).click();
-    await expect(page.getByRole('button', { name: 'Upgrade and run' })).toBeVisible();
+    await expect(page.getByText('Short by')).toBeVisible();
+    const amounts = page.getByRole('radiogroup', { name: 'Top-up amount' }).getByRole('radio');
+    // Pro member (session default): tier bonus + 10% plan bonus.
+    await expect(amounts).toHaveText([/^\$10\s*1,100$/, /^\$25\s*2,850$/, /^\$50\s*6,000$/, /^\$100\s*12,500$/, /^\$250\s*31,250$/]);
+    // Short by 227 credits: the smallest preset that covers it is picked.
+    await expect(amounts.first()).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByRole('button', { name: 'Buy 1,100 credits for $10 and run' })).toBeVisible();
+    await amounts.nth(1).click();
+    await expect(page.getByText('You get 2,500 + 350 bonus = 2,850 credits')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Buy 2,850 credits for $25 and run' })).toBeVisible();
+    const custom = page.getByLabel('Other amount');
+    await custom.fill('5');
+    await expect(page.getByRole('alert')).toHaveText('The minimum top-up is $10.');
+    await expect(page.getByRole('button', { name: 'Enter an amount' })).toBeDisabled();
+    await custom.fill('40.50');
+    await expect(amounts.nth(1)).toHaveAttribute('aria-checked', 'false');
+    await expect(page.getByRole('button', { name: 'Buy 4,617 credits for $40.50 and run' })).toBeVisible();
     await expect(page.getByText('Charged to Visa ending 4242')).toBeVisible();
+    await expect(page.getByText(/Studio|\[PRICE\]/)).toHaveCount(0);
+    await page.mouse.move(1439, 899);
+    await page.screenshot({ path: `${OUT}paywall-credits.png`, clip: (await page.getByTestId('overlay-slot').locator('> div').boundingBox())! });
   });
 
   test('result viewer: versions switch, play toggles, close animates out', async ({ page }) => {

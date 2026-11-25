@@ -19,8 +19,6 @@ export const placeholderCredits = {
   usedThisMonth: 1284,
   held: 16,
   expiringThisMonth: 300,
-  packs: [1000, 3000, 10000],
-  defaultPack: 3000,
 };
 
 /** Workspaces for the account menu switcher. */

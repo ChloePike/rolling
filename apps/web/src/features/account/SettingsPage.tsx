@@ -5,6 +5,7 @@ import { useState, type ReactNode } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { setCreationMode, setLanguage, useCreationMode, useLanguagePref } from '@/lib/prefs';
 import { useSession } from '@/lib/session';
+import { parseTopUpAmount } from '@/lib/topUp';
 import { motion, PathIcon, Segmented } from './shared';
 import { SelectMenu } from './shared/SelectMenu';
 import { useAutoTopUp, useInvoices, useMe, useMembers, useTopUps, useUpdatePrefs, formatUsd, topUpFor } from './api';
@@ -261,28 +262,21 @@ function PreferencesSection({ me }: { me: Me }) {
 function BillingSection({ me }: { me: Me }) {
   const intl = useIntl();
   const money = (n: number) => formatUsd(n, (v, o) => intl.formatNumber(v, o));
-  const { data: packs = [] } = useTopUps(me.plan?.id ?? null);
+  const { data: topUps = [] } = useTopUps(me.plan?.id ?? null);
   const { data: invoices = [] } = useInvoices();
   const autoTopUp = useAutoTopUp();
-  const [packId, setPackId] = useState('topup_25');
+  const [topUpId, setTopUpId] = useState('topup_25');
   const plan = me.plan ? PLANS[me.plan.id] : null;
   const total = me.balance.plan + me.balance.purchased;
   const rest = plan ? Math.max(0, plan.monthlyCredits - me.balance.plan) : 0;
   const price = plan ? (me.plan!.period === 'yearly' ? Math.round((Number(plan.priceYearlyUsd) / 12) * 100) / 100 : Number(plan.priceMonthlyUsd)) : 0;
   const [custom, setCustom] = useState('');
-  const customActive = custom.trim() !== '';
-  const customUsd = Number(custom);
-  const customError = !customActive
-    ? null
-    : !/^\d+(\.\d{1,2})?$/.test(custom.trim())
-      ? 'account.settings.billing.custom.invalid'
-      : customUsd < TOP_UP.minUsd
-        ? 'account.settings.billing.custom.min'
-        : customUsd > TOP_UP.maxUsd
-          ? 'account.settings.billing.custom.max'
-          : null;
-  const preset = packs.find((p) => p.id === packId) ?? packs[0];
-  const pack = customActive ? (customError ? null : topUpFor(customUsd, me.plan?.id ?? null)) : preset;
+  const parsed = parseTopUpAmount(custom);
+  const customActive = parsed !== null;
+  const customUsd = parsed && 'usd' in parsed ? parsed.usd : 0;
+  const customError = parsed && 'error' in parsed ? `account.settings.billing.custom.${parsed.error}` : null;
+  const preset = topUps.find((p) => p.id === topUpId) ?? topUps[0];
+  const topUp = customActive ? (customError ? null : topUpFor(customUsd, me.plan?.id ?? null)) : preset;
   const auto = topUpFor(me.autoTopUp.amountUsd, me.plan?.id ?? null);
   return (
     <>
@@ -343,26 +337,26 @@ function BillingSection({ me }: { me: Me }) {
       <h3 className={styles.h3}>
         <FormattedMessage id="account.settings.billing.buy" />
       </h3>
-      <div role="radiogroup" aria-label={intl.formatMessage({ id: 'account.settings.billing.buy' })} className={styles.packs}>
-        {packs.map((p) => (
+      <div role="radiogroup" aria-label={intl.formatMessage({ id: 'account.settings.billing.buy' })} className={styles.topUps}>
+        {topUps.map((p) => (
           <button
             key={p.id}
             type="button"
             role="radio"
-            aria-checked={!customActive && pack?.id === p.id}
-            className={styles.pack}
+            aria-checked={!customActive && topUp?.id === p.id}
+            className={styles.topUp}
             onClick={() => {
-              setPackId(p.id);
+              setTopUpId(p.id);
               setCustom('');
             }}
           >
-            <span className={styles.packCredits}>{intl.formatNumber(p.credits)}</span>
-            <span className={styles.packPrice}>
+            <span className={styles.topUpCredits}>{intl.formatNumber(p.credits)}</span>
+            <span className={styles.topUpPrice}>
               {money(p.amountUsd)}
               {p.bonusRate > 0 && (
                 <>
                   {' · '}
-                  <FormattedMessage id="account.settings.billing.packBonus" values={{ pct: p.bonusRate }} />
+                  <FormattedMessage id="account.settings.billing.topUpBonus" values={{ pct: p.bonusRate }} />
                 </>
               )}
             </span>
@@ -390,17 +384,17 @@ function BillingSection({ me }: { me: Me }) {
           <span id="topup-line" className={cx(styles.customLine, !!customError && styles.customError)} role={customError ? 'alert' : undefined}>
             {customError ? (
               <FormattedMessage id={customError} values={{ min: money(TOP_UP.minUsd), max: money(TOP_UP.maxUsd) }} />
-            ) : pack ? (
+            ) : topUp ? (
               <FormattedMessage
-                id={pack.bonusCredits > 0 ? 'account.settings.billing.quote.bonus' : 'account.settings.billing.quote'}
-                values={{ base: pack.credits - pack.bonusCredits, bonus: pack.bonusCredits, credits: pack.credits }}
+                id={topUp.bonusCredits > 0 ? 'account.settings.billing.quote.bonus' : 'account.settings.billing.quote'}
+                values={{ base: topUp.credits - topUp.bonusCredits, bonus: topUp.bonusCredits, credits: topUp.credits }}
               />
             ) : null}
           </span>
         </div>
-        <button type="button" className={cx(styles.btn, styles.btnPrimary, motion.press)} disabled={!plan || !pack}>
-          {pack ? (
-            <FormattedMessage id="account.settings.billing.buyN" values={{ n: pack.credits, price: money(pack.amountUsd) }} />
+        <button type="button" className={cx(styles.btn, styles.btnPrimary, motion.press)} disabled={!plan || !topUp}>
+          {topUp ? (
+            <FormattedMessage id="account.settings.billing.buyN" values={{ n: topUp.credits, price: money(topUp.amountUsd) }} />
           ) : (
             <FormattedMessage id="account.settings.billing.buy" />
           )}
@@ -443,7 +437,7 @@ function BillingSection({ me }: { me: Me }) {
                 />
               ) : (
                 <FormattedMessage
-                  id="account.settings.billing.invoice.pack"
+                  id="account.settings.billing.invoice.topUp"
                   values={{ n: topUpFor(inv.amountUsd ?? 0, me.plan?.id ?? null).credits }}
                 />
               )}
