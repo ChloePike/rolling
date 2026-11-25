@@ -49,6 +49,7 @@ import {
 import { CanvasError } from './CanvasError';
 import { assetMediaUrl, isMockApi, savePendingAction, takePendingAction } from '@/features/overlays/backend';
 import { downloadAsset } from '@/features/overlays/media';
+import { resolveAssetId } from '@/lib/transfers';
 import canvas from './canvas.module.css';
 import type { LocalOp } from './graph/store';
 import {
@@ -969,20 +970,34 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
 
   const addAssets = (items: RefItem[]) => {
     const center = toFlow({ x: 120, y: size.h / 2 - 100 });
-    const r = commit(
-      items.map((it, i) => ({
-        op: 'addNode' as const,
-        tempId: `a${i}`,
-        kind: it.group === 'voice' ? ('audio' as const) : ('asset' as const),
-        title: it.name,
-        params: it.group === 'voice' ? { voice: it.name, seconds: 0, wave: [], runCost: MOCK_PRICE.voice } : { media: 'image', label: it.meta, tone: it.tone, refId: it.id },
-        position: { x: Math.round(center.x + i * 230), y: Math.round(center.y) },
-      })),
-    );
-    if (r.ok) {
-      setToolPanel(null);
-      toast.show({ message: intl.formatMessage({ id: 'canvas.toast.assetsAdded' }, { n: items.length }) });
-    }
+    const place = (resolved: string[]) => {
+      const r = commit(
+        items.map((it, i) => ({
+          op: 'addNode' as const,
+          tempId: `a${i}`,
+          kind: it.group === 'voice' ? ('audio' as const) : ('asset' as const),
+          title: it.name,
+          params:
+            it.group === 'voice'
+              ? { voice: it.name, voiceId: it.id, seconds: 0, wave: [], runCost: MOCK_PRICE.voice }
+              : {
+                  media: /^video/i.test(it.meta) || (it.glyph.type === 'icon' && it.glyph.icon === 'video') ? 'video' : it.glyph.type === 'wave' ? 'audio' : 'image',
+                  label: it.meta,
+                  tone: it.tone,
+                  refId: it.id,
+                  // Real mode: the planner reads `params.assetId` (uploads resolved from `upl_` first).
+                  ...(isMockApi() ? {} : { assetId: resolved[i] }),
+                },
+          position: { x: Math.round(center.x + i * 230), y: Math.round(center.y) },
+        })),
+      );
+      if (r.ok) {
+        setToolPanel(null);
+        toast.show({ message: intl.formatMessage({ id: 'canvas.toast.assetsAdded' }, { n: items.length }) });
+      }
+    };
+    if (isMockApi()) return place([]);
+    void Promise.all(items.map((it) => resolveAssetId(it.id))).then(place, () => toast.show({ message: intl.formatMessage({ id: 'canvas.toast.offline' }) }));
   };
 
   const actions: NodeActions = useMemo(
@@ -1651,6 +1666,8 @@ function withCatalogModel(params: Record<string, unknown>, kind: NodeKind, model
 /** Result thumbnail of a node's active version (real mode: signed redirect per asset). */
 function mediaUrlOf(session: ProjectSession, nodeId: string): string | null {
   if (isMockApi()) return null;
+  const node = session.store.getState().nodes.find((n) => n.id === nodeId);
+  if (node?.kind === 'asset' && typeof node.params.assetId === 'string') return assetMediaUrl(node.params.assetId);
   const m = session.sync.getMedia(nodeId);
   return m?.assetId ? assetMediaUrl(m.assetId) : null;
 }

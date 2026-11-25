@@ -182,6 +182,17 @@ function Port({ type, node, active, refused, top }: { type: 'in' | 'out'; node: 
 }
 
 /** Done image/video body: the result (tone stands in for the thumbnail). */
+/** An asset node's picture (real mode): the referenced asset through a signed redirect. */
+function AssetMedia({ node }: { node: GraphNode }) {
+  const { url } = useContext(CardMediaContext);
+  if (!url || node.params.media === 'audio') return null;
+  return node.params.media === 'video' ? (
+    <video className={styles.resultMedia} src={url} muted playsInline preload="metadata" />
+  ) : (
+    <img className={styles.resultMedia} src={url} alt="" draggable={false} />
+  );
+}
+
 /** The card's result media URL (from `CardData.mediaUrl`). */
 const CardMediaContext = createContext<{ url: string | null; rating: CardData['mediaRating'] }>({ url: null, rating: null });
 
@@ -366,6 +377,7 @@ function CardContent({ node, selected, refused }: { node: GraphNode; selected: b
             <Label node={node} />
           </div>
           <div className={cx(styles.body, styles.assetBody)} style={{ height: 184, background: str(node.params.tone, 'var(--c-tone-teal)') }} data-body="">
+            <AssetMedia node={node} />
             {str(node.params.label)}
           </div>
           <Port type="out" node={node} active={false} top={top.out} />

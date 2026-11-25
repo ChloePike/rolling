@@ -1,15 +1,50 @@
 import { useQuery } from '@tanstack/react-query';
 import { uploadFiles } from '@/lib/transfers';
+import { apiFetch, isMockApi } from '@/features/overlays/backend';
+import { fetchAssets, type GqlAsset } from '@/features/library/assetsApi';
 import { MOCK_REFERENCES, MOCK_SKILLS } from './mocks';
 import type { PromptCommand, RefItem } from './types';
 
 /**
- * Data access for the prompt box. Mock-backed for now; the real client
- * replaces these with `GET /api/assets?scope=all` (GraphQL picker search,
- * D-003) and the skills list.
+ * Data access for the prompt box. Real mode: the `@` picker lists the
+ * workspace's and built-in assets (GraphQL `assets(scope: ALL)` without the
+ * public library, which the picker pages through `publicItems` itself),
+ * characters (`/api/characters`) and voices (`/api/voices`). Skills are the
+ * built-in list.
  */
+const REF_TONES = ['var(--c-tone-indigo)', 'var(--c-tone-teal)', 'var(--c-tone-plum)', 'var(--c-tone-sand)'];
+
+function refFromAsset(a: GqlAsset, i: number): RefItem {
+  const kind = a.kind.toLowerCase();
+  const detail = a.meta.width && a.meta.height ? `${a.meta.width}×${a.meta.height}` : a.meta.durationSec ? `${Math.round(a.meta.durationSec)}s` : '';
+  return {
+    id: a.id,
+    group: 'mine',
+    name: a.name,
+    meta: [kind.charAt(0).toUpperCase() + kind.slice(1), detail].filter(Boolean).join(' · '),
+    source: a.source === 'builtin' ? 'builtin' : a.source === 'team' ? 'team' : 'mine',
+    tone: REF_TONES[i % REF_TONES.length]!,
+    glyph: kind === 'audio' ? { type: 'wave' } : { type: 'icon', icon: kind === 'video' ? 'video' : 'img' },
+    // Mature-rated thumbnails are not shown in the picker (D-005); the glyph stands in.
+    ...(a.thumbUrl && !a.mature ? { thumbUrl: a.thumbUrl } : {}),
+  };
+}
+
+async function fetchRealReferences(): Promise<RefItem[]> {
+  const [assets, chars, voices] = await Promise.all([
+    fetchAssets({ scope: 'ALL', first: 100 }).catch(() => [] as GqlAsset[]),
+    apiFetch<{ items: Array<{ id: string; name: string; coverUrl: string | null }> }>('/characters').catch(() => ({ items: [] })),
+    apiFetch<{ items: Array<{ id: string; name: string; language: string | null; kind: string }> }>('/voices').catch(() => ({ items: [] })),
+  ]);
+  return [
+    ...assets.filter((a) => a.source !== 'public' && a.status !== 'failed').map(refFromAsset),
+    ...chars.items.map((c, i): RefItem => ({ id: c.id, group: 'char', name: c.name, meta: 'Character', source: 'mine', tone: REF_TONES[i % REF_TONES.length]!, glyph: { type: 'letter', letter: c.name.charAt(0).toUpperCase() }, ...(c.coverUrl ? { thumbUrl: c.coverUrl } : {}) })),
+    ...voices.items.map((v, i): RefItem => ({ id: v.id, group: 'voice', name: v.name, meta: [v.kind === 'cloned' ? 'Cloned voice' : 'Voice', v.language].filter(Boolean).join(' · '), source: v.kind === 'cloned' ? 'mine' : 'builtin', tone: REF_TONES[i % REF_TONES.length]!, glyph: { type: 'wave' } })),
+  ];
+}
+
 export async function fetchReferences(): Promise<RefItem[]> {
-  return MOCK_REFERENCES;
+  return isMockApi() ? MOCK_REFERENCES : fetchRealReferences();
 }
 
 export async function fetchSkills(): Promise<PromptCommand[]> {
@@ -23,7 +58,9 @@ export const promptKeys = {
 
 /** Everything the `@` picker can reference: assets, characters, voices and the public library. */
 export function useReferences() {
-  return useQuery({ queryKey: promptKeys.references, queryFn: fetchReferences, initialData: MOCK_REFERENCES });
+  const mock = isMockApi();
+  const q = useQuery({ queryKey: promptKeys.references, queryFn: fetchReferences, ...(mock ? { initialData: MOCK_REFERENCES } : { staleTime: 15_000 }) });
+  return { ...q, data: q.data ?? [] };
 }
 
 /** Built-in and custom skills for the `/` palette and the `+` menu. */

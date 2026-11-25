@@ -1,20 +1,87 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { assetsMock, charactersMock, foldersMock, storageMock, uploadMock, voicesMock, type AssetItem, type AssetType, type VoiceItem } from './assetsMocks';
+import { apiFetch, gql, isMockApi } from '@/features/overlays/backend';
+import { assetsMock, charactersMock, foldersMock, storageMock, uploadMock, voicesMock, type AssetItem, type AssetType, type CharacterItem, type VoiceItem } from './assetsMocks';
 
 /**
- * My assets (`GET /api/assets?scope=mine`, `/api/characters`, `/api/voices`,
- * `POST /api/uploads`, `PATCH/DELETE /api/assets/:id`). Mock data until those
- * routes land; keep the hooks, swap the fetchers.
+ * My assets. Real mode: GraphQL `assets(scope: MINE)` (newest first), REST
+ * `/api/characters`, `/api/voices`, `DELETE /api/assets/:id`; uploads go
+ * through `lib/transfers` (D-011) and the list refetches when one completes.
+ * Mock mode: the design's data.
  */
 const q = <T>(key: readonly string[], data: T) => ({ queryKey: key, queryFn: async () => structuredClone(data), staleTime: Infinity });
 
 export const assetsKey = ['assets', 'mine'] as const;
 export const voicesKey = ['voices'] as const;
 
+/** GraphQL `Asset` fields the creation side reads (assets page, `@` picker). */
+export interface GqlAsset {
+  id: string;
+  kind: 'IMAGE' | 'VIDEO' | 'AUDIO' | 'TEXT';
+  source: string;
+  name: string;
+  status: string;
+  mature: boolean;
+  size: number | null;
+  contentType: string | null;
+  license: string | null;
+  projectId: string | null;
+  createdAt: number;
+  url: string | null;
+  thumbUrl: string | null;
+  meta: { width: number | null; height: number | null; durationSec: number | null };
+}
+
+export const ASSET_FIELDS = 'id kind source name status mature size contentType license projectId createdAt url thumbUrl meta { width height durationSec }';
+
+export async function fetchAssets(vars: { scope: 'MINE' | 'TEAM' | 'BUILTIN' | 'PUBLIC' | 'ALL'; kind?: 'IMAGE' | 'VIDEO' | 'AUDIO' | 'TEXT'; q?: string; first?: number }): Promise<GqlAsset[]> {
+  const r = await gql<{ assets: { edges: Array<{ node: GqlAsset }> } }>(
+    `query Assets($scope: AssetScope, $kind: AssetKind, $q: String, $first: Int) { assets(scope: $scope, kind: $kind, q: $q, first: $first) { edges { node { ${ASSET_FIELDS} } } } }`,
+    { first: 100, ...vars },
+  );
+  return r.assets.edges.map((e) => e.node);
+}
+
+function sizeMeta(a: GqlAsset): string {
+  if (a.meta.durationSec) return `${Math.round(a.meta.durationSec)}s`;
+  if (a.meta.width && a.meta.height) return `${a.meta.width}×${a.meta.height}`;
+  return a.size ? `${(a.size / 1e6).toFixed(1)} MB` : '';
+}
+
+export function assetItemFrom(a: GqlAsset): AssetItem {
+  const type = a.kind.toLowerCase() as AssetType;
+  return {
+    id: a.id,
+    name: a.name,
+    type,
+    meta: sizeMeta(a),
+    ar: a.meta.width && a.meta.height ? `${a.meta.width}/${a.meta.height}` : type === 'image' ? '1/1' : '16/10',
+    refs: 0,
+    source: a.source === 'generated' ? 'canvas' : 'upload',
+    version: 1,
+    uploadedAt: new Date(a.createdAt).toISOString(),
+    usedIn: a.projectId ? [{ label: a.projectId, to: `/p/${a.projectId}` }] : [],
+    ...(a.projectId ? { folder: a.projectId } : {}),
+    thumbUrl: a.thumbUrl,
+    mature: a.mature,
+  };
+}
+
+const realAssets = async () => (await fetchAssets({ scope: 'MINE' })).map(assetItemFrom);
+
+const realCharacters = async (): Promise<CharacterItem[]> => {
+  const r = await apiFetch<{ items: Array<{ id: string; name: string; meta: unknown; versions: unknown[] }> }>('/characters');
+  return r.items.map((c) => ({ id: c.id, name: c.name, meta: typeof c.meta === 'string' ? c.meta : '', projects: c.versions.length }));
+};
+
+const realVoices = async (): Promise<VoiceItem[]> => {
+  const r = await apiFetch<{ items: Array<{ id: string; name: string; language: string | null; kind: string; status: string }> }>('/voices');
+  return r.items.map((v) => ({ id: v.id, name: v.name, meta: [v.kind === 'cloned' ? 'Cloned' : 'Built-in', v.language].filter(Boolean).join(' · '), state: v.status === 'pending' ? 'cloning' : 'ready' }));
+};
+
 export const useFolders = () => useQuery(q(['assets', 'folders'], foldersMock));
-export const useAssets = () => useQuery(q(assetsKey, assetsMock));
-export const useCharacters = () => useQuery(q(['characters'], charactersMock));
-export const useVoices = () => useQuery(q(voicesKey, voicesMock));
+export const useAssets = () => useQuery(isMockApi() ? q(assetsKey, assetsMock) : { queryKey: assetsKey, queryFn: realAssets, staleTime: 15_000 });
+export const useCharacters = () => useQuery(isMockApi() ? q(['characters'], charactersMock) : { queryKey: ['characters'], queryFn: realCharacters, staleTime: 30_000 });
+export const useVoices = () => useQuery(isMockApi() ? q(voicesKey, voicesMock) : { queryKey: voicesKey, queryFn: realVoices, staleTime: 30_000 });
 export const useUpload = () => useQuery(q(['assets', 'upload'], uploadMock));
 export const useStorage = () => useQuery(q(['assets', 'storage'], storageMock));
 
@@ -58,8 +125,13 @@ export function useAssetMutations() {
       mutationFn: async (v: { id: string; name: string }) => v,
       onSuccess: (v) => edit((all) => all.map((a) => (a.id === v.id ? { ...a, name: v.name } : a))),
     }),
+    /** Real mode: refetch after an upload completes (the new asset is `processing` first). */
+    refresh: () => qc.invalidateQueries({ queryKey: assetsKey }),
     remove: useMutation({
-      mutationFn: async (id: string) => id,
+      mutationFn: async (id: string) => {
+        if (!isMockApi()) await apiFetch(`/assets/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        return id;
+      },
       onSuccess: (id) => edit((all) => all.filter((a) => a.id !== id)),
     }),
     toggleFavorite: (id: string) => edit((all) => all.map((a) => (a.id === id ? { ...a, favorite: !a.favorite } : a))),
