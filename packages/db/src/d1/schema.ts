@@ -29,6 +29,9 @@ export const workspaces = sqliteTable(
     /** D-005: workspace admins can disable 18+ content for all members. */
     matureAllowed: integer("mature_allowed", { mode: "boolean" }).notNull().default(true),
     createdAt: integer("created_at").notNull(),
+    /** D-005 review flag (migration 0009): set after repeated hard-limit blocks; mature runs are refused until cleared. */
+    safetyFlag: integer("safety_flag", { mode: "boolean" }).notNull().default(false),
+    safetyFlaggedAt: integer("safety_flagged_at"),
   },
   (t) => [check("workspaces_kind_check", sql`${t.kind} IN ('personal','team')`)],
 );
@@ -440,6 +443,10 @@ export const assets = sqliteTable(
     mature: integer("mature", { mode: "boolean" }).notNull().default(false),
     size: integer("size"),
     contentType: text("content_type"),
+    /** D-005 content rating (migration 0009) from core/safety: safe | suggestive | explicit; null = not rated yet. */
+    rating: text("rating", { enum: ["safe", "suggestive", "explicit"] }),
+    ratingConfidence: real("rating_confidence"),
+    ratingModel: text("rating_model"),
   },
   (t) => [
     index("assets_ws").on(t.workspaceId, t.kind, sql`${t.createdAt} DESC`),
@@ -639,6 +646,40 @@ export const models = sqliteTable(
     index("models_synced").on(t.syncedAt),
     check("models_kind_check", sql`${t.kind} IN ('image','video','chat')`),
   ],
+);
+
+/** D-005 safety log (migration 0009): no prompt beyond a 200-character excerpt, no media. */
+export const safetyEvents = sqliteTable(
+  "safety_events",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id").notNull(),
+    userId: text("user_id"),
+    runId: text("run_id"),
+    jobId: text("job_id"),
+    stage: text("stage", { enum: ["pre", "post", "agent", "quote", "upload"] }).notNull(),
+    verdict: text("verdict", { enum: ["allow", "block"] }).notNull(),
+    /** JSON array of SafetyCode. */
+    codes: text("codes").notNull().default("[]"),
+    model: text("model"),
+    excerpt: text("excerpt"),
+    /** At least one hard-limit code (counts toward the review flag). */
+    hard: integer("hard", { mode: "boolean" }).notNull().default(false),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [index("safety_events_ws").on(t.workspaceId, t.hard, sql`${t.createdAt} DESC`), index("safety_events_time").on(sql`${t.createdAt} DESC`)],
+);
+
+/** Classifier assessments by content hash (migration 0009). */
+export const safetyCache = sqliteTable(
+  "safety_cache",
+  {
+    key: text("key").primaryKey(),
+    /** JSON assessment. */
+    value: text("value").notNull(),
+    expiresAt: integer("expires_at").notNull(),
+  },
+  (t) => [index("safety_cache_expiry").on(t.expiresAt)],
 );
 
 export type Workspace = typeof workspaces.$inferSelect;

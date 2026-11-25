@@ -63,12 +63,15 @@ describe("D1 migration", () => {
     const db = new DatabaseSync(":memory:");
     const dir = new URL("../migrations/d1/", import.meta.url);
     const files = readdirSync(dir).filter((f) => f.endsWith(".sql")).sort();
-    expect(files).toEqual(["0001_init.sql", "0002_models.sql", "0003_plan_names.sql", "0004_auth.sql", "0005_billing.sql", "0006_projects_assets.sql", "0007_runs.sql", "0008_agent.sql", "0010_uploads.sql"]);
+    expect(files).toEqual(["0001_init.sql", "0002_models.sql", "0003_plan_names.sql", "0004_auth.sql", "0005_billing.sql", "0006_projects_assets.sql", "0007_runs.sql", "0008_agent.sql", "0009_safety.sql", "0010_uploads.sql"]);
     for (const f of files) db.exec(readFileSync(new URL(f, dir), "utf8"));
     expectSchemaMatches(db, tablesOf(d1));
     expect(columnsIn(db, "models")).toEqual(["data", "hidden", "id", "kind", "mature", "price", "synced_at"]);
     expect(columnsIn(db, "user_prefs")).toContain("mature_content");
     expect(columnsIn(db, "workspaces")).toContain("mature_allowed");
+    // 0009 (D-005): review flag and content ratings.
+    expect(columnsIn(db, "workspaces")).toContain("safety_flag");
+    expect(columnsIn(db, "assets")).toEqual(expect.arrayContaining(["rating", "rating_confidence", "rating_model"]));
     // 0004: theme (D-010) and confirm threshold default 300 (D-006).
     expect(columnsIn(db, "user_prefs")).toContain("theme");
     db.exec("INSERT INTO user_prefs (user_id) VALUES ('usr_t')");
