@@ -21,7 +21,7 @@ async function digest(value: string): Promise<ArrayBuffer> {
 }
 
 /** Constant-time comparison (hashing first makes the lengths equal). */
-async function tokenMatches(given: string, expected: string): Promise<boolean> {
+export async function testTokenMatches(given: string, expected: string): Promise<boolean> {
   const [a, b] = (await Promise.all([digest(given), digest(expected)])).map((d) => new Uint8Array(d)) as [Uint8Array, Uint8Array];
   let diff = 0;
   for (let i = 0; i < a.length; i++) diff |= a[i]! ^ b[i]!;
@@ -36,7 +36,7 @@ export const testInbox = new Hono<AppEnv>().get("/inbox", async (c, next) => {
   if (!testInboxEnabled(c.env)) throw new ApiError(404, "NOT_FOUND", "Route not found", { path: c.req.path });
   const header = c.req.header("authorization") ?? "";
   const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
-  if (!token || !(await tokenMatches(token, c.env.TEST_INBOX_TOKEN!))) {
+  if (!token || !(await testTokenMatches(token, c.env.TEST_INBOX_TOKEN!))) {
     throw new ApiError(401, "UNAUTHENTICATED", "Invalid test inbox token");
   }
   return next();

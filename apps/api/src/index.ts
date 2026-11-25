@@ -21,6 +21,7 @@ import { hooks } from "./routes/hooks";
 import { realtime } from "./routes/realtime";
 import { workspace } from "./routes/workspace";
 import { testInbox } from "./routes/testInbox";
+import { testPlan } from "./routes/testPlan";
 import { projects, nodes, canvases } from "./routes/projects";
 import { assets, characters, voices } from "./routes/assets";
 import { uploads } from "./routes/uploads";
@@ -47,6 +48,7 @@ const api = new Hono<AppEnv>()
   .route("/billing", billing)
   .route("/stripe", stripeWebhook)
   .route("/test", testInbox)
+  .route("/test", testPlan)
   .route("/projects", projects)
   .route("/nodes", nodes)
   .route("/canvases", canvases)
