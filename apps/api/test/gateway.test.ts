@@ -107,6 +107,12 @@ describe("gateway subscribe/unsubscribe", () => {
     // Still connected.
     expect((await b.request("ping", null)).type).toBe("pong");
 
+    // A repeated subscribe on the same socket (a second tab joining through the shared hub)
+    // gets its own `subscribed` reply, matched by that request's id.
+    const again = await a.request("subscribe", { channel: "project", projectId });
+    expect(again).toMatchObject({ type: "subscribed", projectId, payload: { projectId, revision: 0 } });
+    expect(again.id).not.toBe(sub.id);
+
     const bad = await a.request("subscribe", { channel: "project" });
     expect(bad.payload).toMatchObject({ code: "BAD_MESSAGE" });
 

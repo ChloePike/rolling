@@ -406,7 +406,7 @@ export async function commitJob(env: Env, ctx: JobContext, stored: Stored, prepa
     env.DB.prepare("UPDATE run_items SET status = 'succeeded', updated_at = ? WHERE run_id = ? AND ref = ?").bind(now, ctx.runId, ctx.ref),
   ]);
   await refreshRun(env.DB, ctx.runId, now);
-  if (settled.ok) await pushCredits(env, { created_by: ctx.createdBy, project_id: ctx.projectId }, settled.value.balance);
+  if (settled.ok) await pushCredits(env, { created_by: ctx.createdBy, project_id: ctx.projectId, workspace_id: ctx.workspaceId }, settled.value.balance);
   await quietly("activity", () => p.hub(ctx.createdBy).broadcast("activity.updated", { runId: ctx.runId, jobId: ctx.jobId }));
   return { spent, version };
 }
@@ -439,7 +439,7 @@ export async function failJob(env: Env, ctx: JobContext, error: JobError): Promi
     await quietly("markFailed", () => room.markFailed({ nodeId: ctx.nodeId!, jobId: ctx.jobId, refunded, reason: error.message }));
   }
   await refreshRun(env.DB, ctx.runId, now);
-  if (released.ok) await pushCredits(env, { created_by: ctx.createdBy, project_id: ctx.projectId }, released.value.balance);
+  if (released.ok) await pushCredits(env, { created_by: ctx.createdBy, project_id: ctx.projectId, workspace_id: ctx.workspaceId }, released.value.balance);
   await quietly("activity", () => p.hub(ctx.createdBy).broadcast("activity.updated", { runId: ctx.runId, jobId: ctx.jobId }));
   return { refunded };
 }

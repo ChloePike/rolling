@@ -369,8 +369,9 @@ export async function advanceStalledRuns(env: Env, now = Date.now()): Promise<{ 
 }
 
 /** Live balance push (D-003): the user socket and, for canvas runs, the project socket. */
-export async function pushCredits(env: Env, run: Pick<RunRow, "created_by" | "project_id">, balance: { plan: number; purchased: number; held: number }): Promise<void> {
-  const payload = { balance: balance.plan + balance.purchased, held: balance.held, plan: balance.plan, purchased: balance.purchased };
+export async function pushCredits(env: Env, run: Pick<RunRow, "created_by" | "project_id" | "workspace_id">, balance: { plan: number; purchased: number; held: number }): Promise<void> {
+  // workspaceId lets clients with several workspaces apply the balance to the right one.
+  const payload = { workspaceId: run.workspace_id, balance: balance.plan + balance.purchased, held: balance.held, plan: balance.plan, purchased: balance.purchased };
   const p = ports(env);
   await quietly("credits.changed hub", () => p.hub(run.created_by).broadcast("credits.changed", payload));
   if (run.project_id) await quietly("credits.changed room", () => p.room(run.project_id!).broadcast("credits.changed", payload));

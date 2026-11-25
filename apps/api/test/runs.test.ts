@@ -616,7 +616,7 @@ describe("runs: live events", () => {
     expect(progress).toContain(0.4);
     const credit = room.messages.filter((m) => m.type === "credits.changed").map((m) => m.payload);
     expect(credit.length).toBeGreaterThanOrEqual(2);
-    expect(credit.at(-1)).toMatchObject({ balance: await available(ws), held: 0 });
+    expect(credit.at(-1)).toMatchObject({ workspaceId: ws, balance: await available(ws), held: 0 });
     await waitFor("hub credits", async () => hub.messages.some((m) => m.type === "credits.changed"));
     expect(hub.messages.some((m) => m.type === "activity.updated")).toBe(true);
     room.close();
