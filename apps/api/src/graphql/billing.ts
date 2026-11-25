@@ -13,8 +13,10 @@ export const billingTypeDefs = /* GraphQL */ `
   }
 
   type Billing {
-    "starter, plus or pro; null without an active plan."
+    "starter, plus, pro or team; null without an active plan."
     plan: String
+    "Team (D-013): purchased seats and seats in use (members + pending invites); null on personal plans."
+    seats: Seats
     "month or year."
     interval: String
     "Stripe subscription status, or null without a subscription."
@@ -25,6 +27,11 @@ export const billingTypeDefs = /* GraphQL */ `
     periodEnd: Float
     balance: CreditBalance!
     autoTopUp: AutoTopUp
+  }
+
+  type Seats {
+    purchased: Int!
+    used: Int!
   }
 
   type CreditBalance {

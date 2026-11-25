@@ -90,7 +90,7 @@ interface MembershipRow {
   plan: string | null;
 }
 
-const PLAN_IDS: readonly string[] = ["starter", "plus", "pro"];
+const PLAN_IDS: readonly string[] = ["starter", "plus", "pro", "team"];
 
 /** SQL fragment: the active plan of workspace `ws` at time `?now`. */
 export const ACTIVE_PLAN_SQL = (wsColumn: string, nowParam: string) =>

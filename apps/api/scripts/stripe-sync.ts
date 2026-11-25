@@ -6,11 +6,15 @@
  * takes over the lookup key (`transfer_lookup_key`) and the old one is archived;
  * existing subscriptions keep their old price until changed.
  *
+ * Team (D-013) is a base price (`rolling_team_<interval>`, product
+ * `rolling_plan_team`) plus a per-seat price (`rolling_team_seat_<interval>`,
+ * product `rolling_plan_team_seat`) whose quantity is seats − 1.
+ *
  *   STRIPE_SECRET_KEY=sk_test_… pnpm --filter @rolling/api stripe:sync [--dry-run]
  *
  * Top-ups need no catalog: Checkout uses `price_data` for the chosen amount.
  */
-import { StripeClient, StripeError, stripePlanPrices } from "@rolling/core/billing";
+import { StripeClient, StripeError, stripePlanPrices, stripeSeatPrices, TEAM_SEAT_PRODUCT_ID } from "@rolling/core/billing";
 import { PLANS, type PlanId } from "@rolling/core/pricing/config";
 
 const dryRun = process.argv.includes("--dry-run");
@@ -22,8 +26,8 @@ if (!key) {
 const appName = process.env.APP_NAME ?? "Rolling";
 const stripe = new StripeClient({ secretKey: key, apiVersion: process.env.STRIPE_API_VERSION || undefined, baseUrl: process.env.STRIPE_API_BASE || undefined });
 
-async function ensureProduct(plan: PlanId, productId: string): Promise<void> {
-  const name = `${appName} ${PLANS[plan].label}`;
+async function ensureProduct(plan: PlanId | "team_seat", productId: string): Promise<void> {
+  const name = plan === "team_seat" ? `${appName} Team seat` : `${appName} ${PLANS[plan].label}`;
   try {
     const p = await stripe.getProduct(productId);
     if (p.name !== name || p.metadata?.plan !== plan || !p.active) {
@@ -38,8 +42,13 @@ async function ensureProduct(plan: PlanId, productId: string): Promise<void> {
 }
 
 async function main() {
-  const prices = stripePlanPrices();
-  for (const plan of new Set(prices.map((p) => p.planId))) await ensureProduct(plan, prices.find((p) => p.planId === plan)!.productId);
+  const planPrices = stripePlanPrices();
+  for (const plan of new Set(planPrices.map((p) => p.planId))) await ensureProduct(plan, planPrices.find((p) => p.planId === plan)!.productId);
+  await ensureProduct("team_seat", TEAM_SEAT_PRODUCT_ID);
+  const prices: { lookupKey: string; productId: string; unitAmount: number; currency: "usd"; interval: "month" | "year"; metadata: Record<string, string> }[] = [
+    ...planPrices.map((p) => ({ ...p, metadata: { plan: p.planId, interval: p.interval } })),
+    ...stripeSeatPrices().map((p) => ({ ...p, metadata: { plan: "team_seat", interval: p.interval } })),
+  ];
   for (const want of prices) {
     const existing = (await stripe.listPricesByLookupKeys([want.lookupKey])).data.find((p) => p.lookup_key === want.lookupKey);
     const productOf = existing ? (typeof existing.product === "string" ? existing.product : existing.product.id) : null;
@@ -65,7 +74,7 @@ async function main() {
         recurring: { interval: want.interval },
         lookup_key: want.lookupKey,
         transfer_lookup_key: true,
-        metadata: { plan: want.planId, interval: want.interval },
+        metadata: want.metadata,
       },
       `price:${want.lookupKey}:${want.unitAmount}:${want.currency}`,
     );

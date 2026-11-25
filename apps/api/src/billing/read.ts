@@ -2,10 +2,11 @@
 import type { AutoTopUpSettings, Balance } from "@rolling/core/credits";
 import { ApiError } from "../lib/errors";
 import { creditAccount } from "./credits";
-import { latestSubscription } from "./stripe";
+import type { PlanId } from "@rolling/core/pricing/config";
+import { isLive, latestSubscription, seatsInUse } from "./stripe";
 
 export interface BillingSummary {
-  plan: "starter" | "plus" | "pro" | null;
+  plan: PlanId | null;
   interval: "month" | "year" | null;
   /** Stripe subscription status (`active`, `trialing`, `past_due`, `canceled`, …) or null without a subscription. */
   status: string | null;
@@ -16,11 +17,17 @@ export interface BillingSummary {
   periodEnd: number | null;
   balance: Balance;
   autoTopUp: AutoTopUpSettings | null;
+  /** Team (D-013): purchased seats and seats in use (members + pending invites); null on personal plans or without a plan. */
+  seats: { purchased: number; used: number } | null;
+  /** Start of the current period (epoch ms), for the prorated seat estimate. */
+  periodStart: number | null;
 }
 
 export async function billingSummary(env: Env, workspaceId: string): Promise<BillingSummary> {
   const [sub, account] = await Promise.all([latestSubscription(env, workspaceId), creditAccount(env, workspaceId).summary()]);
-  const live = sub && ["active", "trialing", "past_due"].includes(sub.status) && sub.current_period_end > Date.now();
+  const live = isLive(sub);
+  const team = live && sub.plan === "team";
+  const used = team ? (await seatsInUse(env.DB, workspaceId)).used : 0;
   return {
     plan: live ? sub.plan : null,
     interval: live ? sub.interval : null,
@@ -30,6 +37,8 @@ export async function billingSummary(env: Env, workspaceId: string): Promise<Bil
     periodEnd: sub?.current_period_end ?? null,
     balance: account.balance,
     autoTopUp: account.autoTopUp,
+    seats: team ? { purchased: Math.max(1, sub.seats ?? 1), used } : null,
+    periodStart: sub?.current_period_start ?? null,
   };
 }
 

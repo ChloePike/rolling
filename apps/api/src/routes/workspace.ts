@@ -1,13 +1,13 @@
 /**
  * Workspace members and invites (M1) for the current workspace (the
- * `x-workspace-id` header, default personal). Seats come from the plan (D-006):
- * Starter and Plus 1, Pro 10.
+ * `x-workspace-id` header, default personal). Only Team workspaces invite
+ * (D-013): seats are purchased on the Team subscription; members (owner
+ * included) and pending invites each use one.
  */
 import { Hono } from "hono";
 import { z } from "zod";
 import { INVITE_ROLES, ROLES } from "@rolling/core/auth/roles";
 import { newId } from "@rolling/core/ids";
-import { PLANS } from "@rolling/core/pricing/config";
 import type { AppEnv } from "../env";
 import { requireRole, requireUser, type AuthContext } from "../auth/context";
 import { authBaseUrl } from "../auth/betterAuth";
@@ -15,6 +15,7 @@ import { enqueueEmail } from "../auth/email";
 import { personalWorkspaceId } from "../auth/workspace";
 import { limitOrThrow, sha256Hex } from "../auth/rateLimit";
 import { ApiError } from "../lib/errors";
+import { isLive, latestSubscription, seatsInUse } from "../billing/stripe";
 import { validate } from "../lib/validate";
 
 export const INVITE_TTL_DAYS = 7;
@@ -63,19 +64,10 @@ function randomToken(): string {
   return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-function seatLimit(auth: AuthContext): number {
-  return auth.plan ? PLANS[auth.plan].seats : 1;
-}
-
-async function seatsUsed(db: D1Database, workspaceId: string, now: number): Promise<{ members: number; pending: number }> {
-  const row = await db
-    .prepare(
-      `SELECT (SELECT COUNT(*) FROM workspace_members WHERE workspace_id = ?1) AS members,
-              (SELECT COUNT(*) FROM workspace_invites WHERE workspace_id = ?1 AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > ?2) AS pending`,
-    )
-    .bind(workspaceId, now)
-    .first<{ members: number; pending: number }>();
-  return { members: row?.members ?? 0, pending: row?.pending ?? 0 };
+/** Purchased seats of a live Team subscription; null when the workspace is not on Team (D-013). */
+async function teamSeats(env: Env, workspaceId: string, now: number): Promise<number | null> {
+  const sub = await latestSubscription(env, workspaceId);
+  return isLive(sub, now) && sub.plan === "team" ? Math.max(1, sub.seats ?? 1) : null;
 }
 
 function inviteView(r: InviteRow) {
@@ -126,6 +118,7 @@ export const workspace = new Hono<AppEnv>()
       ).bind(auth.workspaceId, now),
     ]);
     const memberRows = (members?.results ?? []) as MemberRow[];
+    const purchased = await teamSeats(c.env, auth.workspaceId, now);
     const inviteRows = auth.role === "owner" ? ((invites?.results ?? []) as InviteRow[]) : [];
     return c.json({
       members: memberRows.map((m) => ({
@@ -138,15 +131,17 @@ export const workspace = new Hono<AppEnv>()
         isYou: m.user_id === auth.userId,
       })),
       invites: inviteRows.map(inviteView),
-      seats: { used: memberRows.length + ((invites?.results ?? []) as unknown[]).length, limit: seatLimit(auth) },
+      // `limit` = purchased Team seats (1 without Team); `team` tells the client whether invites are possible.
+      seats: { used: memberRows.length + ((invites?.results ?? []) as unknown[]).length, limit: purchased ?? 1, team: purchased !== null },
     });
   })
   .post("/invites", validate("json", InviteBody), async (c) => {
     const auth = requireRole(c, "owner");
     const { email, role } = c.req.valid("json");
     await limitOrThrow(c.env.RATE_LIMIT, `invite:${auth.workspaceId}`);
-    if (!auth.plan) throw new ApiError(402, "NO_PLAN", "Inviting teammates needs the Pro plan", { requiredPlan: "pro" });
     const now = Date.now();
+    const seats = await teamSeats(c.env, auth.workspaceId, now);
+    if (seats === null) throw new ApiError(402, "TEAM_REQUIRED", "Inviting people needs the Team plan", { currentPlan: auth.plan });
     const existing = await c.env.DB.prepare(
       `SELECT 1 FROM workspace_members m JOIN users u ON u.id = m.user_id WHERE m.workspace_id = ?1 AND lower(u.email) = ?2`,
     )
@@ -160,10 +155,11 @@ export const workspace = new Hono<AppEnv>()
     )
       .bind(auth.workspaceId, email, now)
       .first<{ id: string }>();
-    const used = await seatsUsed(c.env.DB, auth.workspaceId, now);
-    const limit = seatLimit(auth);
-    if (used.members + used.pending - (pendingSame ? 1 : 0) >= limit) {
-      throw new ApiError(403, "SEAT_LIMIT_REACHED", "Your plan has no free seats", { seats: limit, used: used.members + used.pending, requiredPlan: "pro" });
+    const inUse = await seatsInUse(c.env.DB, auth.workspaceId, now);
+    const used = inUse.used - (pendingSame ? 1 : 0);
+    if (used >= seats) {
+      // `needed`: the total seats this invite requires (open "Add seats" with it).
+      throw new ApiError(402, "SEATS_REQUIRED", "Add a seat to invite another person", { seats, used, needed: used + 1 });
     }
 
     const id = newId("invite");
@@ -221,6 +217,11 @@ export const workspace = new Hono<AppEnv>()
     if (!auth.user?.email || auth.user.email.toLowerCase() !== row.email.toLowerCase()) {
       throw new ApiError(403, "FORBIDDEN", "This invite is for a different email address", { email: row.email });
     }
+    // Accepting turns the invite's reserved seat into a member seat (D-013).
+    const seats = await teamSeats(c.env, row.workspace_id, now);
+    if (seats === null) throw new ApiError(402, "TEAM_REQUIRED", "This workspace is no longer on the Team plan", { currentPlan: null });
+    const members = (await seatsInUse(c.env.DB, row.workspace_id, now)).members;
+    if (members >= seats) throw new ApiError(402, "SEATS_REQUIRED", "This workspace has no free seat", { seats, used: members, needed: members + 1 });
     const [, updated] = await c.env.DB.batch([
       c.env.DB.prepare("INSERT OR IGNORE INTO workspace_members (workspace_id, user_id, role) VALUES (?1, ?2, ?3)").bind(row.workspace_id, auth.userId, row.role),
       c.env.DB.prepare("UPDATE workspace_invites SET accepted_at = ?2, accepted_by = ?3 WHERE id = ?1 AND accepted_at IS NULL").bind(row.id, now, auth.userId),

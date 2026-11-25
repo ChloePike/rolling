@@ -151,6 +151,7 @@ describe("GET /api/billing/plans", () => {
       ["starter", { month: 500, year: 4800 }],
       ["plus", { month: 1500, year: 14400 }],
       ["pro", { month: 4900, year: 47000 }],
+      ["team", { month: 7900, year: 75800 }],
     ]);
     expect(pub.body.topUp).toMatchObject({ minCents: 1000, maxCents: 1_000_000, presetsCents: [1000, 2500, 5000, 10000, 25000] });
     expect(pub.body.current).toBeNull();

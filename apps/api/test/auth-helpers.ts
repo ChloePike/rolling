@@ -70,10 +70,10 @@ export async function getMe(cookie: string, headers: Record<string, string> = {}
   return { res, body: (await res.json()) as any };
 }
 
-export async function grantPlan(workspaceId: string, plan: "starter" | "plus" | "pro" = "pro", status = "active"): Promise<void> {
+export async function grantPlan(workspaceId: string, plan: "starter" | "plus" | "pro" | "team" = "pro", status = "active", seats = 1): Promise<void> {
   await env.DB.prepare(
-    "INSERT INTO subscriptions (id, workspace_id, plan, interval, status, current_period_end, updated_at) VALUES (?1, ?2, ?3, 'month', ?4, ?5, 0)",
+    "INSERT INTO subscriptions (id, workspace_id, plan, interval, status, current_period_end, updated_at, seats) VALUES (?1, ?2, ?3, 'month', ?4, ?5, 0, ?6)",
   )
-    .bind(`sub_${crypto.randomUUID()}`, workspaceId, plan, status, Date.now() + 30 * 86_400_000)
+    .bind(`sub_${crypto.randomUUID()}`, workspaceId, plan, status, Date.now() + 30 * 86_400_000, seats)
     .run();
 }

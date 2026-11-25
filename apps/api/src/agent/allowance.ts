@@ -4,7 +4,7 @@
  * (`GET /api/agent/allowance`, WS `agent.allowance`). Public LLM ids only.
  */
 import { defaultTurnEstimates } from "@rolling/agent";
-import { AGENT_ALLOWANCE_USD, agentAllowancePeriod, turnsLeft, type ListingModel, type PlanId } from "@rolling/core";
+import { agentAllowancePeriod, planAgentAllowanceUsd, turnsLeft, type ListingModel, type PlanId } from "@rolling/core";
 import type { AgentPeriodInput } from "@rolling/core/credits";
 import { creditAccount } from "../billing/credits";
 import { latestSubscription } from "../billing/stripe";
@@ -26,11 +26,11 @@ export interface AllowanceView {
   models: AllowanceModelView[];
 }
 
-/** Allowance and period for a workspace (`current_period_start` monthly slices, else the UTC calendar month). */
+/** Allowance (plan, Team by seats) and period for a workspace (`current_period_start` monthly slices, else the UTC calendar month). */
 export async function allowancePeriod(env: Env, workspaceId: string, plan: PlanId | null, now = Date.now()): Promise<AgentPeriodInput> {
   const sub = await latestSubscription(env, workspaceId).catch(() => null);
   const { start, resetsAt } = agentAllowancePeriod(now, sub?.current_period_start ?? null);
-  return { allowanceUsd: plan ? AGENT_ALLOWANCE_USD[plan] : 0, periodStart: start, resetsAt };
+  return { allowanceUsd: plan ? planAgentAllowanceUsd(plan, sub?.seats ?? 1) : 0, periodStart: start, resetsAt };
 }
 
 export async function chatModelsOf(env: Env): Promise<ListingModel[]> {

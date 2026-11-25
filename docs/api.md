@@ -52,7 +52,7 @@ Signed-out callers of member routes get `401 UNAUTHENTICATED`. The current works
 }
 ```
 
-- `plan` when the workspace has an active plan (subscription `active`/`trialing`, period not over): `{ id: "starter"|"plus"|"pro", label, interval: "month"|"year", status, currentPeriodEnd, cancelAtPeriodEnd, perks: { monthlyCredits, topUpBonus, concurrentJobs, maxVideoResolution, maxImageResolution, voiceCloning, seats } }` (perks from `PLANS`, D-006).
+- `plan` when the workspace has an active plan (subscription `active`/`trialing`, period not over): `{ id: "starter"|"plus"|"pro"|"team", label, interval: "month"|"year", status, currentPeriodEnd, cancelAtPeriodEnd, perks: { monthlyCredits, topUpBonus, concurrentJobs, maxVideoResolution, maxImageResolution, voiceCloning, seats } }` (perks from `PLANS`, D-006; Team `monthlyCredits`, `concurrentJobs` and `seats` follow purchased seats, D-013).
 - `isMember` = active plan (D-007). `matureAllowed` = member && `prefs.matureContent` && `workspace.matureAllowed` (D-005).
 - `balance` from `CreditAccount.balance()`; zeros until that RPC is available.
 - Prefs values: `language` ∈ en, ja, zh-TW, zh-HK, ko, id, th, vi, es, pt-BR, de, fr; `currency` ∈ USD, EUR, GBP, JPY, TWD, HKD, KRW, IDR, THB, VND, BRL; `creationMode` ∈ simple, advanced; `defaultRatio` ∈ 16:9, 9:16, 1:1, 4:5, 21:9; `theme` ∈ system, light, dark (D-010); `confirmThreshold` integer 0–100000 credits (0 = always confirm); `notifications` partial `{ done, low, renewal, product }` booleans, merged. Sign-up defaults: language and currency from `Accept-Language` (unsupported → en / USD), the rest as shown above.
@@ -69,6 +69,8 @@ M2. All amounts in credits are integers (1 credit = $0.01 retail, D-006); money 
 | GET | `/api/billing` | any member | Billing summary (below) |
 | POST | `/api/billing/checkout` | owner (plan), editor (topUp) | Body below → `{ url, sessionId, credits? }`; redirect the window to `url` |
 | GET | `/api/billing/checkout/:sessionId` | any member | Outcome for the return page (below) |
+| GET | `/api/billing/seats/preview?seats=N` | owner | Team (D-013): `{ seats, current, used, interval, prorationCents, renewalCents, periodEnd, addedMonthlyCredits }`. `prorationCents` estimates the charge now for added seats (Stripe invoices the exact amount); `renewalCents` = base + (seats − 1) × seat price. Not on Team → `402 TEAM_REQUIRED { currentPlan }` |
+| PATCH | `/api/billing/seats` | owner | Team (D-013): `{ seats }` (members incl. owner, 1..200) → `{ seats: { purchased, used }, granted, changed, balance? }`. Increase: Stripe `proration_behavior: always_invoice` + `payment_behavior: pending_if_incomplete` (charged now, applied only once paid; declined → `402 PAYMENT_FAILED`, seats unchanged); `granted` = prorated plan credits for the added seats. Decrease: `proration_behavior: none` (no refund; the next invoice charges fewer seats). Below seats in use → `409 SEATS_IN_USE { seats, used }`. Not on Team → `402 TEAM_REQUIRED { currentPlan }`. Optional `Idempotency-Key` header |
 | POST | `/api/billing/portal` | owner | `{ returnTo? }` → `{ url }` (Stripe customer portal: card, plan change, cancel, invoices). No Stripe customer yet → `402 NO_PLAN` |
 | PATCH | `/api/billing/auto-topup` | owner | `{ enabled, thresholdCredits? = 200, amountCents? = 1000 }` → `{ autoTopUp: { enabled, thresholdCredits, amountCents } }`. Enabling without a plan → `402 NO_PLAN`; amount outside $10–$10,000 → `400 VALIDATION_FAILED` |
 | GET | `/api/billing/ledger` | any member | `?first=1..100 (25)&after=<cursor>` → `{ lines: LedgerLine[], pageInfo: { hasNextPage, endCursor } }`, newest first |
@@ -82,7 +84,8 @@ M2. All amounts in credits are integers (1 credit = $0.01 retail, D-006); money 
 {
   "currency": "USD",
   "plans": [{ "id": "plus", "label": "Plus", "monthlyCredits": 800, "prices": { "month": 1500, "year": 14400 }, "yearlyDiscount": 0.2,
-              "topUpBonus": 0.05, "concurrentJobs": 5, "maxVideoResolution": "1080p", "maxImageResolution": "2K", "voiceCloning": true, "seats": 1 }],
+              "topUpBonus": 0.05, "concurrentJobs": 5, "maxVideoResolution": "1080p", "maxImageResolution": "2K", "voiceCloning": true, "kind": "personal", "seats": 1 }],
+  "teamSeat": { "prices": { "month": 2500, "year": 24000 }, "monthlyCredits": 500, "concurrentJobs": 2, "maxConcurrentJobs": 30, "agentAllowanceUsd": 3, "minSeats": 1, "maxSeats": 200 },
   "topUp": { "minCents": 1000, "maxCents": 1000000, "tiers": [{ "minCents": 1000, "bonus": 0 }, { "minCents": 2500, "bonus": 0.04 }, { "minCents": 5000, "bonus": 0.1 }, { "minCents": 10000, "bonus": 0.15 }], "presetsCents": [1000, 2500, 5000, 10000, 25000] },
   "autoTopUp": { "thresholdCredits": 200, "amountCents": 1000 },
   "current": { "plan": "plus", "isMember": true }
@@ -95,28 +98,31 @@ M2. All amounts in credits are integers (1 credit = $0.01 retail, D-006); money 
 ```json
 { "plan": "plus", "interval": "month", "status": "active", "renewsAt": 1767225600000, "cancelAtPeriodEnd": false, "periodEnd": 1767225600000,
   "balance": { "plan": 453, "purchased": 2725, "held": 0, "planExpiresAt": 1767225600000 },
-  "autoTopUp": { "enabled": true, "thresholdCredits": 200, "amountCents": 1000 } }
+  "autoTopUp": { "enabled": true, "thresholdCredits": 200, "amountCents": 1000 },
+  "seats": null, "periodStart": 1764633600000 }
 ```
+`seats` is `{ purchased, used }` on Team (used = members incl. owner + pending invites), `null` otherwise (D-013).
 `plan`/`interval` are `null` without a live subscription (`active`, `trialing` or `past_due` and period not over); `renewsAt` is `null` when the plan ends at period end. `balance.plan` and `balance.purchased` are available credits; `held` is reserved by running jobs. `autoTopUp` is `null` until set.
 
 `POST /api/billing/checkout` body (Zod, discriminated by `kind`):
 
 ```ts
-{ kind: "plan", planId: "starter" | "plus" | "pro", interval: "month" | "year", resume?: { runQuoteId: string }, returnTo?: string }
+{ kind: "plan", planId: "starter" | "plus" | "pro" | "team", interval: "month" | "year", seats?: number /* Team only, 1..200, default 1 */, resume?: { runQuoteId: string }, returnTo?: string }
 { kind: "topUp", amountCents: number /* whole cents, 1000..1000000 */, resume?: { runQuoteId: string }, returnTo?: string }
 ```
 - `returnTo` is an app path (default `/settings/billing`). Stripe returns to `<returnTo>?checkout=success&session_id=<id>` or `<returnTo>?checkout=canceled`.
-- Plan: a workspace that already has a live plan → `409 CONFLICT` `data.reason = "already_subscribed"` (change plans in the portal). The Stripe price is found by lookup key `rolling_<plan>_<interval>`.
+- Plan: a workspace that already has a live plan → `409 CONFLICT` `data.reason = "already_subscribed"` (change plans in the portal; Team seats with `PATCH /api/billing/seats`). The Stripe price is found by lookup key `rolling_<plan>_<interval>`.
+- Team (D-013): one subscription with two items, `rolling_team_<interval>` (quantity 1) and `rolling_team_seat_<interval>` (quantity seats − 1, omitted for 1 seat). Response adds `{ seats, amountCents }`. `seats` on a personal plan (≠ 1) → `400 VALIDATION_FAILED`; fewer seats than members + pending invites → `402 SEATS_REQUIRED { seats, used, needed }`. A workspace with a live **personal** plan switches in place: the subscription's items change (prorated, charged now, `pending_if_incomplete`) and the response is `{ url: null, sessionId: null, switched: true, planId: "team", interval, seats, amountCents }` (no redirect; declined → `402 PAYMENT_FAILED`). The workspace keeps its id, projects and credits and becomes `kind: "team"`; `invoice.paid` grants Team credits.
 - Top-up: members only → `402 NO_PLAN`; amount out of range or not whole cents → `400 VALIDATION_FAILED` `data: { field: "amountCents", minCents, maxCents }`. Response includes `credits` (base + tier bonus + plan bonus). The card is saved for auto top-ups.
 - Errors: `401 UNAUTHENTICATED`, `403 FORBIDDEN` (role), `503 INTERNAL` when Stripe is not configured.
 
-`GET /api/billing/checkout/:sessionId` → `{ sessionId, kind: "plan" | "topUp", status: "open" | "complete" | "expired", planId, interval, amountCents, credits, completedAt, resume: { runQuoteId } | null }`. `complete` means the webhook has applied it (subscription stored / credits added); poll until then, then continue the pending run with `resume.runQuoteId` (re-quote on `QUOTE_EXPIRED`). Other workspaces' sessions → `404`.
+`GET /api/billing/checkout/:sessionId` → `{ sessionId, kind: "plan" | "topUp", status: "open" | "complete" | "expired", planId, interval, amountCents, credits, completedAt, seats /* Team, else null */, resume: { runQuoteId } | null }`. `complete` means the webhook has applied it (subscription stored / credits added); poll until then, then continue the pending run with `resume.runQuoteId` (re-quote on `QUOTE_EXPIRED`). Other workspaces' sessions → `404`.
 
 `LedgerLine` (REST and GraphQL): `{ id, kind, bucket: "plan" | "purchased", amount, userId, runId, jobId, stripeRef, note, createdAt }`. `amount` is signed:
 
 | kind | amount | meaning |
 |---|---|---|
-| `grant` | + plan | plan credits for a period (`note`: `<plan>:<interval>`) |
+| `grant` | + plan | plan credits for a period (`note`: `<plan>:<interval>`); Team seats added mid-slice (`note`: `team:seats:<from>-><to>`, prorated) |
 | `purchase` | + purchased | top-up (`stripeRef`: PaymentIntent id; `note`: `checkout` or `auto`) |
 | `hold` | − | reserved for a job (moves to `held`) |
 | `settle` | − | spent from the job's hold (the run's cost is the sum of its `settle` lines) |
@@ -132,8 +138,8 @@ Webhook (`POST /api/stripe/webhook`): raw body, `Stripe-Signature` verified with
 |---|---|
 | `checkout.session.completed`, `checkout.session.async_payment_succeeded` | plan: store the subscription (`subscriptions`, re-read from Stripe); top-up (paid): verify `amount_total` against the session metadata, recompute credits with `quoteTopUp`, `CreditAccount.purchase` keyed by the PaymentIntent |
 | `checkout.session.expired` | checkout row → `expired` |
-| `invoice.paid` | plan credits for the invoice period (`CreditAccount.grant`, leftover plan credits expire); paid upgrade mid-period grants the new plan; other plan changes update limits only; late invoices for older periods are ignored |
-| `customer.subscription.created`, `.updated` | store status, plan, period, `cancel_at_period_end` |
+| `invoice.paid` | plan credits for the invoice period (`CreditAccount.grant` with the Team seats, leftover plan credits expire); paid upgrade mid-period (compared with the plan the slice was granted for) grants the new plan; other plan changes update limits and Team seats (`setSeats`, prorated credits for added seats) ; late invoices for older periods are ignored |
+| `customer.subscription.created`, `.updated` | store status, plan, period, `cancel_at_period_end`, `seats` (seat item quantity + 1); active: limits follow the plan and `CreditAccount.setSeats(seats, "seats:<event id>")` — added seats get the prorated share of 500 credits each for the current month slice, once per slice (removing and re-adding a seat grants nothing new) |
 | `customer.subscription.deleted` | status `canceled`; plan credits expire (purchased stay) |
 | `invoice.payment_failed` | store status (e.g. `past_due`); email the owner (`billing.payment_failed`) |
 | `payment_intent.succeeded` | auto top-up backup: credits once (same key as BillingWorkflow) |
@@ -163,14 +169,14 @@ ledger(first: Int = 25, after: String): LedgerConnection!   # edges { cursor nod
 ```
 
 ## Workspaces and team
-All act on the current workspace (`x-workspace-id`, default personal). Seats per plan (D-006): Starter 1, Plus 1, Pro 10; members plus pending invites count.
+All act on the current workspace (`x-workspace-id`, default personal). Only Team workspaces invite (D-013): seats are bought on the Team subscription; members (owner included) and pending invites each use one. Accepting an invite turns its seat into a member seat; removing a member or revoking an invite frees one (the purchased count stays until the owner lowers it).
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/api/workspace/members` | Any member → `{ members: [{ userId, name, email, image, role, monthlyCreditLimit, isYou }], invites: [{ id, email, role, invitedBy, createdAt, expiresAt }] (owners only; others get []), seats: { used, limit } }` |
-| POST | `/api/workspace/invites` | Owner. `{ email, role: "editor"\|"viewer" }` → `201 { invite }` and an email with the link `<PUBLIC_APP_URL>/invite/<token>` (valid 7 days). A new invite to the same address replaces the pending one. Errors: `402 NO_PLAN` (no plan), `403 SEAT_LIMIT_REACHED` (`data: { seats, used, requiredPlan: "pro" }`), `409 CONFLICT` (already a member), `403 FORBIDDEN` (not owner) |
+| GET | `/api/workspace/members` | Any member → `{ members: [{ userId, name, email, image, role, monthlyCreditLimit, isYou }], invites: [{ id, email, role, invitedBy, createdAt, expiresAt }] (owners only; others get []), seats: { used, limit, team } }`. `limit` = purchased Team seats (1 without Team); `team` = the workspace is on Team |
+| POST | `/api/workspace/invites` | Owner. `{ email, role: "editor"\|"viewer" }` → `201 { invite }` and an email with the link `<PUBLIC_APP_URL>/invite/<token>` (valid 7 days). A new invite to the same address replaces the pending one. Errors: `402 TEAM_REQUIRED` (`data: { currentPlan }`, null without a plan) → open "Start Team to invite people"; `402 SEATS_REQUIRED` (`data: { seats, used, needed }`, `needed` = total seats this invite requires) → open "Add seats"; `409 CONFLICT` (already a member), `403 FORBIDDEN` (not owner) |
 | GET | `/api/workspace/invites/lookup?token=` | No session needed → `{ workspace: { id, name }, inviterName, email, role, expiresAt, state: "pending"\|"accepted"\|"revoked"\|"expired" }`; `404` unknown token. For the `/invite/:token` screen |
-| POST | `/api/workspace/invites/accept` | Session required. `{ token }` → `{ workspace: { id, name, kind }, role }`. The signed-in email must match the invite (`403 FORBIDDEN`); used/expired/revoked → `409 CONFLICT` (`data.state`). Then switch with `x-workspace-id` |
+| POST | `/api/workspace/invites/accept` | Session required. `{ token }` → `{ workspace: { id, name, kind }, role }`. The signed-in email must match the invite (`403 FORBIDDEN`); used/expired/revoked → `409 CONFLICT` (`data.state`); the workspace left Team → `402 TEAM_REQUIRED`; no free seat → `402 SEATS_REQUIRED`. Then switch with `x-workspace-id` |
 | DELETE | `/api/workspace/invites/:id` | Owner; revokes a pending invite → `{ ok: true }` |
 | PATCH | `/api/workspace/members/:userId` | Owner. `{ role?: "owner"\|"editor"\|"viewer", monthlyCreditLimit?: integer ≥ 0 \| null }` → `{ member: { userId, role, monthlyCreditLimit } }`. The last owner cannot step down (`409`) |
 | DELETE | `/api/workspace/members/:userId` | Owner removes a member, or a member leaves (own id). Not the last owner, not your own personal workspace (`409`) → `{ ok: true }` |

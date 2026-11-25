@@ -3,7 +3,7 @@
  */
 import { Hono } from "hono";
 import { applyPrefsPatch, PrefsPatch, type Prefs } from "@rolling/core/auth/prefs";
-import { PLANS, type PlanId } from "@rolling/core/pricing/config";
+import { PLANS, planConcurrentJobs, planMonthlyCredits, type PlanId } from "@rolling/core/pricing/config";
 import type { AppEnv } from "../env";
 import { requireUser, type AuthContext } from "../auth/context";
 import { ApiError } from "../lib/errors";
@@ -41,6 +41,7 @@ interface SubscriptionRow {
   status: string;
   current_period_end: number;
   cancel_at_period_end: number;
+  seats: number | null;
 }
 
 function planView(sub: SubscriptionRow | null) {
@@ -54,13 +55,14 @@ function planView(sub: SubscriptionRow | null) {
     currentPeriodEnd: sub.current_period_end,
     cancelAtPeriodEnd: Boolean(sub.cancel_at_period_end),
     perks: {
-      monthlyCredits: p.monthlyCredits,
+      // Team perks scale with purchased seats (D-013).
+      monthlyCredits: planMonthlyCredits(sub.plan, sub.seats),
       topUpBonus: p.topUpBonus,
-      concurrentJobs: p.concurrentJobs,
+      concurrentJobs: planConcurrentJobs(sub.plan, sub.seats),
       maxVideoResolution: p.maxVideoResolution,
       maxImageResolution: p.maxImageResolution,
       voiceCloning: p.voiceCloning,
-      seats: p.seats,
+      seats: p.kind === "team" ? Math.max(1, sub.seats ?? 1) : 1,
     },
   };
 }
@@ -69,7 +71,7 @@ export async function mePayload(env: Env, auth: AuthContext) {
   const [sub, balance] = await Promise.all([
     auth.plan
       ? env.DB.prepare(
-          `SELECT plan, interval, status, current_period_end, cancel_at_period_end FROM subscriptions
+          `SELECT plan, interval, status, current_period_end, cancel_at_period_end, seats FROM subscriptions
            WHERE workspace_id = ?1 AND status IN ('active','trialing') AND current_period_end > ?2
            ORDER BY current_period_end DESC LIMIT 1`,
         )

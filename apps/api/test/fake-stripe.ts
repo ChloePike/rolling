@@ -3,7 +3,7 @@
  * (`STRIPE_API_BASE=https://stripe.test`). Records every call; holds
  * customers, checkout sessions and subscriptions; signs webhook events.
  */
-import { signStripePayload, stripePlanPrices, type StripeSubscription } from "@rolling/core/billing";
+import { signStripePayload, stripePlanPrices, stripeSeatPrices, type StripeSubscription } from "@rolling/core/billing";
 
 export const STRIPE_BASE = "https://stripe.test";
 export const WEBHOOK_SECRET = "whsec_test_rolling";
@@ -29,7 +29,7 @@ export class FakeStripe {
   realFetch = globalThis.fetch;
 
   priceFor(lookupKey: string) {
-    const p = stripePlanPrices().find((x) => x.lookupKey === lookupKey);
+    const p = [...stripePlanPrices(), ...stripeSeatPrices()].find((x) => x.lookupKey === lookupKey);
     if (!p) return null;
     return {
       id: `price_${lookupKey}`,
@@ -44,7 +44,9 @@ export class FakeStripe {
   }
 
   /** Creates a subscription as Stripe would after a plan checkout (2025+ shape: period on items). */
-  addSubscription(opts: { customer: string; lookupKey: string; start: number; end: number; status?: string; workspaceId?: string; id?: string }): StripeSubscription {
+  addSubscription(opts: { customer: string; lookupKey: string; start: number; end: number; status?: string; workspaceId?: string; id?: string; seatQuantity?: number }): StripeSubscription {
+    const period = { current_period_start: Math.floor(opts.start / 1000), current_period_end: Math.floor(opts.end / 1000) };
+    const interval = opts.lookupKey.endsWith("_year") ? "year" : "month";
     const sub = {
       id: opts.id ?? nextId("sub"),
       object: "subscription",
@@ -52,7 +54,12 @@ export class FakeStripe {
       status: opts.status ?? "active",
       cancel_at_period_end: false,
       default_payment_method: "pm_card_visa",
-      items: { data: [{ id: nextId("si"), price: this.priceFor(opts.lookupKey)!, current_period_start: Math.floor(opts.start / 1000), current_period_end: Math.floor(opts.end / 1000) }] },
+      items: {
+        data: [
+          { id: nextId("si"), price: this.priceFor(opts.lookupKey)!, quantity: 1, ...period },
+          ...(opts.seatQuantity ? [{ id: nextId("si"), price: this.priceFor(`rolling_team_seat_${interval}`)!, quantity: opts.seatQuantity, ...period }] : []),
+        ],
+      },
       metadata: opts.workspaceId ? { workspaceId: opts.workspaceId } : {},
     } as unknown as StripeSubscription;
     this.subscriptions.set(sub.id, sub);
@@ -95,6 +102,34 @@ export class FakeStripe {
     if (method === "GET" && (m = /^\/v1\/subscriptions\/([^/]+)$/.exec(p))) {
       const s = this.subscriptions.get(m[1]!);
       return s ? json(s) : json({ error: { message: "No such subscription", code: "resource_missing" } }, 404);
+    }
+    if (method === "POST" && (m = /^\/v1\/subscriptions\/([^/]+)$/.exec(p))) {
+      const s = this.subscriptions.get(m[1]!);
+      if (!s) return json({ error: { message: "No such subscription", code: "resource_missing" } }, 404);
+      // Items: `items[i][id]` (+ price / quantity / deleted) updates, `items[i][price]` alone adds.
+      const changes = new Map<number, Record<string, string>>();
+      for (const [k, v] of Object.entries(form)) {
+        const im = /^items\[(\d+)\]\[(\w+)\]$/.exec(k);
+        if (im) changes.set(Number(im[1]), { ...(changes.get(Number(im[1])) ?? {}), [im[2]!]: v });
+      }
+      const priceById = (id: string) => this.priceFor(id.replace(/^price_/, ""))!;
+      if (this.declineNextCharge && form.payment_behavior === "pending_if_incomplete") {
+        this.declineNextCharge = false;
+        return json({ ...s, pending_update: { subscription_items: [...changes.values()], expires_at: 0 } });
+      }
+      const first = s.items.data[0]!;
+      for (const ch of changes.values()) {
+        if (ch.id) {
+          const idx = s.items.data.findIndex((i) => i.id === ch.id);
+          if (idx < 0) continue;
+          if (ch.deleted === "true") s.items.data.splice(idx, 1);
+          else s.items.data[idx] = { ...s.items.data[idx]!, ...(ch.price ? { price: priceById(ch.price) } : {}), ...(ch.quantity ? { quantity: Number(ch.quantity) } : {}) } as never;
+        } else if (ch.price) {
+          s.items.data.push({ id: nextId("si"), price: priceById(ch.price), quantity: Number(ch.quantity ?? 1), current_period_start: first.current_period_start, current_period_end: first.current_period_end } as never);
+        }
+      }
+      s.metadata = { ...(s.metadata ?? {}), ...Object.fromEntries(Object.entries(form).filter(([k]) => k.startsWith("metadata[")).map(([k, v]) => [k.slice(9, -1), v])) };
+      return json({ ...s, pending_update: null });
     }
     if (method === "POST" && p === "/v1/payment_intents") {
       if (this.declineNextCharge) {

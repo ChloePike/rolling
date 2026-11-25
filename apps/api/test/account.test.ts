@@ -85,14 +85,19 @@ describe("workspaces, invites and roles", () => {
     const ownerMe = (await getMe(owner.cookie)).body;
     const ws = ownerMe.workspace.id;
 
-    // Without a plan: NO_PLAN. With Plus (1 seat): no free seat.
+    // D-013: only Team invites. Without a plan or on a personal plan (Pro included): TEAM_REQUIRED.
     const inviteeEmail = freshEmail("invitee");
-    expect(await (await send("POST", "/api/workspace/invites", owner.cookie, { email: inviteeEmail, role: "editor" })).json()).toMatchObject({ error: { code: "NO_PLAN" } });
-    await grantPlan(ws, "plus");
-    const full = await send("POST", "/api/workspace/invites", owner.cookie, { email: inviteeEmail, role: "editor" });
-    expect(full.status).toBe(403);
-    expect(await full.json()).toMatchObject({ error: { code: "SEAT_LIMIT_REACHED", data: { seats: 1 } } });
+    const none = await send("POST", "/api/workspace/invites", owner.cookie, { email: inviteeEmail, role: "editor" });
+    expect(none.status).toBe(402);
+    expect(await none.json()).toMatchObject({ error: { code: "TEAM_REQUIRED", data: { currentPlan: null } } });
     await grantPlan(ws, "pro");
+    expect(await (await send("POST", "/api/workspace/invites", owner.cookie, { email: inviteeEmail, role: "editor" })).json()).toMatchObject({ error: { code: "TEAM_REQUIRED", data: { currentPlan: "pro" } } });
+    // Team with one seat (the owner): SEATS_REQUIRED.
+    await grantPlan(ws, "team", "active", 1);
+    const full = await send("POST", "/api/workspace/invites", owner.cookie, { email: inviteeEmail, role: "editor" });
+    expect(full.status).toBe(402);
+    expect(await full.json()).toMatchObject({ error: { code: "SEATS_REQUIRED", data: { seats: 1, used: 1, needed: 2 } } });
+    await grantPlan(ws, "team", "active", 2);
 
     const created = await send("POST", "/api/workspace/invites", owner.cookie, { email: inviteeEmail.toUpperCase(), role: "editor" });
     expect(created.status).toBe(201);
@@ -108,7 +113,7 @@ describe("workspaces, invites and roles", () => {
 
     const members = await (await send("GET", "/api/workspace/members", owner.cookie)).json() as any;
     expect(members.invites).toHaveLength(1);
-    expect(members.seats).toEqual({ used: 2, limit: 10 });
+    expect(members.seats).toEqual({ used: 2, limit: 2, team: true });
 
     // Someone else cannot accept it.
     const stranger = await signIn(freshEmail("stranger"), { "cf-connecting-ip": freshIp() });
@@ -124,7 +129,7 @@ describe("workspaces, invites and roles", () => {
     expect(own.role).toBe("owner");
     expect(own.workspaces.map((w: any) => w.id)).toEqual([own.workspace.id, ws]);
     const switched = (await getMe(invitee.cookie, { "x-workspace-id": ws })).body;
-    expect(switched).toMatchObject({ workspace: { id: ws }, role: "editor", isMember: true, plan: { id: "pro" } });
+    expect(switched).toMatchObject({ workspace: { id: ws }, role: "editor", isMember: true, plan: { id: "team" } });
     const foreign = await getMe(invitee.cookie, { "x-workspace-id": "ws_01J0000000000000000000000Z" });
     expect(foreign.res.status).toBe(403);
     expect(foreign.body.error.code).toBe("FORBIDDEN");
@@ -154,7 +159,7 @@ describe("workspaces, invites and roles", () => {
   it("re-inviting replaces the pending invite; owners can revoke", async () => {
     const owner = await signIn(freshEmail("owner2"), { "cf-connecting-ip": freshIp() });
     const ws = (await getMe(owner.cookie)).body.workspace.id;
-    await grantPlan(ws, "pro");
+    await grantPlan(ws, "team", "active", 2);
     const email = freshEmail("re");
     const a = (await (await send("POST", "/api/workspace/invites", owner.cookie, { email, role: "viewer" })).json()) as any;
     const b = (await (await send("POST", "/api/workspace/invites", owner.cookie, { email, role: "editor" })).json()) as any;

@@ -88,13 +88,16 @@ export class SqlLedgerStore implements LedgerStore {
       periodEnd: numOrNull(r.period_end),
       autoTopUp: parseAutoTopUp(r.auto_topup),
       autoTopUpSeq: num(r.auto_topup_seq),
+      seats: Math.max(1, num(r.seats ?? 1)),
+      sliceSeats: Math.max(1, num(r.slice_seats ?? 1)),
+      grantedPlanId: strOrNull(r.granted_plan_id) as PlanId | null,
     };
   }
 
   putAccount(s: AccountState): void {
     this.sql.exec(
       `UPDATE balance SET plan = ?, purchased = ?, held = ?, plan_expires_at = ?, plan_id = ?, plan_interval = ?,
-         period_start = ?, period_end = ?, auto_topup = ?, auto_topup_seq = ? WHERE id = 1`,
+         period_start = ?, period_end = ?, auto_topup = ?, auto_topup_seq = ?, seats = ?, slice_seats = ?, granted_plan_id = ? WHERE id = 1`,
       s.plan,
       s.purchased,
       s.held,
@@ -105,6 +108,9 @@ export class SqlLedgerStore implements LedgerStore {
       s.periodEnd,
       s.autoTopUp ? JSON.stringify(s.autoTopUp) : null,
       s.autoTopUpSeq,
+      s.seats,
+      s.sliceSeats,
+      s.grantedPlanId,
     );
   }
 

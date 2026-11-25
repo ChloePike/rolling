@@ -24,6 +24,7 @@ import {
   type QuoteItemInput,
   type QuoteResult,
   type ReleaseResult,
+  type SeatsResult,
   type SettleResult,
   reconcile,
 } from "@rolling/core/credits";
@@ -60,6 +61,10 @@ export interface AccountSummary {
   periodStart: number | null;
   periodEnd: number | null;
   autoTopUp: AutoTopUpSettings | null;
+  /** Purchased seats (Team, D-013; 1 otherwise). */
+  seats: number;
+  /** Plan the current slice's credits were granted for. */
+  grantedPlanId: PlanId | null;
 }
 
 /**
@@ -109,7 +114,7 @@ export class CreditAccount extends DurableObject<Env> {
 
   async summary(): Promise<AccountSummary> {
     const s = this.ledger.account();
-    return { balance: this.ledger.balance(), planId: s.planId, interval: s.interval, periodStart: s.periodStart, periodEnd: s.periodEnd, autoTopUp: s.autoTopUp };
+    return { balance: this.ledger.balance(), planId: s.planId, interval: s.interval, periodStart: s.periodStart, periodEnd: s.periodEnd, autoTopUp: s.autoTopUp, seats: s.seats, grantedPlanId: s.grantedPlanId };
   }
 
   /** Recomputes balances from the ledger (nightly reconcile, tests). */
@@ -158,6 +163,11 @@ export class CreditAccount extends DurableObject<Env> {
 
   async setPlan(planId: PlanId): Promise<LedgerOutcome<Balance>> {
     return this.op(() => this.ledger.setPlan(planId));
+  }
+
+  /** Team seats changed (Stripe quantity + 1): limits follow, added seats get prorated plan credits (D-013). */
+  async setSeats(seats: number, idemKey: string): Promise<LedgerOutcome<SeatsResult>> {
+    return this.op(() => this.ledger.setSeats(seats, idemKey));
   }
 
   async setAutoTopUp(settings: AutoTopUpSettings): Promise<LedgerOutcome<AutoTopUpSettings>> {

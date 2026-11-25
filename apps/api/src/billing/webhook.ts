@@ -99,22 +99,28 @@ async function onInvoicePaid(env: Env, stripe: StripeClient, inv: StripeInvoice)
   if (!state) return { handled: false, note: "unknown subscription" };
   const account = creditAccount(env, state.workspaceId);
   if (inv.billing_reason === "subscription_update") {
-    const current = (await account.summary()).planId;
+    // Compare with the plan the current slice was granted for: `customer.subscription.updated`
+    // may already have moved the limits to the new plan.
+    const current = (await account.summary()).grantedPlanId;
     const upgraded = current === null || PLAN_ORDER.indexOf(state.planId) > PLAN_ORDER.indexOf(current);
     if (!upgraded || (inv.amount_paid ?? 0) <= 0) {
       unwrapLedger(await account.setPlan(state.planId));
+      // D-013: a paid Team seat change grants the prorated credits of added seats (once per slice).
+      unwrapLedger(await account.setSeats(state.seats, `seats:${inv.id}`));
       return { handled: true, note: "plan limits updated" };
     }
-    unwrapLedger(await account.grant({ planId: state.planId, interval: state.interval, start: state.periodStart, end: state.periodEnd }, `grant:${inv.id}`));
+    unwrapLedger(
+      await account.grant({ planId: state.planId, interval: state.interval, start: state.periodStart, end: state.periodEnd, seats: state.seats }, `grant:${inv.id}`),
+    );
     return { handled: true };
   }
   const line = maxLinePeriod(inv);
   const period = line ? { start: line.start * 1000, end: line.end * 1000 } : { start: state.periodStart, end: state.periodEnd };
-  unwrapLedger(await account.grant({ planId: state.planId, interval: state.interval, ...period }, `grant:${inv.id}`));
+  unwrapLedger(await account.grant({ planId: state.planId, interval: state.interval, ...period, seats: state.seats }, `grant:${inv.id}`));
   return { handled: true };
 }
 
-async function onSubscriptionChanged(env: Env, stripe: StripeClient, sub: StripeSubscription, deleted: boolean): Promise<WebhookOutcome> {
+async function onSubscriptionChanged(env: Env, stripe: StripeClient, sub: StripeSubscription, deleted: boolean, eventId: string): Promise<WebhookOutcome> {
   const state = await syncSubscription(env, stripe, sub.id);
   if (!state) return { handled: false, note: "unknown subscription" };
   const account = creditAccount(env, state.workspaceId);
@@ -129,6 +135,8 @@ async function onSubscriptionChanged(env: Env, stripe: StripeClient, sub: Stripe
     unwrapLedger(await account.cancelPlan(`cancel:${sub.id}`));
   } else if (state.status === "active" || state.status === "trialing") {
     unwrapLedger(await account.setPlan(state.planId));
+    // D-013: seat quantity changes; idempotent per event, added seats are granted once per slice.
+    unwrapLedger(await account.setSeats(state.seats, `seats:${eventId}`));
   }
   return { handled: true };
 }
@@ -168,9 +176,9 @@ export async function handleStripeEvent(env: Env, stripe: StripeClient, event: S
       return onPaymentFailed(env, stripe, obj);
     case "customer.subscription.created":
     case "customer.subscription.updated":
-      return onSubscriptionChanged(env, stripe, obj, false);
+      return onSubscriptionChanged(env, stripe, obj, false, event.id);
     case "customer.subscription.deleted":
-      return onSubscriptionChanged(env, stripe, obj, true);
+      return onSubscriptionChanged(env, stripe, obj, true, event.id);
     case "payment_intent.succeeded":
       return onPaymentIntentSucceeded(env, obj);
     default:
