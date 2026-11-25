@@ -19,6 +19,7 @@ import { resolutionOptions, useToolPlan } from '../shared/plan';
 import type { ComposerPill } from '../types';
 import styles from './Avatar.module.css';
 import { isMockApi } from '@/features/overlays/backend';
+import { avatarHints } from '../shared/promptHints';
 
 /** Length of an audio file from its metadata (null when the browser can't tell). */
 function audioSeconds(file: File): Promise<number | null> {
@@ -64,6 +65,7 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
   const rawFeed = useToolFeed('avatar');
   const [p, setP] = useState({ model: 'Auto', rate: 1, emo: 'warm', pause: 0.4, bg: 'background', camText: '', res: '720p', count: '1', seed: '' });
   const set = <K extends keyof typeof p>(k: K, v: (typeof p)[K]) => setP((cur) => ({ ...cur, [k]: v }));
+  const real = !isMockApi();
   const [persona, setPersona] = useState('Expert presenter');
   const [voice, setVoice] = useState('Clear female');
   const [text, setText] = useState(avatarPrompt);
@@ -122,6 +124,9 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
     { kind: 'input', id: 'seed', title: t('tools.adv.seed'), icon: 'seed', value: p.seed, placeholder: t('tools.adv.seed.placeholder'), dice: true, mono: true, onChange: (v) => set('seed', v), onRoll: () => set('seed', String(Math.floor(Math.random() * 90000) + 10000)) },
   ];
 
+  // Real runs lip-sync an uploaded track: pace and pauses (TTS) and a second take don't exist there.
+  const shownAdvGroups = real ? advGroups.filter((g) => g.id !== 'rate' && g.id !== 'pause' && g.id !== 'count') : advGroups;
+
   const pills: ComposerPill[] = adv
     ? [
         { id: 'model', label: p.model === 'Auto' ? t('tools.model.auto') : p.model, icon: 'cube' },
@@ -129,7 +134,7 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
         { id: 'ratio', label: '9:16', icon: 'ratio' },
         { id: 'duration', label: t('tools.seconds', { n: 10 }), icon: 'clock' },
         { id: 'res', label: p.res, icon: 'res' },
-        { id: 'pace', label: t('tools.avatar.pill.pace', { v: fixed(p.rate, 2) }), icon: 'wave' },
+        ...(real ? [] : [{ id: 'pace', label: t('tools.avatar.pill.pace', { v: fixed(p.rate, 2) }), icon: 'wave' } as ComposerPill]),
         { id: 'emotion', label: t(`tools.avatar.emotion.${p.emo}`), icon: 'person' },
       ]
     : [
@@ -143,7 +148,6 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
     quoteCredits(models, adv ? p.model : 'Auto', { resolution: adv ? p.res : '720p', seconds: 10, count: adv ? Number(p.count) : 1 }) ??
     (adv ? RES_COST[p.res]! : 10) + 2;
   const go = t('tools.avatar.go');
-  const real = !isMockApi();
 
   const aside = (
     <>
@@ -154,18 +158,20 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
             key={x.id}
             label={t(`tools.avatar.look.${x.id}`)}
             value={looks[x.id]!}
-            options={avatarLookOptions[x.id].map((v) => ({ value: v, label: v }))}
+            options={real && x.id === 'character' ? [] : avatarLookOptions[x.id].filter((v) => !(real && v === avatarLooks[1].value)).map((v) => ({ value: v, label: v }))}
             onChange={(v) => {
               setLooks((cur) => ({ ...cur, [x.id]: v }));
               toast.show({ message: t('tools.toast.presetSet', { name: t(`tools.avatar.look.${x.id}`), value: v }) });
             }}
-            extra={{ label: t('tools.remix.preset.upload'), onSelect: () => (setLookTarget(x.id), lookPicker.open()) }}
+            extra={real && x.id === 'scene' ? undefined : { label: t('tools.remix.preset.upload'), onSelect: () => (setLookTarget(x.id), lookPicker.open()) }}
             trigger={(tp) => (
               <button {...tp} type="button" className={controls.pickRow} style={{ flex: 1 }} data-look={x.id}>
                 <span className={controls.pickThumb} style={{ background: x.tone }} />
                 <span className={controls.pickText}>
                   <span className={controls.pickLabel}>{t(`tools.avatar.look.${x.id}`)}</span>
-                  <span className={controls.pickValue}>{real && x.id === 'character' ? (photo?.name ?? t('tools.avatar.photo.empty')) : looks[x.id]}</span>
+                  <span className={controls.pickValue}>
+                    {real && x.id === 'character' ? (photo?.name ?? t('tools.avatar.photo.empty')) : real && x.id === 'scene' && looks.scene === avatarLooks[1].value ? t('tools.avatar.scene.photo') : looks[x.id]}
+                  </span>
                 </span>
                 <span className={controls.chev}>›</span>
               </button>
@@ -218,7 +224,7 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
         title={t('tools.avatar.voice')}
         testId="voice"
         end={
-          <select aria-label={t('tools.avatar.voice.language')} className={layout.select} value={voiceLang} onChange={(e) => setVoiceLang(e.target.value)}>
+          real ? undefined : <select aria-label={t('tools.avatar.voice.language')} className={layout.select} value={voiceLang} onChange={(e) => setVoiceLang(e.target.value)}>
             <option value="en">English</option>
             <option value="yue">Cantonese</option>
             <option value="en-2">English</option>
@@ -298,7 +304,7 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
       feed={feed}
       aside={aside}
       advanced={adv}
-      advGroups={advGroups}
+      advGroups={shownAdvGroups}
       composer={{
         noteLead: t('tools.avatar.note'),
         noteChips: [t('tools.avatar.note.exact', { n: 1 }), t('tools.avatar.note.gestures', { n: 3 })],
@@ -333,7 +339,18 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
         return {
           kind: 'avatar',
           model: adv && p.model !== 'Auto' ? (models.find((m) => m.name === p.model)?.id ?? p.model) : 'auto',
-          prompt: [prompt.trim(), adv && p.camText.trim() ? p.camText.trim() : ''].filter(Boolean).join(' '),
+          prompt: [
+            prompt.trim(),
+            adv && p.camText.trim() ? p.camText.trim() : '',
+            ...avatarHints({
+              persona,
+              ...(adv ? { emotion: t(`tools.avatar.emotion.${p.emo}`) } : {}),
+              // The scene row: a preset setting, else (or with "setting reference") the photo's own background.
+              ...(looks.scene !== avatarLooks[1].value && !(adv && p.bg === 'reference') ? { setting: { scene: looks.scene! } } : adv && p.bg === 'reference' ? { setting: { keepPhoto: true as const } } : {}),
+            }),
+          ]
+            .filter(Boolean)
+            .join(' '),
           title: t('tools.avatar.title'),
           ...(adv ? { resolution: p.res } : {}),
           ...(adv && /^\d+$/.test(p.seed) ? { seed: Number(p.seed) } : {}),

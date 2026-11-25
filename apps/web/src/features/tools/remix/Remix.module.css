@@ -21,3 +21,6 @@
 .field{border-radius:12px;background:var(--c-surface-4);padding:8px 10px;display:flex;flex-direction:column;gap:3px}
 .fieldK{font-size:11px;color:var(--c-text-3)}
 .fieldV{font-size:13px;line-height:1.5}
+.fieldInput{font:inherit;font-size:13px;line-height:1.5;color:var(--c-text-1);background:transparent;border:0;padding:0;outline:none;min-width:0}
+.fieldInput::placeholder{color:var(--c-text-4)}
+.field:focus-within{box-shadow:0 0 0 1px var(--c-accent)}

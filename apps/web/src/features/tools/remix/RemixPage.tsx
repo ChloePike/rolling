@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useIntl } from 'react-intl';
 import { useToolFeed } from '../api';
 import { AsideCard } from '../shared/AsideCard';
+import { remixHints, shotPrompt } from '../shared/promptHints';
 import controls from '../shared/controls.module.css';
 import { ToolIcon } from '../shared/icons';
 import type { SettingsGroupDef } from '../shared/SettingsGroup';
@@ -52,6 +53,8 @@ export function RemixPage({ initialOverlay, models: modelsOverride, plan: planPr
   const [slotIds, setSlotIds] = useState<Record<number, string>>({});
   const [presetIds, setPresetIds] = useState<Record<string, string>>({});
   const [video, setVideo] = useState<{ id: string; name: string } | null>(null);
+  /** Real mode: the shot fields the user writes (camera, line, actions), keyed by field id. */
+  const [shot, setShot] = useState<Record<string, string>>({});
   const real = !isMockApi();
   const videoPicker = useFilePicker('video/*', (file, uploadId) => {
     setVideo({ id: uploadId, name: file.name });
@@ -76,8 +79,9 @@ export function RemixPage({ initialOverlay, models: modelsOverride, plan: planPr
     name: charName(i),
     tone: i < 2 ? remixSlotTones[i]! : 'var(--c-surface-3)',
     placeholder: i < 2 ? '' : t('tools.remix.slot.placeholder'),
-    state: uploads[i] ?? (i === 0 ? t('tools.remix.slot.template') : i === 1 ? t('tools.remix.slot.uploaded') : t('tools.remix.slot.notSet')),
-    set: i < 2 || uploads[i] !== undefined,
+    // Real mode shows only what was uploaded; the mock shows the design's sample cast.
+    state: uploads[i] ?? (real ? t('tools.remix.slot.notSet') : i === 0 ? t('tools.remix.slot.template') : i === 1 ? t('tools.remix.slot.uploaded') : t('tools.remix.slot.notSet')),
+    set: uploads[i] !== undefined || (!real && i < 2),
   }));
   const fields: Array<[string, string]> = [
     [t('tools.remix.parsed.camera'), remixParsed.camera],
@@ -86,6 +90,12 @@ export function RemixPage({ initialOverlay, models: modelsOverride, plan: planPr
     [t('tools.remix.parsed.action', { n: 2 }), remixParsed.action2],
   ];
   for (let i = 2; i < people; i++) fields.push([t('tools.remix.parsed.actionExtra', { n: i + 1 }), t('tools.remix.parsed.idle')]);
+  /** Real mode: editable shot fields that become the shot's prompt (`shots[0].prompt`). */
+  const shotFields: Array<{ id: string; label: string; placeholder: string }> = [
+    { id: 'camera', label: t('tools.remix.parsed.camera'), placeholder: t('tools.remix.shot.placeholder.camera') },
+    { id: 'line1', label: t('tools.remix.parsed.line', { n: 1 }), placeholder: t('tools.remix.shot.placeholder.line') },
+    ...Array.from({ length: people }, (_, i) => ({ id: `action${i + 1}`, label: t('tools.remix.parsed.action', { n: i + 1 }), placeholder: t('tools.remix.shot.placeholder.action') })),
+  ];
 
   const pct = (v: number) => intl.formatNumber(v / 100, { style: 'percent' });
   const advGroups: SettingsGroupDef[] = [
@@ -104,6 +114,9 @@ export function RemixPage({ initialOverlay, models: modelsOverride, plan: planPr
     { kind: 'text', id: 'neg', title: t('tools.adv.neg'), icon: 'neg', value: p.neg, placeholder: t('tools.remix.neg.placeholder'), onChange: (v) => set('neg', v) },
   ];
 
+  // Real runs have no reference-weight, frame-rate or multi-take settings: those controls stay mock-only.
+  const shownAdvGroups = real ? advGroups.filter((g) => g.id !== 'refw' && g.id !== 'fps' && g.id !== 'count') : advGroups;
+
   const pills: ComposerPill[] = [
     { id: 'model', label: adv && p.model !== 'Auto' ? p.model : t('tools.model.auto'), icon: 'cube' },
     { id: 'ratio', label: '16:9', icon: 'wide' },
@@ -113,7 +126,7 @@ export function RemixPage({ initialOverlay, models: modelsOverride, plan: planPr
     ...(adv
       ? ([
           { id: 'motion', label: t('tools.remix.pill.motion', { n: p.motion }), icon: 'motion' },
-          { id: 'count', label: t('tools.pill.count', { n: p.count }), icon: 'count' },
+          ...(real ? [] : [{ id: 'count', label: t('tools.pill.count', { n: p.count }), icon: 'count' }]),
         ] as ComposerPill[])
       : []),
   ];
@@ -199,14 +212,31 @@ export function RemixPage({ initialOverlay, models: modelsOverride, plan: planPr
           ))}
         </div>
       </AsideCard>
-      <AsideCard title={t('tools.remix.parsed')} hint={t('tools.remix.parsed.hint')} testId="parsed">
-        {fields.map(([k, v]) => (
-          <div key={k} className={styles.field}>
-            <span className={styles.fieldK}>{k}</span>
-            <span className={styles.fieldV}>{v}</span>
-          </div>
-        ))}
-      </AsideCard>
+      {real ? (
+        <AsideCard title={t('tools.remix.shot')} hint={t('tools.remix.shot.hint')} testId="parsed">
+          {shotFields.map((f) => (
+            <label key={f.id} className={styles.field}>
+              <span className={styles.fieldK}>{f.label}</span>
+              <input
+                className={styles.fieldInput}
+                data-shot-field={f.id}
+                value={shot[f.id] ?? ''}
+                placeholder={f.placeholder}
+                onChange={(e) => setShot((cur) => ({ ...cur, [f.id]: e.target.value }))}
+              />
+            </label>
+          ))}
+        </AsideCard>
+      ) : (
+        <AsideCard title={t('tools.remix.parsed')} hint={t('tools.remix.parsed.hint')} testId="parsed">
+          {fields.map(([k, v]) => (
+            <div key={k} className={styles.field}>
+              <span className={styles.fieldK}>{k}</span>
+              <span className={styles.fieldV}>{v}</span>
+            </div>
+          ))}
+        </AsideCard>
+      )}
     </>
   );
 
@@ -220,7 +250,7 @@ export function RemixPage({ initialOverlay, models: modelsOverride, plan: planPr
       feed={feed}
       aside={aside}
       advanced={adv}
-      advGroups={advGroups}
+      advGroups={shownAdvGroups}
       composer={{
         noteLead: t('tools.remix.note'),
         noteChips: [t('tools.remix.note.camera', { n: 1 }), t('tools.remix.note.lines', { n: 1 }), t('tools.remix.note.actions', { n: people })],
@@ -253,10 +283,13 @@ export function RemixPage({ initialOverlay, models: modelsOverride, plan: planPr
         if (!video) return t('tools.remix.needVideo');
         // New looks: the character slots and any uploaded outfit/scene picture (docs/api.md → Runs, remix).
         const referenceAssetIds = [...Object.entries(slotIds).filter(([i]) => Number(i) < people).map(([, id]) => id), ...Object.values(presetIds)].slice(0, 8);
+        const shotLine = shotPrompt(shotFields.map((f) => [f.label, shot[f.id] ?? '']));
+        const hints = adv ? remixHints({ motion: p.motion, outfitFor: p.outfit === 'all' ? null : charName(Number(p.outfit)) }) : [];
         return {
           kind: 'remix',
           model: adv && p.model !== 'Auto' ? (models.find((m) => m.name === p.model)?.id ?? p.model) : 'auto',
-          prompt: [prompt.trim(), ...remixPresets.map((x) => `${t(`tools.remix.preset.${x.id}`)}: ${presets[x.id]}`)].filter(Boolean).join('\n'),
+          prompt: [prompt.trim(), ...remixPresets.map((x) => `${t(`tools.remix.preset.${x.id}`)}: ${presets[x.id]}`), ...hints].filter(Boolean).join('\n'),
+          ...(shotLine ? { shots: [{ prompt: shotLine }] } : {}),
           title: t('tools.remix.title'),
           ratio: '16:9',
           seconds: 10,
