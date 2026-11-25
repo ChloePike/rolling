@@ -128,11 +128,8 @@
   "editor.marker.added": "Marker added at {time}",
   "editor.marker.removed": "Marker removed at {time}",
   "editor.run.action": "Regenerate shot",
-  "editor.run.done": "{name} is ready",
-  "editor.run.eta": "~2 min",
-  "editor.run.restarted": "Regenerating · {credits, plural, one {# credit} other {# credits}} held",
-  "editor.run.started": "Generating · {credits, plural, one {# credit} other {# credits}} held",
   "editor.timeline.addMarkerHint": "Add marker (M)",
   "editor.inspector.position.x": "Position X",
-  "editor.inspector.position.y": "Position Y"
+  "editor.inspector.position.y": "Position Y",
+  "editor.run.generateAction": "Generate shot"
 }

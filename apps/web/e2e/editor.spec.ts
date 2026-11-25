@@ -92,7 +92,8 @@ async function measureByText(page: Page, texts: string[]) {
   }, texts);
 }
 
-const TEXT_CONTROLS = ['Canvas', 'Reassemble', 'Export', 'Regenerate shot8 credits', 'Open on canvas', 'Shot A, hero', '00:00:12:00'];
+// The regenerate button's cost follows D-006 (278 credits; the design shows the old 8), so it is not compared by text.
+const TEXT_CONTROLS = ['Canvas', 'Reassemble', 'Export', 'Open on canvas', 'Shot A, hero', '00:00:12:00'];
 
 test.describe('editor', () => {
   for (const state of ['edit', 'editAgent'] as const) {
@@ -291,10 +292,10 @@ test.describe('editor timeline', () => {
 
   test('generate: the not-generated shot gets its media and keeps its place', async ({ page }) => {
     await openApp(page);
-    const gen = page.getByRole('button', { name: 'Generate · 8 credits' });
+    // D-006 scale: Seedance 2.5 720p 3s = 209 credits, under the 300 confirm threshold, so it starts at once.
+    const gen = page.getByRole('button', { name: 'Generate · 209 credits' });
     await expect(gen).toBeVisible();
     await gen.click();
-    await expect(gen).toHaveAttribute('aria-busy', 'true');
     await expect(gen).toHaveCount(0, { timeout: 5000 });
     await expect(clip(page, 'Shot C, logo, 00:00:09:00 to 00:00:12:00')).toBeAttached();
   });
@@ -422,5 +423,115 @@ test.describe('editor motion and rendering', () => {
       if (dpr === 2) await page.screenshot({ path: `${SCREENS_OUT}edit-1440@2x.png` });
       await context.close();
     }
+  });
+});
+
+/* ---------- Interaction pass: every editor control does something ---------- */
+
+test.describe('editor controls', () => {
+  test('format menu changes the output format and Undo restores it', async ({ page }) => {
+    await openApp(page);
+    await page.getByRole('button', { name: /^1080 × 1920/ }).click();
+    await page.getByRole('menuitemradio', { name: '16:9 · 1920×1080' }).click();
+    await expect(page.getByRole('button', { name: /^1920 × 1080/ })).toBeVisible();
+    await page.getByRole('button', { name: /^1920 × 1080/ }).click();
+    await page.getByRole('menuitemradio', { name: '30 fps' }).click();
+    await expect(page.getByRole('button', { name: /^1920 × 1080, 30 fps/ })).toBeVisible();
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.getByRole('button', { name: /^1080 × 1920/ })).toBeVisible();
+  });
+
+  test('export opens a dialog with real progress and a download link', async ({ page }) => {
+    await openApp(page);
+    await page.getByRole('button', { name: 'Export', exact: true }).click();
+    const dialog = page.getByTestId('export-dialog');
+    await expect(dialog).toHaveAttribute('data-phase', 'setup');
+    await dialog.getByRole('radio', { name: 'Mark in to out' }).click();
+    await dialog.getByRole('button', { name: 'Export MP4' }).click();
+    await expect(dialog).toHaveAttribute('data-phase', 'running');
+    await expect(dialog.getByRole('progressbar')).toBeVisible();
+    await expect(dialog).toHaveAttribute('data-phase', 'done', { timeout: 5000 });
+    const link = dialog.getByRole('link', { name: 'Download' });
+    await expect(link).toHaveAttribute('download', /\.edl\.json$/);
+    await expect(page.getByText('Export ready')).toBeVisible();
+  });
+
+  test('Add marker and M add a marker at the playhead; again removes it', async ({ page }) => {
+    await openApp(page);
+    await page.getByRole('button', { name: 'Add marker' }).click();
+    await expect(page.getByText('Marker added at 00:00:02:14')).toBeVisible();
+    await page.getByTestId('editor').focus();
+    await page.keyboard.press('m');
+    await expect(page.getByText('Marker removed at 00:00:02:14')).toBeVisible();
+  });
+
+  test('Effects opens a panel; cross dissolve and fade apply to the selected shot', async ({ page }) => {
+    await openApp(page);
+    await page.getByRole('button', { name: 'Effects' }).click();
+    const panel = page.getByRole('menu', { name: 'Effects' });
+    await expect(panel).toBeVisible();
+    const row = () => page.getByRole('menu', { name: 'Effects' }).getByRole('menuitemcheckbox', { name: 'Cross dissolve to next shot' });
+    // The assembled cut already dissolves from Shot A into Shot B: the row toggles it off and on.
+    await expect(row()).toHaveAttribute('aria-checked', 'true');
+    await row().click();
+    await page.getByRole('button', { name: 'Effects' }).click();
+    await expect(row()).toHaveAttribute('aria-checked', 'false');
+    await page.getByRole('menuitemcheckbox', { name: 'Fade in (0.5s)' }).click();
+    await page.getByRole('button', { name: 'Effects' }).click();
+    await expect(page.getByRole('menuitemcheckbox', { name: 'Fade in (0.5s)' })).toHaveAttribute('aria-checked', 'true');
+  });
+
+  test('inspector: scale, rotation and opacity sliders, position fields, speed and reverse change the clip', async ({ page }) => {
+    await openApp(page);
+    const insp = page.getByRole('complementary', { name: 'Inspector' });
+    const scale = insp.getByRole('slider', { name: 'Scale' });
+    await scale.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(scale).toHaveAttribute('aria-valuetext', '105%');
+    await expect(page.getByTestId('monitor-shot')).toHaveAttribute('data-transform', '');
+    const x = insp.getByLabel('Position X');
+    await x.fill('40');
+    await x.press('Enter');
+    await expect(x).toHaveValue('40');
+    await expect(page.getByTestId('monitor-shot')).toHaveAttribute('style', /translate\(3\.7/);
+    const opacity = insp.getByRole('slider', { name: 'Opacity' });
+    await opacity.focus();
+    await page.keyboard.press('ArrowLeft');
+    await expect(opacity).toHaveAttribute('aria-valuetext', '95%');
+    const speed = insp.getByRole('slider', { name: 'Speed' });
+    await speed.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(speed).toHaveAttribute('aria-valuetext', '125%');
+    // 4s at 125% lasts 3.2s: Shot B ripples to 3.2s.
+    await expect(page.getByRole('list', { name: 'Clips' }).getByRole('button', { name: /^Shot B, cap pop, 00:00:03:0\d to/ })).toBeAttached();
+    const reverse = insp.getByRole('switch', { name: 'Reverse' });
+    await reverse.click();
+    await expect(reverse).toHaveAttribute('aria-checked', 'true');
+  });
+
+  test('bin Assets adds an asset at the end of its track; Public shows the shared library list', async ({ page }) => {
+    await page.route('**/api/graphql', (r) =>
+      r.fulfill({
+        json: {
+          data: {
+            publicItems: {
+              edges: [{ node: { id: 'pw_scene_1', category: 'scene', sub: null, title: 'Forest path', promptEn: null, tags: [], assetId: 'ast_pw_scene_1', license: 'CC0', source: '', thumbUrl: null, depthUrl: null, angles: [] } }],
+              pageInfo: { hasNextPage: false, endCursor: null },
+            },
+          },
+        },
+      }),
+    );
+    await openApp(page);
+    await page.getByRole('tab', { name: 'Assets' }).click();
+    const first = page.getByRole('tabpanel').getByRole('button').first();
+    const name = (await first.getAttribute('aria-label'))!;
+    await first.click();
+    await expect(page.getByText(/added at 00:00:12:00/)).toBeVisible();
+    expect(name).toMatch(/^Add .+ to the end of the timeline$/);
+    await page.getByRole('tab', { name: 'Public' }).click();
+    await page.getByRole('button', { name: 'Add Forest path to the end of the timeline' }).click();
+    await expect(page.getByText(/Forest path added at/)).toBeVisible();
   });
 });

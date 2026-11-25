@@ -172,7 +172,18 @@ test.describe('canvas fidelity (1440×900)', () => {
     const app = await boxes(page, { ...common, runAll: { css: 'button[aria-label^="Run all"]' }, prompt: { css: '[data-testid="prompt-panel"]' } });
     // The design's zoom label is a static "75%"; the app shows the real zoom (100%), so the pill is wider.
     expectBox({ ...app.zoomPill!, width: design.zoomPill!.width }, design.zoomPill!, 'zoomPill');
-    for (const k of Object.keys(design).filter((k) => k !== 'zoomPill')) expectBox(app[k]!, design[k]!, k);
+    // Run all's estimate uses D-006 credits (~353, the design shows the old ~10), so its badge is wider and the
+    // right-anchored cluster starts further left: compare its right edge, and credits/share by size and gap.
+    expect(Math.abs(app.runAll!.x + app.runAll!.width - (design.runAll!.x + design.runAll!.width))).toBeLessThanOrEqual(TOL);
+    for (const k of ['credits', 'share'] as const) {
+      expect(Math.abs(app[k]!.width - design[k]!.width), `${k}.width`).toBeLessThanOrEqual(TOL);
+      expect(Math.abs(app[k]!.y - design[k]!.y), `${k}.y`).toBeLessThanOrEqual(TOL);
+    }
+    expect(Math.abs(app.runAll!.x - (app.share!.x + app.share!.width) - (design.runAll!.x - (design.share!.x + design.share!.width)))).toBeLessThanOrEqual(TOL);
+    // The D-006 cost chip ("347" vs the design's "8") is wider, so "Input changed" left of it starts further left.
+    for (const k of ['inputChanged', 'generating'] as const) expect(Math.abs(app[k]!.y - design[k]!.y), `${k}.y`).toBeLessThanOrEqual(TOL);
+    const skip = new Set(['zoomPill', 'runAll', 'credits', 'share', 'inputChanged', 'generating']);
+    for (const k of Object.keys(design).filter((k) => !skip.has(k))) expectBox(app[k]!, design[k]!, k);
   });
 
   test('layers match the design boxes: add menu, script, share, @ picker', async ({ page }) => {
@@ -218,14 +229,14 @@ test.describe('canvas behavior', () => {
     const a = page.getByTestId(`node-${NODE.shotA}`);
     await expect(a).toHaveAttribute('data-status', 'outdated');
     await expect(a).toContainText('Input changed');
-    await expect(a.getByLabel('8 credits to run')).toBeVisible();
+    await expect(a.getByLabel('347 credits to run')).toBeVisible();
     const b = page.getByTestId(`node-${NODE.shotB}`);
     await expect(b).toHaveAttribute('data-status', 'generating');
     await expect(b).toContainText('58%');
     const k = page.getByTestId(`node-${NODE.keyframe}`);
     await expect(k).toContainText('Current · 2/2');
     await expect(k.getByLabel(/credits to run/)).toHaveCount(0);
-    await expect(page.getByTestId(`node-${NODE.voice}`).getByLabel('2 credits to run')).toBeVisible();
+    await expect(page.getByTestId(`node-${NODE.voice}`).getByLabel('6 credits to run')).toBeVisible();
     await expect(page.getByTestId('sync-status')).toHaveText('Saved');
   });
 
@@ -271,6 +282,10 @@ test.describe('canvas behavior', () => {
     await openApp(page, '', 'fast');
     const a = page.getByTestId(`node-${NODE.shotA}`);
     await page.getByRole('button', { name: 'Generate', exact: true }).click();
+    // 347 credits is over the 300 confirm threshold (D-006): the run confirm comes first.
+    const confirm = page.getByRole('dialog', { name: 'Confirm', exact: true });
+    await expect(confirm).toBeVisible();
+    await confirm.getByRole('button', { name: /^Generate · 347 credits/ }).click();
     await expect(a).toHaveAttribute('data-status', 'generating');
     await expect(a).toContainText('Generating');
     const widths: number[] = [];
@@ -298,10 +313,11 @@ test.describe('canvas behavior', () => {
     const b = page.getByTestId(`node-${NODE.shotB}`);
     await expect(b).toHaveAttribute('data-status', 'failed');
     await expect(b).toContainText('Failed');
-    await expect(b).toContainText('8 credits refunded');
-    await expect(page.getByText('Shot B: Cap pop failed. 8 credits refunded.')).toBeVisible();
+    await expect(b).toContainText('347 credits refunded');
+    await expect(page.getByText('Shot B: Cap pop failed. 347 credits refunded.')).toBeVisible();
     await page.screenshot({ path: `${OUT}node-failed-app.png` });
     await b.getByRole('button', { name: 'Retry' }).click();
+    await page.getByRole('dialog', { name: 'Confirm', exact: true }).getByRole('button', { name: /^Generate · 347 credits/ }).click();
     await expect(b).toHaveAttribute('data-status', 'generating');
   });
 
@@ -391,7 +407,7 @@ test.describe('canvas behavior', () => {
     await page.getByRole('button', { name: /^Run all/ }).click();
     const dialog = page.getByTestId('plan-dialog');
     await expect(dialog).toBeVisible();
-    await dialog.getByRole('button', { name: /^Run · 18 credits/ }).click();
+    await dialog.getByRole('button', { name: /^Run · 700 credits/ }).click();
     await expect(dialog).toHaveCount(0);
     await expect(page.getByTestId(`node-${NODE.shotA}`)).toHaveAttribute('data-status', 'generating');
     await expect(page.getByTestId(`node-${NODE.voice}`)).toHaveAttribute('data-status', 'generating');
@@ -485,4 +501,382 @@ test('with full motion a built node settles from 96% scale', async ({ page }) =>
     return getComputedStyle(el).transform;
   });
   expect(start).toBe('matrix(0.96, 0, 0, 0.96, 0, 0)');
+});
+
+/* ---------- Interaction pass: every control does something (docs/interaction-pass.md) ---------- */
+
+const balance = (page: Page) => page.getByTestId('credits-balance');
+const nodeMenu = async (page: Page, nodeId: string) => {
+  await page.getByTestId(`node-${nodeId}`).click({ button: 'right', position: { x: 60, y: 8 } });
+  const menu = page.getByTestId('menu-node');
+  await expect(menu).toBeVisible();
+  return menu;
+};
+
+test.describe('canvas controls', () => {
+  test('project menu: Rename edits the title in place and it survives a reload', async ({ page }) => {
+    await openApp(page);
+    await page.getByRole('button', { name: /^Project:/ }).click();
+    await page.getByRole('menuitem', { name: 'Rename' }).click();
+    const input = page.getByLabel('Project name');
+    await input.fill('Ridgeline spring ad');
+    await input.press('Enter');
+    await expect(page.getByRole('button', { name: 'Project: Ridgeline spring ad' })).toBeVisible();
+    await expect(page.getByText('Renamed to Ridgeline spring ad')).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Project: Ridgeline spring ad' })).toBeVisible();
+  });
+
+  test('share: copy link toasts, downloads toggle persists, stop sharing turns the link off, share again restores it', async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await openApp(page, 'share');
+    const dialog = page.locator('[role="dialog"][aria-labelledby="canvas-share-title"]');
+    await dialog.getByRole('button', { name: 'Copy link' }).click();
+    await expect(page.getByText('Link copied')).toBeVisible();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('https://studio.aigc.hub/s/7Kq2-mXa9');
+    const downloads = dialog.getByRole('switch', { name: 'Allow downloads' });
+    await expect(downloads).toHaveAttribute('aria-checked', 'false');
+    await downloads.click();
+    await expect(downloads).toHaveAttribute('aria-checked', 'true');
+    await dialog.getByRole('button', { name: /^Who can view/ }).click();
+    await page.getByRole('menuitemradio', { name: 'Workspace members' }).click();
+    await expect(dialog).toContainText('Only members of this workspace can open the link');
+    await dialog.getByRole('button', { name: 'Stop sharing' }).click();
+    await expect(dialog.getByTestId('share-link')).toHaveText('No link. Sharing is off.');
+    await expect(page.getByText('Sharing stopped. The link no longer opens.')).toBeVisible();
+    await page.goto('/p/prj_demo?mock=frozen');
+    await page.getByRole('button', { name: 'Share', exact: true }).click();
+    const again = page.locator('[role="dialog"][aria-labelledby="canvas-share-title"]');
+    await expect(again.getByRole('switch', { name: 'Allow downloads' })).toHaveAttribute('aria-checked', 'true');
+    await again.getByRole('button', { name: 'Share again' }).click();
+    await expect(again.getByTestId('share-link')).toContainText('studio.aigc.hub/s/');
+    await expect(page.getByText('Sharing is on with a new link')).toBeVisible();
+  });
+
+  test('run a node under the threshold: credits are held then settled; a forced failure refunds them', async ({ page }) => {
+    await openApp(page, '', 'fast');
+    await expect(balance(page)).toHaveText('2,480');
+    await page.getByTestId(`node-${NODE.voice}`).getByLabel('6 credits to run').click();
+    await expect(page.getByTestId(`node-${NODE.voice}`)).toHaveAttribute('data-status', 'generating');
+    await expect(balance(page)).toHaveText('2,474');
+    await expect(page.getByTestId(`node-${NODE.voice}`)).not.toHaveAttribute('data-status', 'generating', { timeout: 8000 });
+    await expect(balance(page)).toHaveText('2,474');
+
+    await page.goto('/p/prj_demo?mock=fail');
+    await page.getByTestId(`node-${NODE.voice}`).getByLabel('6 credits to run').click();
+    await expect(page.getByTestId(`node-${NODE.voice}`)).toHaveAttribute('data-status', 'failed', { timeout: 8000 });
+    await expect(page.getByText('Voiceover failed. 6 credits refunded.')).toBeVisible();
+  });
+
+  test('run over the threshold asks first; cancel runs nothing', async ({ page }) => {
+    await openApp(page);
+    await page.getByTestId(`node-${NODE.shotA}`).getByLabel('347 credits to run').click();
+    const confirm = page.getByRole('dialog', { name: 'Confirm', exact: true });
+    await expect(confirm).toContainText('347');
+    await confirm.getByRole('button', { name: 'Cancel' }).click();
+    await expect(confirm).toHaveCount(0);
+    await expect(page.getByTestId(`node-${NODE.shotA}`)).toHaveAttribute('data-status', 'outdated');
+  });
+
+  test('non-member run opens the join paywall and resumes the run after checkout (D-007)', async ({ page }) => {
+    await page.setViewportSize({ width: W, height: H });
+    await page.goto('/p/prj_demo?mock=frozen&member=0');
+    await page.getByTestId(`node-${NODE.voice}`).getByLabel('6 credits to run').click();
+    const paywall = page.getByRole('dialog', { name: 'Pick a plan to generate' });
+    await expect(paywall).toBeVisible();
+    await paywall.getByRole('button', { name: /^Continue with/ }).click();
+    await expect(page.getByTestId(`node-${NODE.voice}`)).toHaveAttribute('data-status', 'generating');
+  });
+
+  test('node menu: duplicate, bypass (menu and Ctrl+B), collapse, disconnect inputs, delete', async ({ page }) => {
+    await openApp(page);
+    const before = await page.locator('.react-flow__node').count();
+    let menu = await nodeMenu(page, NODE.keyframe);
+    await menu.getByRole('menuitem', { name: /^Duplicate/ }).click();
+    await expect(page.locator('.react-flow__node')).toHaveCount(before + 1);
+    await expect(page.getByText('Product keyframe copy')).toBeVisible();
+
+    menu = await nodeMenu(page, NODE.shotA);
+    await menu.getByRole('menuitemcheckbox', { name: /^Bypass/ }).click();
+    const a = page.getByTestId(`node-${NODE.shotA}`);
+    await expect(a).toHaveAttribute('data-bypass', '');
+    await expect(a).toContainText('Bypassed');
+    await page.keyboard.press('Control+b');
+    await expect(a).not.toHaveAttribute('data-bypass', '');
+    await page.keyboard.press('Control+b');
+    await expect(a).toHaveAttribute('data-bypass', '');
+    // Bypassed nodes are skipped in quotes.
+    await page.getByRole('button', { name: /^Run all/ }).click();
+    await expect(page.getByTestId('plan-dialog')).toContainText('Bypassed · skipped');
+    await page.keyboard.press('Escape');
+
+    menu = await nodeMenu(page, NODE.voice);
+    await menu.getByRole('menuitem', { name: 'Collapse' }).click();
+    await expect(page.getByTestId(`node-${NODE.voice}`)).toHaveAttribute('data-collapsed', '');
+
+    const edges = await page.locator('[data-testid^="edge-"]').count();
+    menu = await nodeMenu(page, NODE.shotB);
+    await menu.getByRole('menuitem', { name: 'Disconnect 2 inputs' }).click();
+    await expect(page.locator('[data-testid^="edge-"]')).toHaveCount(edges - 2);
+
+    menu = await nodeMenu(page, NODE.shotB);
+    await menu.getByRole('menuitem', { name: /^Delete/ }).click();
+    await expect(page.getByTestId(`node-${NODE.shotB}`)).toHaveCount(0);
+    await expect(page.getByTestId('sync-status')).toHaveText('Saved');
+  });
+
+  test('Run up to here quotes the node and its stale upstream; Run from here adds everything downstream', async ({ page }) => {
+    await openApp(page);
+    // Make the keyframe stale: its prompt input changes.
+    let menu = await nodeMenu(page, NODE.shotA);
+    await menu.getByRole('menuitem', { name: 'Run from here' }).click();
+    let dialog = page.getByTestId('plan-dialog');
+    await expect(dialog.getByRole('listitem')).toHaveCount(1);
+    await expect(dialog).toContainText('Shot A: Hero shot');
+    await page.keyboard.press('Escape');
+    menu = await nodeMenu(page, NODE.keyframe);
+    await menu.getByRole('menuitem', { name: 'Run from here' }).click();
+    dialog = page.getByTestId('plan-dialog');
+    await expect(dialog).toContainText('Product keyframe');
+    await expect(dialog).toContainText('Shot A: Hero shot');
+    await expect(dialog).toContainText('Shot B: Cap pop');
+    await page.keyboard.press('Escape');
+    menu = await nodeMenu(page, NODE.shotB);
+    await menu.getByRole('menuitem', { name: 'Run up to here' }).click();
+    dialog = page.getByTestId('plan-dialog');
+    await expect(dialog).toContainText('Voiceover');
+    await expect(dialog).toContainText('Shot B: Cap pop');
+    await expect(dialog).not.toContainText('Product keyframe');
+  });
+
+  test('version chip switches the active version; Play opens the result viewer', async ({ page }) => {
+    await openApp(page);
+    await page.getByRole('button', { name: 'Version 2 of 2. Switch version' }).click();
+    await page.getByTestId('menu-versions').getByRole('menuitemradio', { name: /^Version 1/ }).click();
+    await expect(page.getByTestId(`node-${NODE.keyframe}`)).toContainText('Current · 1/2');
+    await expect(page.getByText('Product keyframe now uses version 1')).toBeVisible();
+    await page.getByTestId(`node-${NODE.shotA}`).getByRole('button', { name: 'Play' }).click();
+    const viewer = page.getByRole('dialog').filter({ hasText: 'Shot A: Hero shot' });
+    await expect(viewer).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(viewer).toHaveCount(0);
+  });
+
+  test('prompt panel: edit the prompt, quick modifier, mode, model, settings, remove a reference', async ({ page }) => {
+    await openApp(page);
+    const panel = page.getByTestId('prompt-panel');
+    await panel.getByTestId('prompt-text').click();
+    const box = panel.getByRole('textbox', { name: 'Prompt' });
+    await box.fill('Slow push-in on the bottle at dawn');
+    await box.press('Control+Enter');
+    await expect(panel.getByTestId('prompt-text')).toHaveText('Slow push-in on the bottle at dawn');
+    await expect(page.getByTestId('sync-status')).toHaveText('Saved');
+    expect(await page.evaluate((id) => window.__canvasRoom!.state.nodes.find((n) => n.id === id)!.params.prompt, NODE.shotA)).toBe('Slow push-in on the bottle at dawn');
+
+    await panel.getByRole('button', { name: 'Style', exact: true }).click();
+    await page.getByRole('menuitemradio', { name: 'Cinematic' }).click();
+    await expect(panel.getByRole('button', { name: 'Style: Cinematic' })).toBeVisible();
+
+    await panel.getByRole('button', { name: /First frame/ }).click();
+    await page.getByRole('menuitemradio', { name: 'Text to video' }).click();
+    await expect(panel.getByRole('button', { name: /Text to video/ })).toBeVisible();
+
+    await panel.getByRole('button', { name: /Seedance 2.5/ }).click();
+    await page.getByRole('dialog', { name: 'Choose model' }).getByText('MiniMax H3').click();
+    await expect(panel.getByRole('button', { name: /MiniMax H3/ })).toBeVisible();
+
+    await panel.getByRole('button', { name: /×1 · Audio on/ }).click();
+    await expect(page.locator('[role="dialog"]').filter({ hasText: 'Aspect ratio' })).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    await panel.getByRole('button', { name: /^Remove reference @1/ }).click();
+    await expect(panel.getByRole('button', { name: /^Remove reference/ })).toHaveCount(1);
+  });
+
+  test('agent panel: Shuffle, LLM pill from the public list, Auto model, + menu, and a graph-patch proposal applies', async ({ page }) => {
+    await page.route('**/api/models?kind=chat', (r) =>
+      r.fulfill({
+        json: {
+          models: [
+            { id: 'deepseek-v4.1-flash', kind: 'chat', name: 'DeepSeek V4.1 Flash', default: true, tags: [], credits: [] },
+            { id: 'claude-sonnet-5.5', kind: 'chat', name: 'Claude Sonnet 5.5', default: false, tags: [], credits: [] },
+          ],
+        },
+      }),
+    );
+    await openApp(page);
+    const agent = page.locator('aside[aria-label="Agent"]');
+    await agent.getByRole('button', { name: /^Shuffle/ }).click();
+    await expect(agent.getByTestId('plan-card')).toContainText('Option B · Kitchen counter');
+
+    await agent.getByRole('button', { name: /^Agent model/ }).click();
+    await page.getByRole('menuitemradio', { name: 'Claude Sonnet 5.5' }).click();
+    await expect(agent.getByRole('button', { name: 'Agent model: Claude Sonnet 5.5' })).toBeVisible();
+    await page.reload();
+    await expect(page.locator('aside[aria-label="Agent"]').getByRole('button', { name: 'Agent model: Claude Sonnet 5.5' })).toBeVisible();
+
+    await page.locator('aside[aria-label="Agent"]').getByRole('button', { name: /^Model for new shots/ }).click();
+    await page.getByRole('dialog', { name: 'Choose model' }).getByText('Wan 3.0').click();
+    await expect(page.locator('aside[aria-label="Agent"]').getByRole('button', { name: 'Model for new shots: Wan 3.0' })).toBeVisible();
+
+    await page.locator('aside[aria-label="Agent"]').getByRole('button', { name: 'Add assets or skills' }).click();
+    await page.getByRole('menuitemradio', { name: '/Product showcase' }).click();
+    await expect(page.locator('aside[aria-label="Agent"]').getByRole('button', { name: 'Remove skill /Product showcase' })).toBeVisible();
+
+    const ask = page.getByLabel('Tell the agent');
+    await ask.fill('Make shot 1 warmer');
+    await ask.press('Enter');
+    const proposal = page.getByTestId('graph-proposal');
+    await expect(proposal).toContainText('Update Shot A: Hero shot');
+    await expect(page.getByTestId(`node-${NODE.shotA}`)).toHaveAttribute('data-proposed', '');
+    await proposal.getByRole('button', { name: 'Apply' }).click();
+    await expect(proposal).toHaveAttribute('data-outcome', 'applied');
+    await expect(page.getByTestId(`node-${NODE.shotA}`)).not.toHaveAttribute('data-proposed', '');
+    await expect(page.getByTestId('sync-status')).toHaveText('Saved');
+    const params = await page.evaluate((id) => window.__canvasRoom!.state.nodes.find((n) => n.id === id)!.params, NODE.shotA);
+    expect(params.prompt).toContain('warmer color temperature');
+    expect((params.modifiers as Record<string, string>).Lighting).toBe('Golden hour');
+
+    await ask.fill('Make shot 2 slower');
+    await ask.press('Enter');
+    const second = page.getByTestId('graph-proposal').last();
+    await second.getByRole('button', { name: 'Discard' }).click();
+    await expect(second).toHaveAttribute('data-outcome', 'discarded');
+  });
+
+  test('tool rail: assets panel adds asset nodes, templates insert a connected group, director explains, history selects', async ({ page }) => {
+    await openApp(page);
+    const before = await page.locator('.react-flow__node').count();
+    await page.getByRole('button', { name: 'Assets', exact: true }).click();
+    const picker = page.getByTestId('assets-panel');
+    await expect(picker).toBeVisible();
+    await picker.getByTestId('reference-picker').locator('[role="option"]').first().click();
+    await picker.getByRole('button', { name: /^Add/ }).click();
+    await expect(page.locator('.react-flow__node')).toHaveCount(before + 1);
+
+    await page.getByRole('button', { name: 'Workflows and templates' }).click();
+    await page.getByRole('menuitem', { name: /Product hero shot/ }).click();
+    await expect(page.locator('.react-flow__node')).toHaveCount(before + 3);
+    await expect(page.getByText('Product hero shot added (2 nodes)')).toBeVisible();
+
+    // aria-disabled with a reason: it still responds (toast), so force past Playwright's enabled check.
+    await page.getByRole('button', { name: 'Director' }).click({ force: true });
+    await expect(page.getByText(/Director is coming soon/).last()).toBeVisible();
+
+    await page.getByRole('button', { name: 'Run history' }).click();
+    await page.getByRole('region', { name: 'Run history' }).getByRole('menuitem', { name: 'Show Product keyframe on the canvas' }).click();
+    await expect(page.locator('.react-flow__node.selected')).toHaveAttribute('data-id', NODE.keyframe);
+  });
+
+  test('zoom percentage opens presets; the minimap pans by click, drag and arrow keys', async ({ page }) => {
+    await openApp(page);
+    await page.getByTestId('zoom-value').click();
+    await page.getByRole('menuitemradio', { name: '50%', exact: true }).click();
+    await expect(page.getByTestId('zoom-value')).toHaveText('50%');
+    const transform = () => page.locator('.react-flow__viewport').evaluate((el) => getComputedStyle(el).transform);
+    const t0 = await transform();
+    const mm = (await page.getByTestId('minimap').boundingBox())!;
+    await page.mouse.move(mm.x + 20, mm.y + 20);
+    await page.mouse.down();
+    await page.mouse.move(mm.x + 120, mm.y + 70, { steps: 5 });
+    await page.mouse.up();
+    await expect.poll(transform).not.toBe(t0);
+    const t1 = await transform();
+    await page.getByTestId('minimap').focus();
+    await page.keyboard.press('ArrowRight');
+    await expect.poll(transform).not.toBe(t1);
+  });
+
+  test('dropping a wire on empty canvas opens a filtered node search; picking connects the new node in one patch', async ({ page }) => {
+    await openApp(page);
+    const rev = await page.evaluate(() => window.__canvasRoom!.state.revision);
+    const edges = await page.locator('[data-testid^="edge-"]').count();
+    const from = await portCenter(page, NODE.voice, 'out');
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(from.x + 120, from.y + 40, { steps: 6 });
+    // Incompatible inputs dim while dragging audio: the image node's input does not take audio.
+    await expect(page.getByTestId(`node-${NODE.keyframe}`).locator('[data-port="in"]')).toHaveCSS('opacity', '0.25');
+    await page.mouse.move(from.x + 200, from.y + 60, { steps: 6 });
+    await page.mouse.up();
+    const menu = page.getByRole('menu', { name: 'Add node' });
+    await expect(menu).toBeVisible();
+    await expect(menu.getByRole('menuitem')).toHaveText([/Video/]);
+    await menu.getByRole('menuitem', { name: /Video/ }).click();
+    await expect(page.locator('[data-testid^="edge-"]')).toHaveCount(edges + 1);
+    await expect(page.getByTestId('sync-status')).toHaveText('Saved');
+    expect(await page.evaluate(() => window.__canvasRoom!.state.revision)).toBe(rev + 1);
+  });
+
+  test('double-click on empty canvas opens node search; arrows and Enter add a node', async ({ page }) => {
+    await openApp(page);
+    const before = await page.locator('.react-flow__node').count();
+    await page.mouse.dblclick(620, 760);
+    const menu = page.getByRole('menu', { name: 'Add node' });
+    await expect(menu).toBeVisible();
+    await page.getByPlaceholder(/Search/).fill('ima');
+    await page.keyboard.press('Enter');
+    await expect(page.locator('.react-flow__node')).toHaveCount(before + 1);
+  });
+
+  test('reroute: double-click a wire adds a point; double-click the point removes it', async ({ page }) => {
+    await openApp(page);
+    const edge = page.locator('[data-testid^="edge-"]').first();
+    const id = (await edge.getAttribute('data-testid'))!.replace('edge-', '');
+    const hit = (await edge.locator('path').first().boundingBox())!;
+    await page.mouse.dblclick(hit.x + hit.width / 2, hit.y + hit.height / 2);
+    const point = page.getByTestId(`reroute-${id}-0`);
+    await expect(point).toBeAttached();
+    expect(await page.evaluate((e) => window.__canvasRoom!.state.edges.find((x) => x.id === e)?.reroutes?.length ?? 0, id)).toBe(0); // pending until ack
+    await expect(page.getByTestId('sync-status')).toHaveText('Saved');
+    expect(await page.evaluate((e) => window.__canvasRoom!.state.edges.find((x) => x.id === e)?.reroutes?.length ?? 0, id)).toBe(1);
+    await point.dispatchEvent('dblclick');
+    await expect(point).toHaveCount(0);
+  });
+
+  test('script full screen: edit a cell, add and remove shots, hide a field, filter, generate storyboard', async ({ page }) => {
+    await openApp(page, 'script');
+    const dialog = page.getByRole('dialog', { name: 'Script' });
+    const visual = dialog.getByRole('textbox', { name: 'Visual, shot 03' });
+    await visual.click();
+    await page.keyboard.press('End');
+    await page.keyboard.type(', slow tilt up');
+    await page.keyboard.press('Enter');
+    await expect(visual).toHaveText('Bottle centered, tagline comes in, slow tilt up');
+    await dialog.getByRole('button', { name: 'Add shot' }).click();
+    await expect(dialog.locator('[data-row="05"]')).toBeVisible();
+    await page.keyboard.type('Logo end card');
+    await page.keyboard.press('Enter');
+    await dialog.locator('[data-row="05"]').hover();
+    await dialog.getByRole('button', { name: 'Remove shot 05' }).click();
+    await expect(dialog.locator('[data-row="05"]')).toHaveCount(0);
+    await dialog.getByRole('button', { name: 'Field visibility' }).click();
+    await page.getByRole('menuitemcheckbox', { name: 'Lines' }).click();
+    await page.keyboard.press('Escape');
+    await expect(dialog.getByRole('columnheader', { name: 'Lines' })).toHaveCount(0);
+    await dialog.getByRole('button', { name: 'Filter' }).click();
+    await page.getByRole('menuitemradio', { name: 'Selected' }).click();
+    await expect(dialog.locator('[data-row]')).toHaveCount(3);
+    const before = await page.locator('.react-flow__node').count();
+    await dialog.getByRole('button', { name: /^Generate storyboard · Selected 3/ }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.locator('.react-flow__node')).toHaveCount(before + 6);
+    await expect(page.getByText('6 nodes added for the storyboard. Nothing was charged.')).toBeVisible();
+  });
+
+  test('run all over built nodes: keyframes generate first, the videos they feed wait as queued', async ({ page }) => {
+    await openApp(page, '', 'fast');
+    await page.getByRole('button', { name: 'Build on canvas' }).click();
+    await page.getByRole('button', { name: /^Run all/ }).click();
+    await page.getByTestId('plan-dialog').getByRole('button', { name: /^Run · / }).click();
+    await expect(page.locator('.react-flow__node [data-status="queued"]').first()).toBeVisible();
+    await expect(page.locator('.react-flow__node [data-node-kind="image"][data-status="generating"]').first()).toBeVisible();
+  });
+
+  test('editor “Open on canvas” closes the editor and selects the shot', async ({ page }) => {
+    await openApp(page, 'edit');
+    await page.getByRole('button', { name: 'Open on canvas' }).click();
+    await expect(page.getByTestId('editor')).toHaveCount(0);
+    await expect(page.locator('.react-flow__node.selected')).toHaveAttribute('data-id', NODE.shotA);
+  });
 });

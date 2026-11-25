@@ -64,3 +64,27 @@ describe('editor reducer', () => {
     expect(reducer(s, { type: 'undo' }).edl).toBe(start.edl);
   });
 });
+
+describe('editor reducer: markers, format, transform and speed', () => {
+  const reduce = makeReducer({});
+  const s0 = initEditorState(project.edl, project.marks, 'v1');
+
+  it('adds a marker and removes it when added again at the same frame', () => {
+    const s1 = reduce(s0, { type: 'marker', time: 2.6 });
+    expect(s1.markers).toEqual([2.6]);
+    expect(reduce(s1, { type: 'marker', time: 2.6 }).markers).toEqual([]);
+  });
+
+  it('changes the output format as an undoable edit', () => {
+    const s1 = reduce(s0, { type: 'format', width: 1920, height: 1080, fps: 30 });
+    expect([s1.edl.width, s1.edl.height, s1.edl.fps]).toEqual([1920, 1080, 30]);
+    expect(reduce(s1, { type: 'undo' }).edl.width).toBe(1080);
+  });
+
+  it('commits setTransform and setSpeed through the core ops', () => {
+    const s1 = reduce(s0, { type: 'commit', ops: [{ op: 'setTransform', clipId: 'v1', transform: { scale: 1.2 } }], animate: false });
+    expect((findClip(s1.edl, 'v1')!.clip as MediaClip).transform?.scale).toBe(1.2);
+    const s2 = reduce(s1, { type: 'commit', ops: [{ op: 'setSpeed', clipId: 'v1', speed: 2 }], animate: true });
+    expect(clipEnd(findClip(s2.edl, 'v1')!.clip)).toBe(2);
+  });
+});

@@ -1,8 +1,6 @@
 import { useToast } from '@rolling/ui';
-import { Paywall, RunConfirm } from '@/features/overlays';
+import { useRunFlow } from '@/features/overlays';
 import { useModels } from '@/lib/models';
-import { getPrefs } from '@/lib/prefs';
-import { checkoutPlan, useCredits, useSession } from '@/lib/session';
 import { MenuPopover, type MenuEntry } from '../layers/Menu';
 import { catalogCredits, findModel } from '../pricing';
 import { ExportDialog } from './ExportDialog';
@@ -91,9 +89,7 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
   const [formatOpen, setFormatOpen] = useState(false);
   const [effectsOpen, setEffectsOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
-  const [gate, setGate] = useState<{ type: 'join' | 'confirm'; clipId: string } | null>(null);
-  const { isMember } = useSession();
-  const credits = useCredits();
+  const runFlow = useRunFlow();
   const { data: catalog } = useModels('video');
 
   /** Credits for a shot: the synced catalog at its model, resolution and length (D-006), or the mock price. */
@@ -169,17 +165,32 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
   };
   const discard = () => dispatch({ type: 'proposalClose' });
 
-  /** Generate / Regenerate: members only (D-007), RunConfirm at or over the threshold (D-006). */
+  /**
+   * Generate / Regenerate through the shared run flow (features/overlays
+   * useRunFlow): join paywall without a plan (D-007), top-up when short,
+   * RunConfirm at or over the threshold (D-006), toasts. A host can take over
+   * with `onRequestRun` (the canvas run pipeline).
+   */
   const requestRun = (clipId: string) => {
     const clip = findClip(state.edl, clipId)?.clip as MediaClip | undefined;
     if (!clip?.nodeId || state.running.includes(clipId)) return;
-    if (!isMember) return setGate({ type: 'join', clipId });
-    if (shotCredits(clip.nodeId) >= getPrefs().confirmThreshold) return setGate({ type: 'confirm', clipId });
-    void run(clipId);
+    if (onRequestRun) return void run(clipId);
+    const shot = project.shots[clip.nodeId];
+    const regenerate = clip.assetId !== null;
+    runFlow.request({
+      cost: shotCredits(clip.nodeId),
+      kind: 'video',
+      actionLabel: t(regenerate ? 'editor.run.action' : 'editor.run.generateAction'),
+      meta: shot ? t('editor.inspector.shotMeta', { model: shot.model, resolution: shot.resolution, seconds: shot.seconds }) : '',
+      onDone: (r) => {
+        // Regenerate keeps the clip's place, trims and effects: only the shot reference changes.
+        const nodeId = clip.nodeId!;
+        dispatch({ type: 'commit', ops: [{ op: 'replaceShot', clipId, nodeId, assetId: `ast_${nodeId.replace(/^node_/, '')}_${r.id}` }], animate: false });
+      },
+    });
   };
 
   const run = async (clipId: string) => {
-    setGate(null);
     const ref = findClip(stateRef.current.edl, clipId);
     const clip = ref?.clip as MediaClip | undefined;
     if (!clip?.nodeId || stateRef.current.running.includes(clipId)) return;
@@ -190,11 +201,9 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
       credits: shotCredits(clip.nodeId),
     };
     dispatch({ type: 'running', clipId, on: true });
-    toast.show({ message: t(request.kind === 'generate' ? 'editor.run.started' : 'editor.run.restarted', { credits: request.credits }) });
     try {
       const outcome = await (onRequestRun ?? mockRun)(request);
       if (outcome.status === 'done') {
-        toast.show({ message: t('editor.run.done', { name: project.shots[clip.nodeId]?.title ?? '' }) });
         // Regenerate keeps the clip's place, trims and effects: only the shot reference changes.
         dispatch({ type: 'commit', ops: [{ op: 'replaceShot', clipId, nodeId: outcome.nodeId, assetId: outcome.assetId }], animate: false });
       }
@@ -391,11 +400,7 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
     [state.tracks],
   );
   const fmt = (n: number) => intl.formatNumber(n, { useGrouping: false });
-  const gateClip = gate ? (findClip(state.edl, gate.clipId)?.clip as MediaClip | undefined) : undefined;
-  const gateShot = gateClip?.nodeId ? project.shots[gateClip.nodeId] : undefined;
-  const gateRows = gateShot
-    ? [{ id: gateShot.nodeId, name: gateShot.title, meta: t('editor.inspector.shotMeta', { model: gateShot.model, resolution: gateShot.resolution, seconds: gateShot.seconds }), kind: 'video' as const, state: 'run' as const, cost: shotCredits(gateShot.nodeId) }]
-    : [];
+
 
   return (
     <section
@@ -543,28 +548,7 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
         marks={state.marks}
         onDone={() => toast.show({ message: t('editor.export.toast') })}
       />
-      <RunConfirm
-        open={gate?.type === 'confirm'}
-        onOpenChange={(o) => !o && setGate(null)}
-        variant="single"
-        rows={gateRows}
-        balance={credits.available}
-        eta={t('editor.run.eta')}
-        actionLabel={t('editor.run.action')}
-        onConfirm={() => gate && void run(gate.clipId)}
-      />
-      <Paywall
-        open={gate?.type === 'join'}
-        onOpenChange={(o) => !o && setGate(null)}
-        variant="join"
-        onContinue={(option) => {
-          const clipId = gate?.clipId;
-          void checkoutPlan(option.id).then(() => {
-            setGate(null);
-            if (clipId) void run(clipId);
-          });
-        }}
-      />
+      {runFlow.element}
     </section>
   );
 }

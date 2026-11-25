@@ -20,6 +20,9 @@ export function useLayer<T extends HTMLElement>(open: boolean, onClose: () => vo
     if (focus && el) el.focus({ preventScroll: true });
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        // A menu or popover open inside this layer closes first.
+        const inner = (document.activeElement as HTMLElement | null)?.closest('[role="menu"],[role="listbox"],[role="dialog"]');
+        if (inner && el && inner !== el && el.contains(inner)) return;
         e.stopPropagation();
         close.current();
         return;

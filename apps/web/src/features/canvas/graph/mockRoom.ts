@@ -213,6 +213,8 @@ export class MockProjectRoom {
   /** Moves every running job one step (also callable from tests). */
   advance(step = this.opts.step) {
     for (const job of [...this.jobs.values()]) {
+      // Ended during this step (a failed upstream fails its dependents).
+      if (this.jobs.get(job.nodeId) !== job) continue;
       if (job.waitFor.some((id) => this.jobs.has(id))) continue;
       if (job.waitFor.length) {
         job.waitFor = [];
