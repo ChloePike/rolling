@@ -36,6 +36,7 @@ export const ServerMessageType = z.enum([
   'pong',
   'graph.patched',
   'node.version',
+  'job.queued',
   'job.progress',
   'job.done',
   'job.failed',
@@ -45,6 +46,7 @@ export const ServerMessageType = z.enum([
   'agent.delta',
   'activity.updated',
   'notification',
+  'prefs.changed',
 ]);
 export type ServerMessageType = z.infer<typeof ServerMessageType>;
 

@@ -40,6 +40,10 @@ export interface GraphNode {
   /** Active version number and how many exist. */
   version?: { n: number; total: number };
   createdBy: 'user' | 'agent';
+  /** Skipped by runs; passes its matching input through to dependents (`setBypass`). */
+  bypass?: boolean;
+  /** Drawn as its header only (`setCollapsed`). View state, but shared like position. */
+  collapsed?: boolean;
 }
 
 export interface PortRef {
@@ -51,6 +55,12 @@ export interface GraphEdge {
   id: string;
   from: PortRef;
   to: PortRef;
+  /**
+   * Reroute points the wire passes through, in order (`addReroute` /
+   * `removeReroute`). Reroutes are edge geometry, not nodes, so they never
+   * take part in port typing, cycles or runs.
+   */
+  reroutes?: XY[];
 }
 
 export interface GraphGroup {
@@ -80,7 +90,13 @@ export type GraphOp =
   | { op: 'disconnect'; edgeId: string }
   | { op: 'removeNode'; nodeId: string }
   | { op: 'group'; nodeIds: string[]; title: string; groupId?: string }
-  | { op: 'moveNode'; nodeId: string; position: XY };
+  | { op: 'moveNode'; nodeId: string; position: XY }
+  | { op: 'setBypass'; nodeId: string; bypass: boolean }
+  | { op: 'setCollapsed'; nodeId: string; collapsed: boolean }
+  /** Inserts a reroute point at `index` (0 = nearest the source). */
+  | { op: 'addReroute'; edgeId: string; index: number; position: XY }
+  | { op: 'removeReroute'; edgeId: string; index: number }
+  | { op: 'moveReroute'; edgeId: string; index: number; position: XY };
 
 /** Ops the client may send: GraphOp plus `ungroup` (undo of `group`). */
 export type LocalOp = GraphOp | { op: 'ungroup'; groupId: string };
@@ -95,7 +111,9 @@ export type RefusalCode =
   | 'CYCLE'
   | 'PORT_FULL'
   | 'DUPLICATE_ID'
-  | 'EMPTY_GROUP';
+  | 'EMPTY_GROUP'
+  | 'REROUTE_NOT_FOUND'
+  | 'TOO_MANY_REROUTES';
 
 export interface Refusal {
   code: RefusalCode;

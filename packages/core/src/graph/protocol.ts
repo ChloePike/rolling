@@ -26,6 +26,9 @@ export interface NodeRow {
   version_n?: number;
   version_total?: number;
   refunded?: number;
+  /** Columns `bypass` / `collapsed` (0/1); absent means off. */
+  bypass?: number;
+  collapsed?: number;
 }
 
 export interface EdgeRow {
@@ -37,6 +40,8 @@ export interface EdgeRow {
   to_port: string;
   ord: number;
   pinned_version_id: string | null;
+  /** JSON `[{x,y}, …]` reroute points, or absent. */
+  reroutes?: string | null;
 }
 
 export interface GroupRow {
@@ -68,7 +73,11 @@ export type ServerMessage =
   | WsEnvelope<'error', { code: string; message: string; data?: unknown }>
   | WsEnvelope<'pong', null>
   | WsEnvelope<'graph.patched', { revision: number; ops: LocalOp[]; actor: string }>
+  /** The job waits for upstream jobs of the same run (keyframes before the videos they feed). */
+  | WsEnvelope<'job.queued', { jobId: string; nodeId: string }>
   | WsEnvelope<'job.progress', { jobId: string; nodeId: string; progress: number }>
+  /** The node's active version changed (switch, or another tab picked one). */
+  | WsEnvelope<'node.version', { nodeId: string; version: { n: number; total: number } }>
   | WsEnvelope<'job.done', { jobId: string; nodeId: string; version: { n: number; total: number } }>
   | WsEnvelope<'job.failed', { jobId: string; nodeId: string; refunded: number; reason: string }>
   | WsEnvelope<'credits.changed', { balance: number; held: number }>;
@@ -100,12 +109,24 @@ export function toSnapshot(projectId: string, state: GraphState): ProjectSnapsho
       ...(n.cost !== undefined ? { cost: n.cost } : {}),
       ...(n.version ? { version_n: n.version.n, version_total: n.version.total } : {}),
       ...(n.refunded !== undefined ? { refunded: n.refunded } : {}),
+      ...(n.bypass ? { bypass: 1 } : {}),
+      ...(n.collapsed ? { collapsed: 1 } : {}),
     })),
     edges: state.edges.map((e) => {
       const k = `${e.to.node}:${e.to.port}`;
       const ord = order.get(k) ?? 0;
       order.set(k, ord + 1);
-      return { id: e.id, canvas_id: CANVAS_ID, from_node: e.from.node, from_port: e.from.port, to_node: e.to.node, to_port: e.to.port, ord, pinned_version_id: null };
+      return {
+        id: e.id,
+        canvas_id: CANVAS_ID,
+        from_node: e.from.node,
+        from_port: e.from.port,
+        to_node: e.to.node,
+        to_port: e.to.port,
+        ord,
+        pinned_version_id: null,
+        ...(e.reroutes?.length ? { reroutes: JSON.stringify(e.reroutes) } : {}),
+      };
     }),
     groups: state.groups.map((g) => ({ id: g.id, canvas_id: CANVAS_ID, title: g.title, color: null })),
   };
@@ -132,12 +153,22 @@ export function fromSnapshot(s: ProjectSnapshot): GraphState {
       ...(r.cost !== undefined ? { cost: r.cost } : {}),
       ...(r.version_n !== undefined ? { version: { n: r.version_n, total: r.version_total ?? r.version_n } } : {}),
       ...(r.refunded !== undefined ? { refunded: r.refunded } : {}),
+      ...(r.bypass ? { bypass: true } : {}),
+      ...(r.collapsed ? { collapsed: true } : {}),
     };
   });
   const groups: GraphGroup[] = (s.groups ?? []).map((g) => ({ id: g.id, title: g.title, nodeIds: nodes.filter((n) => n.groupId === g.id).map((n) => n.id) }));
   const edges = [...s.edges]
     .sort((a, b) => a.ord - b.ord)
-    .map((e) => ({ id: e.id, from: { node: e.from_node, port: e.from_port }, to: { node: e.to_node, port: e.to_port } }));
+    .map((e) => {
+      let reroutes: Array<{ x: number; y: number }> | undefined;
+      try {
+        reroutes = e.reroutes ? (JSON.parse(e.reroutes) as Array<{ x: number; y: number }>) : undefined;
+      } catch {
+        reroutes = undefined;
+      }
+      return { id: e.id, from: { node: e.from_node, port: e.from_port }, to: { node: e.to_node, port: e.to_port }, ...(reroutes?.length ? { reroutes } : {}) };
+    });
   // Keep the row order for edges (stable rendering).
   const rowOrder = new Map(s.edges.map((e, i) => [e.id, i]));
   edges.sort((a, b) => rowOrder.get(a.id)! - rowOrder.get(b.id)!);
