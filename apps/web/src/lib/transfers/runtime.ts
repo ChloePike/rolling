@@ -59,6 +59,8 @@ export async function createEngine(mode: TransportMode): Promise<TransferEngine>
     resolveApi,
     online: (globalThis.navigator as Navigator | undefined)?.onLine ?? true,
     withAdoptLock: lm ? async (fn) => void (await lm.request(ADOPT_LOCK, fn)) : undefined,
+    // Granted only after the other engine released its lifetime lock.
+    whenOwnerGone: lm ? (other, cb) => void lm.request(`${OWNER_LOCK}${other}`, async () => undefined).then(cb, () => undefined) : undefined,
     liveOwners: lm
       ? async () => {
           const state = await lm.query();

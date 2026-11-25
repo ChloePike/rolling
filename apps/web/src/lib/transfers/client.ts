@@ -21,6 +21,8 @@ export interface TransfersGlobalOverrides {
   config?: DeepPartial<TransfersConfig>;
   /** Force the transport (tests). */
   mode?: TransportMode;
+  /** Expose the client as `window.__rollingTransfers` (tests, debugging). */
+  expose?: boolean;
 }
 
 declare global {
@@ -95,6 +97,8 @@ export class TransfersClient {
   private readonly offerWaiters = new Map<string, (m: Array<{ index: number; id: string }>) => void>();
   private readonly itemRefreshers = new Map<string, (oldUrl: string) => Promise<string | null>>();
   private readonly clientId = uid('tab');
+  private readonly pendingDone = new Map<string, Promise<UploadResult>>();
+  private readonly rejectListeners = new Set<(r: Rejected[]) => void>();
   /** Items this tab started (only this tab toasts about them). */
   private readonly mine = new Map<string, { quiet: boolean }>();
   private pingTimer: ReturnType<typeof setInterval> | null = null;
@@ -194,6 +198,25 @@ export class TransfersClient {
     return () => set.delete(cb as (e: TransferEvent) => void);
   }
 
+  /** Files refused client-side (type or size), in this tab. The dock explains them. */
+  onRejected(cb: (r: Rejected[]) => void): () => void {
+    this.rejectListeners.add(cb);
+    return () => this.rejectListeners.delete(cb);
+  }
+
+  /**
+   * The asset id for an id handed out before the upload finished (upload item
+   * ids are used as provisional reference ids). Other ids pass through.
+   */
+  async resolveAssetId(id: string): Promise<string> {
+    const waiter = this.uploadWaiters.get(id);
+    const item = this.snapshot.items.find((i) => i.id === id);
+    if (item?.status === 'done' && item.assetId) return item.assetId;
+    if (!waiter && !item) return id;
+    const done = this.pendingDone.get(id);
+    return done ? (await done).assetId : id;
+  }
+
   // ---------------------------------------------------------------- uploads
 
   /** Validates client-side (type and size limits), then queues the accepted files. */
@@ -210,6 +233,7 @@ export class TransfersClient {
       const id = uid('upl');
       const done = new Promise<UploadResult>((resolve, reject) => this.uploadWaiters.set(id, { resolve, reject }));
       done.catch(() => undefined);
+      this.pendingDone.set(id, done);
       items.push({ id, file, done });
       this.mine.set(id, { quiet: !!opts.quiet });
       requests.push({
@@ -224,6 +248,7 @@ export class TransfersClient {
       });
     }
     if (requests.length) this.post({ type: 'upload', requests });
+    if (rejected.length) for (const l of this.rejectListeners) l(rejected);
     return { items, rejected };
   }
 

@@ -15,6 +15,7 @@ export const transfers = new TransfersClient();
 export const uploadFiles = transfers.uploadFiles.bind(transfers);
 export const download = transfers.download.bind(transfers);
 export const fetchBlob = transfers.fetchBlob.bind(transfers);
+export const resolveAssetId = transfers.resolveAssetId.bind(transfers);
 
 /** Live queue state shared by every tab (shared mode) or this tab (fallbacks). */
 export function useTransfers(): QueueSnapshot {
@@ -25,3 +26,6 @@ export { TransfersClient } from './client';
 export type { UploadHandle, UploadOptions, UploadResult, DownloadOptions, FetchBlobOptions, Rejected } from './client';
 export { DEFAULT_CONFIG, UPLOAD_LIMITS, validateUpload, contentTypeOf, resolveConfig, type TransfersConfig, type ConcurrencyConfig } from './config';
 export type { TransferItem, TransferStatus, TransferEvent, QueueSnapshot, Purpose, Priority, TransportMode } from './types';
+
+// Tests and debugging: `__ROLLING_TRANSFERS__ = { expose: true }` puts the client on window.
+if (globalThis.__ROLLING_TRANSFERS__?.expose) (globalThis as { __rollingTransfers?: TransfersClient }).__rollingTransfers = transfers;

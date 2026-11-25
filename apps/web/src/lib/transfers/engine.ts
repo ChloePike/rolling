@@ -45,6 +45,8 @@ export interface EngineDeps {
   resolveApi?: (config: TransfersConfig) => Promise<{ api: 'real' | 'mock'; http: Http }>;
   /** Serializes adoption of orphaned records across engines (Web Locks). */
   withAdoptLock?: (fn: () => Promise<void>) => Promise<void>;
+  /** Calls back once the engine `owner` is gone (its tab closed or reloaded). */
+  whenOwnerGone?: (owner: string, cb: () => void) => void;
   /** Ids of engines that are still alive (fallback mode adopts orphans only). */
   liveOwners?: () => Promise<Set<string> | null>;
   now?: () => number;
@@ -145,6 +147,7 @@ export class TransferEngine {
   private apiHttp: Http;
   private started: Promise<void> | null = null;
   private loaded = false;
+  private readonly watchedOwners = new Set<string>();
   private apiReady: Promise<void> | null = null;
   private broadcastTimer: ReturnType<typeof setTimeout> | null = null;
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
@@ -205,8 +208,20 @@ export class TransferEngine {
     const live = this.deps.liveOwners ? await this.deps.liveOwners() : null;
     for (const rec of records) {
       if (this.items.has(rec.id)) continue;
-      // Fallback mode: another tab's engine still owns this record.
-      if (live && rec.owner !== this.deps.owner && live.has(rec.owner)) continue;
+      // Fallback mode: another tab's engine still owns this record; adopt it once that engine is gone.
+      if (live && rec.owner !== this.deps.owner && live.has(rec.owner)) {
+        if (!this.watchedOwners.has(rec.owner) && this.deps.whenOwnerGone) {
+          this.watchedOwners.add(rec.owner);
+          this.deps.whenOwnerGone(rec.owner, () => {
+            const adopt = this.deps.withAdoptLock ?? ((fn: () => Promise<void>) => fn());
+            void adopt(() => this.adopt()).then(() => {
+              this.pump();
+              this.broadcast(true);
+            });
+          });
+        }
+        continue;
+      }
       const item = { ...rec.item, speed: 0, eta: null, nextRetryAt: undefined };
       if (rec.item.kind === 'upload') {
         const rt = this.newUploadRt(item);
