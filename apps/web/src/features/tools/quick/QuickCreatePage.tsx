@@ -1,6 +1,6 @@
-import { Link } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { useToast } from '@rolling/ui';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { useToolFeed } from '../api';
 import { AsideCard } from '../shared/AsideCard';
@@ -18,7 +18,9 @@ import type { ToolModel } from '../shared/models';
 import { resolutionOptions, useToolPlan } from '../shared/plan';
 import type { ComposerPill } from '../types';
 import { quickLines, quickPrompt, quickShots, quickSlots, quickTemplate as defaultTemplate } from './mocks';
-import { useTemplates } from '@/features/templates/api';
+import { createProjectFromTemplate, useTemplate, useTemplates, type SlotFills } from '@/features/templates/api';
+import { isMockApi } from '@/features/overlays/backend';
+import { resolveAssetId } from '@/lib/transfers';
 import styles from './QuickCreate.module.css';
 
 const RES_COST: Record<string, number> = { '480p': 6, '720p': 10, '1080p': 18 };
@@ -41,7 +43,10 @@ interface Props {
 
 export function QuickCreatePage({ initialOverlay, models: modelsOverride, plan: planProp, isMember, templateId, ratio: ratioParam }: Props) {
   const { data: templates } = useTemplates();
-  const picked = templateId ? [...templates.featured, ...templates.items].find((x) => x.id === templateId) : undefined;
+  const real = !isMockApi();
+  // Real mode: `GET /api/templates/:id` (slots and graph); the list row gives the name, length and ratio meanwhile.
+  const detail = useTemplate(real ? templateId : undefined).data;
+  const picked = templateId ? (detail ?? [...templates.featured, ...templates.items].find((x) => x.id === templateId)) : undefined;
   const ratio = ratioParam && /^\d{1,2}:\d{1,2}$/.test(ratioParam) ? ratioParam : picked ? picked.coverAspect.replace('/', ':') : defaultTemplate.aspect;
   const quickTemplate = picked ? { ...defaultTemplate, name: picked.name, durationSec: picked.durationSec, aspect: ratio } : { ...defaultTemplate, aspect: ratio };
   const plan = useToolPlan(planProp);
@@ -57,12 +62,43 @@ export function QuickCreatePage({ initialOverlay, models: modelsOverride, plan: 
   const [ambience, setAmbience] = useState(true);
   const [text, setText] = useState(quickPrompt);
   const toast = useToast();
-  const [slots, setSlots] = useState(() => quickSlots.map((x) => ({ ...x, file: undefined as string | undefined })));
+  const [slots, setSlots] = useState(() => quickSlots.map((x) => ({ ...x, file: undefined as string | undefined, id: x.name, uploadId: undefined as string | undefined })));
+  // Real mode with a template: its picture slots replace the sample cast.
+  const templateSlots = real ? picked?.slots?.filter((x) => x.kind === 'image') : undefined;
+  useEffect(() => {
+    if (!templateSlots?.length) return;
+    setSlots(templateSlots.map((x, i) => ({ name: x.label, uploaded: !!x.default, shots: undefined, tone: i % 2 ? 'var(--c-tone-neutral)' : 'var(--c-tone-plum)', file: undefined, id: x.id, uploadId: x.default })));
+    // Once per template.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [picked?.id, templateSlots?.length]);
+  const textSlot = real ? picked?.slots?.find((x) => x.kind === 'text' && x.default) : undefined;
+  useEffect(() => {
+    if (textSlot?.default) setText(textSlot.default);
+    // Once per template.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [picked?.id]);
+  const [opening, setOpening] = useState(false);
+  const navigate = useNavigate();
+  /** Real mode: `POST /api/projects { fromTemplateId, slots }` with the swapped pictures, then the canvas (nothing is spent). */
+  const openOnCanvas = async () => {
+    if (!templateId) return;
+    setOpening(true);
+    try {
+      const fills: SlotFills = {};
+      for (const x of slots) if (x.uploadId && picked?.slots?.some((ps) => ps.id === x.id)) fills[x.id] = { assetId: await resolveAssetId(x.uploadId) };
+      const project = await createProjectFromTemplate(templateId, fills);
+      void navigate({ to: '/p/$projectId', params: { projectId: project.id } });
+    } catch {
+      toast.show({ message: t('tools.quick.openFailed') });
+    } finally {
+      setOpening(false);
+    }
+  };
   const [slotTarget, setSlotTarget] = useState<string | null>(null);
   const [lineLang, setLineLang] = useState('en-US');
-  const slotPicker = useFilePicker('image/*', (file) => {
+  const slotPicker = useFilePicker('image/*', (file, uploadId) => {
     if (!slotTarget) return;
-    setSlots((all) => all.map((x) => (x.name === slotTarget ? { ...x, uploaded: true, shots: x.shots ?? '1, 2, 3', file: file.name } : x)));
+    setSlots((all) => all.map((x) => (x.name === slotTarget ? { ...x, uploaded: true, shots: x.shots ?? '1, 2, 3', file: file.name, uploadId } : x)));
     toast.show({ message: t('tools.toast.slotUploaded', { name: slotTarget, file: file.name }) });
   });
 
@@ -137,6 +173,11 @@ export function QuickCreatePage({ initialOverlay, models: modelsOverride, plan: 
         <Link to="/templates" className={layout.chipBtn}>
           <FormattedMessage id="tools.quick.changeTemplate" />
         </Link>
+        {real && templateId ? (
+          <button type="button" className={layout.chipBtn} data-open-canvas="" disabled={opening} onClick={() => void openOnCanvas()}>
+            <FormattedMessage id="tools.quick.openOnCanvas" />
+          </button>
+        ) : null}
       </AsideCard>
       <AsideCard title={t('tools.quick.swap')} hint={t('tools.quick.swap.hint')} testId="swap">
         {slotPicker.input}
@@ -249,15 +290,23 @@ export function QuickCreatePage({ initialOverlay, models: modelsOverride, plan: 
         durationSec: quickTemplate.durationSec,
       }}
       actions={['redo', 'sliders', 'frame', 'down', 'star']}
-      spec={(prompt) => ({
-        kind: 'video',
-        model: adv && p.model !== 'Auto' ? (models.find((m) => m.name === p.model)?.id ?? p.model) : 'auto',
-        prompt,
-        title: quickTemplate.name,
-        ratio,
-        seconds: quickTemplate.durationSec,
-        ...(adv ? { resolution: p.res } : {}),
-      })}
+      spec={(prompt) => {
+        // The swapped cast pictures go in as references (resolved from upload ids before the quote).
+        const referenceAssetIds = slots.flatMap((x) => (x.uploadId ? [x.uploadId] : []));
+        const seconds = quickTemplate.durationSec > 0 ? Math.min(15, quickTemplate.durationSec) : undefined;
+        return {
+          kind: 'video',
+          model: adv && p.model !== 'Auto' ? (models.find((m) => m.name === p.model)?.id ?? p.model) : 'auto',
+          prompt,
+          title: quickTemplate.name,
+          ratio,
+          ...(seconds ? { seconds } : {}),
+          ...(adv ? { resolution: p.res } : {}),
+          ...(adv && /^\d+$/.test(p.seed) ? { seed: Number(p.seed) } : {}),
+          ...(adv && p.neg.trim() ? { negativePrompt: p.neg.trim() } : {}),
+          ...(referenceAssetIds.length ? { refsMode: true, inputs: { referenceAssetIds } } : {}),
+        };
+      }}
       agentTool="quick"
       onFields={(f) => {
         const m = typeof f.model === 'string' ? models.find((x) => x.id === f.model || x.name === f.model) : undefined;

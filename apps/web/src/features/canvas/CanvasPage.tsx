@@ -47,7 +47,9 @@ import {
   type StartRunResult,
 } from './api';
 import { CanvasError } from './CanvasError';
-import { assetMediaUrl, isMockApi, savePendingAction, takePendingAction } from '@/features/overlays/backend';
+import { assetMediaUrl, hasPendingAction, isMockApi, savePendingAction, takePendingAction } from '@/features/overlays/backend';
+import { saveSelectionAsTemplate } from '@/features/templates/api';
+import { useQueryClient } from '@tanstack/react-query';
 import { downloadAsset } from '@/features/overlays/media';
 import { resolveAssetId } from '@/lib/transfers';
 import canvas from './canvas.module.css';
@@ -266,6 +268,7 @@ interface InnerProps extends CanvasPageProps {
 function CanvasInner({ projectId, initialOverlay = null, initialSelection = null, renderEditor, session, titles, retryRef }: InnerProps) {
   const intl = useIntl();
   const toast = useToast();
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const flow = useReactFlow<CardNode, WireEdge>();
   const viewport = useViewport();
@@ -700,6 +703,14 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
   );
   retryRef.current = (id) => requestRun(id);
 
+  // An editor ask interrupted by the join paywall: reopen the editor, which asks again (after checkout, even after a redirect).
+  useEffect(() => {
+    if (isMockApi() || syncStatus !== 'saved') return;
+    if (hasPendingAction<{ projectId: string }>('editor.ask', (d) => d.projectId === projectId)) setOverlay('edit');
+    // Only once the canvas has loaded.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [syncStatus === 'saved']);
+
   // A run interrupted by the join paywall resumes once the plan is active (after checkout, even after a redirect).
   useEffect(() => {
     if (isMockApi() || syncStatus !== 'saved') return;
@@ -951,9 +962,59 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
     close();
   };
 
+  /** Selected nodes (multi-select), else the focused node. */
+  const selectionIds = () => {
+    const ids = rfNodes.filter((n) => n.selected).map((n) => n.id);
+    return ids.length ? ids : selected ? [selected] : [];
+  };
+
+  /** Real mode: "Save selection as template" (`POST /api/templates`, workspace-private), listed on Templates and in this panel. */
+  const saveSelectionTemplate = () => {
+    const ids = selectionIds();
+    if (!ids.length) return;
+    const first = graph.nodes.find((n) => n.id === ids[0]);
+    const title = intl.formatMessage({ id: 'canvas.templates.savedTitle' }, { name: first?.title ?? '', n: ids.length });
+    void saveSelectionAsTemplate({ projectId, nodeIds: ids, title }).then(
+      (tpl) => {
+        setToolPanel(null);
+        void queryClient.invalidateQueries({ queryKey: ['templates'] });
+        toast.show({ message: intl.formatMessage({ id: 'canvas.templates.saved' }, { name: tpl.name }) });
+      },
+      () => toast.show({ message: intl.formatMessage({ id: 'canvas.templates.saveFailed' }) }),
+    );
+  };
+
   const useTemplate = (tpl: CanvasTemplate) => {
     const center = toFlow({ x: size.w / 2 - 300, y: size.h / 2 - 120 });
     const ops: LocalOp[] = [];
+    // Real mode: the template's graph (`GET /api/templates/:id`) goes in as one patch with fresh ids, placed at the view center.
+    if (tpl.graph) {
+      const g = tpl.graph;
+      const temp = new Map(g.nodes.map((n, i) => [n.id, `t${i}`]));
+      const minX = Math.min(...g.nodes.map((n) => n.position.x));
+      const minY = Math.min(...g.nodes.map((n) => n.position.y));
+      for (const n of g.nodes) {
+        ops.push({ op: 'addNode', tempId: temp.get(n.id)!, kind: n.kind, title: n.title, params: n.params, position: { x: Math.round(center.x + n.position.x - minX), y: Math.round(center.y + n.position.y - minY) } });
+      }
+      for (const e of g.edges) {
+        const from = temp.get(e.from.node);
+        const to = temp.get(e.to.node);
+        if (from && to) ops.push({ op: 'connect', from: { node: from, port: e.from.port }, to: { node: to, port: e.to.port } });
+      }
+      for (const grp of g.groups) {
+        const ids = grp.nodeIds.flatMap((id) => (temp.has(id) ? [temp.get(id)!] : []));
+        if (ids.length) ops.push({ op: 'group', nodeIds: ids, title: grp.title });
+      }
+      const r = commit(ops);
+      if (r.ok) {
+        setToolPanel(null);
+        toast.show({
+          message: intl.formatMessage({ id: 'canvas.toast.template' }, { name: tpl.name, n: g.nodes.length }),
+          action: { label: intl.formatMessage({ id: 'canvas.toast.undo' }), onAction: () => session.sync.undo() },
+        });
+      }
+      return;
+    }
     tpl.nodes.forEach((n, i) => {
       ops.push({
         op: 'addNode',
@@ -1461,7 +1522,14 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
 
       {historyP.mounted ? <HistoryDrawer state={historyP.state} onClose={() => setHistoryOpen(false)} rows={historyRows} onOpen={(id) => selectNode(id, true)} /> : null}
 
-      {templatesP.mounted ? <TemplatesPanel state={templatesP.state} onClose={() => setToolPanel(null)} onUse={useTemplate} /> : null}
+      {templatesP.mounted ? <TemplatesPanel
+          state={templatesP.state}
+          onClose={() => setToolPanel(null)}
+          onUse={useTemplate}
+          onFailed={() => toast.show({ message: intl.formatMessage({ id: 'canvas.templates.failed' }) })}
+          selectionCount={selectionIds().length}
+          onSaveSelection={saveSelectionTemplate}
+        /> : null}
 
       {assetsP.mounted ? (
         <div className={cx(canvas.assetPanel, 'rl-pop')} {...presenceProps(assetsP.state)} data-testid="assets-panel">

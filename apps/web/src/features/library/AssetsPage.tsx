@@ -298,7 +298,7 @@ function FileCard({ asset, index, order, on, onPick }: { asset: AssetItem; index
       data-asset={asset.id}
     >
       <span className={styles.fileThumb} style={{ aspectRatio: asset.ar, background: audio ? 'var(--c-surface-4)' : TONES[index % TONES.length] }}>
-        {asset.thumbUrl && !audio ? <RatedThumb className={styles.fileImg} src={asset.thumbUrl} alt={asset.name} rating={asset.mature ? 'suggestive' : null} /> : null}
+        {asset.thumbUrl && !audio ? <RatedThumb className={styles.fileImg} src={asset.thumbUrl} alt={asset.name} rating={asset.rating ?? (asset.mature ? 'suggestive' : null)} /> : null}
         <span className={styles.typeBadge}>{intl.formatMessage({ id: `library.assets.type.${asset.type}` })}</span>
         {audio && (
           <span className={styles.wave} aria-hidden="true">

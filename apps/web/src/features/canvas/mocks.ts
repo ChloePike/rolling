@@ -1,3 +1,4 @@
+import type { TemplateDetail } from '@/features/templates/types';
 import type { GraphState } from '@rolling/core/graph';
 
 /**
@@ -234,6 +235,8 @@ export interface CanvasTemplate {
   name: string;
   /** Node chain the template inserts, left to right. */
   nodes: Array<{ kind: 'text' | 'image' | 'video' | 'audio'; title: string; prompt?: string }>;
+  /** Real mode (`GET /api/templates/:id`): the template's graph, inserted as is (nodes, edges, groups). */
+  graph?: TemplateDetail['graph'];
 }
 
 export const MOCK_TEMPLATES: CanvasTemplate[] = [

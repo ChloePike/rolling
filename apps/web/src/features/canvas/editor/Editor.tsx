@@ -1,5 +1,6 @@
 import { useToast } from '@rolling/ui';
-import { useRunFlow } from '@/features/overlays';
+import { Paywall, useRunFlow } from '@/features/overlays';
+import { checkoutPlan, getSession, useCheckoutResume } from '@/lib/session';
 import { useModels } from '@/lib/models';
 import { MenuPopover, type MenuEntry } from '../layers/Menu';
 import { catalogCredits, findModel } from '../pricing';
@@ -8,7 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent } from 'react';
 import { useIntl } from 'react-intl';
 import { agentFailure, applyEditProposal, EditorAgentReply, getEditorProject, mockRun, proposeEdit, quoteNode, reassemble, type EditorProjectReal, type RunOutcome, type RunRequest } from './api';
-import { assetMediaUrl, isMockApi, savePendingAction } from '@/features/overlays/backend';
+import { assetMediaUrl, isMockApi, savePendingAction, takePendingAction } from '@/features/overlays/backend';
 import { discardProposal } from '@/features/overlays/agent';
 import { subscribeProjectMessages } from '../api';
 import { fetchTimeline, transitionOps, TimelineSync } from './realTimeline';
@@ -238,7 +239,9 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
         if (e instanceof EditorAgentReply) return void toast.show({ message: e.text });
         const f = agentFailure(e);
         if (f.kind === 'join') {
+          // D-007: keep the request; it is asked again after checkout (also after the Stripe redirect).
           savePendingAction('editor.ask', { projectId: project.id, request });
+          setJoinOpen(true);
           return void toast.show({ message: t('editor.agent.join') });
         }
         if (f.kind === 'allowance') return void toast.show({ message: t('editor.agent.allowance') });
@@ -251,6 +254,22 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [project],
   );
+
+  // The ask interrupted by the join paywall continues once the plan is active.
+  const [joinOpen, setJoinOpen] = useState(false);
+  const resumeAsk = useCallback(() => {
+    const pending = takePendingAction<{ projectId: string; request: string }>('editor.ask', (d) => d.projectId === project.id);
+    if (pending) void askAgent(pending.request, true);
+  }, [project.id, askAgent]);
+  useCheckoutResume(() => {
+    if (!isMockApi()) resumeAsk();
+  });
+  useEffect(() => {
+    // Opened by the canvas after the checkout return: ask right away when the plan is already active.
+    if (!isMockApi() && getSession().isMember) resumeAsk();
+    // Once per editor.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const asked = useRef(false);
   useEffect(() => {
@@ -700,6 +719,21 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
         onDone={() => toast.show({ message: t('editor.export.toast') })}
       />
       {runFlow.element}
+      <Paywall
+        open={joinOpen}
+        onOpenChange={(o) => !o && setJoinOpen(false)}
+        variant="join"
+        onContinue={(option) =>
+          void checkoutPlan(option.id).then(
+            () => {
+              // Mock, or an in-place switch: no redirect, ask now.
+              setJoinOpen(false);
+              resumeAsk();
+            },
+            () => toast.show({ message: t('editor.proposal.failed') }),
+          )
+        }
+      />
     </section>
   );
 }

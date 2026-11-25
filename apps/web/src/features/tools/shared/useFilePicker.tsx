@@ -10,7 +10,8 @@ import { uploadFiles, type UploadResult } from '@/lib/transfers';
  */
 export function useFilePicker(
   accept: string,
-  onFile: (file: File) => void,
+  /** `uploadId` is the provisional reference id (`upl_…`); `resolveAssetId` turns it into the asset id. */
+  onFile: (file: File, uploadId: string) => void,
   onUploaded?: (file: File, result: UploadResult) => void,
 ): { open: () => void; input: ReactNode } {
   const ref = useRef<HTMLInputElement>(null);
@@ -31,7 +32,7 @@ export function useFilePicker(
         if (!f) return;
         const { items } = uploadFiles([f], { purpose: 'tool', priority: 'high', quiet: true });
         if (!items[0]) return;
-        cb.current(f);
+        cb.current(f, items[0].id);
         void items[0].done.then((r) => done.current?.(f, r));
       }}
     />

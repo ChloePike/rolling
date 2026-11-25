@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { useIntl } from 'react-intl';
 import type { PromptSpec } from '@/features/overlays/runs';
+import { isMockApi } from '@/features/overlays/backend';
 import { pickerModels, useModels, type CatalogModel } from '@/lib/models';
 import { usePref } from '@/lib/prefs';
 import { useSession } from '@/lib/session';
@@ -40,7 +41,7 @@ export interface HomeRunSpec {
   /** CSS aspect ratio of the result, e.g. "9/16". */
   aspect: string;
   params: Array<{ label: string; value: string }>;
-  /** Real mode: what `POST /api/runs/quote { promptSpec }` generates (avatar has none yet). */
+  /** Real mode: what `POST /api/runs/quote { promptSpec }` generates (the page adds the prompt and inputs). */
   spec?: PromptSpec;
 }
 
@@ -49,7 +50,13 @@ export interface HomeRunSpec {
  * prices come from the synced catalog (`useModels`, D-002); the model pill is
  * always first (handoff 4).
  */
-export function useHomePills(mode: HomeModeId): {
+export function useHomePills(
+  mode: HomeModeId,
+  opts: {
+    /** Real mode, Avatar: the voice pill's "Upload a voice track" (the page opens its file chooser). */
+    onUploadVoice?: () => void;
+  } = {},
+): {
   pills: PromptPill[];
   renderPillPopover: (pill: PromptPill, state: PillPopoverState) => ReactNode;
   credits: number | null;
@@ -251,6 +258,28 @@ export function useHomePills(mode: HomeModeId): {
     credits = quoteCredits(m);
     const personaPill: PromptPill = { id: 'persona', kind: 'param', icon: 'person', label: PERSONAS[persona]! };
     const voicePill: PromptPill = { id: 'voice', kind: 'param', icon: 'wave', label: VOICES[voice]! };
+    if (!isMockApi()) {
+      // Real mode: lip sync to an uploaded voice track (TTS and cloned voices are open decisions); the photo is an `@` picture.
+      const uploadPill: PromptPill = { id: 'voice', kind: 'param', icon: 'wave', label: t('home.avatar.uploadVoice') };
+      run = {
+        kind: 'video',
+        spec: { kind: 'avatar', model: m?.id ?? 'auto' },
+        modelName: m?.name ?? '',
+        meta: [m?.name, t('home.avatar.uploadedVoice')].filter(Boolean).join(' · '),
+        aspect: '9/16',
+        params: [{ label: t('home.result.model'), value: m?.name ?? '' }],
+      };
+      specs = [
+        { pill: modelPill('model', nameOf(lipSync, avatarModel), idOf(lipSync, avatarModel)), render: modelPicker('avatar', lipSync, avatarModel, setAvatarModel) },
+        { pill: uploadPill, render: list(uploadPill, [t('home.avatar.uploadVoice.pick')], -1, () => opts.onUploadVoice?.()) },
+      ];
+      return {
+        pills: specs.map((s) => s.pill),
+        renderPillPopover: (pill, state) => specs.find((s) => s.pill.id === pill.id)?.render(state) ?? null,
+        credits,
+        run,
+      };
+    }
     run = {
       kind: 'video',
       modelName: m?.name ?? '',

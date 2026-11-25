@@ -19,7 +19,7 @@ function rowFrom(r: RunView, now: number): RunRow {
     id: r.id,
     ref: r.ref,
     name: r.name,
-    source: r.source,
+    source: r.tool === 'remix' ? 'remix' : r.tool === 'avatar' ? 'avatar' : r.tool === 'character' ? 'characters' : r.source,
     ...(r.projectTitle ? { projectTitle: r.projectTitle } : {}),
     params: r.params,
     status: r.status,

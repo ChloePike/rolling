@@ -319,5 +319,11 @@
   "canvas.quote.code.SAFETY_BLOCKED": "This can’t be generated under our content rules.",
   "canvas.quote.code.MATURE_REQUIRED": "Turn on mature content in Settings to generate this, or change the prompt.",
   "canvas.quote.code.SAFETY_REVIEW": "Mature content is paused for this workspace while recent activity is reviewed.",
-  "canvas.quote.code.NO_PLAN": "Join a plan and turn on mature content to generate this, or change the prompt."
+  "canvas.quote.code.NO_PLAN": "Join a plan and turn on mature content to generate this, or change the prompt.",
+  "canvas.templates.failed": "Couldn’t load this template. Try again.",
+  "canvas.templates.save": "{n, plural, =0 {Save selection as template} one {Save # node as template} other {Save # nodes as template}}",
+  "canvas.templates.saveHint": "Select nodes to save them as a template",
+  "canvas.templates.savedTitle": "{name} template",
+  "canvas.templates.saved": "Saved as template: {name}",
+  "canvas.templates.saveFailed": "Couldn’t save the template. Try again."
 }

@@ -290,8 +290,20 @@
   "tools.toast.concurrency": "Too many jobs running for your plan. Wait for one to finish, or upgrade.",
   "tools.toast.memberLimit": "Your team limit for this month is used.",
   "tools.toast.runError": "That didn’t work. Nothing was charged. Try again.",
-  "tools.toast.notYet": "This tool can’t generate yet. Use Quick Create or the canvas.",
   "tools.toast.refineNone": "The agent had no changes for this prompt.",
   "tools.toast.refineFailed": "The agent couldn’t refine this. Nothing was changed.",
-  "tools.toast.allowance": "Agent allowance for this month is used up."
+  "tools.toast.allowance": "Agent allowance for this month is used up.",
+  "tools.avatar.photo.empty": "Upload a photo",
+  "tools.avatar.voice.upload": "Upload a voice track",
+  "tools.avatar.voice.hint": "WAV or MP3, 2–30 seconds",
+  "tools.avatar.voice.track": "{file} · {sec}s",
+  "tools.avatar.voice.added": "Voice track added: {file}",
+  "tools.avatar.needPhoto": "Add a photo first: Look → Character → Upload.",
+  "tools.avatar.needVoice": "Upload a voice track first.",
+  "tools.remix.video": "Reference video",
+  "tools.remix.video.empty": "Upload the video to remix",
+  "tools.remix.video.added": "Reference video added: {file}",
+  "tools.remix.needVideo": "Upload the reference video first.",
+  "tools.quick.openOnCanvas": "Open on canvas",
+  "tools.quick.openFailed": "Couldn’t make a project from this template. Nothing was charged."
 }

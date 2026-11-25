@@ -15,6 +15,7 @@ import {
   type RefItem,
 } from '@/features/prompt';
 import { Paywall, useRunFlow, type RunRequest } from '@/features/overlays';
+import { uploadReferences } from '@/features/prompt';
 import { useTemplates } from '@/features/templates/api';
 import { checkoutPlan, useCheckoutResume, useSession } from '@/lib/session';
 import { useQueryClient } from '@tanstack/react-query';
@@ -62,7 +63,9 @@ export function HomePage() {
   const [skill, setSkill] = useState<PromptCommand | null>(null);
   const [refs, setRefs] = useState<RefItem[]>([]);
   const { data: skills } = useSkills();
-  const { pills, renderPillPopover, credits, run } = useHomePills(mode);
+  // Real mode, Avatar: the voice pill uploads a voice track; it joins the `@` references.
+  const voiceInput = useRef<HTMLInputElement>(null);
+  const { pills, renderPillPopover, credits, run } = useHomePills(mode, { onUploadVoice: () => voiceInput.current?.click() });
   const allowance = useAgentAllowance();
   // Settings commands open the pill they name; a mode without that pill does not list them.
   const pillIds = {
@@ -112,8 +115,17 @@ export function HomePage() {
     const brief = text.trim();
     const snapshot = { run, refs, title: title(), cost };
     // Real mode: the prompt, title and `@` images (uploads resolve to asset ids in the flow) go in the spec.
-    const imageRefs = refs.filter((r) => r.group !== 'pub' && /^(ast_|upl_)/.test(r.id)).map((r) => r.id);
-    const spec = run.spec ? { ...run.spec, prompt: brief, title: snapshot.title, ...(imageRefs.length ? { inputs: { referenceAssetIds: imageRefs } } : {}) } : undefined;
+    const own = refs.filter((r) => r.group !== 'pub' && /^(ast_|upl_)/.test(r.id));
+    const imageRefs = own.filter((r) => r.glyph.type !== 'wave').map((r) => r.id);
+    let spec = run.spec ? { ...run.spec, prompt: brief, title: snapshot.title, ...(imageRefs.length ? { inputs: { referenceAssetIds: imageRefs } } : {}) } : undefined;
+    if (run.spec?.kind === 'avatar') {
+      // Avatar: the first `@` picture speaks the uploaded voice track (lip sync, D-009).
+      const photo = own.find((r) => r.glyph.type === 'icon' && r.glyph.icon === 'img') ?? own.find((r) => r.glyph.type !== 'wave' && !(r.glyph.type === 'icon' && r.glyph.icon === 'video'));
+      const voice = own.find((r) => r.glyph.type === 'wave');
+      if (!photo) return void toast.show({ message: t('home.avatar.needPhoto') });
+      if (!voice) return void toast.show({ message: t('home.avatar.needVoice') });
+      spec = { ...run.spec, prompt: brief, title: snapshot.title, inputs: { firstFrameAssetId: photo.id, audioAssetId: voice.id } };
+    }
     runFlow({ cost, kind: run.kind, actionLabel, meta: run.meta, subtitle: run.modelName, spec }, (runId, assetId) =>
       setResult({
         spec,
@@ -224,6 +236,23 @@ export function HomePage() {
         <h1 className={styles.title}>
           <FormattedMessage id="home.title" />
         </h1>
+        <input
+          ref={voiceInput}
+          type="file"
+          accept="audio/*"
+          hidden
+          data-voice-track=""
+          onChange={(e) => {
+            const files = Array.from(e.target.files ?? []);
+            e.target.value = '';
+            if (!files.length) return;
+            void uploadReferences(files, () => t('home.avatar.voiceTrack')).then((items) => {
+              if (!items.length) return;
+              setRefs((cur) => [...cur, ...items]);
+              toast.show({ message: t('home.avatar.voiceAdded', { name: items[0]!.name }) });
+            });
+          }}
+        />
         <PromptBox
           inputId="brief"
           value={text}

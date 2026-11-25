@@ -21,6 +21,8 @@ export interface GqlAsset {
   name: string;
   status: string;
   mature: boolean;
+  /** D-005 content rating; null when unrated (an unrated mature asset still counts as suggestive). */
+  rating: 'safe' | 'suggestive' | 'explicit' | null;
   size: number | null;
   contentType: string | null;
   license: string | null;
@@ -31,7 +33,7 @@ export interface GqlAsset {
   meta: { width: number | null; height: number | null; durationSec: number | null };
 }
 
-export const ASSET_FIELDS = 'id kind source name status mature size contentType license projectId createdAt url thumbUrl meta { width height durationSec }';
+export const ASSET_FIELDS = 'id kind source name status mature rating size contentType license projectId createdAt url thumbUrl meta { width height durationSec }';
 
 export async function fetchAssets(vars: { scope: 'MINE' | 'TEAM' | 'BUILTIN' | 'PUBLIC' | 'ALL'; kind?: 'IMAGE' | 'VIDEO' | 'AUDIO' | 'TEXT'; q?: string; first?: number }): Promise<GqlAsset[]> {
   const r = await gql<{ assets: { edges: Array<{ node: GqlAsset }> } }>(
@@ -63,6 +65,7 @@ export function assetItemFrom(a: GqlAsset): AssetItem {
     ...(a.projectId ? { folder: a.projectId } : {}),
     thumbUrl: a.thumbUrl,
     mature: a.mature,
+    rating: a.rating ?? (a.mature ? 'suggestive' : null),
   };
 }
 

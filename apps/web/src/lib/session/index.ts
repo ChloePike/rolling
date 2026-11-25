@@ -62,6 +62,7 @@ export {
   type CheckoutOptions,
   type CheckoutResume,
 } from './checkout';
+export { bindPendingToCheckout, hasPendingAction, markCheckoutResumed, savePendingAction, takePendingAction, type PendingAction } from './pending';
 export { ALLOWANCE_KEY, currentMe, ensureMe, ME_KEY, meQuery, refetchMe } from './real';
 
 if (isMockApi()) {

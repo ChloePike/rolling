@@ -91,9 +91,12 @@ export function CharacterPage({ initialOverlay, models: modelsOverride, plan: pl
 
   const toast = useToast();
   const [refs, setRefs] = useState<Record<'face' | 'outfit', string | null>>({ face: null, outfit: null });
+  /** Real mode: the reference pictures' upload ids (resolved to asset ids before the quote). */
+  const [refIds, setRefIds] = useState<Record<'face' | 'outfit', string | null>>({ face: null, outfit: null });
   const [refTarget, setRefTarget] = useState<'face' | 'outfit'>('face');
-  const refPicker = useFilePicker('image/*', (file) => {
+  const refPicker = useFilePicker('image/*', (file, uploadId) => {
     setRefs((r) => ({ ...r, [refTarget]: file.name }));
+    setRefIds((r) => ({ ...r, [refTarget]: uploadId }));
     toast.show({ message: t('tools.toast.refAdded', { name: file.name }) });
   });
 
@@ -172,6 +175,7 @@ export function CharacterPage({ initialOverlay, models: modelsOverride, plan: pl
   return (
     <ToolLayout
       testId="tool-character"
+      toolId="character"
       title={t('tools.character.title')}
       count={(f) => t('tools.sets', { n: f.length })}
       feedMin={400}
@@ -206,6 +210,26 @@ export function CharacterPage({ initialOverlay, models: modelsOverride, plan: pl
         generating: (n) => t('tools.run.step.generating', { pct: n / 100 }),
       }}
       actions={['redo', 'sliders', 'save', 'down', 'star']}
+      spec={(prompt) => {
+        // Full body, then the face from it; saved to Characters when it finishes (docs/api.md → Runs).
+        const traits = [
+          ...summary,
+          adv && p.hairCustom.trim() ? p.hairCustom.trim() : '',
+          adv && p.bodyCustom.trim() ? p.bodyCustom.trim() : '',
+        ].filter(Boolean);
+        const referenceAssetIds = [refIds.face, refIds.outfit].filter((x): x is string => !!x);
+        return {
+          kind: 'character',
+          name: summary.slice(0, 3).join(', ') || t('tools.character.title'),
+          model: adv && p.model !== 'Auto' ? (models.find((m) => m.name === p.model)?.id ?? p.model) : 'auto',
+          prompt: [prompt.trim(), traits.join(', ')].filter(Boolean).join('. '),
+          title: t('tools.character.title'),
+          resolution: adv ? p.res : '2K',
+          ...(adv && p.neg.trim() ? { negativePrompt: p.neg.trim() } : {}),
+          ...(adv && /^\d+$/.test(p.seed) ? { seed: Number(p.seed) } : {}),
+          ...(referenceAssetIds.length ? { inputs: { referenceAssetIds } } : {}),
+        };
+      }}
       viewerAspect="2/3"
       initialOverlay={initialOverlay}
       isMember={isMember}

@@ -26,7 +26,7 @@ function refFromAsset(a: GqlAsset, i: number): RefItem {
     tone: REF_TONES[i % REF_TONES.length]!,
     glyph: kind === 'audio' ? { type: 'wave' } : { type: 'icon', icon: kind === 'video' ? 'video' : 'img' },
     // Mature-rated thumbnails are not shown in the picker (D-005); the glyph stands in.
-    ...(a.thumbUrl && !a.mature ? { thumbUrl: a.thumbUrl } : {}),
+    ...(a.thumbUrl && !a.mature && a.rating !== 'suggestive' && a.rating !== 'explicit' ? { thumbUrl: a.thumbUrl } : {}),
   };
 }
 

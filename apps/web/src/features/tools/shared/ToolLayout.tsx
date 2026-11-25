@@ -20,7 +20,15 @@ import { useRuns, type RunSpec } from './useRuns';
 import { assetMediaUrl, isApiError, isMockApi } from '@/features/overlays/backend';
 import { agentFailure, applyProposal, sendTurn, threadFor, type AgentTool } from '@/features/overlays/agent';
 import { downloadAsset } from '@/features/overlays/media';
-import { listRuns, quoteSpec, startQuote, type PromptSpec, type SpecQuote } from '@/features/overlays/runs';
+import { listRuns, quoteSpec, resolveSpecAssets, retryRun, startQuote, type PromptSpec, type SpecQuote } from '@/features/overlays/runs';
+import { savePendingAction, takePendingAction, useCheckoutResume } from '@/lib/session';
+
+/** A tool run waiting for checkout (`savePendingAction('tools.run', …)`). */
+interface PendingToolRun {
+  path: string;
+  prompt: string;
+  spec: PromptSpec;
+}
 import { resolveAssetId } from '@/lib/transfers';
 
 export type ToolOverlay = 'model' | 'params' | 'confirm' | 'viewer' | 'paywall';
@@ -67,9 +75,12 @@ export interface ToolLayoutProps {
   mapItem?: (item: FeedItem) => FeedItem;
   /**
    * Real mode: what Generate quotes and runs (`POST /api/runs/quote { promptSpec }`), given the prompt.
-   * Tools without one (avatar, characters, remix until the API takes them) say they can't run yet.
+   * A string is a message to show instead (e.g. an input is missing); the server's quote
+   * explains anything else it can't run (blocked rows).
    */
-  spec?: (prompt: string) => PromptSpec | null;
+  spec?: (prompt: string) => PromptSpec | string | null;
+  /** Which tool's runs the real-mode feed lists (`RunView.tool`, default `quick`). */
+  toolId?: 'quick' | 'remix' | 'avatar' | 'character';
   /** Real mode: the agent tool id for Simple-mode field filling (Refine), `propose.fields`. */
   agentTool?: AgentTool;
   /** Real mode: fields the agent proposed (`quick { prompt, model?, seconds?, ratio?, … }`) beyond the prompt. */
@@ -118,18 +129,19 @@ export function ToolLayout(p: ToolLayoutProps) {
     onFail: (run) =>
       toast.show({
         message: t('tools.toast.failed', { n: run.failed?.refunded ?? 0 }),
-        action: { label: t('tools.feed.retry'), onAction: () => spend(run.prompt, run.cost ?? p.confirm.cost) },
+        action: { label: t('tools.feed.retry'), onAction: () => (real ? retryReal(run) : spend(run.prompt, run.cost ?? p.confirm.cost)) },
       }),
   });
 
-  // Real mode: the feed starts with this tool's recent runs (Activity index, `source: quickCreate`).
+  // Real mode: the feed starts with this tool's recent runs (Activity index, `RunView.tool`).
   useEffect(() => {
     if (!real || !p.spec) return;
     let live = true;
     void listRuns({ first: 30 }).then(
       (page) => {
         if (!live) return;
-        const mine = page.runs.filter((r) => r.source === 'quickCreate' && r.status !== 'running' && r.status !== 'queued');
+        const tool = p.toolId ?? 'quick';
+        const mine = page.runs.filter((r) => (r.tool ?? (r.source === 'quickCreate' ? 'quick' : null)) === tool && r.status !== 'running' && r.status !== 'queued');
         runs.setItems((cur) => [
           ...cur.filter((it) => it.kind === 'media' && it.runId),
           ...mine.map((r): MediaRun => {
@@ -146,7 +158,7 @@ export function ToolLayout(p: ToolLayoutProps) {
               video: r.items[0]?.kind !== 'image',
               actions: p.actions,
               finishedAgoMin: Math.round((Date.now() - (r.finishedAt ?? r.createdAt)) / 60_000),
-              ...(r.status === 'failed' ? { failed: { refunded: r.refunded } } : {}),
+              ...(r.status === 'failed' || (r.status === 'canceled' && !asset) ? { failed: { refunded: r.refunded } } : {}),
             };
           }),
         ]);
@@ -181,29 +193,64 @@ export function ToolLayout(p: ToolLayoutProps) {
     toast.show({ message: t('tools.toast.runError') });
   };
 
-  /** Real mode: quote the tool's spec; blocks explain themselves; confirm per the quote's threshold (D-006). */
-  function spendReal(prompt: string) {
-    const raw = p.spec?.(prompt);
-    if (!raw) return void toast.show({ message: t('tools.toast.notYet') });
-    const refs = raw.inputs?.referenceAssetIds;
-    void Promise.all((refs ?? []).map((id) => resolveAssetId(id)))
-      .then((resolved) => quoteSpec(refs ? { ...raw, inputs: { ...raw.inputs, referenceAssetIds: resolved } } : raw))
+  /** A quote's outcome: blocked rows explain themselves, NO_PLAN opens the join paywall (the run resumes after checkout), else confirm per threshold (D-006). */
+  const handleQuote = (prompt: string, q: SpecQuote, raw: PromptSpec) => {
+    if (!q.quoteId) {
+      const b = q.items.find((i) => i.action === 'blocked');
+      if (b?.code === 'NO_PLAN') return joinFirst(prompt, raw);
+      return void toast.show({ message: b?.reason ?? t('tools.toast.runError') });
+    }
+    if (q.needsConfirm) {
+      pendingRun.current = { prompt, cost: q.total, quote: q };
+      return setOverlay('confirm');
+    }
+    beginReal(prompt, q);
+  };
+
+  /** D-007: keep the run so it resumes after the checkout redirect (`tools.run`, this page). */
+  const joinFirst = (prompt: string, raw: PromptSpec) => {
+    savePendingAction('tools.run', { path: window.location.pathname, prompt, spec: raw } satisfies PendingToolRun);
+    setOverlay('paywall');
+  };
+
+  /** Real mode: quote the tool's spec. */
+  function spendReal(prompt: string, given?: PromptSpec) {
+    const raw = given ?? p.spec?.(prompt);
+    if (typeof raw === 'string') return void toast.show({ message: raw });
+    if (!raw) return void toast.show({ message: t('tools.toast.runError') });
+    void resolveSpecAssets(raw, resolveAssetId)
+      .then((spec) => quoteSpec(spec))
       .then(
-        (q) => {
-          if (!q.quoteId) {
-            const b = q.items.find((i) => i.action === 'blocked');
-            if (b?.code === 'NO_PLAN') return setOverlay('paywall');
-            return void toast.show({ message: b?.reason ?? t('tools.toast.notYet') });
-          }
-          if (q.needsConfirm) {
-            pendingRun.current = { prompt, cost: q.total, quote: q };
-            return setOverlay('confirm');
-          }
-          beginReal(prompt, q);
+        (q) => handleQuote(prompt, q, raw),
+        (e: unknown) => {
+          if (isApiError(e, 'NO_PLAN')) return joinFirst(prompt, raw);
+          runFailed(e, prompt);
         },
-        (e: unknown) => runFailed(e, prompt),
       );
   }
+
+  /** Real mode: Retry on a failed card re-quotes that run's failed items with the same spec (`POST /api/runs/:id/retry`). */
+  function retryReal(run: MediaRun) {
+    if (!run.runId) return spendReal(run.prompt);
+    void retryRun(run.runId).then(
+      (q) => {
+        runs.remove(run.id);
+        const spec = p.spec?.(run.prompt);
+        handleQuote(run.prompt, q, spec && typeof spec === 'object' ? spec : { kind: 'video', prompt: run.prompt });
+      },
+      (e: unknown) => {
+        if (isApiError(e, 'CONFLICT')) return spendReal(run.prompt);
+        runFailed(e, run.prompt);
+      },
+    );
+  }
+
+  // A run interrupted by the join paywall continues after checkout (also across the Stripe redirect).
+  useCheckoutResume(() => {
+    if (!real) return;
+    const pending = takePendingAction<PendingToolRun>('tools.run', (d) => d.path === window.location.pathname);
+    if (pending) spendReal(pending.prompt, pending.spec);
+  });
 
   const begin = (prompt: string, cost: number) => {
     runs.start({ ...p.run, prompt, cost, actions: p.actions });
@@ -378,6 +425,7 @@ export function ToolLayout(p: ToolLayoutProps) {
                     toast.show({ message: t('tools.toast.canceled', { n: run.cost ?? 0 }) });
                   }}
                   onRetry={(run) => {
+                    if (real) return retryReal(run);
                     runs.remove(run.id);
                     spend(run.prompt, run.cost ?? p.confirm.cost);
                   }}

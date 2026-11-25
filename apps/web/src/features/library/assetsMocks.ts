@@ -21,6 +21,8 @@ export interface AssetItem {
   /** Real mode: signed thumbnail, and whether it is mature-rated (blurred until clicked, D-005). */
   thumbUrl?: string | null;
   mature?: boolean;
+  /** D-005 content rating from the API (`Asset.rating`); blurred when suggestive or explicit. */
+  rating?: 'safe' | 'suggestive' | 'explicit' | null;
 }
 
 export interface CharacterItem {

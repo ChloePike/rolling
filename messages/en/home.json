@@ -70,5 +70,12 @@
   "home.agent.safety": "This can’t be made under our content rules. Change the brief and try again.",
   "home.agent.error": "The agent couldn’t answer. Nothing was changed. Try again.",
   "home.agent.rateLimited": "{seconds, plural, =0 {Too many messages at once. Wait a moment and send again.} one {Too many messages at once. Send again in # second.} other {Too many messages at once. Send again in # seconds.}}",
-  "home.agent.stale": "This plan was already used or replaced. Send the brief again."
+  "home.agent.stale": "This plan was already used or replaced. Send the brief again.",
+  "home.avatar.uploadVoice": "Upload a voice track",
+  "home.avatar.uploadVoice.pick": "Choose an audio file (WAV or MP3, 2–30 seconds)",
+  "home.avatar.uploadedVoice": "Your voice track",
+  "home.avatar.voiceTrack": "Voice track",
+  "home.avatar.voiceAdded": "Voice track added: {name}",
+  "home.avatar.needPhoto": "Add a photo with @ or + first.",
+  "home.avatar.needVoice": "Upload a voice track first."
 }

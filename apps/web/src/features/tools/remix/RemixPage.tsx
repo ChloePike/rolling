@@ -17,6 +17,7 @@ import { resolutionOptions, useToolPlan } from '../shared/plan';
 import type { ComposerPill } from '../types';
 import { remixParsed, remixPresetOptions, remixPresets, remixPrompt, remixSlotTones } from './mocks';
 import styles from './Remix.module.css';
+import { isMockApi } from '@/features/overlays/backend';
 
 const RES_COST: Record<string, number> = { '480p': 6, '720p': 10, '1080p': 18 };
 /** Short list for the Advanced "Model" control (design order), by catalog id. */
@@ -47,14 +48,25 @@ export function RemixPage({ initialOverlay, models: modelsOverride, plan: planPr
   const toast = useToast();
   const [presets, setPresets] = useState<Record<string, string>>(() => Object.fromEntries(remixPresets.map((x) => [x.id, x.value])));
   const [uploads, setUploads] = useState<Record<number, string>>({});
+  /** Real mode: upload ids of the character slots, uploaded preset pictures and the reference video. */
+  const [slotIds, setSlotIds] = useState<Record<number, string>>({});
+  const [presetIds, setPresetIds] = useState<Record<string, string>>({});
+  const [video, setVideo] = useState<{ id: string; name: string } | null>(null);
+  const real = !isMockApi();
+  const videoPicker = useFilePicker('video/*', (file, uploadId) => {
+    setVideo({ id: uploadId, name: file.name });
+    toast.show({ message: t('tools.remix.video.added', { file: file.name }) });
+  });
   const [target, setTarget] = useState<{ kind: 'slot'; i: number } | { kind: 'preset'; id: string } | null>(null);
-  const picker = useFilePicker('image/*,video/*', (file) => {
+  const picker = useFilePicker('image/*,video/*', (file, uploadId) => {
     if (!target) return;
     if (target.kind === 'slot') {
+      if (file.type.startsWith('image/')) setSlotIds((u) => ({ ...u, [target.i]: uploadId }));
       setUploads((u) => ({ ...u, [target.i]: file.name }));
       toast.show({ message: t('tools.toast.slotUploaded', { name: charName(target.i), file: file.name }) });
     } else {
       setPresets((cur) => ({ ...cur, [target.id]: file.name }));
+      if (file.type.startsWith('image/')) setPresetIds((cur) => ({ ...cur, [target.id]: uploadId }));
       toast.show({ message: t('tools.toast.presetUploaded', { file: file.name }) });
     }
   });
@@ -114,6 +126,21 @@ export function RemixPage({ initialOverlay, models: modelsOverride, plan: planPr
     <>
       <AsideCard title={t('tools.remix.presets')} testId="presets">
         {picker.input}
+        {real && (
+          <>
+            {videoPicker.input}
+            <button type="button" className={controls.pickRow} data-remix-video="" onClick={videoPicker.open}>
+              <span className={controls.pickThumb} style={{ background: 'var(--c-tone-slate)' }}>
+                <ToolIcon name="play" size={16} color="var(--c-text-2)" />
+              </span>
+              <span className={controls.pickText}>
+                <span className={controls.pickLabel}>{t('tools.remix.video')}</span>
+                <span className={controls.pickValue}>{video?.name ?? t('tools.remix.video.empty')}</span>
+              </span>
+              <span className={controls.chev}>›</span>
+            </button>
+          </>
+        )}
         {remixPresets.map((x) => (
           <PickPopover
             key={x.id}
@@ -186,6 +213,7 @@ export function RemixPage({ initialOverlay, models: modelsOverride, plan: planPr
   return (
     <ToolLayout
       testId="tool-remix"
+      toolId="remix"
       title={t('tools.remix.title')}
       count={(f) => t('tools.results', { n: f.length })}
       feedMin={340}
@@ -221,6 +249,23 @@ export function RemixPage({ initialOverlay, models: modelsOverride, plan: planPr
         durationSec: 10,
       }}
       actions={['redo', 'sliders', 'frame', 'down', 'star']}
+      spec={(prompt) => {
+        if (!video) return t('tools.remix.needVideo');
+        // New looks: the character slots and any uploaded outfit/scene picture (docs/api.md → Runs, remix).
+        const referenceAssetIds = [...Object.entries(slotIds).filter(([i]) => Number(i) < people).map(([, id]) => id), ...Object.values(presetIds)].slice(0, 8);
+        return {
+          kind: 'remix',
+          model: adv && p.model !== 'Auto' ? (models.find((m) => m.name === p.model)?.id ?? p.model) : 'auto',
+          prompt: [prompt.trim(), ...remixPresets.map((x) => `${t(`tools.remix.preset.${x.id}`)}: ${presets[x.id]}`)].filter(Boolean).join('\n'),
+          title: t('tools.remix.title'),
+          ratio: '16:9',
+          seconds: 10,
+          resolution: adv ? p.res : '720p',
+          ...(adv && p.neg.trim() ? { negativePrompt: p.neg.trim() } : {}),
+          ...(adv && /^\d+$/.test(p.seed) ? { seed: Number(p.seed) } : {}),
+          inputs: { videoAssetId: video.id, ...(referenceAssetIds.length ? { referenceAssetIds } : {}) },
+        };
+      }}
       viewerAspect="16/9"
       initialOverlay={initialOverlay}
       isMember={isMember}

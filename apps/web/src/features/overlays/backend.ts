@@ -216,34 +216,9 @@ export function assetMediaUrl(assetId: string): string {
 
 /* ---------- Resume after checkout ---------- */
 
-const PENDING_KEY = 'rolling.pendingAction';
-
-export interface PendingAction {
-  /** Feature that resumes it, e.g. `canvas.run`, `home.agent`, `tools.run`. */
-  kind: string;
-  data: unknown;
-  at: number;
-}
-
-/** Keeps the action the paywall interrupted so it resumes after checkout (D-007), even across the Stripe redirect. */
-export function savePendingAction(kind: string, data: unknown) {
-  try {
-    sessionStorage.setItem(PENDING_KEY, JSON.stringify({ kind, data, at: Date.now() } satisfies PendingAction));
-  } catch {
-    /* Storage unavailable: the action is lost after a redirect. */
-  }
-}
-
-/** Takes (and clears) the pending action of `kind`, if one is younger than an hour. */
-export function takePendingAction<T>(kind: string): T | null {
-  try {
-    const raw = sessionStorage.getItem(PENDING_KEY);
-    if (!raw) return null;
-    const p = JSON.parse(raw) as PendingAction;
-    if (p.kind !== kind || Date.now() - p.at > 3_600_000) return null;
-    sessionStorage.removeItem(PENDING_KEY);
-    return p.data as T;
-  } catch {
-    return null;
-  }
-}
+/**
+ * Keeps the action the paywall interrupted so it resumes after checkout
+ * (D-007), even across the Stripe redirect: stored per checkout session in
+ * `lib/session/pending` and replayed from `onCheckoutResume` listeners.
+ */
+export { hasPendingAction, savePendingAction, takePendingAction, type PendingAction } from '@/lib/session/pending';

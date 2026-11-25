@@ -13,6 +13,8 @@ import styles from './layers.module.css';
 import { CreditsPopoverContent } from '@/shell/CreditsPopover';
 import { MenuPopover, MenuRows, rovingKeys } from './Menu';
 import { useLayer } from './useLayer';
+import { isMockApi } from '@/features/overlays/backend';
+import { fetchTemplate, useTemplates } from '@/features/templates/api';
 
 interface LayerProps {
   state: PresenceState;
@@ -822,8 +824,23 @@ export function HistoryDrawer({ state, onClose, rows, onOpen }: LayerProps & { r
 
 /* ---------- Workflows and templates (tool rail) ---------- */
 
-export function TemplatesPanel({ state, onClose, onUse }: LayerProps & { onUse: (tpl: CanvasTemplate) => void }) {
+export function TemplatesPanel({
+  state,
+  onClose,
+  onUse,
+  onFailed,
+  selectionCount = 0,
+  onSaveSelection,
+}: LayerProps & {
+  onUse: (tpl: CanvasTemplate) => void;
+  onFailed?: () => void;
+  /** Real mode: selected nodes that "Save selection as template" would keep. */
+  selectionCount?: number;
+  onSaveSelection?: () => void;
+}) {
   const intl = useIntl();
+  const real = !isMockApi();
+  const templates = useTemplates();
   const ref = useLayer<HTMLDivElement>(state === 'open', onClose);
   return (
     <section
@@ -845,13 +862,32 @@ export function TemplatesPanel({ state, onClose, onUse }: LayerProps & { onUse: 
       </div>
       <MenuRows
         onClose={() => {}}
-        entries={MOCK_TEMPLATES.map((t) => ({
-          key: t.id,
-          label: t.name,
-          meta: intl.formatMessage({ id: 'canvas.templates.nodes' }, { n: t.nodes.length }),
-          onSelect: () => onUse(t),
-        }))}
+        entries={
+          real
+            ? // Real mode: `GET /api/templates`; choosing one inserts its graph (`GET /api/templates/:id`).
+              templates.data.items.map((t) => ({
+                key: t.id,
+                label: t.name,
+                meta: intl.formatMessage({ id: 'canvas.templates.nodes' }, { n: t.nodeCount ?? 0 }),
+                onSelect: () =>
+                  void fetchTemplate(t.id).then(
+                    (d) => onUse({ id: d.id, name: d.name, nodes: [], graph: d.graph }),
+                    () => onFailed?.(),
+                  ),
+              }))
+            : MOCK_TEMPLATES.map((t) => ({
+                key: t.id,
+                label: t.name,
+                meta: intl.formatMessage({ id: 'canvas.templates.nodes' }, { n: t.nodes.length }),
+                onSelect: () => onUse(t),
+              }))
+        }
       />
+      {real && onSaveSelection ? (
+        <button type="button" className={canvas.toolPanelLink} data-save-template="" disabled={selectionCount === 0} title={selectionCount === 0 ? intl.formatMessage({ id: 'canvas.templates.saveHint' }) : undefined} onClick={onSaveSelection}>
+          <FormattedMessage id="canvas.templates.save" values={{ n: selectionCount }} />
+        </button>
+      ) : null}
       <Link className={canvas.toolPanelLink} to="/templates">
         <FormattedMessage id="canvas.templates.all" />
       </Link>

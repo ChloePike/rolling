@@ -8,8 +8,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ResultViewer, RunConfirm } from '@/features/overlays';
 import { assetMediaUrl, isApiError, isMockApi } from '@/features/overlays/backend';
 import { downloadAsset } from '@/features/overlays/media';
-import { cancelRun } from '@/features/overlays/runs';
-import { requestQuote, runError, startRun, type Quote } from '@/features/canvas/api';
+import { cancelRun, retryRun, startQuote, type SpecQuote } from '@/features/overlays/runs';
+import { runError } from '@/features/canvas/api';
 import type { RunAction, RunRow, RunStatus } from './types';
 import styles from './Activity.module.css';
 
@@ -98,20 +98,22 @@ export function ActivityPage({ initialFilter = 'all' }: { initialFilter?: Activi
   );
 
   const qc = useQueryClient();
-  const [retryQuote, setRetryQuote] = useState<{ run: RunRow; quote: Quote } | null>(null);
+  const [retryQuote, setRetryQuote] = useState<{ run: RunRow; quote: SpecQuote } | null>(null);
   const refresh = () => void qc.invalidateQueries({ queryKey: ['activity'] });
 
-  const startRetry = (run: RunRow, quote: Quote) => {
+  const startRetry = (run: RunRow, quote: SpecQuote) => {
     setRetryQuote(null);
-    void startRun(quote).then((r) => {
-      if (r.ok) {
+    if (!quote.quoteId) return;
+    void startQuote(quote.quoteId).then(
+      () => {
         toast.show({ message: intl.formatMessage({ id: 'activity.toast.retried' }, { name: run.name }) });
         refresh();
-      } else toast.show({ message: intl.formatMessage({ id: `activity.retryError.${r.code}`, defaultMessage: intl.formatMessage({ id: 'activity.retryError.other' }) }) });
-    });
+      },
+      (e: unknown) => toast.show({ message: intl.formatMessage({ id: `activity.retryError.${runError(e).code}`, defaultMessage: intl.formatMessage({ id: 'activity.retryError.other' }) }) }),
+    );
   };
 
-  /** Real mode: a new quote for the run's failed canvas nodes, confirmed per threshold; tool runs reopen their tool. */
+  /** Real mode: retry re-quotes the run's failed items (`POST /api/runs/:id/retry`), confirmed per threshold. */
   function actReal(run: RunRow, action: RunAction) {
     if (action === 'cancel') {
       void cancelRun(run.id).then(
@@ -122,19 +124,23 @@ export function ActivityPage({ initialFilter = 'all' }: { initialFilter?: Activi
         () => toast.show({ message: intl.formatMessage({ id: 'activity.retryError.other' }) }),
       );
     } else if (action === 'retry') {
-      if (run.source !== 'canvas' || !run.projectId || !run.failedNodeIds?.length) {
-        const to = SOURCE_ROUTE[run.source];
-        toast.show({ message: intl.formatMessage({ id: 'activity.toast.retryInTool' }) });
-        if (to) void navigate({ to });
-        return;
-      }
-      void requestQuote(run.projectId, { scope: 'selection', nodeIds: run.failedNodeIds }, { nodes: [], edges: [] }).then(
+      // `POST /api/runs/:id/retry`: a fresh quote for the failed items with the same spec or nodes (tool and canvas runs).
+      void retryRun(run.id).then(
         (q) => {
           if (!q.quoteId) return void toast.show({ message: q.items.find((i) => i.reason)?.reason ?? intl.formatMessage({ id: 'activity.retryError.NOTHING_TO_RUN' }) });
           if (q.needsConfirm) setRetryQuote({ run, quote: q });
           else startRetry(run, q);
         },
-        (e: unknown) => toast.show({ message: intl.formatMessage({ id: `activity.retryError.${runError(e).code}`, defaultMessage: intl.formatMessage({ id: 'activity.retryError.other' }) }) }),
+        (e: unknown) => {
+          if (isApiError(e, 'CONFLICT') && run.source !== 'canvas') {
+            // Runs from before stored requests: reopen the tool.
+            const to = SOURCE_ROUTE[run.source];
+            toast.show({ message: intl.formatMessage({ id: 'activity.toast.retryInTool' }) });
+            if (to) void navigate({ to });
+            return;
+          }
+          toast.show({ message: intl.formatMessage({ id: `activity.retryError.${runError(e).code}`, defaultMessage: intl.formatMessage({ id: 'activity.retryError.other' }) }) });
+        },
       );
     } else if (action === 'view') {
       setViewing(run);
@@ -379,7 +385,7 @@ export function ActivityPage({ initialFilter = 'all' }: { initialFilter?: Activi
             open={!!retryQuote}
             onOpenChange={(o) => !o && setRetryQuote(null)}
             variant="single"
-            rows={retryQuote ? retryQuote.quote.items.filter((i) => i.action === 'run').map((i) => ({ id: i.nodeId, name: retryQuote.run.name, meta: i.modelName ?? i.model, kind: 'video' as const, state: 'run' as const, cost: i.credits })) : []}
+            rows={retryQuote ? retryQuote.quote.items.filter((i) => i.action === 'run').map((i) => ({ id: i.nodeId ?? i.ref, name: i.title || retryQuote.run.name, meta: i.modelName ?? i.model ?? '', kind: (i.kind === 'image' ? 'image' : 'video') as 'image' | 'video', state: 'run' as const, cost: i.credits })) : []}
             balance={retryQuote?.quote.balance ?? 0}
             actionLabel={intl.formatMessage({ id: 'activity.action.retry' })}
             eta={intl.formatMessage({ id: 'activity.retryEta' })}

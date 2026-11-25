@@ -5,6 +5,7 @@ import { ApiError, isApiError } from '@/lib/api/errors';
 import type { CheckoutOutcome, CheckoutStarted, Interval, SeatsChanged } from '@/lib/api/types';
 import { FlowError } from './mock';
 import { refetchMe } from './real';
+import { bindPendingToCheckout, markCheckoutResumed } from './pending';
 
 /**
  * Stripe Checkout (docs/api.md → Account and billing): start a checkout, go
@@ -74,6 +75,8 @@ export async function realCheckoutPlan(planId: PlanId, period: 'monthly' | 'year
     return r;
   }
   if (r.url) {
+    // The action the paywall interrupted resumes when this checkout completes.
+    bindPendingToCheckout(r.sessionId);
     redirectTo(r.url);
     return leaving();
   }
@@ -94,6 +97,7 @@ export async function realCheckoutTopUp(amountUsd: number, opts: CheckoutOptions
     flowError(e);
   }
   if (!r.url) throw new FlowError('INTERNAL', 'Checkout did not return a URL');
+  bindPendingToCheckout(r.sessionId);
   redirectTo(r.url);
   return leaving();
 }
@@ -169,6 +173,8 @@ export function useCheckoutResume(cb: ResumeListener): void {
 }
 
 export function emitCheckoutResume(r: CheckoutResume) {
+  // Actions bound to this checkout (`savePendingAction` before the redirect) may replay now.
+  markCheckoutResumed(r.outcome.sessionId);
   if (!resumeListeners.size) {
     buffered = { r, at: Date.now() };
     return;

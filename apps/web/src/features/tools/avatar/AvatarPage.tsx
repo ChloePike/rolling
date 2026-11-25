@@ -18,6 +18,24 @@ import type { ToolModel } from '../shared/models';
 import { resolutionOptions, useToolPlan } from '../shared/plan';
 import type { ComposerPill } from '../types';
 import styles from './Avatar.module.css';
+import { isMockApi } from '@/features/overlays/backend';
+
+/** Length of an audio file from its metadata (null when the browser can't tell). */
+function audioSeconds(file: File): Promise<number | null> {
+  return new Promise((resolve) => {
+    if (typeof Audio === 'undefined' || typeof URL.createObjectURL !== 'function') return resolve(null);
+    const url = URL.createObjectURL(file);
+    const a = new Audio();
+    const done = (v: number | null) => {
+      URL.revokeObjectURL(url);
+      resolve(v);
+    };
+    a.preload = 'metadata';
+    a.onloadedmetadata = () => done(Number.isFinite(a.duration) ? a.duration : null);
+    a.onerror = () => done(null);
+    a.src = url;
+  });
+}
 import { avatarClone, avatarLookOptions, avatarLooks, avatarPersonas, avatarPrompt, avatarVoices } from './mocks';
 
 const RES_COST: Record<string, number> = { '480p': 6, '720p': 10, '1080p': 18 };
@@ -55,8 +73,17 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
   const toast = useToast();
   const [looks, setLooks] = useState<Record<string, string>>(() => Object.fromEntries(avatarLooks.map((x) => [x.id, x.value])));
   const [lookTarget, setLookTarget] = useState<string | null>(null);
-  const lookPicker = useFilePicker('image/*', (file) => {
+  /** Real mode: the photo that speaks and the uploaded voice track (upload ids until resolved). */
+  const [photo, setPhoto] = useState<{ id: string; name: string } | null>(null);
+  const [track, setTrack] = useState<{ id: string; name: string; seconds: number | null } | null>(null);
+  const voicePicker = useFilePicker('audio/*', (file, uploadId) => {
+    setTrack({ id: uploadId, name: file.name, seconds: null });
+    toast.show({ message: t('tools.avatar.voice.added', { file: file.name }) });
+    void audioSeconds(file).then((sec) => setTrack((cur) => (cur && cur.id === uploadId ? { ...cur, seconds: sec } : cur)));
+  });
+  const lookPicker = useFilePicker('image/*', (file, uploadId) => {
     if (!lookTarget) return;
+    if (lookTarget === 'character') setPhoto({ id: uploadId, name: file.name });
     setLooks((cur) => ({ ...cur, [lookTarget]: t('tools.avatar.look.uploaded', { file: file.name }) }));
     toast.show({ message: t('tools.toast.presetUploaded', { file: file.name }) });
   });
@@ -116,6 +143,7 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
     quoteCredits(models, adv ? p.model : 'Auto', { resolution: adv ? p.res : '720p', seconds: 10, count: adv ? Number(p.count) : 1 }) ??
     (adv ? RES_COST[p.res]! : 10) + 2;
   const go = t('tools.avatar.go');
+  const real = !isMockApi();
 
   const aside = (
     <>
@@ -137,7 +165,7 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
                 <span className={controls.pickThumb} style={{ background: x.tone }} />
                 <span className={controls.pickText}>
                   <span className={controls.pickLabel}>{t(`tools.avatar.look.${x.id}`)}</span>
-                  <span className={controls.pickValue}>{looks[x.id]}</span>
+                  <span className={controls.pickValue}>{real && x.id === 'character' ? (photo?.name ?? t('tools.avatar.photo.empty')) : looks[x.id]}</span>
                 </span>
                 <span className={controls.chev}>›</span>
               </button>
@@ -197,36 +225,63 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
           </select>
         }
       >
+        {real ? (
+          // TTS and voice cloning are open decisions: real runs lip-sync to an uploaded voice track.
+          <>
+            {voicePicker.input}
+            <button type="button" className={controls.pickRow} data-voice-upload="" onClick={voicePicker.open}>
+              <span className={controls.pickThumb} style={{ background: 'var(--c-tone-plum)' }}>
+                <ToolIcon name="mic" size={16} color="var(--c-text-2)" />
+              </span>
+              <span className={controls.pickText}>
+                <span className={controls.pickLabel}>
+                  <FormattedMessage id="tools.avatar.voice.upload" />
+                </span>
+                <span className={controls.pickValue}>
+                  {track
+                    ? track.seconds !== null
+                      ? t('tools.avatar.voice.track', { file: track.name, sec: Math.round(track.seconds) })
+                      : track.name
+                    : t('tools.avatar.voice.hint')}
+                </span>
+              </span>
+              <span className={controls.chev}>›</span>
+            </button>
+          </>
+        ) : (
+          <>
         {avatarVoices.map(([name, desc]) => (
-          <div key={name} className={voice === name ? `${styles.voice} ${styles.voiceOn}` : styles.voice}>
-            <button type="button" className={styles.preview} aria-label={t('tools.avatar.voice.preview', { name })} aria-pressed={playing === name} onClick={() => preview(name)}>
-              <ToolIcon name={playing === name ? 'volume' : 'play'} size={11} filled={playing !== name} color="var(--c-text-1)" />
-            </button>
-            <button type="button" className={styles.voicePick} aria-pressed={voice === name} onClick={() => setVoice(name)}>
-              <span className={styles.voiceName}>{name}</span>
-              <span className={styles.voiceDesc}>{desc}</span>
-            </button>
+            <div key={name} className={voice === name ? `${styles.voice} ${styles.voiceOn}` : styles.voice}>
+              <button type="button" className={styles.preview} aria-label={t('tools.avatar.voice.preview', { name })} aria-pressed={playing === name} onClick={() => preview(name)}>
+                <ToolIcon name={playing === name ? 'volume' : 'play'} size={11} filled={playing !== name} color="var(--c-text-1)" />
+              </button>
+              <button type="button" className={styles.voicePick} aria-pressed={voice === name} onClick={() => setVoice(name)}>
+                <span className={styles.voiceName}>{name}</span>
+                <span className={styles.voiceDesc}>{desc}</span>
+              </button>
+            </div>
+          ))}
+          <div className={styles.clone}>
+            <div className={styles.cloneHead}>
+              <ToolIcon name="mic" size={15} color="var(--c-accent)" />
+              <span className={styles.cloneName}>{avatarClone.name}</span>
+              <span className={styles.clonePct}>
+                <FormattedMessage id="tools.avatar.cloning" values={{ pct: avatarClone.progress / 100 }} />
+              </span>
+            </div>
+            <div
+              className={styles.track}
+              role="progressbar"
+              aria-valuenow={avatarClone.progress}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label={t('tools.avatar.cloning.label', { name: avatarClone.name })}
+            >
+              <div className={styles.fill} style={{ width: `${avatarClone.progress}%` }} />
+            </div>
           </div>
-        ))}
-        <div className={styles.clone}>
-          <div className={styles.cloneHead}>
-            <ToolIcon name="mic" size={15} color="var(--c-accent)" />
-            <span className={styles.cloneName}>{avatarClone.name}</span>
-            <span className={styles.clonePct}>
-              <FormattedMessage id="tools.avatar.cloning" values={{ pct: avatarClone.progress / 100 }} />
-            </span>
-          </div>
-          <div
-            className={styles.track}
-            role="progressbar"
-            aria-valuenow={avatarClone.progress}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-label={t('tools.avatar.cloning.label', { name: avatarClone.name })}
-          >
-            <div className={styles.fill} style={{ width: `${avatarClone.progress}%` }} />
-          </div>
-        </div>
+          </>
+        )}
       </AsideCard>
     </>
   );
@@ -234,6 +289,7 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
   return (
     <ToolLayout
       testId="tool-avatar"
+      toolId="avatar"
       title={t('tools.avatar.title')}
       count={(f) => t('tools.results', { n: f.filter((x) => x.kind === 'media').length })}
       mapItem={mapItem}
@@ -271,6 +327,20 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
         durationSec: 10,
       }}
       actions={['redo', 'sliders', 'frame', 'down', 'star']}
+      spec={(prompt) => {
+        if (!photo) return t('tools.avatar.needPhoto');
+        if (!track) return t('tools.avatar.needVoice');
+        return {
+          kind: 'avatar',
+          model: adv && p.model !== 'Auto' ? (models.find((m) => m.name === p.model)?.id ?? p.model) : 'auto',
+          prompt: [prompt.trim(), adv && p.camText.trim() ? p.camText.trim() : ''].filter(Boolean).join(' '),
+          title: t('tools.avatar.title'),
+          ...(adv ? { resolution: p.res } : {}),
+          ...(adv && /^\d+$/.test(p.seed) ? { seed: Number(p.seed) } : {}),
+          ...(track.seconds !== null ? { seconds: Math.max(1, Math.ceil(track.seconds)) } : {}),
+          inputs: { photoAssetId: photo.id, audioAssetId: track.id },
+        };
+      }}
       viewerAspect="9/16"
       initialOverlay={initialOverlay}
       isMember={isMember}
