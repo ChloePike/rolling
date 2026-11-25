@@ -19,6 +19,7 @@ import { OUT_DIR, SNAPSHOT_PATH, parseArgs, readJson } from './lib.ts';
 
 const args = parseArgs(process.argv.slice(2));
 const includeMature = args.has('include-mature');
+const excludeAttribution = typeof args.get('exclude-attribution') === 'string' ? new Set(String(args.get('exclude-attribution')).split(',').map((s) => s.toLowerCase())) : undefined;
 const categoryFilter = typeof args.get('category') === 'string' ? new Set(String(args.get('category')).split(',')) : undefined;
 const CHUNK = Number(args.get('chunk') ?? 400);
 const ROWS_PER_STATEMENT = 40;
@@ -81,7 +82,8 @@ function main(): void {
   const snapshot = readJson<{ fetchedAt: string; items: PublicLibraryItem[] }>(SNAPSHOT_PATH);
   const importedAt = Date.parse(snapshot.fetchedAt) || Date.now();
   const selected = snapshot.items.filter(
-    (i) => (!categoryFilter || categoryFilter.has(i.category)) && (includeMature || !i.mature),
+    (i) => (!categoryFilter || categoryFilter.has(i.category)) && (includeMature || !i.mature) &&
+      !(excludeAttribution && i.attribution && excludeAttribution.has(i.attribution.name.toLowerCase())),
   );
   const rows = selected.map((item) => toLibraryD1Rows(item, { importedAt, depthR2KeyFor: poseDepthR2Key }));
 

@@ -4,6 +4,7 @@ import type { AppEnv } from "./env";
 import { yoga } from "./graphql";
 import { ApiError, errorResponse } from "./lib/errors";
 import { getSessionUser } from "./lib/session";
+import { serveSpaFromR2 } from "./lib/r2Static";
 import { handleQueue } from "./queues";
 import { health } from "./routes/health";
 import { me } from "./routes/me";
@@ -36,7 +37,9 @@ app.notFound((c) => {
   }
   // Assets normally answer non-API paths before the Worker runs; this covers
   // requests routed here anyway (e.g. tests, `run_worker_first` changes).
-  return c.env.ASSETS.fetch(c.req.raw);
+  const assets = (c.env as { ASSETS?: Fetcher }).ASSETS;
+  if (assets) return assets.fetch(c.req.raw);
+  return serveSpaFromR2(c.env.MEDIA, c.req.raw);
 });
 
 app.onError((err, c) => {

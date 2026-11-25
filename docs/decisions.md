@@ -9,7 +9,8 @@ The platform allows 18+ creation for paying members. This replaces the PRD line 
 - **Access = paid membership.** No date-of-birth or separate age verification. Paying (an active plan via Stripe) is treated as the age gate: 18+ generation is available only to workspaces with an active subscription. Non-members and lapsed members get `moderation: "auto"` routing only. A per-user preference `prefs.matureContent` (default off) controls whether mature models and outputs are shown — it is a visibility preference, not verification. Workspaces can disable it for all members (`workspaces.matureAllowed`).
 - **Regional risk (open).** Some jurisdictions (e.g. UK Online Safety Act, several US states) require “highly effective” age assurance for adult content; card payment may not satisfy it everywhere (debit/prepaid cards). Revisit per launch region; keep a `AgeAssurance` hook point in the run path so a region-specific check can be added without redesign.
 - **Hard limits, never configurable:** no sexual content involving minors or anyone who appears to be a minor; no sexual or intimate content depicting a real, identifiable person (uploaded face photos, celebrity names) — real-person references are allowed only for non-sexual content. These run as a pre-submit check on prompts and references (`packages/core/safety`) and as a post-generation check on outputs; violations block the run, release the hold, and are logged for review.
-- **Provider routing.** Mature runs go only to models flagged `mature: true` in `packages/core/models/capabilities`, with Hyperouter `moderation: "low"`; everything else uses `moderation: "auto"`. Provider rejections (`content_rejected`, `vendor_rejected`) release the hold like any failure.
+- **Provider routing.** Hyperouter `moderation: "low"` is enabled on the account (2026-11-25). Mature runs go only to models flagged `mature: true` (the `lumina/*-spicy` family and any model whose listing supports the `moderation` parameter) in `packages/core/models/capabilities`, with Hyperouter `moderation: "low"`; everything else uses `moderation: "auto"`. Provider rejections (`content_rejected`, `vendor_rejected`) release the hold like any failure.
+- **Identity-driven models** (face/head swap, photo-driven i2v and lip-sync) are never used for mature runs with an uploaded photo. Mature photo-driven runs are allowed only when every input image is a platform asset (generated on Rolling, a saved Character, or a public-library item); uploaded photos are rejected for mature runs. Face/head swap is never mature.
 - **Visibility.** Mature outputs are blurred in lists until clicked, never shown on public share links, profiles, templates or the public library, and never used as thumbnails in shared surfaces.
 - **Payments risk (open).** Stripe’s restricted-business list covers adult content. Confirm with Stripe before launch; keep the payment layer behind `packages/core/billing/PaymentProvider` so a second processor can be added. Until confirmed, no Stripe-facing copy mentions adult content.
 
@@ -33,6 +34,7 @@ Source: https://posewear.pages.dev/ (data index at `/assets/poses.<hash>.json`, 
 | Scene & props | 家具 | `furniture` | 41 | CC0 |
 
 - An import script (`packages/db/scripts/import-posewear.ts`) reads the JSON index, copies images into R2 (`public/<category>/<id>/…`), and upserts `public_items` rows (+ `assets` with source `public`, + `asset_search` FTS) in D1 with category, sub-category, tags, prompt text, license and source URL. It is idempotent and re-runnable.
+- **Rights.** The owner holds authorization from the upstream author (@giaaibusi) for the pose, depth-pose, outfit and anime-outfit galleries (confirmed 2026-11-25). CharaDB-hosted images (all hairstyles, 440 anime outfits) are NOT covered — CharaDB allows tags/prompts only — so they are excluded from R2 (`--exclude-attribution charadb`) until we have permission or regenerate them; their metadata may still be used.
 - **PoseWear is our own property** (confirmed by the owner, 2026-11-25). Items the PRD marked “Rights reserved” (poses, depth poses, outfits, anime outfits) are first-party: license value `first-party`, no warning label, no replacement needed before launch. This supersedes PRD rule 9’s “replace before paid launch”. CC0 and MIT items keep their labels.
 - Items are referenceable through `@` (Public library tab) and usable as references in generation: poses and depth poses as pose/control references, outfits/hairstyles/expressions/portraits as image references plus their prompt text.
 
@@ -64,9 +66,12 @@ Launch model mapping (PRD → Hyperouter):
 | Seedream 5.0 Pro | — | not listed; `bytedance/seedream-5.0-lite` is the default until available |
 | Seedream 5.0 Lite | `bytedance/seedream-5.0-lite` / `-flash` | available |
 | Wan 2.7 Image | `qwen/qwen-image-2.0` | substitute, confirm |
-| Avatar (MiniMax H3, Wan 2.2 S2V), TTS, voice clone | — | **open**: Hyperouter has no speech/lip-sync endpoint |
+| Avatar lip-sync | `lumina/wan2.7-i2v-spicy` (photo + audio_url) | candidate |
+| TTS, voice clone | — | **open**: owner is sourcing a provider |
 
-Credits are priced from Hyperouter USD costs via `packages/core/pricing/config.ts` (placeholder margin). Ids and prices must be confirmed against `GET /v1/models` at build time.
+**Model catalog is driven by the live listing** (owner decision, 2026-11-25): `GET /v1/models` is the source of truth for available models, durations, resolutions, reference limits and USD prices. A scheduled sync stores it in D1; the model picker, Auto selection and quotes read the synced catalog. PRD limits (e.g. 30s Seedance, MiniMax audio) are superseded by what the listing says. Our own overlay adds product fields only (display name, tags, default flags, `mature`, `requiresIdentitySafety`, hidden).
+
+**Credits follow live cost**: `credits = ceil(usdCost(model, seconds, resolution, audio, refs) × markup ÷ usdPerCredit)`, with `markup` and `usdPerCredit` placeholders in `packages/core/pricing/config.ts`. This gives per-resolution prices automatically.
 
 ## D-001 — Language (2026-11-25)
 

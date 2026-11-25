@@ -28,6 +28,7 @@ const args = parseArgs(process.argv.slice(2));
 const dryRun = args.has('dry-run');
 const fetchSource = args.has('fetch-source');
 const includeMature = args.has('include-mature');
+const excludeAttribution = typeof args.get('exclude-attribution') === 'string' ? new Set(String(args.get('exclude-attribution')).split(',').map((s) => s.toLowerCase())) : undefined;
 const limit = args.has('limit') ? Number(args.get('limit')) : Infinity;
 const concurrency = Math.max(1, Math.min(8, Number(args.get('concurrency') ?? 4)));
 const categories = typeof args.get('category') === 'string' ? new Set(String(args.get('category')).split(',')) : undefined;
@@ -57,6 +58,7 @@ function buildPlan(): PlanEntry[] {
   for (const item of items) {
     if (categories && !categories.has(item.category)) continue;
     if (item.mature && !includeMature) continue;
+    if (excludeAttribution && item.attribution && excludeAttribution.has(item.attribution.name.toLowerCase())) continue;
     for (const angle of item.angles) {
       plan.push({
         sourceUrl: angle.fullUrl,
