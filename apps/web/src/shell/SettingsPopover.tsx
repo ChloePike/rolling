@@ -1,9 +1,19 @@
-import { IconButton } from '@rolling/ui';
-import { useRef, type KeyboardEvent, type ReactNode } from 'react';
+import { IconButton, OptionList, type OptionListItem } from '@rolling/ui';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
-import { setCreationMode, useCreationMode, useLanguagePref, type CreationMode } from '@/lib/prefs';
+import {
+  ASPECT_RATIO_OPTIONS,
+  CURRENCY_OPTIONS,
+  LANGUAGE_OPTIONS,
+  languageOption,
+  setCreationMode,
+  setPref,
+  setPrefs,
+  THEME_OPTIONS,
+  usePrefs,
+  type CreationMode,
+} from '@/lib/prefs';
 import { Icon, type IconName } from './icons';
-import { placeholderAccount } from './placeholder';
 import styles from './SettingsPopover.module.css';
 
 const modes: ReadonlyArray<{ value: CreationMode; icon: IconName }> = [
@@ -11,37 +21,130 @@ const modes: ReadonlyArray<{ value: CreationMode; icon: IconName }> = [
   { value: 'advanced', icon: 'sliders' },
 ];
 
+type Sub = 'language' | 'currency' | 'aspectRatio' | 'notify' | 'theme';
+const SUBS: readonly Sub[] = ['language', 'currency', 'aspectRatio', 'notify', 'theme'];
+
+function currencyName(locale: string, code: string): string | undefined {
+  try {
+    return new Intl.DisplayNames([locale], { type: 'currency' }).of(code);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Header settings popover (MainSettings.dc.html): creation mode, then
+ * Language, Currency, Default aspect ratio, Notify when done and Theme (D-010).
+ * Each `›` row opens its option list in place; picking one saves it to
+ * lib/prefs (shared with Settings → Preferences) and returns to the rows.
+ * Escape or ‹ goes back one level; Escape on the rows closes the popover.
+ */
 export function SettingsPopoverContent({ onClose }: { onClose: () => void }) {
   const intl = useIntl();
-  // Shared with Settings → Preferences; tools follow the `rolling:creation-mode` event.
-  const mode = useCreationMode();
-  const language = useLanguagePref() ?? intl.locale;
-  const refs = useRef<Array<HTMLButtonElement | null>>([]);
-  const account = placeholderAccount;
+  const prefs = usePrefs();
+  const mode = prefs.creationMode;
+  const [sub, setSub] = useState<Sub | null>(null);
+  const lastSub = useRef<Sub | null>(null);
+  const modeRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const rowRefs = useRef(new Map<Sub, HTMLButtonElement>());
+  const t = (id: string, v?: Record<string, string | number>) => intl.formatMessage({ id }, v);
+
+  // Back on the rows: focus the row whose list was open.
+  useEffect(() => {
+    if (sub === null && lastSub.current) rowRefs.current.get(lastSub.current)?.focus();
+  }, [sub]);
+
+  const open = (s: Sub) => {
+    lastSub.current = s;
+    setSub(s);
+  };
+  const back = () => setSub(null);
 
   const pick = (value: CreationMode) => setCreationMode(value);
-  const onKeyDown = (e: KeyboardEvent, i: number) => {
+  const onModeKeyDown = (e: KeyboardEvent, i: number) => {
     if (!['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
     e.preventDefault();
     const next = (i + 1) % modes.length;
     const m = modes[next];
     if (m) {
       pick(m.value);
-      refs.current[next]?.focus();
+      modeRefs.current[next]?.focus();
     }
   };
 
-  const languageName = new Intl.DisplayNames([intl.locale], { type: 'language' }).of(language) ?? language;
+  const current = languageOption(prefs.language ?? intl.locale) ?? LANGUAGE_OPTIONS[0]!;
+  const values: Record<Sub, string> = {
+    language: current.name,
+    currency: prefs.currency,
+    aspectRatio: prefs.defaultAspectRatio,
+    notify: t(prefs.notifyWhenDone ? 'settingsPopover.notify.on' : 'settingsPopover.notify.off'),
+    theme: t(`settingsPopover.theme.${prefs.theme}`),
+  };
 
-  const rows: Array<{ id: string; value: ReactNode }> = [
-    { id: 'settingsPopover.language', value: languageName },
-    { id: 'settingsPopover.currency', value: account.currency },
-    { id: 'settingsPopover.aspectRatio', value: account.defaultAspectRatio },
-    {
-      id: 'settingsPopover.notify',
-      value: <FormattedMessage id={account.notifyWhenDone ? 'settingsPopover.notify.on' : 'settingsPopover.notify.off'} />,
+  const lists: Record<Sub, { value: string; options: OptionListItem[]; onSelect: (v: string) => void }> = {
+    language: {
+      value: current.tag,
+      options: LANGUAGE_OPTIONS.map((o) => ({
+        value: o.tag,
+        label: o.name,
+        lang: o.tag,
+        hint: o.translated ? undefined : t('settingsPopover.language.notTranslated'),
+      })),
+      onSelect: (tag) => setPrefs({ language: tag }),
     },
-  ];
+    currency: {
+      value: prefs.currency,
+      options: CURRENCY_OPTIONS.map((c) => ({ value: c, label: c, hint: currencyName(intl.locale, c) })),
+      onSelect: (c) => setPref('currency', c as (typeof CURRENCY_OPTIONS)[number]),
+    },
+    aspectRatio: {
+      value: prefs.defaultAspectRatio,
+      options: ASPECT_RATIO_OPTIONS.map((r) => ({ value: r, label: r, hint: t(`settingsPopover.aspectRatio.${r.replace(':', 'x')}`) })),
+      onSelect: (r) => setPref('defaultAspectRatio', r as (typeof ASPECT_RATIO_OPTIONS)[number]),
+    },
+    notify: {
+      value: prefs.notifyWhenDone ? 'on' : 'off',
+      options: [
+        { value: 'on', label: t('settingsPopover.notify.on'), hint: t('settingsPopover.notify.on.hint') },
+        { value: 'off', label: t('settingsPopover.notify.off') },
+      ],
+      onSelect: (v) => setPref('notifyWhenDone', v === 'on'),
+    },
+    theme: {
+      value: prefs.theme,
+      options: THEME_OPTIONS.map((th) => ({ value: th, label: t(`settingsPopover.theme.${th}.option`) })),
+      onSelect: (v) => setPref('theme', v as (typeof THEME_OPTIONS)[number]),
+    },
+  };
+
+  if (sub) {
+    const list = lists[sub];
+    return (
+      <div className={styles.panel} data-sub={sub}>
+        <div className={styles.titleRow}>
+          <button type="button" className={styles.back} onClick={back} aria-label={t('settingsPopover.back')}>
+            <Icon name="back" size={16} strokeWidth={2.2} />
+          </button>
+          <h2 className={styles.title}>
+            <FormattedMessage id={`settingsPopover.${sub}`} />
+          </h2>
+          <IconButton size={28} variant="ghost" label={t('settingsPopover.close')} icon={<Icon name="close" size={16} />} onClick={onClose} />
+        </div>
+        <div className={`rl-reveal ${styles.subBody}`}>
+          <OptionList
+            label={t(`settingsPopover.${sub}`)}
+            options={list.options}
+            value={list.value}
+            onSelect={(v) => {
+              list.onSelect(v);
+              back();
+            }}
+            onEscape={back}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.panel}>
@@ -49,13 +152,7 @@ export function SettingsPopoverContent({ onClose }: { onClose: () => void }) {
         <h2 className={styles.title}>
           <FormattedMessage id="settingsPopover.title" />
         </h2>
-        <IconButton
-          size={28}
-          variant="ghost"
-          label={intl.formatMessage({ id: 'settingsPopover.close' })}
-          icon={<Icon name="close" size={16} />}
-          onClick={onClose}
-        />
+        <IconButton size={28} variant="ghost" label={t('settingsPopover.close')} icon={<Icon name="close" size={16} />} onClick={onClose} />
       </div>
       <div id="creation-mode-label" className={styles.sectionLabel}>
         <FormattedMessage id="settingsPopover.creationMode" />
@@ -67,7 +164,7 @@ export function SettingsPopoverContent({ onClose }: { onClose: () => void }) {
             <button
               key={m.value}
               ref={(el) => {
-                refs.current[i] = el;
+                modeRefs.current[i] = el;
               }}
               type="button"
               role="radio"
@@ -75,7 +172,7 @@ export function SettingsPopoverContent({ onClose }: { onClose: () => void }) {
               tabIndex={on ? 0 : -1}
               className={styles.mode}
               onClick={() => pick(m.value)}
-              onKeyDown={(e) => onKeyDown(e, i)}
+              onKeyDown={(e) => onModeKeyDown(e, i)}
             >
               <span className={styles.modeIcon}>
                 <Icon name={m.icon} size={15} />
@@ -85,8 +182,8 @@ export function SettingsPopoverContent({ onClose }: { onClose: () => void }) {
                   <FormattedMessage
                     id="settingsPopover.creationMode.option"
                     values={{
-                      label: intl.formatMessage({ id: `settingsPopover.creationMode.${m.value}` }),
-                      sub: intl.formatMessage({ id: `settingsPopover.creationMode.${m.value}.sub` }),
+                      label: t(`settingsPopover.creationMode.${m.value}`),
+                      sub: t(`settingsPopover.creationMode.${m.value}.sub`),
                       muted: (chunks) => <span className={styles.muted}>{chunks}</span>,
                     }}
                   />
@@ -101,15 +198,33 @@ export function SettingsPopoverContent({ onClose }: { onClose: () => void }) {
         })}
       </div>
       <div className={styles.divider} role="presentation" />
-      {rows.map((row) => (
-        <div key={row.id} className={styles.row}>
+      {SUBS.map((s) => (
+        <button
+          key={s}
+          ref={(el) => {
+            if (el) rowRefs.current.set(s, el);
+            else rowRefs.current.delete(s);
+          }}
+          type="button"
+          className={styles.row}
+          aria-haspopup="menu"
+          aria-label={t('settingsPopover.row', { label: t(`settingsPopover.${s}`), value: values[s] })}
+          data-row={s}
+          onClick={() => open(s)}
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowRight') {
+              e.preventDefault();
+              open(s);
+            }
+          }}
+        >
           <span className={styles.rowLabel}>
-            <FormattedMessage id={row.id} />
+            <FormattedMessage id={`settingsPopover.${s}`} />
           </span>
-          <span className={styles.rowValue}>
-            {row.value} <span aria-hidden="true">›</span>
+          <span className={styles.rowValue} lang={s === 'language' ? current.tag : undefined}>
+            {values[s]} <span aria-hidden="true">›</span>
           </span>
-        </div>
+        </button>
       ))}
     </div>
   );

@@ -1,10 +1,10 @@
 import { cx } from '@rolling/ui';
 import { Link } from '@tanstack/react-router';
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, type KeyboardEvent } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import styles from './AccountMenu.module.css';
 import { PLANS } from '@rolling/core/pricing/config';
-import { useSession } from '@/lib/session';
+import { setActiveWorkspace, useActiveWorkspace, useSession } from '@/lib/session';
 import { placeholderAccount, placeholderHandle, placeholderWorkspaces } from './placeholder';
 
 const P = {
@@ -33,9 +33,11 @@ function I({ d, size = 16, sw = 2 }: { d: string; size?: number; sw?: number }) 
  * switch, links (profile, settings, plans and billing, billing and invoices,
  * members, help) and log out. Arrow keys move between items.
  */
-export function AccountMenuContent({ onClose, onLogout }: { onClose: () => void; onLogout?: () => void }) {
+export function AccountMenuContent({ onClose, onLogout, onHelp }: { onClose: () => void; onLogout?: () => void; onHelp?: () => void }) {
   const intl = useIntl();
-  const [workspace, setWorkspace] = useState(placeholderWorkspaces[0]!.id);
+  // The active workspace persists (lib/session) until workspaces come from `GET /api/me`.
+  const workspace = useActiveWorkspace(placeholderWorkspaces[0]!.id);
+  const setWorkspace = setActiveWorkspace;
   const rootRef = useRef<HTMLDivElement>(null);
   const account = placeholderAccount;
   const { planId } = useSession();
@@ -64,7 +66,6 @@ export function AccountMenuContent({ onClose, onLogout }: { onClose: () => void;
     { id: 'plans', to: '/upgrade', d: P.plans, note: planLabel ?? undefined },
     { id: 'billing', to: '/settings/$section', params: { section: 'billing' }, d: P.billing },
     { id: 'members', to: '/settings/$section', params: { section: 'team' }, d: P.members, note: intl.formatNumber(5) },
-    { id: 'help', to: '/settings/$section', params: { section: 'account' }, d: P.help, href: '#' },
   ] as const;
 
   return (
@@ -115,15 +116,7 @@ export function AccountMenuContent({ onClose, onLogout }: { onClose: () => void;
         })}
       </div>
       <div className={styles.divider} role="separator" />
-      {links.map((l) =>
-        'href' in l ? (
-          <a key={l.id} href={l.href} role="menuitem" tabIndex={-1} className={styles.item} onClick={onClose}>
-            <I d={l.d} />
-            <span className={styles.itemLabel}>
-              <FormattedMessage id={`shell.account.${l.id}`} />
-            </span>
-          </a>
-        ) : (
+      {links.map((l) => (
           <Link
             key={l.id}
             to={l.to}
@@ -139,8 +132,23 @@ export function AccountMenuContent({ onClose, onLogout }: { onClose: () => void;
             </span>
             {'note' in l && l.note ? <span className={styles.note}>{l.note}</span> : null}
           </Link>
-        ),
-      )}
+      ))}
+      <button
+        type="button"
+        role="menuitem"
+        tabIndex={-1}
+        aria-haspopup="dialog"
+        className={styles.item}
+        onClick={() => {
+          onClose();
+          onHelp?.();
+        }}
+      >
+        <I d={P.help} />
+        <span className={styles.itemLabel}>
+          <FormattedMessage id="shell.account.help" />
+        </span>
+      </button>
       <div className={styles.divider} role="separator" />
       <button
         type="button"

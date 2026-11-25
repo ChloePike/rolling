@@ -1,0 +1,13 @@
+.list{display:flex;flex-direction:column;gap:2px}
+.option{
+  display:flex;align-items:center;gap:10px;min-height:34px;padding:0 10px;border:0;border-radius:10px;
+  background:transparent;color:var(--c-text-1);font:inherit;font-size:var(--fs-control);font-weight:500;text-align:left;cursor:pointer;
+  transition:background-color var(--m-fast) var(--m-ease-standard);
+}
+.option:hover,.option:focus-visible{background:var(--c-surface-5)}
+.option:focus-visible{outline:none;box-shadow:var(--focus-ring)}
+.option[aria-checked="true"]{font-weight:600}
+.option[aria-disabled="true"]{color:var(--c-disabled-text);cursor:not-allowed}
+.label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hint{flex:none;font-size:var(--fs-meta);color:var(--c-text-4)}
+.check{flex:none;width:15px;height:15px;display:flex;color:var(--c-accent-text)}

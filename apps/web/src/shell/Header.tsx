@@ -1,5 +1,5 @@
-import { IconButton, Popover, Tooltip, useIndicator } from '@rolling/ui';
-import { Link, useRouterState } from '@tanstack/react-router';
+import { IconButton, Popover, Tooltip, useIndicator, useToast } from '@rolling/ui';
+import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 import { useRef, useState } from 'react';
 import { FormattedMessage, FormattedNumber, useIntl } from 'react-intl';
 import { AccountMenuContent } from './AccountMenu';
@@ -7,7 +7,8 @@ import { CreditsPopoverContent } from './CreditsPopover';
 import styles from './Header.module.css';
 import { Icon, LogoMark } from './icons';
 import { isNavItemActive, navItems } from './nav';
-import { useSession } from '@/lib/session';
+import { signOut, useCredits, useSession } from '@/lib/session';
+import { HelpDialog } from './HelpDialog';
 import { placeholderAccount } from './placeholder';
 import { SettingsPopoverContent } from './SettingsPopover';
 import { NARROW_NAV_QUERY, useMediaQuery } from './useMediaQuery';
@@ -32,7 +33,17 @@ export function Header() {
   // The active pill slides between items (200ms, standard curve) on navigation.
   const pill = useIndicator(navRef, `${pathname}-${narrow}`, '[aria-current="page"]');
   const account = placeholderAccount;
+  const navigate = useNavigate();
+  const toast = useToast();
+  const [help, setHelp] = useState(false);
   const { planId } = useSession();
+  const logout = () => {
+    void signOut().then(() => {
+      void navigate({ to: '/login' });
+      toast.show({ message: intl.formatMessage({ id: 'shell.account.loggedOut' }) });
+    });
+  };
+  const { available } = useCredits();
 
   return (
     <header className={styles.header} data-testid="app-header">
@@ -83,11 +94,11 @@ export function Header() {
               {...p}
               type="button"
               className={styles.credits}
-              aria-label={intl.formatMessage({ id: 'header.credits.label' }, { balance: account.creditBalance })}
+              aria-label={intl.formatMessage({ id: 'header.credits.label' }, { balance: available })}
             >
               <Icon name="coin" size={15} className={styles.creditsCoin} />
               <span className={styles.creditsValue}>
-                <FormattedNumber value={account.creditBalance} />
+                <FormattedNumber value={available} />
               </span>
               <span className={styles.creditsPlus}>
                 <Icon name="plus" size={13} strokeWidth={2.2} />
@@ -134,9 +145,10 @@ export function Header() {
             </button>
           )}
         >
-          <AccountMenuContent onClose={() => setOpen(null)} />
+          <AccountMenuContent onClose={() => setOpen(null)} onHelp={() => setHelp(true)} onLogout={logout} />
         </Popover>
       </div>
+      <HelpDialog open={help} onOpenChange={setHelp} />
     </header>
   );
 }

@@ -1,21 +1,13 @@
-import { cx, staggerStyle } from '@rolling/ui';
+import { cx, staggerStyle, useToast } from '@rolling/ui';
 import { Link } from '@tanstack/react-router';
 import { useMemo, useState } from 'react';
 import { FormattedDate, FormattedMessage, FormattedNumber, useIntl } from 'react-intl';
-import { useSession } from '@/lib/session';
-import { formatUsd, topUpPresets } from '@/lib/topUp';
+import { useFormatPrice } from '@/lib/prefs';
+import { checkoutTopUp, useCredits, useSession, type CreditsBreakdown } from '@/lib/session';
+import { topUpPresets } from '@/lib/topUp';
 import styles from './CreditsPopover.module.css';
-import { placeholderCredits } from './placeholder';
 
-export interface CreditsBreakdown {
-  available: number;
-  plan: number;
-  planExpires: Date;
-  purchased: number;
-  usedThisMonth: number;
-  held: number;
-  expiringThisMonth: number;
-}
+export type { CreditsBreakdown } from '@/lib/session';
 
 /** Preset selected when the popover opens (D-006 suggests $10–$250; $25 is the first with a tier bonus). */
 const DEFAULT_TOP_UP_USD = 25;
@@ -27,22 +19,47 @@ const DEFAULT_TOP_UP_USD = 25;
  * included) from `quoteTopUp`. Only members top up; others get a link to plans.
  */
 export function CreditsPopoverContent({
-  credits = placeholderCredits,
+  credits: creditsProp,
   onTopUp,
   onNavigate,
 }: {
+  /** Defaults to the live balance (`useCredits`). */
   credits?: CreditsBreakdown;
-  /** Starts checkout for the chosen amount (USD); the server re-quotes the credits. */
+  /**
+   * Starts checkout for the chosen amount (USD); the server re-quotes the
+   * credits. Defaults to the mock checkout in lib/session (pending → toast).
+   */
   onTopUp?: (amountUsd: number) => void;
   /** Called when a link inside navigates away (closes the popover). */
   onNavigate?: () => void;
 }) {
   const intl = useIntl();
+  const toast = useToast();
+  const live = useCredits();
+  const credits = creditsProp ?? live;
   const { isMember, planId } = useSession();
   const presets = useMemo(() => topUpPresets(planId), [planId]);
   const [amount, setAmount] = useState(DEFAULT_TOP_UP_USD);
+  const [pending, setPending] = useState(false);
   const picked = presets.find((p) => p.amountUsd === amount) ?? presets[0]!;
-  const money = (usd: number) => formatUsd(usd, (v, o) => intl.formatNumber(v, o));
+  const money = useFormatPrice();
+  const topUp = (usd: number) => {
+    if (onTopUp) return onTopUp(usd);
+    setPending(true);
+    checkoutTopUp(usd).then(
+      (r) => {
+        setPending(false);
+        toast.show({ message: intl.formatMessage({ id: 'shell.credits.topUpDone' }, { credits: r.credits, balance: r.balance }) });
+      },
+      () => {
+        setPending(false);
+        toast.show({
+          message: intl.formatMessage({ id: 'shell.credits.topUpFailed' }),
+          action: { label: intl.formatMessage({ id: 'shell.credits.retry' }), onAction: () => topUp(usd) },
+        });
+      },
+    );
+  };
   return (
     <div className={styles.panel}>
       <div className={styles.top}>
@@ -135,8 +152,18 @@ export function CreditsPopoverContent({
                 </button>
               ))}
             </div>
-            <button type="button" className={cx('rl-press', styles.topUpButton)} onClick={() => onTopUp?.(picked.amountUsd)}>
-              <FormattedMessage id="shell.credits.topUpButton" values={{ price: money(picked.amountUsd), credits: picked.credits }} />
+            <button
+              type="button"
+              className={cx('rl-press', styles.topUpButton)}
+              disabled={pending}
+              aria-busy={pending || undefined}
+              onClick={() => topUp(picked.amountUsd)}
+            >
+              {pending ? (
+                <FormattedMessage id="shell.credits.topUpPending" />
+              ) : (
+                <FormattedMessage id="shell.credits.topUpButton" values={{ price: money(picked.amountUsd), credits: picked.credits }} />
+              )}
             </button>
           </>
         ) : (

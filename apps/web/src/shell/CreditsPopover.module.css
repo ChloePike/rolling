@@ -38,3 +38,4 @@
 .topUpButton:hover{background:#FFFFFF}
 .note{font-size:11px;line-height:1.5;color:var(--c-text-4)}
 .joinButton{display:flex;align-items:center;justify-content:center;text-decoration:none}
+.topUpButton:disabled{cursor:progress;opacity:.72}
