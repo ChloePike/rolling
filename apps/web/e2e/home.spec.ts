@@ -558,6 +558,20 @@ test.describe('home flows', () => {
     await expect(page.locator('#projects').getByRole('link', { name: /Launch video for a desk lamp/ })).toBeVisible();
   });
 
+  test('Enter sends the brief; Shift+Enter adds a line; Enter while an IME is composing does not send', async ({ page }) => {
+    await openApp(page);
+    const brief = page.locator('textarea');
+    await brief.fill('Launch video');
+    await brief.press('Shift+Enter');
+    await brief.pressSequentially('for a desk lamp');
+    await expect(brief).toHaveValue('Launch video\nfor a desk lamp');
+    // An IME confirming a candidate fires Enter with isComposing: it must not send.
+    await brief.evaluate((el) => el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, isComposing: true })));
+    await expect(page).toHaveURL(/\/$/);
+    await brief.press('Enter');
+    await expect(page).toHaveURL(/\/p\/prj_[a-z0-9]+$/);
+  });
+
   test('image send under the confirm threshold runs at once; View opens the result viewer', async ({ page }) => {
     await seed(page);
     await openApp(page);

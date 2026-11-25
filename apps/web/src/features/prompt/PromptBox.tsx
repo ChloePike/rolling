@@ -237,9 +237,11 @@ export function PromptBox(props: PromptBoxProps) {
       }
       return;
     }
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !submitDisabled) {
+    // Enter sends; Shift+Enter inserts a new line. Never send while an IME is composing
+    // (Chinese, Japanese and Korean input confirm candidates with Enter).
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
       e.preventDefault();
-      onSubmit();
+      if (!submitDisabled) onSubmit();
     }
   }
 
