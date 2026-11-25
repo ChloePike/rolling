@@ -189,7 +189,7 @@
         {
           "binding": "DB",
           "database_name": "rolling-staging",
-          "database_id": "REPLACE_ME_D1_STAGING",
+          "database_id": "0d7b541a-0b51-4976-9c58-da51b4347682",
           "migrations_dir": "../../packages/db/migrations/d1"
         }
       ],
