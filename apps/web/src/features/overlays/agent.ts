@@ -14,7 +14,7 @@
  * AGENT_ALLOWANCE_EXHAUSTED { allowanceUsd, usedUsd, resetsAt, model }`,
  * `429 RATE_LIMITED`, `409 CONFLICT` (a turn is already running).
  */
-import { apiFetch, ApiError, EnvelopeSocket, type Envelope } from './backend';
+import { apiFetch, ApiError, userEvents, type Envelope } from './backend';
 
 export type AgentSurface = 'home' | 'canvas' | 'editor' | 'tool';
 export type AgentSkill = 'tv-ad' | 'product-showcase' | 'storyboard' | 'ai-comic' | 'brand-kit';
@@ -169,11 +169,12 @@ export async function sendTurn(
   threadId: string,
   input: { text: string; refs?: string[]; selection?: string[]; llm?: string | null },
   stream: TurnStream = {},
+  /** Where the thread's events arrive: the user channel (Home, tools; default) or the project channel (canvas, editor). D-014. */
+  subscribe: (listener: (msg: Envelope) => void) => () => void = userEvents,
 ): Promise<TurnResult> {
-  const socket = typeof WebSocket === 'undefined' ? null : new EnvelopeSocket(`/agent/threads/${encodeURIComponent(threadId)}/ws`);
-  const off = socket?.subscribe((msg: Envelope) => {
+  const off = subscribe((msg: Envelope) => {
     const p = msg.payload as { threadId?: string; delta?: string; name?: string; status?: 'started' | 'ok' | 'error'; proposal?: Proposal };
-    if (p?.threadId && p.threadId !== threadId) return;
+    if (!p || p.threadId !== threadId) return;
     if (msg.type === 'agent.delta' && typeof p.delta === 'string') stream.onDelta?.(p.delta);
     else if (msg.type === 'agent.tool' && p.name && p.status) stream.onTool?.({ name: p.name, status: p.status });
     else if (msg.type === 'proposal.created' && p.proposal) stream.onProposal?.(p.proposal);
@@ -185,8 +186,7 @@ export async function sendTurn(
     if (input.llm) body.llm = input.llm;
     return await apiFetch<TurnResult>(`/agent/threads/${encodeURIComponent(threadId)}/messages`, { method: 'POST', body });
   } finally {
-    off?.();
-    socket?.close();
+    off();
   }
 }
 

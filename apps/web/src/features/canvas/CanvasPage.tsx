@@ -344,6 +344,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
             connecting: wire,
             blockedReason: blocked?.message ?? null,
             mediaUrl: mediaUrlOf(session, node.id),
+            mediaRating: session.sync.getMedia(node.id)?.rating ?? null,
             readOnly: !session.sync.canEdit,
           },
         };

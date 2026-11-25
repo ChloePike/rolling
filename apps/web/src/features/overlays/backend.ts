@@ -1,21 +1,14 @@
 /**
  * Creation-side backend access (canvas, editor, agent, Home, tools, Activity,
- * assets). One place that knows whether the app talks to the real Worker API
- * or runs on the in-browser mocks, how REST errors look (`docs/api.md`:
- * `{ error: { code, message, data } }`), how GraphQL reads are sent and how
- * WebSocket URLs are built.
+ * assets), on top of `lib/api` (typed client, mode, errors) and
+ * `lib/realtime` (D-014: one shared connection, user and project channels).
  *
  * Mode: `VITE_API_MODE=mock` (set by the Playwright config for the fidelity
- * and interaction specs) keeps every creation feature on its mocks; anything
- * else talks to `/api`. `?api=mock` / `?api=real` overrides it for a manual
- * look on localhost only.
- *
- * TODO(api): when `lib/api` (typed client) and `lib/realtime` (UserHub socket)
- * land, `apiFetch`, `gql` and `userEvents` become thin re-exports of them;
- * callers keep importing from here.
+ * and interaction specs, and by Vitest) keeps every creation feature on its
+ * mocks; anything else talks to `/api`.
  */
 
-import { apiRequest, getWorkspaceId, ApiError, isApiError, apiMode, isMockApi, type ApiErrorCode, type ApiMode } from '@/lib/api';
+import { apiRequest, ApiError, isApiError, apiMode, isMockApi, type ApiErrorCode, type ApiMode } from '@/lib/api';
 import * as realtime from '@/lib/realtime';
 
 export { ApiError, isApiError, apiMode, isMockApi, type ApiErrorCode, type ApiMode };
@@ -78,17 +71,7 @@ export async function gql<T>(query: string, variables: Record<string, unknown> =
   return r.data as T;
 }
 
-/* ---------- WebSockets ---------- */
-
-export function wsUrl(path: string): string {
-  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const dev = devUser();
-  const url = new URL(`${proto}//${location.host}/api${path}`);
-  if (dev) url.searchParams.set('devUser', dev);
-  const ws = getWorkspaceId();
-  if (ws) url.searchParams.set('workspaceId', ws);
-  return url.toString();
-}
+/* ---------- Realtime (D-014: one shared connection in lib/realtime) ---------- */
 
 export interface Envelope<P = unknown> {
   type: string;
@@ -96,180 +79,87 @@ export interface Envelope<P = unknown> {
   payload: P;
 }
 
-type Listener = (msg: Envelope) => void;
-
 /**
- * A reconnecting JSON-envelope socket. Reconnects with backoff (1 s → 30 s)
- * unless closed by us or with a 44xx code (auth, not found, deleted), which
- * is final and reported through `onClose`.
- */
-export class EnvelopeSocket {
-  private ws: WebSocket | null = null;
-  private listeners = new Set<Listener>();
-  private rawListeners = new Set<(raw: string) => void>();
-  private closed = false;
-  private attempt = 0;
-  private timer: ReturnType<typeof setTimeout> | null = null;
-  private ping: ReturnType<typeof setInterval> | null = null;
-  private queue: string[] = [];
-  onOpen?: () => void;
-  onClose?: (code: number, final: boolean) => void;
-
-  constructor(private readonly path: string) {
-    this.connect();
-  }
-
-  private connect() {
-    if (this.closed) return;
-    const ws = new WebSocket(wsUrl(this.path));
-    this.ws = ws;
-    ws.addEventListener('open', () => {
-      this.attempt = 0;
-      for (const raw of this.queue.splice(0)) ws.send(raw);
-      this.ping = setInterval(() => ws.readyState === WebSocket.OPEN && ws.send('ping'), 25_000);
-      this.onOpen?.();
-    });
-    ws.addEventListener('message', (e) => {
-      if (typeof e.data !== 'string' || e.data === 'pong') return;
-      for (const l of this.rawListeners) l(e.data);
-      if (!this.listeners.size) return;
-      let msg: Envelope;
-      try {
-        msg = JSON.parse(e.data) as Envelope;
-      } catch {
-        return;
-      }
-      for (const l of this.listeners) l(msg);
-    });
-    ws.addEventListener('close', (e) => {
-      if (this.ping) clearInterval(this.ping);
-      this.ping = null;
-      const final = this.closed || (e.code >= 4400 && e.code < 4500);
-      this.onClose?.(e.code, final);
-      if (final) return;
-      const delay = Math.min(30_000, 1000 * 2 ** this.attempt++);
-      this.timer = setTimeout(() => this.connect(), delay);
-    });
-  }
-
-  get open() {
-    return this.ws?.readyState === WebSocket.OPEN;
-  }
-
-  send(raw: string) {
-    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(raw);
-    else this.queue.push(raw);
-  }
-
-  subscribe(l: Listener): () => void {
-    this.listeners.add(l);
-    return () => this.listeners.delete(l);
-  }
-
-  /** Raw text frames (the canvas sync parses its own envelopes). */
-  subscribeRaw(l: (raw: string) => void): () => void {
-    this.rawListeners.add(l);
-    return () => this.rawListeners.delete(l);
-  }
-
-  close() {
-    this.closed = true;
-    if (this.timer) clearTimeout(this.timer);
-    if (this.ping) clearInterval(this.ping);
-    this.ws?.close();
-  }
-}
-
-/**
- * UserHub (`/api/ws`) events through `lib/realtime` (the session starts the
- * socket once signed in): `credits.changed`, `activity.updated`, `agent.*`
- * of Home and tool threads, `proposal.*`.
+ * UserHub events through `lib/realtime`'s user channel (D-014: one shared
+ * connection): `credits.changed`, `activity.updated`, `agent.*` and
+ * `proposal.*` of Home and tool threads.
  */
 export function userEvents(listener: (msg: Envelope) => void): () => void {
   if (isMockApi()) return () => {};
-  // `lib/realtime` is moving to one shared connection (D-014); accept either export.
-  const rt = realtime as unknown as {
-    userSocket?: { onAny?: (h: (type: string, payload: unknown, id: string) => void) => () => void };
-    subscribeUser?: (h: (type: string, payload: unknown, id: string) => void) => () => void;
-  };
-  const sub = rt.subscribeUser ?? rt.userSocket?.onAny?.bind(rt.userSocket);
-  return sub ? sub((type: string, payload: unknown, id: string) => listener({ type, id, payload })) : () => {};
+  return realtime.realtime.user.onAny((type, payload, id) => listener({ type, id, payload }));
 }
 
 /* ---------- Project channel (D-014) ---------- */
 
 /**
- * D-014: one WebSocket per browser (SharedWorker in `lib/realtime`),
- * multiplexed by channel. A project channel is
- * `realtime.subscribeProject(projectId, { lastRevision })` → `{ send, on, unsubscribe }`.
- * This is the shape the canvas codes against; until `lib/realtime` exports
- * `subscribeProject`, `openProjectChannel` falls back to a dedicated
- * reconnecting project socket with the same behaviour.
+ * The canvas' view of a project channel of the shared realtime connection
+ * (`realtime.subscribeProject`). The canvas sync speaks raw envelopes with its
+ * own message ids; this adapter maps them to the channel's ids both ways and
+ * turns `subscribed { snapshot }` into a `snapshot`.
  */
 export interface ProjectChannel {
-  /** Raw envelope text to the room (`patch`, `undo`, `redo`, `timeline.patch`, `snapshot`); replies come back with the same id. */
+  /** Envelope text to the room (`patch`, `timeline.patch`, `snapshot`); the reply comes back with the same id. */
   send(raw: string): void;
-  /** Every server message of this project (as raw envelope text). */
+  /** Every server message of this project (as envelope text). */
   onMessage(listener: (raw: string) => void): () => void;
-  /** Connection state: `open` false while reconnecting; `fatal` close codes 4401/4403/4404/4410. */
-  onStatus(listener: (s: { open: boolean; fatalCode?: number; neverOpened?: boolean }) => void): () => void;
+  /** Connection state; `fatalCode` 4401/4403/4404/4410 when the project can't be used any more. */
+  onStatus(listener: (s: { open: boolean; fatalCode?: number }) => void): () => void;
   unsubscribe(): void;
 }
 
-interface RealtimeProjectHandle {
-  send: (type: string, payload: unknown, id?: string) => unknown;
-  on: (event: string, handler: (payload: unknown, id: string, type?: string) => void) => () => void;
-  unsubscribe: () => void;
-}
+const FATAL_CODES: Record<string, number> = { UNAUTHENTICATED: 4401, FORBIDDEN: 4403, NOT_FOUND: 4404, PROJECT_DELETED: 4410 };
 
-type SubscribeProject = (projectId: string, opts: { lastRevision?: number }) => RealtimeProjectHandle;
-
-export function openProjectChannel(projectId: string, opts: { lastRevision?: number } = {}): ProjectChannel {
-  const subscribe = (realtime as unknown as { subscribeProject?: SubscribeProject }).subscribeProject;
-  if (typeof subscribe === 'function') {
-    const handle = subscribe(projectId, opts);
-    const raws = new Set<(raw: string) => void>();
-    const statuses = new Set<(s: { open: boolean; fatalCode?: number }) => void>();
-    const off = handle.on('*', (payload, id, type) => {
-      if (type === 'channel.status') {
-        const st = payload as { open: boolean; fatalCode?: number };
-        for (const l of statuses) l(st);
-        return;
-      }
-      const raw = JSON.stringify({ type, id, payload });
-      for (const l of raws) l(raw);
-    });
-    return {
-      send: (raw) => {
-        const m = JSON.parse(raw) as Envelope;
-        handle.send(m.type, m.payload, m.id);
-      },
-      onMessage: (l) => (raws.add(l), () => raws.delete(l)),
-      onStatus: (l) => (statuses.add(l), () => statuses.delete(l)),
-      unsubscribe: () => {
-        off();
-        handle.unsubscribe();
-      },
-    };
-  }
-  // TODO(realtime, D-014): remove once lib/realtime exports subscribeProject.
-  const socket = new EnvelopeSocket(`/projects/${encodeURIComponent(projectId)}/ws`);
-  const statuses = new Set<(s: { open: boolean; fatalCode?: number; neverOpened?: boolean }) => void>();
-  let opened = false;
-  socket.onOpen = () => {
-    opened = true;
-    for (const l of statuses) l({ open: true });
+export function openProjectChannel(projectId: string): ProjectChannel {
+  const channel = realtime.realtime.subscribeProject(projectId, {});
+  const ours = new Map<string, string>();
+  const raws = new Set<(raw: string) => void>();
+  const statuses = new Set<(s: { open: boolean; fatalCode?: number }) => void>();
+  const emit = (type: string, id: string, payload: unknown) => {
+    const raw = JSON.stringify({ type, id, payload });
+    for (const l of raws) l(raw);
   };
-  socket.onClose = (code, final) => {
-    const fatalCode = code >= 4400 && code < 4500 ? code : undefined;
-    if (final && !fatalCode) return;
-    for (const l of statuses) l({ open: false, fatalCode, neverOpened: !opened });
-  };
+  const offAny = channel.onAny((type, payload, id) => {
+    const mine = ours.get(id);
+    if (mine) ours.delete(id);
+    if (type === 'subscribed') {
+      const p = payload as { snapshot?: unknown; patches?: Array<{ revision: number; ops: unknown[]; actor: string }> };
+      if (p.snapshot) emit('snapshot', id, p.snapshot);
+      for (const patch of p.patches ?? []) emit('graph.patched', id, patch);
+      for (const l of statuses) l({ open: true });
+      return;
+    }
+    if (type === 'error' && !mine) {
+      const code = (payload as { code?: string })?.code ?? '';
+      if (FATAL_CODES[code]) for (const l of statuses) l({ open: false, fatalCode: FATAL_CODES[code] });
+    }
+    emit(type, mine ?? id, payload);
+  });
+  const offStatus = realtime.realtime.user.onEvent('status', (st) => {
+    for (const l of statuses) l({ open: st === 'open' });
+  });
+  const offClosed = realtime.realtime.user.onEvent('closed', (code) => {
+    if (code >= 4400 && code < 4500) for (const l of statuses) l({ open: false, fatalCode: code });
+  });
   return {
-    send: (raw) => socket.send(raw),
-    onMessage: (l) => socket.subscribeRaw(l),
-    onStatus: (l) => (statuses.add(l), () => statuses.delete(l)),
-    unsubscribe: () => socket.close(),
+    send: (raw) => {
+      const m = JSON.parse(raw) as Envelope<Record<string, unknown> | null>;
+      const id = channel.send(m.type, m.payload ?? {});
+      ours.set(id, m.id);
+    },
+    onMessage: (l) => {
+      raws.add(l);
+      return () => raws.delete(l);
+    },
+    onStatus: (l) => {
+      statuses.add(l);
+      return () => statuses.delete(l);
+    },
+    unsubscribe: () => {
+      offAny();
+      offStatus();
+      offClosed();
+      channel.unsubscribe();
+    },
   };
 }
 

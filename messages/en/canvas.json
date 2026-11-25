@@ -315,5 +315,6 @@
   "canvas.quote.code.SAFETY_BLOCKED": "This can’t be generated under our content rules.",
   "canvas.quote.code.MATURE_REQUIRED": "Turn on mature content in Settings to generate this, or change the prompt.",
   "canvas.quote.code.SAFETY_REVIEW": "Mature content is paused for this workspace while recent activity is reviewed.",
-  "canvas.quote.code.NO_PLAN": "Join a plan and turn on mature content to generate this, or change the prompt."
+  "canvas.quote.code.NO_PLAN": "Join a plan and turn on mature content to generate this, or change the prompt.",
+  "canvas.node.showMature": "Show"
 }

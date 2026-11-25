@@ -182,7 +182,7 @@ export function openSession(projectId: string): ProjectSession | undefined {
 
 function openRealProject(projectId: string, events: ProjectEvents): ProjectSession {
   const store = new GraphStore({ revision: 0, nodes: [], edges: [], groups: [] });
-  // D-014: the project channel of the shared realtime socket (lib/realtime), not a socket of our own.
+  // D-014: a channel of the shared realtime connection (lib/realtime), not a socket of our own.
   const channel = openProjectChannel(projectId);
   let canvasId: string | null = null;
   let fatal = false;
@@ -217,22 +217,18 @@ function openRealProject(projectId: string, events: ProjectEvents): ProjectSessi
   const offStatus = channel.onStatus((st) => {
     if (st.fatalCode && FATAL_CLOSE[st.fatalCode]) return fail(FATAL_CLOSE[st.fatalCode]!);
     sync.setConnected(st.open);
-    // An upgrade refused with plain HTTP 401/404 never opens: ask REST why.
-    if (!st.open && st.neverOpened) {
-      apiFetch(`/projects/${encodeURIComponent(projectId)}`).then(
-        () => {},
-        (e: unknown) => {
-          const f = fatalFor(e);
-          if (f) fail(f);
-        },
-      );
-    }
   });
   // Project metadata (title, role) for the top bar; also the definitive 404 check.
-  void loadProjectMeta(projectId).catch((e: unknown) => {
-    const f = fatalFor(e);
-    if (f) fail(f);
-  });
+  void loadProjectMeta(projectId).then(
+    (meta) => {
+      // Viewers get a read-only canvas (also from `hello.canEdit` when the channel forwards it).
+      if (!meta.canEdit) sync.canEdit = false;
+    },
+    (e: unknown) => {
+      const f = fatalFor(e);
+      if (f) fail(f);
+    },
+  );
   const session: ProjectSession = {
     projectId,
     store,
@@ -759,7 +755,13 @@ export function graphProposalFrom(proposal: Proposal, nodes: GraphNode[] = []): 
 async function sendRealAgentMessage(text: string, opts: AgentSendOptions): Promise<AgentReply> {
   const projectId = opts.projectId!;
   const thread = await threadFor(`canvas:${projectId}`, { surface: 'canvas', projectId });
-  const r = await sendTurn(thread.id, { text, selection: opts.selection, refs: opts.refs, llm: opts.llm === 'default' ? null : opts.llm }, { onDelta: opts.onDelta });
+  const r = await sendTurn(
+    thread.id,
+    { text, selection: opts.selection, refs: opts.refs, llm: opts.llm === 'default' ? null : opts.llm },
+    { onDelta: opts.onDelta },
+    // Canvas threads stream on the project channel (D-014).
+    (l) => subscribeProjectMessages(projectId, l),
+  );
   const reply: AgentReply = { text: r.text || r.error?.message || '', reason: r.reason };
   if (r.proposal?.body.kind === 'graphPatch') reply.proposal = graphProposalFrom(r.proposal, opts.nodes) ?? undefined;
   if (r.proposal?.body.kind === 'plan') reply.plan = { proposalId: r.proposal.id, options: planOptionsFrom(r.proposal) };

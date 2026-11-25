@@ -5,7 +5,7 @@ import { edlDuration, type Edl, type TimelineOp } from '@rolling/core/timeline';
 import type { GraphNode } from '@rolling/core/graph';
 import { assetMediaUrl, isMockApi } from '@/features/overlays/backend';
 import { agentFailure, applyProposal, sendTurn, threadFor, type AgentFailure, type Proposal } from '@/features/overlays/agent';
-import { getProject, openSession } from '../api';
+import { getProject, openSession, subscribeProjectMessages } from '../api';
 import { canvasIdFor, fetchTimeline, reassembleTimeline } from './realTimeline';
 import type { BinItem, ShotInfo } from './mocks';
 
@@ -93,7 +93,7 @@ export async function reassemble(projectId: string): Promise<Edl> {
 /** Real mode: ask the editor thread; a `timelinePatch` proposal becomes the proposal card. Throws on agent errors. */
 async function proposeEditReal(projectId: string, edl: Edl, request: string): Promise<EditProposal | null> {
   const thread = await threadFor(`editor:${projectId}`, { surface: 'editor', projectId });
-  const r = await sendTurn(thread.id, { text: request });
+  const r = await sendTurn(thread.id, { text: request }, {}, (l) => subscribeProjectMessages(projectId, l));
   const p: Proposal | null = r.proposal;
   if (!p || p.body.kind !== 'timelinePatch') {
     if (r.text) throw new EditorAgentReply(r.text);

@@ -1,6 +1,6 @@
 import { cx, motionSafe } from '@rolling/ui';
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
-import { createContext, memo, useContext, type CSSProperties, type ReactNode } from 'react';
+import { createContext, memo, useContext, useState, type CSSProperties, type ReactNode } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { hasInputs, inputPorts, outputType, type PortType } from '@rolling/core/graph';
 import type { GraphNode } from '@rolling/core/graph';
@@ -19,6 +19,8 @@ export interface CardData extends Record<string, unknown> {
   connecting?: { type: PortType; from: 'out' | 'in'; nodeId: string } | null;
   /** Signed URL of the active version's media (real mode); the tone stands in without one. */
   mediaUrl?: string | null;
+  /** D-005 rating of the media: `suggestive` / `explicit` are blurred until clicked. */
+  mediaRating?: 'safe' | 'suggestive' | 'explicit' | null;
   /** Viewer of the project: no edits. */
   readOnly?: boolean;
   /** Blocked by a bypassed upstream node: the reason. */
@@ -181,19 +183,36 @@ function Port({ type, node, active, refused, top }: { type: 'in' | 'out'; node: 
 
 /** Done image/video body: the result (tone stands in for the thumbnail). */
 /** The card's result media URL (from `CardData.mediaUrl`). */
-const CardMediaContext = createContext<string | null>(null);
+const CardMediaContext = createContext<{ url: string | null; rating: CardData['mediaRating'] }>({ url: null, rating: null });
 
 function Result({ node, reveal }: { node: GraphNode; reveal: boolean }) {
   const intl = useIntl();
-  const mediaUrl = useContext(CardMediaContext);
+  const { url: mediaUrl, rating } = useContext(CardMediaContext);
   const actions = useContext(NodeActionsContext);
+  const [revealed, setRevealed] = useState(false);
+  const blurred = (rating === 'suggestive' || rating === 'explicit') && !revealed;
   const tone = str(node.params.tone, 'var(--c-tone-indigo)');
+  const mediaClass = cx(styles.resultMedia, blurred && styles.resultBlurred);
   const media = mediaUrl ? (
-    node.kind === 'image' ? (
-      <img className={styles.resultMedia} src={mediaUrl} alt="" draggable={false} data-testid={`node-media-${node.id}`} />
-    ) : (
-      <video className={styles.resultMedia} src={mediaUrl} muted playsInline preload="metadata" data-testid={`node-media-${node.id}`} />
-    )
+    <>
+      {node.kind === 'image' ? (
+        <img className={mediaClass} src={mediaUrl} alt="" draggable={false} data-testid={`node-media-${node.id}`} />
+      ) : (
+        <video className={mediaClass} src={mediaUrl} muted playsInline preload="metadata" data-testid={`node-media-${node.id}`} />
+      )}
+      {blurred ? (
+        <button
+          type="button"
+          className={cx(styles.revealBtn, 'nodrag')}
+          onClick={(e) => {
+            e.stopPropagation();
+            setRevealed(true);
+          }}
+        >
+          <FormattedMessage id="canvas.node.showMature" />
+        </button>
+      ) : null}
+    </>
   ) : null;
   if (node.kind === 'image') {
     return (
@@ -437,7 +456,7 @@ function NodeCardImpl({ data, selected }: NodeProps<CardNode>) {
   const building = buildIndex >= 0;
   const intl = useIntl();
   return (
-    <CardMediaContext.Provider value={data.mediaUrl ?? null}>
+    <CardMediaContext.Provider value={{ url: data.mediaUrl ?? null, rating: data.mediaRating ?? null }}>
     <ConnectingContext.Provider value={connecting ?? null}>
       <div
         className={cx(
