@@ -39,6 +39,8 @@ const typeDefs = /* GraphQL */ `
     name: String!
     tags: [String!]!
     default: Boolean!
+    "featured, more or tool (picker placement)."
+    placement: String!
     auto: Boolean!
     mature: Boolean!
     matureOnly: Boolean!

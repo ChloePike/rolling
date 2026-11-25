@@ -1,6 +1,6 @@
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useIntl } from 'react-intl';
-import { useModels, type CatalogModel } from '@/lib/models';
+import { pickerModels, useModels, type CatalogModel } from '@/lib/models';
 import {
   AUTO_MODEL,
   ModelPicker,
@@ -37,10 +37,13 @@ export function useHomePills(mode: HomeModeId): {
 } {
   const intl = useIntl();
   const t = (id: string, v?: Record<string, string | number>) => intl.formatMessage({ id }, v);
-  const chat = useModels('chat').data;
-  const images = useModels('image').data;
+  // Agent turns are free for members (D-007): only the curated low-cost LLMs are offered.
+  const chatAll = useModels('chat').data;
+  const chat = useMemo(() => (chatAll ? pickerModels(chatAll, { featuredOnly: true }) : chatAll), [chatAll]);
+  const imagesAll = useModels('image').data;
+  const images = useMemo(() => (imagesAll ? pickerModels(imagesAll) : imagesAll), [imagesAll]);
   const allVideo = useModels('video').data;
-  const videos = allVideo?.filter((m) => !m.lipSync);
+  const videos = useMemo(() => (allVideo ? pickerModels(allVideo).filter((m) => !m.lipSync) : allVideo), [allVideo]);
   const lipSync = allVideo?.filter((m) => m.lipSync);
 
   const [llmId, setLlmId] = useState<string | null>(null);

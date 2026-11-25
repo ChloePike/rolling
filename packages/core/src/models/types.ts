@@ -108,6 +108,8 @@ export interface ListingModel {
   unmapped: string[];
 }
 
+export type ModelPlacement = 'featured' | 'more' | 'tool';
+
 /** Product-only fields (`./overlay.ts`) merged over a ListingModel. */
 export interface ModelProductFields {
   displayName: string;
@@ -116,6 +118,13 @@ export interface ModelProductFields {
   default: boolean;
   /** Not offered in the picker. */
   hidden: boolean;
+  /**
+   * Where general model pickers list it: `featured` (the curated main list),
+   * `more` (behind "More models"), or `tool` (only in the tool that needs it:
+   * swaps, motion transfer, LoRA). Lip-sync pickers list lip-sync models
+   * regardless of placement.
+   */
+  placement: ModelPlacement;
   /** Considered by Auto selection. */
   auto: boolean;
   /**

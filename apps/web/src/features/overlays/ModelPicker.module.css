@@ -2,7 +2,13 @@
 .panel{
   width:420px;box-sizing:border-box;border-radius:20px;background:var(--c-surface-4);box-shadow:var(--shadow-picker);
   padding:10px;color:var(--c-text-1);display:flex;flex-direction:column;gap:6px;
+  overflow:hidden;
 }
+/* Model list area: scrolls inside the height-capped panel. */
+.scroll{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:6px;margin:0 -4px;padding:0 4px}
+.more{align-self:stretch;height:36px;border:0;border-radius:12px;background:none;color:var(--c-text-3);font:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:background var(--dur-fast) var(--ease-standard),color var(--dur-fast) var(--ease-standard)}
+.more:hover{background:var(--c-surface-3);color:var(--c-text-1)}
+.more:focus-visible{box-shadow:var(--focus-ring)}
 .searchRow{display:flex;align-items:center;gap:8px;padding:4px 4px 2px}
 .search{height:36px;flex:1;border-radius:12px;background:var(--c-surface-2);display:flex;align-items:center;gap:8px;padding:0 10px;cursor:text}
 .search svg{flex:none}

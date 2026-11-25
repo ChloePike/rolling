@@ -12,6 +12,8 @@ export type ModelBadge = 'popular' | 'new' | 'budget' | 'pro' | 'comingSoon';
 export type PriceUnit = 'per5s' | 'per10s' | 'perImage' | 'perMinute';
 
 export interface ModelOption {
+  /** Listed behind "More models" instead of the main list. */
+  more?: boolean;
   /** Catalog id, e.g. `bytedance/seedance-2.5`. */
   id: string;
   /** Display name, e.g. "Seedance 2.5". */

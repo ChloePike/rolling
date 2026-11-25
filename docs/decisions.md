@@ -2,6 +2,24 @@
 
 Decisions made after the original spec. Where this file disagrees with `PRD.md`, `architecture.md`, `api.md` or `harness.md`, this file wins. Newest first.
 
+## D-010 — Light mode, following the system (2026-11-25)
+
+- The app supports light and dark themes. Default: follow the system (`prefers-color-scheme`), switching live when the OS changes. Users can override in Settings → Preferences and the header settings popover: System (default) / Light / Dark; stored in prefs.
+- Implementation: all colors are tokens (`packages/ui/tokens.css`); `:root` holds dark values, light values apply under `@media (prefers-color-scheme: light)` for `:root:not([data-theme="dark"])` and under `:root[data-theme="light"]`. No hard-coded colors in components except the canvas-drawn timeline, which reads tokens via `getComputedStyle`.
+- The approved designs are dark; light mode derives from them (same layout, spacing and accent `#3B82F6`; brand yellow stays logo-only). Editor clip colors get light variants with the same hue roles.
+- `theme-color` meta follows the active theme.
+
+## D-009 — Model menus: curated lists, public agent LLMs, Auto via classifier (2026-11-25)
+
+- **Pickers show curated lists.** Each catalog model has a placement: `featured` (main list), `more` (behind “More models”), or `tool` (only in the tool that needs it). Face/head swap (image and video), motion transfer, LoRA and utilities like face detection never appear in video or image pickers. Picker panels cap their height to the viewport and scroll inside.
+- **Public agent LLMs** (`packages/core/models/chat.ts`), shown by name; clients only see public ids, never gateway ids:
+  - DeepSeek V4.1 Flash (default) → cheapest of `deepseek-v4.1-flash` / `-us` at live token prices.
+  - DeepSeek V4.1 Flash 1017 → cheapest of `-1017` / `-1017-us`; mature turns (D-005) route to `deepseek-v4.1-flash-cyber`.
+  - Claude Sonnet 5.5, Claude Haiku 5.5, Claude Opus 5.5, GPT-6 Astra, GPT-6.1 Sol, Grok 4.6, GLM 5.3 → their gateway models.
+  - An entry is listed only while one of its gateway models is in the synced catalog.
+- **Auto model selection uses an LLM classifier.** For generation runs with model “Auto”, the backend asks DeepSeek V4.1 Flash (cheapest route) to pick a model from the candidates that satisfy the request’s capabilities, the plan’s resolution cap (D-006) and mature routing (D-005), given the prompt, references, mode and length. Output is a Zod-validated model id from that candidate list; anything else, a timeout (2 s) or an error falls back to the deterministic `pickAuto` (cheapest capable model). The classifier is free to the user and runs before the quote, so the quote shows the chosen model.
+- **Open:** premium agent LLMs (Opus, Astra, Sonnet, GPT-6.1 Sol) cost up to ~60× DeepSeek per turn while agent turns are free for members (D-007). Either meter agent turns on non-default LLMs in credits (3× token cost, D-006) or limit them by plan. Decide before M6 ships.
+
 ## D-008 — Media is served from a media domain, not the API (2026-11-25)
 
 In production, images and video never stream through the API Worker.

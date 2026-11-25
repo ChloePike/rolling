@@ -129,7 +129,9 @@ describe("model catalog reads", () => {
     const { body } = await getModels();
     const ids = body.models.map((m) => m.id);
     expect(ids).toContain("qwen/qwen-image-2.0");
-    expect(ids).toContain("deepseek/deepseek-v4.1-flash");
+    // Chat models are exposed as public agent LLM ids (D-009), never gateway ids.
+    expect(ids).toContain("deepseek-v4.1-flash");
+    expect(ids.some((id: string) => id.startsWith("deepseek/"))).toBe(false);
     expect(ids.some((id: string) => id.includes("-spicy"))).toBe(false);
   });
 

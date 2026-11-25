@@ -41,6 +41,7 @@ export function toModelOption(m: CatalogModel, i: number): ModelOption {
     credits,
     unit: isImage ? 'perImage' : 'per5s',
     eta: '',
+    more: m.placement === 'more',
   };
 }
 

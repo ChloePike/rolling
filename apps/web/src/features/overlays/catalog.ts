@@ -34,9 +34,11 @@ export function catalogToOptions(models: CatalogModel[], kind: ModelKind, opts: 
   const list = models.filter((m) => {
     if (m.matureOnly && !opts.showMature) return false;
     if (m.hidden === true) return false;
-    if (kind === 'image') return m.kind === 'image';
     if (kind === 'avatar') return m.kind === 'video' && m.lipSync;
-    return m.kind === 'video';
+    // Tool-only models (swaps, motion transfer, LoRA) never appear in general pickers.
+    if ((m.placement ?? 'featured') === 'tool') return false;
+    if (kind === 'image') return m.kind === 'image';
+    return m.kind === 'video' && !m.lipSync;
   });
   return list.map((m, i) => {
     const badge = typeof m.badge === 'string' && BADGES.has(m.badge) ? (m.badge as ModelBadge) : m.default ? 'popular' : undefined;
@@ -51,6 +53,7 @@ export function catalogToOptions(models: CatalogModel[], kind: ModelKind, opts: 
       unit,
       eta: typeof m.eta === 'string' ? m.eta : '',
       badge,
+      more: kind !== 'avatar' && m.placement === 'more',
       disabled: m.disabled === true,
       disabledReason: typeof m.disabledReason === 'string' ? m.disabledReason : undefined,
     } satisfies ModelOption;

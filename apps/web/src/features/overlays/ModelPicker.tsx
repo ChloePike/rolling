@@ -1,5 +1,5 @@
 import { cx, presenceProps, staggerStyle, usePresence } from '@rolling/ui';
-import { useId, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
+import { useId, useMemo, useRef, useState, type CSSProperties, type RefObject, useLayoutEffect } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { Svg } from './icons';
 import { useModels } from '@/lib/models';
@@ -73,11 +73,34 @@ export function ModelPicker({
     [catalog.data, kind, showMature],
   );
   const list = models ?? fromCatalog;
+  const [showMore, setShowMore] = useState(false);
+  const moreCount = useMemo(() => list.filter((m) => m.more).length, [list]);
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return list;
+    // A search covers every model; otherwise "More models" stay folded until asked for.
+    if (!q) return showMore ? list : list.filter((m) => !m.more);
     return list.filter((m) => [m.name, ...m.tags].some((t) => t.toLowerCase().includes(q)));
-  }, [list, query]);
+  }, [list, query, showMore]);
+
+  // Keep the panel inside the viewport: cap its height to the space on its side
+  // of the anchor; the model list scrolls inside while search and footer stay put.
+  const [maxHeight, setMaxHeight] = useState<number | undefined>(undefined);
+  useLayoutEffect(() => {
+    if (!open) return;
+    const measure = () => {
+      const anchor = anchorRef?.current?.getBoundingClientRect();
+      const margin = 16;
+      const space = anchor
+        ? placement === 'above'
+          ? anchor.top - margin
+          : window.innerHeight - anchor.bottom - margin
+        : window.innerHeight - 2 * margin;
+      setMaxHeight(Math.max(240, Math.min(space, 640)));
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [open, anchorRef, placement]);
 
   if (!presence.mounted) return null;
   const autoOn = value === AUTO_MODEL;
@@ -94,7 +117,7 @@ export function ModelPicker({
       aria-label={intl.formatMessage({ id: 'overlays.modelPicker.label' })}
       {...presenceProps(presence.state)}
       className={cx('rl-pop', styles.panel, className)}
-      style={{ ...style, ['--rl-pop-dir' as string]: placement === 'above' ? 1 : -1 }}
+      style={{ ...style, maxHeight, ['--rl-pop-dir' as string]: placement === 'above' ? 1 : -1 }}
     >
       <div className={styles.searchRow}>
         <label htmlFor={searchId} className={styles.search}>
@@ -113,6 +136,7 @@ export function ModelPicker({
         </button>
       </div>
 
+      <div className={styles.scroll} data-testid="model-picker-scroll">
       <button
         type="button"
         aria-pressed={autoOn}
@@ -185,6 +209,12 @@ export function ModelPicker({
           <FormattedMessage id="overlays.modelPicker.empty" values={{ query: query.trim() }} />
         </div>
       ) : null}
+        {!query.trim() && moreCount > 0 ? (
+          <button type="button" className={styles.more} aria-expanded={showMore} onClick={() => setShowMore((v) => !v)}>
+            <FormattedMessage id={showMore ? 'overlays.modelPicker.fewer' : 'overlays.modelPicker.more'} values={{ count: moreCount }} />
+          </button>
+        ) : null}
+      </div>
       <div className={styles.footer}>
         <span className={styles.footerText}>
           <FormattedMessage id="overlays.modelPicker.footer" />

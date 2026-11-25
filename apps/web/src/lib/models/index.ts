@@ -27,6 +27,9 @@ export interface CatalogModel {
   name: string;
   tags: string[];
   default: boolean;
+  /** Picker placement (core overlay): featured list, behind "More models", or tool-only. */
+  placement?: 'featured' | 'more' | 'tool';
+  hidden?: boolean;
   auto: boolean;
   mature: boolean;
   matureOnly: boolean;
@@ -107,4 +110,18 @@ export function useModels(kind?: ModelKind) {
 /** Warm the cache at app start so the first model picker opens instantly. */
 export function prefetchModels(queryClient: ReturnType<typeof useQueryClient>, kind?: ModelKind): Promise<void> {
   return queryClient.prefetchQuery({ queryKey: queryKey(kind), queryFn: () => fetchModels(kind), staleTime: 5 * 60_000 });
+}
+
+/**
+ * Models for a general picker: drops hidden and tool-only models (swaps, motion
+ * transfer, LoRA, utilities). With `featuredOnly`, keeps the curated list only.
+ * Older API responses without `placement` count as featured.
+ */
+export function pickerModels(models: readonly CatalogModel[] | undefined, opts: { featuredOnly?: boolean } = {}): CatalogModel[] {
+  return (models ?? []).filter((m) => {
+    if (m.hidden === true) return false;
+    const placement = m.placement ?? 'featured';
+    if (placement === 'tool') return false;
+    return opts.featuredOnly ? placement === 'featured' : true;
+  });
 }

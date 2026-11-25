@@ -28,6 +28,20 @@ const base: CatalogModel = {
 };
 
 describe('catalogToOptions', () => {
+  it('never lists tool-only models (face/head swap, motion transfer) in video or image pickers', () => {
+    const models: CatalogModel[] = [
+      { ...base, placement: 'featured' },
+      { ...base, id: 'lumina/video-face-swap', name: 'Video Face Swap', default: false, placement: 'tool', requiresIdentitySafety: true },
+      { ...base, id: 'lumina/video-head-swap', name: 'Video Head Swap', default: false, placement: 'tool', requiresIdentitySafety: true },
+      { ...base, id: 'lumina/face-swap', kind: 'image', name: 'Face Swap', default: false, placement: 'tool' },
+      { ...base, id: 'lumina/head-swap', kind: 'image', name: 'Head Swap', default: false, placement: 'tool' },
+      { ...base, id: 'x-ai/grok-imagine-video', name: 'Grok Imagine Video', default: false, placement: 'more' },
+    ];
+    expect(catalogToOptions(models, 'video').map((m) => m.id)).toEqual(['bytedance/seedance-2.5', 'x-ai/grok-imagine-video']);
+    expect(catalogToOptions(models, 'video').map((m) => m.more)).toEqual([false, true]);
+    expect(catalogToOptions(models, 'image')).toEqual([]);
+  });
+
   it('quotes video per 5s at the default resolution and marks the default model popular', () => {
     const [o] = catalogToOptions([base], 'video');
     expect(o).toMatchObject({ id: base.id, credits: 8, unit: 'per5s', badge: 'popular', mark: 'S2' });

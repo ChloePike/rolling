@@ -4,7 +4,7 @@ import { syncModels } from "./sync";
  * The overlay is merged at read time, so product changes apply on deploy
  * without waiting for the next sync.
  */
-import { Catalog, creditsFor, type CatalogKind, type CatalogModel, type ListingModel, type PriceRule } from "@rolling/core";
+import { availableChatModels, Catalog, creditsFor, type CatalogKind, type CatalogModel, type ListingModel, type PriceRule } from "@rolling/core";
 import type { ModelRow } from "@rolling/db/d1";
 import { listModelRows, userMayViewMatureModels } from "@rolling/db/queries/models";
 import type { SessionUser } from "../lib/session";
@@ -55,6 +55,8 @@ export interface PublicModel {
   name: string;
   tags: string[];
   default: boolean;
+  /** Picker placement: featured main list, behind "More models", or tool-only. */
+  placement: "featured" | "more" | "tool";
   auto: boolean;
   mature: boolean;
   matureOnly: boolean;
@@ -113,6 +115,7 @@ export function toPublicModel(m: CatalogModel): PublicModel {
     name: m.displayName,
     tags: m.tags,
     default: m.default,
+    placement: m.placement,
     auto: m.auto,
     mature: m.mature,
     matureOnly: m.matureOnly,
@@ -144,5 +147,37 @@ export async function listPublicModels(
   kind?: CatalogKind | null,
 ): Promise<PublicModel[]> {
   const [catalog, mature] = await Promise.all([loadCatalog(env, kind), mayViewMature(env, user)]);
-  return catalog.list({ ...(kind && { kind }), includeMatureOnly: mature }).map(toPublicModel);
+  // Chat models are exposed only as the public agent LLM list (D-009), never as gateway ids.
+  const media = catalog
+    .list({ ...(kind && { kind }), includeMatureOnly: mature })
+    .filter((m) => m.kind !== "chat")
+    .map(toPublicModel);
+  if (kind && kind !== "chat") return media;
+  const chatGateway = catalog.list({ kind: "chat", includeMatureOnly: true });
+  const chat = availableChatModels(chatGateway).map(
+    (m): PublicModel => ({
+      id: m.id,
+      kind: "chat",
+      name: m.name,
+      tags: [],
+      default: m.default === true,
+      placement: "featured",
+      auto: false,
+      mature: m.matureRoute !== undefined,
+      matureOnly: false,
+      requiresIdentitySafety: false,
+      substituteFor: null,
+      operations: ["chat"],
+      seconds: null,
+      defaultSeconds: null,
+      resolutions: [],
+      defaultResolution: null,
+      ratios: [],
+      audio: false,
+      lipSync: false,
+      limits: { referenceImages: 0, referenceVideos: 0, referenceAudios: 0, inputImages: 0, imagesPerRequest: 0 },
+      credits: [],
+    }),
+  );
+  return kind === "chat" ? chat : [...media, ...chat];
 }
