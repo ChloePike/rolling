@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Confirm and quote</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin=""><link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Noto+Sans+SC:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-variant-numeric:tabular-nums}
+</style>
+</helmet>
+<div role="dialog" aria-label="{{ title }}" style="width:520px;box-sizing:border-box;border-radius:24px;background:#1C1C1F;box-shadow:0 30px 80px rgba(0,0,0,.65);padding:20px;color:#F5F5F5;font-family:'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif;display:flex;flex-direction:column;gap:14px">
+  <div style="display:flex;align-items:flex-start;gap:12px">
+    
+    <div style="flex:1;display:flex;flex-direction:column;gap:4px"><span style="font-size:17px;font-weight:700">{{ title }}</span><span style="font-size:13px;color:#9A9AA0">{{ sub }}</span></div>
+    <button onClick="{{ close }}" aria-label="Close" style="width:32px;height:32px;border-radius:999px;border:0;background:none;color:#9A9AA0;font-size:18px;cursor:pointer"><svg width="16" height="16" style="display:block;margin:auto" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18 M6 6l12 12"></path></svg></button>
+  </div>
+
+  <div style="font-size:13px;color:#9A9AA0">{{ statLine }}</div>
+
+  <div style="border-radius:16px;background:#141416;padding:6px;display:flex;flex-direction:column;max-height:300px;overflow:auto">
+    <sc-for list="{{ rows }}" as="r" hint-placeholder-count="4">
+      <div style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:12px">
+        <span style="flex:none;width:34px;height:34px;border-radius:9px;background:{{ r.tone }};display:flex;align-items:center;justify-content:center"><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="#C8C8CC" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ r.d }}"></path></svg></span>
+        <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+          <span style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</span>
+          <span style="font:500 11px/1.3 'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif;color:#7C7C84;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.meta }}</span>
+        </span>
+        <span style="flex:none;height:22px;padding:0 8px;border-radius:6px;background:{{ r.sbg }};color:{{ r.sfg }};font-size:11px;font-weight:600;line-height:22px">{{ r.state }}</span>
+        <span style="flex:none;width:58px;text-align:right;font:600 13px/1 'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif;color:{{ r.cfg }}">{{ r.cost }}</span>
+      </div>
+    </sc-for>
+  </div>
+
+  <sc-if value="{{ hasBlock }}" hint-placeholder-val="{{ false }}">
+    <div style="border-radius:14px;background:rgba(255,197,61,.1);padding:10px 12px;display:flex;gap:10px;align-items:flex-start;font-size:12px;line-height:1.5;color:#FFD87A">
+      <svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.73 18l-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3 M12 9v4 M12 17h.01"></path></svg>
+      <span style="flex:1">{{ blockText }}</span>
+    </div>
+  </sc-if>
+
+  <div style="border-radius:16px;background:#141416;padding:12px 14px;display:flex;flex-direction:column;gap:8px;font-size:13px">
+    <div style="display:flex;justify-content:space-between;color:#9A9AA0"><span>Estimated cost</span><span style="font:700 18px/1 'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif;color:#F5F5F5">{{ total }} <span style="font-size:12px;font-weight:500;color:#9A9AA0">credits</span></span></div>
+    <div style="display:flex;justify-content:space-between;color:#9A9AA0"><span>Balance</span><span style="font-family:'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif">2,480 → {{ after }}</span></div>
+    <div style="display:flex;justify-content:space-between;color:#7C7C84;font-size:12px"><span>Charged only for successful results. Failed and canceled runs are refunded.</span><span>Quote valid for 10 minutes</span></div>
+  </div>
+
+  <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#9A9AA0;cursor:pointer"><input type="checkbox" style="accent-color:#3B82F6">Skip this step for runs under 20 credits</label>
+
+  <div style="display:flex;gap:8px;justify-content:flex-end">
+    <button onClick="{{ close }}" style="height:42px;padding:0 18px;border-radius:999px;border:0;background:#26262A;color:#F5F5F5;font:inherit;font-size:14px;cursor:pointer">Cancel</button>
+    <button onClick="{{ close }}" style="height:42px;padding:0 22px;border-radius:999px;border:0;background:#F5F5F5;color:#0B0B0C;font:inherit;font-size:14px;font-weight:700;cursor:pointer">{{ go }}</button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"variant":{"editor":"enum","options":["single","graph"],"default":"single"},"cost":{"editor":"int","default":10},"label":{"editor":"text","default":"Generate video"},"onClose":{"editor":null},"$preview":{"width":520,"height":620}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const graph = (this.props.variant || 'single') === 'graph';
+    const D = { vid: 'M16 13l5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5 M4 6h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z', img: 'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M9 7a2 2 0 1 1 0 4 2 2 0 0 1 0-4z M21 15l-3.086-3.086a2 2 0 0 0-2.828 0L6 21', aud: 'M2 10v3 M6 6v11 M10 3v18 M14 8v7 M18 5v13 M22 10v3', txt: 'M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z M14 2v4a2 2 0 0 0 2 2h4 M10 9H8 M16 13H8 M16 17H8' };
+    const ST = { run: ['Regenerate', 'rgba(59,130,246,.16)', '#93C5FD'], reuse: ['Reuse result', 'rgba(34,197,94,.14)', '#4ADE80'], block: ['Blocked', 'rgba(255,197,61,.14)', '#FFC53D'], free: ['Nothing to generate', '#26262A', '#9A9AA0'] };
+    const row = (name, d, tone, meta, st, cost) => ({ name, d, tone, meta, state: ST[st][0], sbg: ST[st][1], sfg: ST[st][2], cost: st === 'run' ? cost + '' : '0', cfg: st === 'run' ? '#F5F5F5' : '#4A4A52' });
+    let rows, total, title, sub, icon, go, hasBlock = false, blockText = '';
+    if (graph) {
+      rows = [
+        row('Script · v2', D.txt, '#26262A', 'Text node', 'free', 0),
+        row('Product photo.png', D.img, '#1F2628', 'Asset node', 'free', 0),
+        row('Product keyframe', D.img, '#26232A', 'Seedream 5.0 Pro · 9:16 · 2K × 2 · v2 is current', 'reuse', 2),
+        row('Shot A · Hero shot', D.vid, '#202330', 'Seedance 2.5 · First frame · 720p 5s · Input changed', 'run', 8),
+        row('Shot B · Cap pop', D.vid, '#202330', 'Seedance 2.5 · First frame · 720p 5s', 'run', 8),
+        row('Voiceover', D.aud, '#28251F', 'Text to speech · Clear female · 8s', 'run', 2),
+        row('Shot C · Logo', D.vid, '#202330', 'Waiting for the “Tagline” node', 'block', 8)
+      ];
+      total = 18; title = 'Run all'; sub = 'Runs in dependency order. Up-to-date results are reused.'; icon = 'M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5z'; go = 'Run · 18 credits';
+      hasBlock = true; blockText = '“Shot C” is missing an input, so it won’t run and won’t be charged. Add the “Tagline” node, then run it on its own.';
+    } else {
+      const c = this.props.cost || 10;
+      rows = [row(this.props.label === 'Generate 2 views' ? 'Full body + face' : 'This run', this.props.label === 'Generate 2 views' ? D.img : D.vid, '#202330', 'Auto → Seedance 2.5 · 9:16 · 720p · 15s', 'run', c)];
+      total = c; title = 'Confirm'; sub = 'Auto → Seedance 2.5'; icon = 'M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z'; go = 'Confirm' + (this.props.label || 'Generate') + ' · ' + c + ' credits';
+    }
+    const runN = rows.filter((r) => r.state === 'Regenerate').length;
+    const stats = graph ? [
+      { label: runN + ' to generate', bg: 'rgba(59,130,246,.16)', fg: '#93C5FD' },
+      { label: '1 reused', bg: 'rgba(34,197,94,.14)', fg: '#4ADE80' },
+      { label: '1 blocked', bg: 'rgba(255,197,61,.14)', fg: '#FFC53D' },
+      { label: '~4 min', bg: '#26262A', fg: '#C8C8CC' }
+    ] : [{ label: '~2 min', bg: '#26262A', fg: '#C8C8CC' }, { label: 'No charge if it fails', bg: '', fg: '' }];
+    const statLine = stats.map((x) => x.label).join(' · ');
+    return { rows, stats, statLine, total, after: (2480 - total).toLocaleString('en-US'), title, sub, icon, go, hasBlock, blockText, close: () => this.props.onClose && this.props.onClose() };
+  }
+}
+</script>
+</body>
+</html>

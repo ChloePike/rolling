@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Models</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin=""><link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Noto+Sans+SC:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-variant-numeric:tabular-nums}
+input::placeholder{color:#7C7C84}
+</style>
+</helmet>
+<div role="dialog" aria-label="Choose model" style="width:420px;box-sizing:border-box;border-radius:20px;background:#1C1C1F;box-shadow:0 24px 64px rgba(0,0,0,.6);padding:10px;color:#F5F5F5;font-family:'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif;display:flex;flex-direction:column;gap:6px">
+  <div style="display:flex;align-items:center;gap:8px;padding:4px 4px 2px">
+    <label for="mq" style="height:36px;flex:1;border-radius:12px;background:#141416;display:flex;align-items:center;gap:8px;padding:0 10px">
+      <svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="#7C7C84" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M11 3a8 8 0 1 1 0 16 8 8 0 0 1 0-16z M21 21l-4.3-4.3"></path></svg>
+      <input id="mq" placeholder="Search models or features, e.g. first & last frame" style="flex:1;min-width:0;border:0;outline:0;background:none;color:#F5F5F5;font:inherit;font-size:13px">
+    </label>
+    <button onClick="{{ close }}" aria-label="Close" style="width:32px;height:32px;border-radius:999px;border:0;background:none;color:#9A9AA0;font-size:16px;cursor:pointer"><svg width="16" height="16" style="display:block;margin:auto" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18 M6 6l12 12"></path></svg></button>
+  </div>
+
+  <button onClick="{{ pickAuto }}" aria-pressed="{{ autoOn }}" style="border-radius:16px;border:0;background:{{ autoBg }};box-shadow:{{ autoRing }};padding:12px;color:#F5F5F5;font:inherit;text-align:left;display:flex;gap:12px;align-items:flex-start;cursor:pointer">
+    <span style="flex:none;width:36px;height:36px;border-radius:10px;background:#26262A;display:flex;align-items:center;justify-content:center"><svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="#C8C8CC" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z M3.3 7l8.7 5 8.7-5 M12 22V12"></path></svg></span>
+    <span style="flex:1;display:flex;flex-direction:column;gap:4px"><span style="font-size:14px;font-weight:700">Auto model <span style="height:18px;padding:0 6px;border-radius:5px;background:#26262A;font-size:10px;font-weight:700;color:#C8C8CC;vertical-align:2px">For you</span></span><span style="font-size:12px;line-height:1.5;color:#9A9AA0">Picks a model that fits your inputs and settings. If it fails, it retries on another model at no extra cost.</span></span>
+  </button>
+
+  <div style="padding:8px 8px 2px;font-size:11px;font-weight:700;letter-spacing:.08em;color:#7C7C84">{{ groupTitle }}</div>
+  <sc-for list="{{ models }}" as="m" hint-placeholder-count="4">
+    <button onClick="{{ m.pick }}" disabled="{{ m.off }}" aria-pressed="{{ m.on }}" style="border-radius:14px;border:0;background:{{ m.bg }};padding:10px 12px;color:{{ m.fg }};font:inherit;text-align:left;display:flex;gap:12px;align-items:center;cursor:pointer">
+      <span style="flex:none;width:32px;height:32px;border-radius:9px;background:{{ m.tone }};display:flex;align-items:center;justify-content:center;font:700 11px/1 'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif;color:#F5F5F5">{{ m.mark }}</span>
+      <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:5px">
+        <span style="display:flex;align-items:center;gap:6px"><span style="font-size:13px;font-weight:700">{{ m.name }}</span><sc-if value="{{ m.badge }}" hint-placeholder-val="{{ false }}"><span style="height:16px;padding:0 5px;border-radius:4px;background:{{ m.badgeBg }};color:{{ m.badgeFg }};font-size:10px;font-weight:700;line-height:16px">{{ m.badge }}</span></sc-if></span>
+        <span style="display:flex;gap:4px;flex-wrap:wrap"><sc-for list="{{ m.tags }}" as="t" hint-placeholder-count="3"><span style="height:18px;padding:0 6px;border-radius:5px;background:#26262A;font-size:10.5px;line-height:18px;color:#C8C8CC">{{ t }}</span></sc-for></span>
+      </span>
+      <span style="flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+        <span style="font:600 12px/1 'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif">{{ m.price }}</span>
+        <span style="font-size:11px;color:#7C7C84">{{ m.speed }}</span>
+      </span>
+      <span style="flex:none;width:18px;display:flex;justify-content:center;color:#3B82F6"><sc-if value="{{ m.on }}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg></sc-if></span>
+    </button>
+  </sc-for>
+  <div style="display:flex;align-items:center;gap:8px;padding:8px 8px 4px;font-size:12px;color:#7C7C84">
+    <span style="flex:1">Credits per 5s or per image. Final price is shown before you confirm.</span>
+    <a href="#" style="color:#93C5FD;text-decoration:none;font-weight:600">Compare all models ›</a>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"kind":{"editor":"enum","options":["video","image","avatar"],"default":"video"},"selected":{"editor":"text","default":"Auto"},"onPick":{"editor":null},"onClose":{"editor":null},"$preview":{"width":420,"height":560}}'>
+class Component extends DCLogic {
+  constructor(p){ super(p); this.state = {}; }
+  renderVals() {
+    const kind = this.props.kind || 'video';
+    const sel = this.state.sel || this.props.selected || 'Auto';
+    const pick = (name) => { this.setState({ sel: name }); if (this.props.onPick) this.props.onPick(name); };
+    const L = {
+      video: { title: 'Video models', list: [
+        { name: 'Seedance 2.5', mark: 'SD', tone: '#202330', tags: ['Omni reference', 'First & last frame', 'Max 30s', 'Audio'], price: '8 / 5s', speed: '~2 min', badge: 'Popular' },
+        { name: 'MiniMax H3', mark: 'H3', tone: '#26232A', tags: ['2K', 'Video + audio', '9 images + 3 videos + 3 audio refs', 'Max 15s'], price: '6 / 5s', speed: '~2 min', badge: '' },
+        { name: 'Wan 3.0', mark: 'W3', tone: '#28251F', tags: ['Docs / web pages to video', 'Extend video', 'Max 30s', '1080p'], price: '7 / 5s', speed: '~3 min', badge: 'New' },
+        { name: 'Wan 2.2', mark: 'W2', tone: '#1F2628', tags: ['Text to video', 'Image to video', '720p', 'Max 5s'], price: '2 / 5s', speed: '~40s', badge: 'Budget' }
+      ] },
+      image: { title: 'Image models', list: [
+        { name: 'Seedream 5.0 Pro', mark: 'SR', tone: '#202330', tags: ['Native 2K', '4K upscale', 'Multilingual text', 'Multi-image reference'], price: '3 / image', speed: '~20s', badge: 'Popular' },
+        { name: 'Seedream 5.0 Lite', mark: 'SL', tone: '#1F2628', tags: ['Text to image', 'Reference edits', 'Web search'], price: '1 / image', speed: '~8s', badge: '' },
+        { name: 'Wan 2.7 Image', mark: 'W', tone: '#28251F', tags: ['Accurate color', 'Personal styles'], price: '2 / image', speed: '~15s', badge: '' }
+      ] },
+      avatar: { title: 'Lip-sync method', list: [
+        { name: 'MiniMax H3', mark: 'H3', tone: '#202330', tags: ['Video + audio', 'Multilingual dialogue', 'Natural lip-sync', 'Max 15s'], price: '12 / 10s', speed: '~2 min', badge: 'Popular' },
+        { name: 'Wan 2.2 S2V', mark: 'S2V', tone: '#1F2628', tags: ['Photo + audio driven', 'Supports cloned voices', 'Max 60s'], price: '10 / 10s', speed: '~3 min', badge: '' },
+        { name: 'Live avatar', mark: 'R', tone: '#26232A', tags: ['Chat', 'Livestream'], price: 'Per minute', speed: 'Instant', badge: 'Coming soon', off: true }
+      ] }
+    }[kind];
+    const models = L.list.map((m) => { const on = sel === m.name; return Object.assign({}, m, { on, off: !!m.off, bg: on ? '#26262A' : 'transparent', fg: m.off ? '#7C7C84' : '#F5F5F5', badgeBg: m.badge === 'Pro' ? 'rgba(255,197,61,.16)' : m.badge === 'New' ? 'rgba(59,130,246,.16)' : '#26262A', badgeFg: m.badge === 'Pro' ? '#FFC53D' : m.badge === 'New' ? '#93C5FD' : '#C8C8CC', pick: () => !m.off && pick(m.name) }); });
+    const autoOn = sel === 'Auto';
+    return {
+      models, groupTitle: L.title, autoOn,
+      autoBg: autoOn ? '#26262A' : '#161618', autoRing: autoOn ? 'inset 0 0 0 1.5px #3B82F6' : 'none',
+      pickAuto: () => pick('Auto'),
+      close: () => this.props.onClose && this.props.onClose()
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Avatar</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin=""><link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Noto+Sans+SC:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0B0B0C;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-variant-numeric:tabular-nums}
+a{color:#F5F5F5;text-decoration:none}a:hover{color:#FFFFFF}
+textarea::placeholder,input::placeholder{color:#7C7C84}
+*{scrollbar-width:thin;scrollbar-color:#3A3A40 transparent}
+::-webkit-scrollbar{width:6px;height:6px;background:transparent}
+::-webkit-scrollbar-thumb{background:#3A3A40;border-radius:999px}
+</style>
+</helmet>
+<div style="position:relative;height:100vh;min-height:860px;background:#0B0B0C;color:#F5F5F5;font-family:'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif;display:flex;flex-direction:column;overflow:hidden">
+  <header style="flex:none;position:relative;z-index:30;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 20px;background:#0B0B0C">
+    <div style="flex:1 1 160px;display:flex;align-items:center;gap:10px">
+      <svg width="30" height="30" sc-camel-view-box="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="40" fill="#FFCB2B"></circle><circle cx="64.7" cy="35.3" r="11.6" fill="#0B0B0C"></circle></svg>
+      <span style="font:700 16px/1 'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif;letter-spacing:-0.02em">Rolling</span>
+    </div>
+    <nav aria-label="Main" style="flex:0 1 auto;max-width:100%;overflow-x:auto;border-radius:999px;background:#161618;padding:4px;display:flex;gap:2px">
+      <sc-for list="{{ nav }}" as="n" hint-placeholder-count="8">
+        <a href="{{ n.href }}" aria-current="{{ n.cur }}" style="height:36px;padding:0 14px;border-radius:999px;background:{{ n.bg }};color:{{ n.fg }};display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:13px;font-weight:600">
+          <svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ n.d }}"></path></svg>{{ n.label }}</a>
+      </sc-for>
+    </nav>
+    <div style="flex:1 1 160px;display:flex;justify-content:flex-end;align-items:center;gap:8px">
+      <button onClick="{{ toggleCredits }}" aria-expanded="{{ creditsOpen }}" aria-label="Credit balance" style="height:34px;padding:0 4px 0 11px;border-radius:999px;border:0;background:{{ creditBg }};color:#F5F5F5;font:inherit;display:flex;align-items:center;gap:7px;cursor:pointer"><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="#9A9AA0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20z M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8 M12 18V6"></path></svg><span style="font-size:13px;font-weight:600">2,480</span><span style="width:26px;height:26px;border-radius:999px;background:#26262A;display:flex;align-items:center;justify-content:center"><svg width="13" height="13" sc-camel-view-box="0 0 24 24" fill="none" stroke="#F5F5F5" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14 M12 5v14"></path></svg></span></button>
+      <button onClick="{{ toggleSettings }}" aria-expanded="{{ settingsOpen }}" aria-label="Settings" title="Settings" style="width:34px;height:34px;border-radius:999px;border:0;background:{{ gearBg }};color:#F5F5F5;cursor:pointer;display:flex;align-items:center;justify-content:center"><svg width="17" height="17" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z M12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"></path></svg></button>
+      <button onClick="{{ toggleAccount }}" aria-expanded="{{ accountOpen }}" aria-label="Account" style="position:relative;width:34px;height:34px;border-radius:999px;border:0;background:#333338;color:#F5F5F5;font:inherit;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 0 0 2px #0B0B0C,0 0 0 3.5px #B8955A">A<span style="position:absolute;right:-7px;bottom:-5px;height:14px;padding:0 4px;border-radius:4px;background:#B8955A;color:#0B0B0C;font-size:9px;font-weight:800;line-height:14px;letter-spacing:.02em">PRO</span></button>
+    </div>
+    <sc-if value="{{ creditsOpen }}" hint-placeholder-val="{{ false }}">
+      <div role="dialog" aria-label="credits" style="position:absolute;right:68px;top:58px;width:340px;border-radius:20px;background:#1C1C1F;box-shadow:0 20px 60px rgba(0,0,0,.6);padding:16px;display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:flex-end;gap:8px">
+          <div style="flex:1;display:flex;flex-direction:column;gap:6px"><span style="font-size:12px;color:#9A9AA0">Available credits</span><span style="font-size:30px;font-weight:700;letter-spacing:-0.02em;line-height:1">2,480</span></div>
+          <a href="Tasks.dc.html" style="font-size:12px;color:#C8C8CC;text-decoration:none;padding-bottom:3px">Usage details ›</a>
+        </div>
+        <div style="display:flex;height:6px;border-radius:999px;overflow:hidden;gap:2px"><span style="flex:1800;background:#F5F5F5"></span><span style="flex:680;background:#55555E"></span></div>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:12px">
+          <div style="display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:2px;background:#F5F5F5"></span><span style="flex:1;color:#C8C8CC">Plan credits</span><span style="font-weight:600">1,800</span><span style="width:86px;text-align:right;color:#7C7C84">Expires Nov 30</span></div>
+          <div style="display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:2px;background:#55555E"></span><span style="flex:1;color:#C8C8CC">Purchased credits</span><span style="font-weight:600">680</span><span style="width:86px;text-align:right;color:#7C7C84">Never expire</span></div>
+        </div>
+        <div style="height:1px;background:#26262A"></div>
+        <div style="display:flex;flex-direction:column;gap:4px"><div style="display:flex;align-items:center;font-size:13px;padding:2px 0"><span style="flex:1;color:#9A9AA0">Used this month</span><span style="font-weight:600">1,284</span></div><div style="display:flex;align-items:center;font-size:13px;padding:2px 0"><span style="flex:1;color:#9A9AA0">Held for running jobs</span><span style="font-weight:600">16</span></div><div style="display:flex;align-items:center;font-size:13px;padding:2px 0"><span style="flex:1;color:#9A9AA0">Expiring this month</span><span style="font-weight:600">300</span></div></div>
+        <div style="height:1px;background:#26262A"></div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:12px;color:#9A9AA0">Top up</span>
+          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px">
+            <sc-for list="{{ packs }}" as="k" hint-placeholder-count="3">
+              <button onClick="{{ k.pick }}" aria-pressed="{{ k.on }}" style="border-radius:12px;border:0;background:#141416;box-shadow:{{ k.ring }};padding:10px 8px;color:#F5F5F5;font:inherit;display:flex;flex-direction:column;align-items:flex-start;gap:4px;cursor:pointer"><span style="font-size:15px;font-weight:700">{{ k.n }}</span><span style="font-size:11px;color:#9A9AA0">$[Price]</span></button>
+            </sc-for>
+          </div>
+          <button style="height:40px;border-radius:999px;border:0;background:#F5F5F5;color:#0B0B0C;font:inherit;font-size:14px;font-weight:700;cursor:pointer">Top up {{ packN }} credits</button>
+          <span style="font-size:11px;line-height:1.5;color:#7C7C84">Plan credits are used first, then purchased credits. You’re only charged for successful results; failed and canceled runs are refunded.</span>
+        </div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ accountOpen }}" hint-placeholder-val="{{ false }}">
+      <div role="menu" aria-label="Account" style="position:absolute;right:20px;top:58px;width:300px;border-radius:20px;background:#1C1C1F;box-shadow:0 20px 60px rgba(0,0,0,.6);padding:8px;display:flex;flex-direction:column;gap:2px">
+        <div style="display:flex;align-items:center;gap:10px;padding:8px">
+          <span style="width:40px;height:40px;border-radius:999px;background:#333338;display:flex;align-items:center;justify-content:center;font-weight:600">A</span>
+          <span style="flex:1;display:flex;flex-direction:column;gap:3px"><span style="font-size:14px;font-weight:700">A</span><span style="font-size:12px;color:#9A9AA0">Pro · Renews [date]</span></span>
+        </div>
+        <div style="padding:8px 8px 4px;font-size:11px;font-weight:600;color:#7C7C84">Workspace</div>
+        <sc-for list="{{ spaces }}" as="w" hint-placeholder-count="2">
+          <button role="menuitemradio" aria-checked="{{ w.on }}" onClick="{{ w.pick }}" style="height:44px;padding:0 8px;border-radius:12px;border:0;background:{{ w.bg }};color:#F5F5F5;font:inherit;display:flex;align-items:center;gap:10px;cursor:pointer;text-align:left">
+            <span style="width:28px;height:28px;border-radius:8px;background:{{ w.tone }};font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center">{{ w.mark }}</span>
+            <span style="flex:1;display:flex;flex-direction:column;gap:2px"><span style="font-size:13px;font-weight:600">{{ w.name }}</span><span style="font-size:11px;color:#7C7C84">{{ w.meta }}</span></span>
+            <sc-if value="{{ w.on }}" hint-placeholder-val="{{ false }}"><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="#F5F5F5" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg></sc-if>
+          </button>
+        </sc-for>
+        <div style="height:1px;background:#26262A;margin:6px 8px"></div>
+        <sc-for list="{{ acctMenu }}" as="a" hint-placeholder-count="4">
+          <a href="{{ a.href }}" role="menuitem" style="height:38px;padding:0 8px;border-radius:10px;color:#C8C8CC;text-decoration:none;font-size:13px;display:flex;align-items:center;gap:10px"><svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ a.d }}"></path></svg><span style="flex:1">{{ a.label }}</span><span style="font-size:12px;color:#7C7C84">{{ a.note }}</span></a>
+        </sc-for>
+        <div style="height:1px;background:#26262A;margin:6px 8px"></div>
+        <button role="menuitem" style="height:38px;padding:0 8px;border-radius:10px;border:0;background:none;color:#9A9AA0;font:inherit;font-size:13px;display:flex;align-items:center;gap:10px;cursor:pointer"><svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4 M16 17l5-5-5-5 M21 12H9"></path></svg>Log out</button>
+      </div>
+    </sc-if>
+    <sc-if value="{{ settingsOpen }}" hint-placeholder-val="{{ false }}">
+      <div role="dialog" aria-label="Settings" style="position:absolute;right:20px;top:58px;width:340px;border-radius:20px;background:#1C1C1F;box-shadow:0 20px 60px rgba(0,0,0,.6);padding:14px;display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;align-items:center"><span style="font-size:15px;font-weight:700;flex:1">Settings</span><button onClick="{{ toggleSettings }}" aria-label="Close settings" style="width:28px;height:28px;border-radius:999px;border:0;background:none;color:#9A9AA0;font-size:16px;cursor:pointer"><svg width="16" height="16" style="display:block;margin:auto" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18 M6 6l12 12"></path></svg></button></div>
+        <div style="font-size:12px;font-weight:600;color:#9A9AA0">Creation mode</div>
+        <div role="radiogroup" aria-label="Creation mode" style="display:flex;flex-direction:column;gap:6px">
+          <sc-for list="{{ modes }}" as="m" hint-placeholder-count="2">
+            <button role="radio" aria-checked="{{ m.on }}" onClick="{{ m.pick }}" style="border-radius:14px;border:0;background:{{ m.bg }};box-shadow:{{ m.ring }};padding:10px 12px;color:#F5F5F5;font:inherit;text-align:left;display:flex;gap:10px;align-items:flex-start;cursor:pointer">
+              <span style="flex:none;width:30px;height:30px;border-radius:9px;background:#26262A;display:flex;align-items:center;justify-content:center"><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ m.d }}"></path></svg></span>
+              <span style="flex:1;display:flex;flex-direction:column;gap:3px"><span style="font-size:13px;font-weight:700">{{ m.label }} <span style="font-weight:500;color:#9A9AA0">· {{ m.sub }}</span></span><span style="font-size:12px;line-height:1.45;color:#9A9AA0">{{ m.desc }}</span></span>
+              <span style="flex:none;width:16px;height:16px;border-radius:999px;margin-top:7px;box-shadow:{{ m.dot }}"></span>
+            </button>
+          </sc-for>
+        </div>
+        <div style="height:1px;background:#26262A"></div>
+        <div style="display:flex;align-items:center;font-size:13px"><span style="flex:1;color:#C8C8CC">Language</span><span style="color:#9A9AA0">English ›</span></div>
+        <div style="display:flex;align-items:center;font-size:13px"><span style="flex:1;color:#C8C8CC">Currency</span><span style="color:#9A9AA0">USD ›</span></div>
+        <div style="display:flex;align-items:center;font-size:13px"><span style="flex:1;color:#C8C8CC">Default aspect ratio</span><span style="color:#9A9AA0">9:16 ›</span></div>
+        <div style="display:flex;align-items:center;font-size:13px"><span style="flex:1;color:#C8C8CC">Notify when done</span><span style="color:#9A9AA0">On ›</span></div>
+      </div>
+    </sc-if>
+  </header>
+  <div style="flex:1;min-height:0;display:flex;gap:0">
+    <aside aria-label="Settings" style="flex:0 0 340px;min-width:0;overflow:auto;padding:8px 12px 24px 20px;box-sizing:border-box;display:flex;flex-direction:column;gap:12px">
+      <div style="border-radius:18px;background:#141416;padding:14px;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:center;gap:8px"><h2 style="margin:0;font-size:13px;font-weight:700;color:#C8C8CC">Look</h2><span style="flex:1"></span></div>
+        <sc-for list="{{ looks }}" as="p" hint-placeholder-count="2">
+          <button style="display:flex;align-items:center;gap:10px;border-radius:14px;border:0;background:#1C1C1F;padding:8px;color:#F5F5F5;font:inherit;text-align:left;cursor:pointer">
+            <span style="flex:none;width:40px;height:40px;border-radius:10px;background:{{ p.bg }}"></span>
+            <span style="flex:1;display:flex;flex-direction:column;gap:3px"><span style="font-size:11px;color:#7C7C84">{{ p.label }}</span><span style="font-size:13px;font-weight:600">{{ p.value }}</span></span>
+            <span style="color:#7C7C84">›</span>
+          </button>
+        </sc-for>
+      </div>
+      <div style="border-radius:18px;background:#141416;padding:14px;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:center;gap:8px"><h2 style="margin:0;font-size:13px;font-weight:700;color:#C8C8CC">Persona</h2><span style="flex:1"></span><span style="font-size:11px;color:#7C7C84">Sets the wording and pace</span></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <sc-for list="{{ personas }}" as="p" hint-placeholder-count="10"><button onClick="{{ p.pick }}" aria-pressed="{{ p.on }}" title="{{ p.eg }}" style="height:30px;padding:0 10px;border-radius:999px;border:0;background:{{ p.bg }};color:{{ p.fg }};font:inherit;font-size:12px;font-weight:600;cursor:pointer">{{ p.name }}</button></sc-for>
+          <button style="height:30px;padding:0 10px;border-radius:999px;border:0;background:none;color:#93C5FD;font:inherit;font-size:12px;font-weight:600;cursor:pointer">+ Custom</button>
+        </div>
+        <div style="border-radius:12px;background:#1C1C1F;padding:8px 10px;font-size:12px;line-height:1.5;color:#9A9AA0">Example: “{{ personaEg }}”</div>
+      </div>
+      <div style="border-radius:18px;background:#141416;padding:14px;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:center;gap:8px"><h2 style="margin:0;font-size:13px;font-weight:700;color:#C8C8CC">Voice</h2><span style="flex:1"></span><select aria-label="Language" style="height:28px;padding:0 8px;border-radius:999px;border:0;background:#26262A;color:#F5F5F5;font:inherit;font-size:12px"><option>English</option><option>Cantonese</option><option>English</option></select></div>
+        <sc-for list="{{ voices }}" as="v" hint-placeholder-count="4">
+          <div style="display:flex;align-items:center;gap:10px;border-radius:14px;background:{{ v.bg }};box-shadow:{{ v.ring }};padding:8px">
+            <button aria-label="Preview {{ v.name }}" style="flex:none;width:30px;height:30px;border-radius:999px;border:0;background:#26262A;cursor:pointer;display:flex;align-items:center;justify-content:center"><svg width="11" height="11" sc-camel-view-box="0 0 24 24" fill="#F5F5F5" aria-hidden="true"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5z"></path></svg></button>
+            <button onClick="{{ v.pick }}" aria-pressed="{{ v.on }}" style="flex:1;border:0;background:none;color:#F5F5F5;font:inherit;text-align:left;display:flex;flex-direction:column;gap:2px;cursor:pointer;padding:0"><span style="font-size:13px;font-weight:600">{{ v.name }}</span><span style="font-size:11px;color:#9A9AA0">{{ v.desc }}</span></button>
+          </div>
+        </sc-for>
+        <div style="border-radius:14px;background:#1C1C1F;padding:10px;display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;align-items:center;gap:8px;font-size:13px"><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="#3B82F6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z M19 10v2a7 7 0 0 1-14 0v-2 M12 19v3"></path></svg><span style="font-weight:600;flex:1">My voice 01</span><span style="font-size:11px;color:#93C5FD">Cloning 64%</span></div>
+          <div style="height:4px;border-radius:999px;background:#26262A"><div style="width:64%;height:4px;border-radius:999px;background:#3B82F6"></div></div>
+        </div>
+      </div>
+      <sc-if value="{{ adv }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 6px 0;font-size:11px;font-weight:700;letter-spacing:.08em;color:#7C7C84">Advanced settings<span style="flex:1;height:1px;background:#1C1C1F"></span></div>
+      </sc-if>
+      <sc-for list="{{ advGroups }}" as="g" hint-placeholder-count="0">
+        <div style="border-radius:18px;background:#141416;padding:14px;display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:center;gap:8px;color:#C8C8CC"><svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ g.d }}"></path></svg><h2 style="margin:0;font-size:13px;font-weight:700">{{ g.title }}</h2><span style="flex:1"></span><span style="font:500 11px/1 'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif;color:#7C7C84">{{ g.hint }}</span></div>
+          <sc-if value="{{ g.isSeg }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;gap:4px;flex-wrap:wrap"><sc-for list="{{ g.opts }}" as="o" hint-placeholder-count="3"><button disabled="{{ o.off }}" aria-pressed="{{ o.on }}" onClick="{{ o.pick }}" title="{{ o.why }}" style="height:30px;padding:0 10px;border-radius:999px;border:0;background:{{ o.bg }};color:{{ o.fg }};font:inherit;font-size:12px;font-weight:600;cursor:pointer">{{ o.label }}</button></sc-for></div>
+          </sc-if>
+          <sc-if value="{{ g.isSlider }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;align-items:center;gap:10px"><input type="range" aria-label="{{ g.title }}" min="{{ g.min }}" max="{{ g.max }}" step="{{ g.step }}" value="{{ g.val }}" onChange="{{ g.set }}" style="flex:1;min-width:0;accent-color:#3B82F6"><span style="min-width:48px;text-align:right;font:600 12px/1 'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif">{{ g.show }}</span></div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:#7C7C84;margin-top:-4px"><span>{{ g.lo }}</span><span>{{ g.hi }}</span></div>
+          </sc-if>
+          <sc-if value="{{ g.isInput }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;gap:6px"><input aria-label="{{ g.title }}" value="{{ g.value }}" onChange="{{ g.set }}" placeholder="{{ g.ph }}" style="flex:1;min-width:0;height:34px;border-radius:10px;border:0;outline:0;background:#1C1C1F;padding:0 10px;color:#F5F5F5;font:{{ g.font }}">
+              <sc-if value="{{ g.dice }}" hint-placeholder-val="{{ false }}"><button onClick="{{ g.roll }}" aria-label="Random seed" title="Random" style="width:34px;height:34px;border-radius:10px;border:0;background:#26262A;color:#F5F5F5;cursor:pointer;display:flex;align-items:center;justify-content:center"><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M16 8h.01 M8 8h.01 M8 16h.01 M16 16h.01 M12 12h.01"></path></svg></button></sc-if>
+            </div>
+          </sc-if>
+          <sc-if value="{{ g.isText }}" hint-placeholder-val="{{ false }}">
+            <textarea aria-label="{{ g.title }}" rows="2" value="{{ g.value }}" onChange="{{ g.set }}" placeholder="{{ g.ph }}" style="border-radius:10px;border:0;outline:0;background:#1C1C1F;padding:8px 10px;color:#F5F5F5;font:inherit;font-size:13px;line-height:1.5;resize:none"></textarea>
+          </sc-if>
+          <sc-if value="{{ g.isShots }}" hint-placeholder-val="{{ false }}">
+            <sc-for list="{{ g.shots }}" as="s" hint-placeholder-count="3">
+              <div style="border-radius:12px;background:#1C1C1F;padding:8px 10px;display:flex;flex-direction:column;gap:6px">
+                <div style="display:flex;gap:8px;font-size:12px;align-items:center"><b style="font-family:'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif">{{ s.id }}</b><span style="font-family:'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif;color:#7C7C84">{{ s.t }}</span><span style="flex:1;min-width:0;color:#C8C8CC;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.desc }}</span></div>
+                <div style="display:flex;gap:4px;flex-wrap:wrap"><sc-for list="{{ s.fields }}" as="f" hint-placeholder-count="3"><span style="height:22px;padding:0 8px;border-radius:6px;background:{{ f.bg }};color:{{ f.fg }};font-size:11px;font-weight:600;line-height:22px">{{ f.label }}</span></sc-for></div>
+              </div>
+            </sc-for>
+          </sc-if>
+        </div>
+      </sc-for>
+    </aside>
+    <section aria-label="History" style="flex:1;min-width:0;position:relative;border-radius:24px 0 0 0;background:#111113">
+      <div style="position:absolute;inset:0;overflow:auto;padding:20px 24px 240px;box-sizing:border-box">
+      <div style="max-width:1120px;margin:0 auto;display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <h1 style="margin:0;font:700 20px/1.2 'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif;letter-spacing:-0.01em">Avatar</h1>
+          <span style="font:500 12px/1 'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif;color:#7C7C84">{{ feedCount }}</span>
+          <span style="flex:1"></span>
+          <div role="tablist" aria-label="Filter" style="display:flex;gap:2px;border-radius:999px;background:#141416;padding:3px">
+            <sc-for list="{{ filters }}" as="f" hint-placeholder-count="3"><button role="tab" aria-selected="{{ f.on }}" onClick="{{ f.pick }}" style="height:28px;padding:0 12px;border-radius:999px;border:0;background:{{ f.bg }};color:{{ f.fg }};font:inherit;font-size:12px;font-weight:600;cursor:pointer">{{ f.label }}</button></sc-for>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px;align-items:start">
+          <sc-for list="{{ feed }}" as="it" hint-placeholder-count="4">
+            <article style="grid-column:{{ it.span }};border-radius:18px;background:#141416;overflow:hidden">
+              <sc-if value="{{ it.isDraft }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:16px;display:flex;flex-direction:column;gap:12px">
+                  <div style="display:flex;align-items:center;gap:10px">
+                    
+                    <span style="display:flex;flex-direction:column;gap:3px"><span style="font-size:14px;font-weight:700">{{ it.title }}</span><span style="font-size:12px;color:#9A9AA0">{{ it.meta }}</span></span>
+                    <span style="flex:1"></span><span style="height:24px;padding:0 10px;border-radius:999px;background:#26262A;font-size:12px;font-weight:600;line-height:24px;color:#FFC53D">To confirm</span>
+                  </div>
+                  <div style="border-radius:14px;background:#1C1C1F;padding:12px 14px;display:flex;flex-direction:column;gap:10px">
+                    <sc-for list="{{ it.lines }}" as="l" hint-placeholder-count="3">
+                      <div style="display:flex;gap:12px;align-items:flex-start">
+                        <span style="flex:none;width:44px;font:500 11px/22px 'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif;color:#7C7C84">{{ l.t }}</span>
+                        <span style="flex:1;font-size:15px;line-height:22px">{{ l.text }}<sc-if value="{{ l.locked }}" hint-placeholder-val="{{ false }}"> <span style="padding:1px 6px;border-radius:6px;background:#26262A;color:#C8C8CC;font-size:11px;font-weight:600">Exact line</span></sc-if></span>
+                        <span style="flex:none;height:22px;padding:0 8px;border-radius:6px;background:rgba(59,130,246,.16);color:#93C5FD;font-size:11px;font-weight:600;line-height:22px">{{ l.act }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <button style="height:36px;padding:0 16px;border-radius:999px;border:0;background:#F5F5F5;color:#0B0B0C;font:inherit;font-size:13px;font-weight:700;cursor:pointer">Confirm and generate</button>
+                    <button style="height:36px;padding:0 14px;border-radius:999px;border:0;background:#26262A;color:#F5F5F5;font:inherit;font-size:13px;cursor:pointer">Revise</button>
+                    <button style="height:36px;padding:0 14px;border-radius:999px;border:0;background:#26262A;color:#F5F5F5;font:inherit;font-size:13px;cursor:pointer">Rewrite with another persona</button>
+                  </div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ it.isMedia }}" hint-placeholder-val="{{ true }}">
+                <button onClick="{{ it.open }}" aria-label="Details" style="display:block;width:100%;padding:0;border:0;background:none;color:inherit;font:inherit;cursor:zoom-in">
+                <div style="display:grid;grid-template-columns:{{ it.cols }};gap:2px">
+                  <sc-for list="{{ it.media }}" as="m" hint-placeholder-count="1">
+                    <div style="aspect-ratio:{{ it.ar }};background:{{ m.bg }};position:relative;display:flex;align-items:center;justify-content:center">
+                      <sc-if value="{{ m.hasLabel }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;left:8px;top:8px;height:22px;padding:0 8px;border-radius:999px;background:rgba(11,11,12,.6);font-size:11px;font-weight:600;line-height:22px">{{ m.label }}</span></sc-if>
+                      <sc-if value="{{ m.play }}" hint-placeholder-val="{{ false }}"><span style="width:40px;height:40px;border-radius:999px;background:rgba(11,11,12,.55);display:flex;align-items:center;justify-content:center"><svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="#F5F5F5" aria-hidden="true"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5z"></path></svg></span></sc-if>
+                      <sc-if value="{{ m.running }}" hint-placeholder-val="{{ false }}"><span style="font:600 13px/1 'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif;color:#C8C8CC">{{ m.pct }}</span></sc-if>
+                      <sc-if value="{{ m.dur }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;right:8px;bottom:8px;padding:3px 6px;border-radius:6px;background:rgba(11,11,12,.6);font:600 11px/1 'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif">{{ m.dur }}</span></sc-if>
+                      <sc-if value="{{ m.running }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;left:0;bottom:0;height:3px;width:{{ m.pct }};background:#3B82F6"></span></sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+                </button>
+                <div style="padding:12px;display:flex;flex-direction:column;gap:8px">
+                  <div style="font-size:13px;line-height:1.5;color:#C8C8CC;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">{{ it.prompt }}</div>
+                  <div style="display:flex;gap:4px;flex-wrap:wrap">
+                    <sc-for list="{{ it.tags }}" as="t" hint-placeholder-count="3"><span style="height:20px;padding:0 6px;border-radius:6px;background:#1C1C1F;font:500 11px/20px 'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif;color:#9A9AA0">{{ t }}</span></sc-for>
+                  </div>
+                  <sc-if value="{{ it.running }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;gap:6px;flex-wrap:wrap">
+                      <sc-for list="{{ it.steps }}" as="s" hint-placeholder-count="3">
+                        <span style="height:24px;padding:0 8px;border-radius:999px;background:{{ s.bg }};color:{{ s.fg }};font-size:11px;font-weight:600;display:flex;align-items:center;gap:5px"><svg width="11" height="11" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ s.d }}"></path></svg>{{ s.label }}</span>
+                      </sc-for>
+                      <span style="flex:1"></span>
+                      <button style="height:24px;padding:0 8px;border-radius:999px;border:0;background:none;color:#9A9AA0;font:inherit;font-size:11px;cursor:pointer">Cancel</button>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ it.done }}" hint-placeholder-val="{{ true }}">
+                    <div style="display:flex;align-items:center;gap:2px">
+                      <span style="font-size:11px;color:#7C7C84;flex:1">{{ it.time }}</span>
+                      <sc-for list="{{ it.actions }}" as="a" hint-placeholder-count="5">
+                        <button aria-label="{{ a.label }}" title="{{ a.label }}" style="width:30px;height:30px;border-radius:999px;border:0;background:none;color:#9A9AA0;cursor:pointer;display:flex;align-items:center;justify-content:center"><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ a.d }}"></path></svg></button>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-if>
+            </article>
+          </sc-for>
+        </div>
+      </div>
+      </div>
+      <div style="position:absolute;left:0;right:0;bottom:16px;display:flex;justify-content:center;padding:0 24px;pointer-events:none;z-index:4">
+        <div style="pointer-events:auto;width:100%;max-width:880px;border-radius:24px;background:rgba(22,22,24,.94);backdrop-filter:blur(24px) saturate(1.4);box-shadow:0 20px 60px rgba(0,0,0,.55),inset 0 0 0 1px rgba(255,255,255,.06);padding:12px;display:flex;flex-direction:column;gap:10px">
+          <sc-if value="{{ hasNote }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;color:#9A9AA0;padding:0 4px">
+              <span>{{ noteLead }}</span>
+              <sc-for list="{{ noteChips }}" as="n" hint-placeholder-count="3"><span style="height:22px;padding:0 8px;border-radius:6px;background:#26262A;color:#E4E4E7;font-size:12px;font-weight:500;line-height:22px">{{ n }}</span></sc-for>
+            </div>
+          </sc-if>
+          <div style="display:flex;gap:10px;align-items:flex-start">
+            <sc-for list="{{ cRefs }}" as="r" hint-placeholder-count="2">
+              <div style="flex:none;position:relative;width:44px;height:44px;border-radius:10px;background:{{ r.bg }}"><span style="position:absolute;left:-4px;top:-4px;height:16px;padding:0 5px;border-radius:999px;background:#F5F5F5;color:#0B0B0C;font:700 10px/16px 'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif">{{ r.n }}</span></div>
+            </sc-for>
+            <label for="composer" style="position:absolute;left:-9999px">{{ cLabel }}</label>
+            <textarea id="composer" rows="2" value="{{ cText }}" onChange="{{ setText }}" placeholder="{{ cPh }}" style="flex:1;min-width:0;background:none;border:0;outline:0;color:#F5F5F5;font:inherit;font-size:15px;line-height:1.55;resize:none;padding-top:2px"></textarea>
+          </div>
+          <div style="display:flex;align-items:flex-end;gap:12px">
+            <div style="flex:1;min-width:0;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <button aria-label="Add assets or skills" style="width:32px;height:32px;border-radius:999px;border:0;background:#26262A;color:#F5F5F5;cursor:pointer;display:flex;align-items:center;justify-content:center"><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14 M12 5v14"></path></svg></button>
+            
+            <sc-for list="{{ cPills }}" as="p" hint-placeholder-count="4">
+              <button onClick="{{ p.open }}" aria-expanded="{{ p.on }}" style="white-space:nowrap;height:32px;padding:0 11px;border-radius:999px;border:0;background:{{ p.bg }};color:{{ p.fg }};font:inherit;font-size:12px;font-weight:{{ p.w }};cursor:pointer;display:flex;align-items:center;gap:5px"><svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ p.d }}"></path></svg>{{ p.label }}<sc-if value="{{ p.caret }}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="opacity:.7"><path d="m6 9 6 6 6-6"></path></svg></sc-if></button>
+            </sc-for>
+            </div>
+            <div style="flex:none;display:flex;align-items:center;gap:8px;white-space:nowrap">
+            <button aria-label="Refine prompt" title="Refine prompt" style="height:32px;padding:0 10px;border-radius:999px;border:0;background:none;color:#9A9AA0;font:inherit;font-size:12px;font-weight:500;cursor:pointer">Refine</button>
+            <span style="font-size:12px;color:#9A9AA0"><b style="font-weight:600;color:#E4E4E7">{{ cCost }}</b> credits</span>
+            <button onClick="{{ openConfirm }}" aria-label="{{ cGo }}" title="{{ cGo }}" style="width:38px;height:38px;border-radius:999px;border:0;background:#F5F5F5;color:#0B0B0C;cursor:pointer;display:flex;align-items:center;justify-content:center"><svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l7-7 7 7 M12 19V5"></path></svg></button></div>
+          </div>
+        </div>
+      </div>
+      <sc-if value="{{ showModel }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;left:50%;bottom:150px;transform:translateX(-50%);z-index:8"><dc-import name="ModelPicker" kind="{{ pickKind }}" selected="{{ modelSel }}" on-pick="{{ onPickModel }}" on-close="{{ closeOverlay }}" hint-size="420px,520px"></dc-import></div>
+      </sc-if>
+      <sc-if value="{{ showParams }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;left:50%;bottom:150px;transform:translateX(-50%);z-index:8"><dc-import name="ParamPopover" kind="{{ paramKind }}" on-close="{{ closeOverlay }}" hint-size="380px,470px"></dc-import></div>
+      </sc-if>
+    </section>
+  </div>
+  <sc-if value="{{ showConfirm }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;z-index:40;background:rgba(5,5,6,.7);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center"><dc-import name="RunConfirm" variant="single" cost="{{ costNum }}" label="{{ cGo }}" on-close="{{ closeOverlay }}" hint-size="520px,560px"></dc-import></div>
+  </sc-if>
+  <sc-if value="{{ showViewer }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;z-index:40"><dc-import name="ResultViewer" ar="{{ viewAr }}" on-close="{{ closeOverlay }}" hint-size="100%,100%"></dc-import></div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"mode": {"editor": "enum", "options": ["Simple", "Advanced"], "default": "Simple"}, "forceMode": {"editor": null, "default": null}, "initOverlay": {"editor": "enum", "options": ["", "model", "params", "confirm", "viewer"], "default": ""}, "$preview": {"width": 1440, "height": 900}}'>
+class Component extends DCLogic {
+  constructor(p){ super(p); this.state = { filter: 'All', p: { model: 'Auto', rate: 1, emo: 'Warm', pause: 0.4, bg: 'Background', camText: '', res: '720p', count: '1', seed: '' }, persona: 'Expert presenter', voice: 'Clear female', text: 'Cover two things about the desk organizer: separate compartments and easy reach. Open with: “Messy desk? Give everything a spot.”' }; }
+  renderVals() {
+    const ACTIVE = "Avatar"; const PICK = "avatar"; const PARAM = "video"; const VAR = "9/16";
+    const NAVD = [['Home','Main.dc.html','M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8 M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'],['Canvas','Canvas.dc.html','M5 3h4a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M7 11v4a2 2 0 0 0 2 2h4 M15 13h4a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2z'],['Quick Create','QuickCreate.dc.html','M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z'],['Remix','OriginalVideo.dc.html','M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3z M6.2 5.3l3.1 3.9 M12.4 3.4l3.1 4 M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'],['Avatar','DigitalHuman.dc.html','M18 20a6 6 0 0 0-12 0 M12 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8z'],['Character','Character.dc.html','M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 3a4 4 0 1 1 0 8 4 4 0 0 1 0-8z M22 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75'],['Assets','Assets.dc.html','M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M9 7a2 2 0 1 1 0 4 2 2 0 0 1 0-4z M21 15l-3.086-3.086a2 2 0 0 0-2.828 0L6 21'],['Activity','Tasks.dc.html','M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8 M3 3v5h5 M12 7v5l4 2']];
+    const nav = NAVD.map(([label, href, d]) => { const on = label === ACTIVE; return { label, href, d, cur: on ? 'page' : 'false', bg: on ? '#2E2E33' : 'transparent', fg: on ? '#F5F5F5' : '#9A9AA0' }; });
+    const IC = { cube: 'M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z M3.3 7l8.7 5 8.7-5 M12 22V12', ratio: 'M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z', wide: 'M4 6h16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z', clock: 'M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20z M12 6v6l4 2', res: 'M4 3h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M8 21h8 M12 17v4', wave: 'M2 10v3 M6 6v11 M10 3v18 M14 8v7 M18 5v13 M22 10v3', cam: 'M16 13l5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5 M4 6h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z', redo: 'M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8 M3 3v5h5', sliders: 'M21 4h-7 M10 4H3 M21 12h-9 M8 12H3 M21 20h-5 M12 20H3 M14 2v4 M8 10v4 M16 18v4', frame: 'M5 3h4a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M7 11v4a2 2 0 0 0 2 2h4 M15 13h4a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2z', down: 'M12 15V3 M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5', star: 'M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z', ext: 'M6 17l5-5-5-5 M13 17l5-5-5-5', person: 'M18 20a6 6 0 0 0-12 0 M12 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8z', save: 'M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z M12 7v6 M15 10H9', check: 'M20 6 9 17l-5-5', dot: 'M12 12h.01', play: 'M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5z', style: 'M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z M13.5 6.5h.01 M17.5 10.5h.01 M6.5 12.5h.01 M8.5 7.5h.01' };
+    const ACTS = [['Regenerate', IC.redo], ['Reuse settings', IC.sliders], ['Send to canvas', IC.frame], ['Download', IC.down], ['Favorites', IC.star]];
+    const OVL = this.state.overlay !== undefined ? this.state.overlay : (this.props.initOverlay || null);
+    const openO = (k) => () => this.setState({ overlay: OVL === k ? null : k });
+    const pills = (list) => list.map(([label, d], i) => { const k = i === 0 ? 'model' : 'params'; const on = OVL === k; return { label, caret: i === 0, d, on, open: openO(k), bg: on ? '#3B82F6' : i === 0 ? '#2E2E33' : '#1C1C1F', fg: on ? '#FFFFFF' : i === 0 ? '#F5F5F5' : '#C8C8CC', w: i === 0 ? 600 : 400 }; });
+    const OVR = { showModel: OVL === 'model', showParams: OVL === 'params', showConfirm: OVL === 'confirm', showViewer: OVL === 'viewer', closeOverlay: () => this.setState({ overlay: null }), openConfirm: openO('confirm'), pickKind: PICK, paramKind: PARAM, viewAr: VAR, modelSel: (this.state.p && this.state.p.model) || 'Auto', onPickModel: (n) => this.setState({ p: Object.assign({}, this.state.p, { model: n }), overlay: null }) };
+    const step = (label, st) => ({ label, d: st === 'done' ? IC.check : st === 'now' ? 'M21 12a9 9 0 1 1-6.219-8.56' : 'M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18z', bg: st === 'done' ? 'rgba(34,197,94,.14)' : st === 'now' ? 'rgba(59,130,246,.16)' : '#1C1C1F', fg: st === 'done' ? '#4ADE80' : st === 'now' ? '#93C5FD' : '#7C7C84' });
+    const media = (o) => ({ isDraft: false, isMedia: true, span: 'auto', cols: o.cols || '1fr', ar: o.ar, prompt: o.prompt, tags: o.tags, time: o.time || '', open: () => this.setState({ overlay: 'viewer' }), running: !!o.pct, done: !o.pct, steps: o.steps || [], actions: (o.acts || ACTS).map(([label, d]) => ({ label, d })), media: (o.media || [{}]).map((m, i) => ({ bg: m.bg || o.bg, label: m.label || '', hasLabel: !!m.label, play: !o.pct && !!o.video, running: !!o.pct, pct: o.pct || '', dur: !o.pct && o.video ? o.dur : '' })) });
+    let stored = null; try { stored = window.localStorage.getItem('aigcStudioMode'); } catch (e) {}
+    const MODE = this.props.forceMode || this.state.mode || stored || this.props.mode || 'Simple';
+    const ADV = MODE === 'Advanced';
+    const modes = [['Simple', 'Chat', 'Describe what you want in one line. Models and settings are handled by AI', 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'], ['Advanced', 'Settings panel', 'Model, seed, motion strength, negative prompt and more in the left panel', 'M21 4h-7 M10 4H3 M21 12h-9 M8 12H3 M21 20h-5 M12 20H3 M14 2v4 M8 10v4 M16 18v4']].map(([label, sub, desc, d]) => { const on = MODE === label; return { label, sub, desc, d, on, bg: on ? '#26262A' : '#161618', ring: on ? 'inset 0 0 0 1.5px #3B82F6' : 'none', dot: on ? 'inset 0 0 0 5px #3B82F6' : 'inset 0 0 0 1.5px #4A4A52', pick: () => { try { window.localStorage.setItem('aigcStudioMode', label); } catch (e) {} this.setState({ mode: label }); } }; });
+    const P = this.state.p || {};
+    const setP = (k, v) => this.setState({ p: Object.assign({}, this.state.p, { [k]: v }) });
+    const G = (o) => Object.assign({ hint: '', isSeg: false, isSlider: false, isInput: false, isText: false, isShots: false, dice: false, opts: [], shots: [] }, o);
+    const seg = (k, title, d, opts, hint, offs) => G({ title, d, hint: hint || '', isSeg: true, opts: opts.map((o) => { const on = P[k] === o; const off = (offs || []).includes(o); return { label: o, on, off, why: off ? 'Not available on your plan or with these settings' : '', bg: on ? '#F5F5F5' : '#1C1C1F', fg: off ? '#4A4A52' : on ? '#0B0B0C' : '#C8C8CC', pick: () => !off && setP(k, o) }; }) });
+    const slider = (k, title, d, min, max, step, fmt, lo, hi) => G({ title, d, isSlider: true, min, max, step, val: P[k], show: fmt(P[k]), lo, hi, set: (e) => setP(k, Number(e.target.value)) });
+    const field = (k, title, d, ph, dice, mono) => G({ title, d, isInput: true, value: P[k] || '', ph, dice: !!dice, font: mono ? "600 13px/1 'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif" : 'inherit', set: (e) => setP(k, e.target.value), roll: () => setP(k, String(Math.floor(Math.random() * 90000) + 10000)) });
+    const text = (k, title, d, ph) => G({ title, d, isText: true, value: P[k] || '', ph, set: (e) => setP(k, e.target.value) });
+    const D = { model: IC.cube, count: 'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M12 3v18 M3 12h18', seed: 'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M16 8h.01 M12 12h.01 M8 16h.01', neg: 'M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20z M4.929 4.929l14.142 14.142', fps: 'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M7 3v18 M3 7.5h4 M3 12h18 M3 16.5h4 M17 3v18 M17 7.5h4 M17 16.5h4', motion: 'M12 14l4-4 M3.34 19a10 10 0 1 1 17.32 0', ref: 'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M9 7a2 2 0 1 1 0 4 2 2 0 0 1 0-4z M21 15l-3.086-3.086a2 2 0 0 0-2.828 0L6 21', shots: 'M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3z M6.2 5.3l3.1 3.9 M12.4 3.4l3.1 4 M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' };
+    const modeHint = ADV ? 'Every setting exposed, for creators and teams who want precise control' : 'Only the essentials. Models and settings are picked for you.';
+    const ACC = (() => {
+      const S = this.state;
+      const only = (k) => () => this.setState({ credits: k === 'credits' ? !S.credits : false, account: k === 'account' ? !S.account : false, settings: k === 'settings' ? !S.settings : false });
+      const pack = S.pack || '3,000';
+      return {
+        creditsOpen: !!S.credits, accountOpen: !!S.account, settingsOpen: !!S.settings,
+        toggleCredits: only('credits'), toggleAccount: only('account'), toggleSettings: only('settings'),
+        creditBg: S.credits ? '#2E2E33' : '#161618', gearBg: S.settings ? '#2E2E33' : '#161618',
+        packN: pack,
+        packs: ['1,000', '3,000', '10,000'].map((n) => ({ n, on: pack === n, ring: pack === n ? 'inset 0 0 0 1.5px #F5F5F5' : 'none', pick: () => this.setState({ pack: n }) })),
+        spaces: [['Personal', 'Only you', 'A', '#333338', 'me'], ['Ridgeline brand team', 'Team · 5 members · Shared credits', 'R', '#2B3A33', 'team']].map(([name, meta, mark, tone, k]) => { const on = (S.space || 'me') === k; return { name, meta, mark, tone, on, bg: on ? '#26262A' : 'transparent', pick: () => this.setState({ space: k }) }; }),
+        acctMenu: [
+          { label: 'Profile', note: '', href: 'Profile.dc.html', d: 'M18 20a6 6 0 0 0-12 0 M12 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8z' },
+          { label: 'Settings', note: '', href: 'SettingsAccount.dc.html', d: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z' },
+          { label: 'Plans and billing', note: 'Pro', href: 'Upgrade.dc.html', d: 'M11.562 3.266a.5.5 0 0 1 .876 0L15.39 8.87a1 1 0 0 0 1.516.294L21.183 5.5a.5.5 0 0 1 .798.519l-2.834 10.246a1 1 0 0 1-.956.734H5.81a1 1 0 0 1-.957-.734L2.02 6.02a.5.5 0 0 1 .798-.519l4.276 3.664a1 1 0 0 0 1.516-.294z M5 21h14' },
+          { label: 'Billing and invoices', note: '', href: 'Settings.dc.html', d: 'M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1z M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8 M12 17.5v-11' },
+          { label: 'Members', note: '5', href: 'SettingsTeam.dc.html', d: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 3a4 4 0 1 1 0 8 4 4 0 0 1 0-8z M22 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75' },
+          { label: 'Help and feedback', note: '', href: '#', d: 'M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20z M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3 M12 17h.01' }
+        ]
+      };
+    })();
+    const filterDef = ['All', 'Running', 'Saved'];
+    const filters = filterDef.map((label) => { const on = (this.state.filter || 'All') === label; return { label, on, bg: on ? '#F5F5F5' : 'transparent', fg: on ? '#0B0B0C' : '#C8C8CC', pick: () => this.setState({ filter: label }) }; });
+    const PS = [['Expert presenter','First, how it’s divided. Then, how to use it.'],['Friendly lifestyle creator','This is where all my everyday stuff goes.'],['Energetic product host','See these compartments? Everything’s easy to grab.'],['Patient teacher','Step one: group similar things together.'],['Calm news anchor','This organizer is built around compartments.'],['Gentle companion','Start with one small corner. That’s enough.'],['Comedian','However messy the desk, small things need a home.'],['Storyteller','I used to hunt for my keys every time I left the house.'],['Steady business advisor','The point is less time looking for things.'],['Outdoor reviewer','Let me show you what I keep in here.']];
+    const personas = PS.map(([name, eg]) => { const on = this.state.persona === name; return { name, eg, on, bg: on ? '#F5F5F5' : '#1C1C1F', fg: on ? '#0B0B0C' : '#C8C8CC', pick: () => this.setState({ persona: name }) }; });
+    const ring = 'inset 0 0 0 1.5px #3B82F6';
+    const voices = [['Clear female', 'American English · Medium pace'], ['Steady male', 'Deep · Good for explainers'], ['Warm female', 'Relaxed · Everyday'], ['Upbeat male', 'Bright · Good for selling']].map(([name, desc]) => { const on = this.state.voice === name; return { name, desc, on, bg: on ? '#1C1C1F' : 'transparent', ring: on ? ring : 'none', pick: () => this.setState({ voice: name }) }; });
+    const RES = { '480p': 6, '720p': 10, '1080p': 18 };
+    const draft = { isDraft: true, isMedia: false, span: '1 / -1', title: 'Script draft', meta: this.state.persona + ' · ' + this.state.voice + ' · About 9s of 10s', lines: [
+      { t: '00:00', text: 'Messy desk? Give everything a spot.', locked: true, act: 'Looks at camera' },
+      { t: '00:03', text: 'This organizer keeps small things apart,', locked: false, act: 'Points at the organizer' },
+      { t: '00:06', text: 'You can see everything at a glance.', locked: false, act: 'Smiles and nods' } ] };
+    const R = {
+      ...OVR,
+      nav, filters, modes, adv: ADV, basic: !ADV, ...ACC, personas, voices, personaEg: (PS.find((p) => p[0] === this.state.persona) || PS[0])[1],
+      looks: [{ label: 'Character', value: 'Product advisor', bg: '#1F2628' }, { label: 'Scenes', value: 'Office · Uploaded', bg: '#202330' }],
+      hasNote: true, noteLead: 'Will expand in the persona’s voice, keeping', noteChips: ['1 exact line', '3 gestures'],
+      cRefs: [{ n: '@Advisor', bg: '#1F2628' }],
+      cLabel: 'Lines', cText: this.state.text, setText: (e) => this.setState({ text: e.target.value }),
+      cPh: 'Topic, key points or exact lines. Type / for commands',
+      cPills: pills(ADV ? [[P.model === 'Auto' ? 'Auto model' : P.model, IC.cube], ['Slow push-in', IC.cam], ['9:16', IC.ratio], ['10s', IC.clock], [P.res, IC.res], ['Pace ' + P.rate.toFixed(2) + 'x', IC.wave], [P.emo, IC.person]] : [['Auto model', IC.cube], ['Slow push-in', IC.cam], ['9:16', IC.ratio], ['10s', IC.clock], ['Audio', IC.wave]]),
+      cCost: String((ADV ? RES[P.res] : 10) + 2), cGo: 'Write script',
+      advGroups: ADV ? [
+        seg('model', 'Lip-sync method', D.model, ['Auto', 'MiniMax H3', 'Wan 2.2 S2V']),
+        slider('rate', 'Pace', IC.wave, 0.8, 1.3, 0.05, (v) => v.toFixed(2) + 'x', 'Slow', 'Fast'),
+        seg('emo', 'Emotion', IC.person, ['Calm', 'Warm', 'Upbeat', 'Serious']),
+        slider('pause', 'Pause between lines', IC.clock, 0, 1, 0.1, (v) => v.toFixed(1) + 's', 'Tight', 'Calm'),
+        seg('bg', 'Use setting as', 'M8 3l4 8 5-5 5 15H2z', ['Background', 'Setting reference']),
+        text('camText', 'Custom camera move', IC.cam, 'Locked-off medium shot at eye level for 3s, then a slow push-in, ending on a chest-up close-up'),
+        seg('res', 'Resolution', IC.res, ['480p', '720p', '1080p']),
+        seg('count', 'Count', D.count, ['1', '2']),
+        field('seed', 'Random seed', D.seed, 'Blank = random', true, true)
+      ] : [],
+      feedCount: '3 results',
+      feed: [
+        draft,
+        media({ ar: '9/16', bg: '#1C1C1F', pct: '48%', video: true, prompt: 'Explain the compartments, end with a smile and a nod', tags: ['9:16', '10s', 'Clear female'], steps: [step('Script', 'done'), step('Text to speech', 'done'), step('Lip-sync 48%', 'now')] }),
+        media({ ar: '9/16', bg: '#1F2628', video: true, dur: '00:10', prompt: 'Desk organizer pitch · Expert presenter', tags: ['9:16', '10s', '720p'], time: 'Yesterday' }),
+        media({ ar: '9/16', bg: '#28251F', video: true, dur: '00:15', prompt: 'New coffee maker highlights · Energetic host', tags: ['9:16', '15s', '720p'], time: '3d ago' })
+      ]
+    };
+    R.costNum = Number(R.cCost);
+    return R;
+  }
+}
+</script>
+</body>
+</html>

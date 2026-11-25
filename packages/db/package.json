@@ -1,0 +1,5 @@
+{ "name": "@rolling/db", "private": true, "type": "module",
+  "exports": { "./d1": "./src/d1/schema.ts", "./do/*": "./src/do/*.ts" },
+  "scripts": { "typecheck": "tsc -p .", "test": "vitest run" },
+  "dependencies": { "drizzle-orm": "^0.44.7", "zod": "^3.25.76" },
+  "devDependencies": { "drizzle-kit": "^0.31.5", "vitest": "^4.1.0", "typescript": "^5.9.3", "tsx": "^4.20.6" } }

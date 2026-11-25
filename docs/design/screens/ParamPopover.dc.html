@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin=""><link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Noto+Sans+SC:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-variant-numeric:tabular-nums}
+</style>
+</helmet>
+<div role="dialog" aria-label="Settings" style="width:380px;box-sizing:border-box;border-radius:20px;background:#1C1C1F;box-shadow:0 24px 64px rgba(0,0,0,.6);padding:14px;color:#F5F5F5;font-family:'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif;display:flex;flex-direction:column;gap:14px">
+  <div style="display:flex;align-items:center"><span style="flex:1;font-size:14px;font-weight:700">{{ title }}</span><button onClick="{{ close }}" aria-label="Close" style="width:28px;height:28px;border-radius:999px;border:0;background:none;color:#9A9AA0;font-size:16px;cursor:pointer"><svg width="16" height="16" style="display:block;margin:auto" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18 M6 6l12 12"></path></svg></button></div>
+
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <span style="font-size:12px;color:#9A9AA0">Aspect ratio</span>
+    <div role="radiogroup" aria-label="Aspect ratio" style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px">
+      <sc-for list="{{ ratios }}" as="r" hint-placeholder-count="6">
+        <button role="radio" aria-checked="{{ r.on }}" onClick="{{ r.pick }}" style="height:54px;border-radius:10px;border:0;background:{{ r.bg }};color:{{ r.fg }};font:600 11px/1 'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px">
+          <span style="width:{{ r.w }}px;height:{{ r.h }}px;border-radius:3px;box-shadow:inset 0 0 0 1.5px currentColor"></span>{{ r.label }}</button>
+      </sc-for>
+    </div>
+  </div>
+
+  <sc-for list="{{ groups }}" as="g" hint-placeholder-count="3">
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <span style="display:flex;justify-content:space-between;font-size:12px;color:#9A9AA0"><span>{{ g.label }}</span><span style="color:#7C7C84">{{ g.note }}</span></span>
+      <div role="radiogroup" aria-label="{{ g.label }}" style="display:flex;gap:2px;border-radius:12px;background:#141416;padding:3px">
+        <sc-for list="{{ g.opts }}" as="o" hint-placeholder-count="3">
+          <button role="radio" aria-checked="{{ o.on }}" disabled="{{ o.off }}" onClick="{{ o.pick }}" title="{{ o.why }}" style="flex:1;height:32px;border-radius:9px;border:0;background:{{ o.bg }};color:{{ o.fg }};font:600 12px/1 'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif;cursor:pointer">{{ o.label }}</button>
+        </sc-for>
+      </div>
+    </div>
+  </sc-for>
+
+  <sc-if value="{{ hasAudio }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="flex:1;display:flex;flex-direction:column;gap:2px"><span style="font-size:13px;font-weight:600">Generate audio</span><span style="font-size:11px;color:#7C7C84">The model adds ambience and sound effects. Add the final voiceover in the editor.</span></span>
+      <button role="switch" aria-checked="{{ audio }}" aria-label="Generate audio" onClick="{{ toggleAudio }}" style="width:40px;height:24px;border-radius:999px;border:0;background:{{ audioBg }};position:relative;cursor:pointer"><span style="position:absolute;top:3px;left:{{ audioX }}px;width:18px;height:18px;border-radius:999px;background:#F5F5F5"></span></button>
+    </div>
+  </sc-if>
+
+  <div style="border-radius:12px;background:#141416;padding:10px 12px;display:flex;align-items:center;gap:8px;font-size:12px;color:#9A9AA0">
+    <span style="width:9px;height:9px;border-radius:999px;background:#3B82F6"></span>
+    <span style="flex:1">~ <b style="font-family:'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif;color:#F5F5F5">{{ cost }}</b> credits · about {{ eta }}</span>
+    <button onClick="{{ reset }}" style="height:26px;padding:0 8px;border-radius:999px;border:0;background:none;color:#93C5FD;font:inherit;font-size:12px;font-weight:600;cursor:pointer">Reset</button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"kind":{"editor":"enum","options":["video","image"],"default":"video"},"onClose":{"editor":null},"$preview":{"width":380,"height":470}}'>
+class Component extends DCLogic {
+  constructor(p){ super(p); this.state = { ratio: '9:16', res: '720p', dur: '5s', count: '1', audio: true, q: 'Standard', size: '2K' }; }
+  renderVals() {
+    const img = this.props.kind === 'image';
+    const S = this.state;
+    const sel = (on, off) => ({ bg: on ? '#F5F5F5' : 'transparent', fg: off ? '#4A4A52' : on ? '#0B0B0C' : '#C8C8CC' });
+    const ratios = [['Auto', 14, 14], ['9:16', 10, 17], ['16:9', 20, 11], ['1:1', 14, 14], ['4:3', 18, 13], ['3:4', 13, 18]].map(([label, w, h]) => { const on = S.ratio === label; return Object.assign({ label, w, h, on, pick: () => this.setState({ ratio: label }) }, sel(on)); });
+    const grp = (key, label, note, list, offs) => ({ label, note, opts: list.map((o) => { const on = S[key] === o; const off = (offs || []).includes(o); return Object.assign({ label: o, on, off, why: off ? 'Not supported on this model' : '', pick: () => !off && this.setState({ [key]: o }) }, sel(on, off)); }) });
+    const groups = img ? [
+      grp('q', 'Quality', '', ['Standard', 'High quality']),
+      grp('size', 'Resolution', '4K available', ['1K', '2K', '4K'], S.q === 'Standard' ? ['4K'] : []),
+      grp('count', 'Images', '', ['1', '2', '4'])
+    ] : [
+      grp('res', 'Resolution', '', ['480p', '720p', '1080p']),
+      grp('dur', 'Duration', 'Max 15s on this model', ['5s', '10s', '15s', '30s'], ['30s']),
+      grp('count', 'Count', 'Each charged separately', ['1', '2', '4'])
+    ];
+    const base = img ? ({ '1K': 1, '2K': 2, '4K': 4 }[S.size] * (S.q === 'High quality' ? 2 : 1)) : ({ '480p': 4, '720p': 8, '1080p': 14 }[S.res] * parseInt(S.dur, 10) / 5 * (S.audio ? 1.25 : 1));
+    return {
+      title: img ? 'Image settings' : 'Video settings', ratios, groups,
+      hasAudio: !img, audio: S.audio, audioBg: S.audio ? '#3B82F6' : '#3A3A40', audioX: S.audio ? 19 : 3, toggleAudio: () => this.setState({ audio: !S.audio }),
+      cost: Math.round(base * Number(S.count)), eta: img ? '15s' : (parseInt(S.dur, 10) > 5 ? '3 min' : '2 min'),
+      reset: () => this.setState({ ratio: '9:16', res: '720p', dur: '5s', count: '1', audio: true, q: 'Standard', size: '2K' }),
+      close: () => this.props.onClose && this.props.onClose()
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,762 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-11-24T10:30:00Z"
+  },
+  "title": "创作者综合工作台 UI",
+  "launch": {
+    "view": "canvas"
+  },
+  "pages": [
+    {
+      "id": "brand",
+      "name": "品牌"
+    },
+    {
+      "id": "home",
+      "name": "首页"
+    },
+    {
+      "id": "canvas",
+      "name": "无限画布"
+    },
+    {
+      "id": "tools",
+      "name": "创作工具"
+    },
+    {
+      "id": "overlays",
+      "name": "弹层与组件"
+    },
+    {
+      "id": "library",
+      "name": "库与任务"
+    },
+    {
+      "id": "i18n",
+      "name": "本地化"
+    },
+    {
+      "id": "account",
+      "name": "账户与付费"
+    },
+    {
+      "id": "platform",
+      "name": "动效与 PWA"
+    }
+  ],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 1750,
+      "title": "工作台首页",
+      "page": "home",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Canvas.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "无限画布",
+      "page": "canvas",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "QuickCreate.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "快捷创作 · 基础",
+      "page": "tools",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "OriginalVideo.dc.html": {
+      "x": 1520,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "原视频创作 · 基础",
+      "page": "tools",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "DigitalHuman.dc.html": {
+      "x": 3040,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "数字人创作 · 基础",
+      "page": "tools",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Character.dc.html": {
+      "x": 4560,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "角色生成 · 基础",
+      "page": "tools",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "QuickCreateAdv.dc.html": {
+      "x": 0,
+      "y": 1240,
+      "w": 1440,
+      "h": 900,
+      "title": "快捷创作 · 进阶",
+      "page": "tools",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "OriginalVideoAdv.dc.html": {
+      "x": 1520,
+      "y": 1240,
+      "w": 1440,
+      "h": 900,
+      "title": "原视频创作 · 进阶",
+      "page": "tools",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "DigitalHumanAdv.dc.html": {
+      "x": 3040,
+      "y": 1240,
+      "w": 1440,
+      "h": 900,
+      "title": "数字人创作 · 进阶",
+      "page": "tools",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "CharacterAdv.dc.html": {
+      "x": 4560,
+      "y": 1240,
+      "w": 1440,
+      "h": 900,
+      "title": "角色生成 · 进阶",
+      "page": "tools",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "CanvasPlan.dc.html": {
+      "x": 1520,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "执行整图 · 报价确认",
+      "page": "canvas",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "QuickCreateModel.dc.html": {
+      "x": 0,
+      "y": 2480,
+      "w": 1440,
+      "h": 900,
+      "title": "快捷创作 · 模型选择",
+      "page": "tools",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "QuickCreateParams.dc.html": {
+      "x": 1520,
+      "y": 2480,
+      "w": 1440,
+      "h": 900,
+      "title": "快捷创作 · 参数设置",
+      "page": "tools",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "QuickCreateConfirm.dc.html": {
+      "x": 3040,
+      "y": 2480,
+      "w": 1440,
+      "h": 900,
+      "title": "快捷创作 · 生成确认",
+      "page": "tools",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "QuickCreateViewer.dc.html": {
+      "x": 4560,
+      "y": 2480,
+      "w": 1440,
+      "h": 900,
+      "title": "快捷创作 · 结果详情",
+      "page": "tools",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "DigitalHumanModel.dc.html": {
+      "x": 0,
+      "y": 3720,
+      "w": 1440,
+      "h": 900,
+      "title": "数字人 · 口型路线",
+      "page": "tools",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "CharacterParams.dc.html": {
+      "x": 1520,
+      "y": 3720,
+      "w": 1440,
+      "h": 900,
+      "title": "角色生成 · 图片参数",
+      "page": "tools",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "ModelPicker.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 420,
+      "h": 560,
+      "title": "模型选择",
+      "page": "overlays",
+      "is_interactive": true
+    },
+    "ParamPopover.dc.html": {
+      "x": 500,
+      "y": 0,
+      "w": 380,
+      "h": 470,
+      "title": "参数设置",
+      "page": "overlays",
+      "is_interactive": true
+    },
+    "RunConfirm.dc.html": {
+      "x": 960,
+      "y": 0,
+      "w": 520,
+      "h": 620,
+      "title": "生成确认 · 单次",
+      "page": "overlays",
+      "is_interactive": true
+    },
+    "ResultViewer.dc.html": {
+      "x": 0,
+      "y": 860,
+      "w": 1440,
+      "h": 900,
+      "title": "结果详情",
+      "page": "overlays",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Templates.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 1500,
+      "title": "模板库",
+      "page": "library",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Assets.dc.html": {
+      "x": 1520,
+      "y": 0,
+      "w": 1440,
+      "h": 1100,
+      "title": "素材库",
+      "page": "library",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "AssetsCharacters.dc.html": {
+      "x": 1520,
+      "y": 1220,
+      "w": 1440,
+      "h": 1000,
+      "title": "素材库 · 角色库",
+      "page": "library",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "AssetsVoices.dc.html": {
+      "x": 3040,
+      "y": 1220,
+      "w": 1440,
+      "h": 800,
+      "title": "素材库 · 我的音色",
+      "page": "library",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Tasks.dc.html": {
+      "x": 3040,
+      "y": 0,
+      "w": 1440,
+      "h": 1100,
+      "title": "任务记录",
+      "page": "library",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "CanvasAdd.dc.html": {
+      "x": 3040,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "添加节点菜单",
+      "page": "canvas",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "CanvasScript.dc.html": {
+      "x": 0,
+      "y": 1020,
+      "w": 1440,
+      "h": 900,
+      "title": "脚本全屏",
+      "page": "canvas",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "CanvasEdit.dc.html": {
+      "x": 1520,
+      "y": 1020,
+      "w": 1440,
+      "h": 900,
+      "title": "剪辑 · 智能体排好的一版",
+      "page": "canvas",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "CanvasShare.dc.html": {
+      "x": 3040,
+      "y": 1020,
+      "w": 1440,
+      "h": 900,
+      "title": "分享",
+      "page": "canvas",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "MainSlash.dc.html": {
+      "x": 1520,
+      "y": 0,
+      "w": 1440,
+      "h": 1750,
+      "title": "/ 命令面板",
+      "page": "home",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "MainPlus.dc.html": {
+      "x": 3040,
+      "y": 0,
+      "w": 1440,
+      "h": 1750,
+      "title": "＋ 菜单",
+      "page": "home",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "MainSettings.dc.html": {
+      "x": 4560,
+      "y": 0,
+      "w": 1440,
+      "h": 1750,
+      "title": "设置 · 创作模式",
+      "page": "home",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Brand.dc.html": {
+      "x": 1520,
+      "y": 0,
+      "w": 1440,
+      "h": 1900,
+      "title": "第一轮 · 三个命名方向（已选 B）",
+      "page": "brand",
+      "is_interactive": true
+    },
+    "PublicLibrary.dc.html": {
+      "x": 4560,
+      "y": 0,
+      "w": 1440,
+      "h": 1100,
+      "title": "素材库 · 公共素材（PoseWear）",
+      "page": "library",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "BrandRolling.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 1500,
+      "title": "Rolling 开拍 · 品牌规范",
+      "page": "brand",
+      "is_interactive": true
+    },
+    "Splash.dc.html": {
+      "x": 0,
+      "y": 1620,
+      "w": 1440,
+      "h": 900,
+      "title": "启动动画 · 桌面",
+      "page": "brand",
+      "is_interactive": true
+    },
+    "SplashMobile.dc.html": {
+      "x": 1520,
+      "y": 2000,
+      "w": 390,
+      "h": 844,
+      "title": "启动动画 · 手机",
+      "page": "brand",
+      "is_interactive": true
+    },
+    "LocaleCheck.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 1720,
+      "title": "五种语言排版检查",
+      "page": "i18n",
+      "is_interactive": true
+    },
+    "MainAt.dc.html": {
+      "x": 6080,
+      "y": 0,
+      "w": 1440,
+      "h": 1750,
+      "title": "@ 引用素材",
+      "page": "home",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "CanvasAt.dc.html": {
+      "x": 4560,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "@ 引用素材",
+      "page": "canvas",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "CanvasEditAgent.dc.html": {
+      "x": 4560,
+      "y": 1020,
+      "w": 1440,
+      "h": 900,
+      "title": "剪辑 · 让智能体改",
+      "page": "canvas",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Login.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "登录",
+      "page": "account",
+      "is_interactive": true,
+      "expand": "fill"
+    },
+    "LoginSignup.dc.html": {
+      "x": 1520,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "注册",
+      "page": "account",
+      "is_interactive": true,
+      "expand": "fill"
+    },
+    "LoginCode.dc.html": {
+      "x": 3040,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "邮箱验证码",
+      "page": "account",
+      "is_interactive": true,
+      "expand": "fill"
+    },
+    "Upgrade.dc.html": {
+      "x": 0,
+      "y": 1140,
+      "w": 1440,
+      "h": 1500,
+      "title": "开通会员（门槛）",
+      "page": "account",
+      "is_interactive": true,
+      "expand": "fill"
+    },
+    "Paywall.dc.html": {
+      "x": 1520,
+      "y": 1140,
+      "w": 520,
+      "h": 560,
+      "title": "弹窗 · 未开会员点生成",
+      "page": "account",
+      "is_interactive": true
+    },
+    "PaywallCredits.dc.html": {
+      "x": 2120,
+      "y": 1140,
+      "w": 520,
+      "h": 600,
+      "title": "弹窗 · 积分不够",
+      "page": "account",
+      "is_interactive": true
+    },
+    "Settings.dc.html": {
+      "x": 0,
+      "y": 2760,
+      "w": 1440,
+      "h": 1500,
+      "title": "设置 · 套餐与账单",
+      "page": "account",
+      "is_interactive": true,
+      "expand": "fill"
+    },
+    "SettingsAccount.dc.html": {
+      "x": 1520,
+      "y": 2760,
+      "w": 1440,
+      "h": 1100,
+      "title": "设置 · 账号",
+      "page": "account",
+      "is_interactive": true,
+      "expand": "fill"
+    },
+    "SettingsPrefs.dc.html": {
+      "x": 3040,
+      "y": 2760,
+      "w": 1440,
+      "h": 1100,
+      "title": "设置 · 偏好",
+      "page": "account",
+      "is_interactive": true,
+      "expand": "fill"
+    },
+    "SettingsTeam.dc.html": {
+      "x": 4560,
+      "y": 2760,
+      "w": 1440,
+      "h": 1100,
+      "title": "设置 · 团队",
+      "page": "account",
+      "is_interactive": true,
+      "expand": "fill"
+    },
+    "Profile.dc.html": {
+      "x": 0,
+      "y": 4380,
+      "w": 1440,
+      "h": 1100,
+      "title": "用户主页",
+      "page": "account",
+      "is_interactive": true,
+      "expand": "fill"
+    },
+    "Motion.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 1240,
+      "title": "动效规范",
+      "page": "platform",
+      "is_interactive": true
+    },
+    "PWA.dc.html": {
+      "x": 1520,
+      "y": 0,
+      "w": 1440,
+      "h": 1300,
+      "title": "Web PWA",
+      "page": "platform",
+      "is_interactive": true
+    }
+  },
+  "order": [
+    "BrandRolling.dc.html",
+    "Splash.dc.html",
+    "SplashMobile.dc.html",
+    "Brand.dc.html",
+    "Main.dc.html",
+    "Canvas.dc.html",
+    "QuickCreate.dc.html",
+    "OriginalVideo.dc.html",
+    "DigitalHuman.dc.html",
+    "Character.dc.html",
+    "QuickCreateAdv.dc.html",
+    "OriginalVideoAdv.dc.html",
+    "DigitalHumanAdv.dc.html",
+    "CharacterAdv.dc.html",
+    "CanvasPlan.dc.html",
+    "QuickCreateModel.dc.html",
+    "QuickCreateParams.dc.html",
+    "QuickCreateConfirm.dc.html",
+    "QuickCreateViewer.dc.html",
+    "DigitalHumanModel.dc.html",
+    "CharacterParams.dc.html",
+    "ModelPicker.dc.html",
+    "ParamPopover.dc.html",
+    "RunConfirm.dc.html",
+    "ResultViewer.dc.html",
+    "Templates.dc.html",
+    "Assets.dc.html",
+    "AssetsCharacters.dc.html",
+    "AssetsVoices.dc.html",
+    "Tasks.dc.html",
+    "CanvasAdd.dc.html",
+    "CanvasScript.dc.html",
+    "CanvasEdit.dc.html",
+    "CanvasShare.dc.html",
+    "MainSlash.dc.html",
+    "MainPlus.dc.html",
+    "MainSettings.dc.html",
+    "PublicLibrary.dc.html",
+    "LocaleCheck.dc.html",
+    "MainAt.dc.html",
+    "CanvasAt.dc.html",
+    "CanvasEditAgent.dc.html",
+    "Login.dc.html",
+    "LoginSignup.dc.html",
+    "LoginCode.dc.html",
+    "Upgrade.dc.html",
+    "Paywall.dc.html",
+    "PaywallCredits.dc.html",
+    "Settings.dc.html",
+    "SettingsAccount.dc.html",
+    "SettingsPrefs.dc.html",
+    "SettingsTeam.dc.html",
+    "Profile.dc.html",
+    "Motion.dc.html",
+    "PWA.dc.html"
+  ],
+  "notes": {
+    "t1": {
+      "x": 0,
+      "y": -300,
+      "text": "创作者综合工作台 · 首页",
+      "kind": "title1",
+      "maxW": 6000,
+      "page": "home",
+      "w": 240
+    },
+    "tc": {
+      "x": 0,
+      "y": -300,
+      "text": "无限画布",
+      "kind": "title1",
+      "maxW": 4480,
+      "page": "canvas",
+      "w": 240
+    },
+    "tb": {
+      "x": 0,
+      "y": -300,
+      "text": "基础模式 · 对话式",
+      "kind": "title1",
+      "maxW": 5980,
+      "page": "tools",
+      "w": 240
+    },
+    "ta": {
+      "x": 0,
+      "y": 960,
+      "text": "进阶模式 · 参数下放（设置 › 创作模式）",
+      "kind": "title1",
+      "maxW": 5980,
+      "page": "tools",
+      "w": 240
+    },
+    "ts": {
+      "x": 0,
+      "y": 2200,
+      "text": "弹层状态",
+      "kind": "title1",
+      "maxW": 5980,
+      "page": "tools",
+      "w": 240
+    },
+    "to": {
+      "x": 0,
+      "y": -300,
+      "text": "通用弹层组件",
+      "kind": "title1",
+      "maxW": 1480,
+      "page": "overlays",
+      "w": 240
+    },
+    "tl": {
+      "x": 0,
+      "y": -300,
+      "text": "库与任务",
+      "kind": "title1",
+      "maxW": 6000,
+      "page": "library",
+      "w": 240
+    },
+    "tbr": {
+      "kind": "title1",
+      "maxW": 2960,
+      "page": "brand",
+      "text": "品牌 · Rolling",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    },
+    "ti": {
+      "kind": "title1",
+      "maxW": 1440,
+      "page": "i18n",
+      "text": "本地化 · 排版检查",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    },
+    "tac": {
+      "kind": "title1",
+      "maxW": 6000,
+      "page": "account",
+      "text": "账户与付费 · 先开会员，积分不够再买",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    },
+    "tpl": {
+      "kind": "title1",
+      "maxW": 2960,
+      "page": "platform",
+      "text": "动效与 PWA",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    }
+  },
+  "designSystems": [],
+  "attachments": {},
+  "noteOrder": [
+    "t1",
+    "tc",
+    "tb",
+    "ta",
+    "ts",
+    "to",
+    "tl",
+    "tbr",
+    "ti",
+    "tac",
+    "tpl"
+  ]
+}

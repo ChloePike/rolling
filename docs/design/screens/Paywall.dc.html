@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Paywall</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin=""><link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Noto+Sans+SC:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-variant-numeric:tabular-nums}
+</style>
+</helmet>
+<div role="dialog" aria-label="{{ title }}" style="width:520px;box-sizing:border-box;border-radius:20px;background:#1C1C1F;color:#F5F5F5;font-family:'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif;padding:24px;display:flex;flex-direction:column;gap:16px;font-variant-numeric:tabular-nums">
+  <div style="display:flex;align-items:flex-start;gap:12px">
+    <div style="flex:1;display:flex;flex-direction:column;gap:6px"><h2 style="margin:0;font-size:20px;font-weight:700">{{ title }}</h2><p style="margin:0;font-size:14px;line-height:1.55;color:#9A9AA0">{{ sub }}</p></div>
+    <button aria-label="Close" style="width:32px;height:32px;border-radius:8px;border:0;background:none;color:#9A9AA0;cursor:pointer;display:flex;align-items:center;justify-content:center"><svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18 M6 6l12 12"></path></svg></button>
+  </div>
+  <sc-if value="{{ isCredits }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;border-radius:12px;background:#141416;padding:14px 16px;gap:16px;font-size:13px">
+      <span style="flex:1;display:flex;flex-direction:column;gap:4px"><span style="color:#9A9AA0">This run</span><span style="font-size:20px;font-weight:700">18</span></span>
+      <span style="flex:1;display:flex;flex-direction:column;gap:4px"><span style="color:#9A9AA0">You have</span><span style="font-size:20px;font-weight:700">6</span></span>
+      <span style="flex:1;display:flex;flex-direction:column;gap:4px"><span style="color:#9A9AA0">Short by</span><span style="font-size:20px;font-weight:700;color:#FCA5A5">12</span></span>
+    </div>
+  </sc-if>
+  <div role="radiogroup" aria-label="{{ groupLabel }}" style="display:flex;flex-direction:column;gap:8px">
+    <sc-for list="{{ opts }}" as="o" hint-placeholder-count="3">
+      <button role="radio" aria-checked="{{ o.on }}" onClick="{{ o.pick }}" style="border-radius:12px;border:0;background:#141416;box-shadow:{{ o.ring }};padding:14px 16px;color:#F5F5F5;font:inherit;text-align:left;cursor:pointer;display:flex;align-items:center;gap:12px">
+        <span style="flex:none;width:18px;height:18px;border-radius:999px;box-shadow:inset 0 0 0 {{ o.dot }} #F5F5F5"></span>
+        <span style="flex:1;display:flex;flex-direction:column;gap:3px"><span style="font-size:14px;font-weight:700">{{ o.name }}</span><span style="font-size:12px;color:#9A9AA0">{{ o.meta }}</span></span>
+        <span style="font-size:14px;font-weight:700">{{ o.price }}</span>
+      </button>
+    </sc-for>
+  </div>
+  <sc-if value="{{ isCredits }}" hint-placeholder-val="{{ false }}">
+    <label style="display:flex;align-items:center;gap:10px;font-size:13px;color:#C8C8CC;cursor:pointer"><input type="checkbox" style="accent-color:#3B82F6;width:16px;height:16px">Top up automatically next time I run low</label>
+  </sc-if>
+  <button style="height:44px;border-radius:10px;border:0;background:#F5F5F5;color:#0B0B0C;font:inherit;font-size:14px;font-weight:700;cursor:pointer">{{ cta }}</button>
+  <div style="display:flex;align-items:center;justify-content:space-between;font-size:12px;color:#7C7C84"><span>{{ foot }}</span><a href="Upgrade.dc.html" style="color:#C8C8CC">{{ link }}</a></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"variant": {"editor": "enum", "options": ["join", "credits"], "default": "join"}, "$preview": {"width": 520, "height": 560}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const credits = (this.props.variant || 'join') === 'credits';
+    const pick = this.state.pick || (credits ? '1,000 credits' : 'Pro');
+    const O = credits
+      ? [['1,000 credits', 'Covers this run and about 120 more shots', '$[PRICE]'], ['3,000 credits', 'Purchased credits never expire', '$[PRICE]'], ['Upgrade to Studio', '10,000 credits a month instead of 3,000', '$[PRICE]/mo']]
+      : [['Starter', '1,000 credits a month', '$[PRICE]/mo'], ['Pro', '3,000 credits a month, images up to 4K', '$[PRICE]/mo'], ['Studio', '10,000 credits a month, 5 seats', '$[PRICE]/mo']];
+    const opts = O.map(([name, meta, price]) => { const on = pick === name; return { name, meta, price, on, ring: on ? 'inset 0 0 0 1.5px #F5F5F5' : 'none', dot: on ? '5px' : '1.5px', pick: () => this.setState({ pick: name }) }; });
+    return credits ? {
+      isCredits: true, opts, groupLabel: 'Top-up options', title: 'Not enough credits',
+      sub: 'Your shots and settings are saved. Top up and this run starts right away.',
+      cta: pick.startsWith('Upgrade') ? 'Upgrade and run' : 'Buy ' + pick + ' and run', foot: 'Charged to Visa ending 4242', link: 'All plans ›'
+    } : {
+      isCredits: false, opts, groupLabel: 'Plans', title: 'Pick a plan to generate',
+      sub: 'Your brief and the agent’s plan are saved. Every plan includes monthly credits, and you can top up if you need more.',
+      cta: 'Continue with ' + pick, foot: 'Cancel anytime. Payments by Stripe.', link: 'Compare plans ›'
+    };
+  }
+}
+</script>
+</body>
+</html>

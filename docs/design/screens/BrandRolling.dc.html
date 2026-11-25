@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Rolling 品牌规范</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin=""><link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Noto+Sans+SC:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0B0B0C;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-variant-numeric:tabular-nums}
+a{color:#F5F5F5;text-decoration:none}a:hover{color:#FFFFFF}
+textarea::placeholder,input::placeholder{color:#7C7C84}
+*{scrollbar-width:thin;scrollbar-color:#3A3A40 transparent}
+::-webkit-scrollbar{width:6px;height:6px;background:transparent}
+::-webkit-scrollbar-thumb{background:#3A3A40;border-radius:999px}
+</style>
+</helmet>
+<div style="min-height:100vh;background:#0B0B0C;color:#F5F5F5;font-family:'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif;padding:56px 64px 72px;box-sizing:border-box;display:flex;flex-direction:column;gap:44px">
+  <header style="display:flex;align-items:center;gap:28px">
+    <svg width="120" height="120" sc-camel-view-box="0 0 100 100" aria-hidden="true" ><circle cx="50" cy="50" r="38" fill="{{ brand }}"></circle><circle cx="64" cy="36" r="11" fill="#0B0B0C"></circle></svg>
+    <div style="display:flex;flex-direction:column;gap:10px"><div style="display:flex;align-items:baseline;gap:16px"><span style="font:700 64px/1 'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif;letter-spacing:-0.03em">Rolling</span></div><span style="font-size:15px;color:#9A9AA0">AI video studio · by AIGC.HUB</span></div>
+  </header>
+
+  <section style="display:flex;flex-direction:column;gap:14px">
+    <span style="font-size:13px;font-weight:600;color:#9A9AA0">品牌色 · 右上角「颜色」可以切换，整页和启动动画一起变</span>
+    <div style="display:flex;gap:14px"><sc-for list="{{ opts }}" as="o" hint-placeholder-count="3">
+        <div style="flex:1;border-radius:20px;background:#141416;box-shadow:{{ o.ring }};padding:18px;display:flex;flex-direction:column;gap:14px">
+          <div style="height:120px;border-radius:14px;background:#0B0B0C;display:flex;align-items:center;justify-content:center;gap:12px"><svg width="56" height="56" sc-camel-view-box="0 0 100 100" aria-hidden="true" ><circle cx="50" cy="50" r="38" fill="{{ o.c }}"></circle><circle cx="64" cy="36" r="11" fill="#0B0B0C"></circle></svg><span style="font:700 24px/1 'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif">Rolling</span></div>
+          <div style="display:flex;align-items:center;gap:8px"><span style="font-size:15px;font-weight:700">{{ o.name }}</span><span style="font-size:12px;color:#7C7C84">{{ o.c }}</span><span style="flex:1"></span><span style="font-size:11px;font-weight:600;color:{{ o.tagFg }}">{{ o.tag }}</span></div>
+          <p style="margin:0;font-size:13px;line-height:1.6;color:#9A9AA0">{{ o.note }}</p>
+        </div>
+      </sc-for></div>
+  </section>
+
+  <section style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px">
+    <div style="border-radius:20px;background:#141416;padding:20px;display:flex;flex-direction:column;gap:14px">
+      <span style="font-size:13px;font-weight:600;color:#9A9AA0">标志结构</span>
+      <div style="height:220px;border-radius:14px;background:#0B0B0C;display:flex;align-items:center;justify-content:center;position:relative">
+        <svg width="200" height="200" sc-camel-view-box="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="38" fill="{{ brand }}"></circle><circle cx="64" cy="36" r="11" fill="#0B0B0C"></circle><circle cx="50" cy="50" r="38" fill="none" stroke="#3A3A40" stroke-width=".4" stroke-dasharray="2 2"></circle><line x1="50" y1="50" x2="64" y2="36" stroke="#9A9AA0" stroke-width=".5"></line><circle cx="50" cy="50" r="1.2" fill="#9A9AA0"></circle><line x1="12" y1="50" x2="88" y2="50" stroke="#3A3A40" stroke-width=".4"></line><line x1="50" y1="12" x2="50" y2="88" stroke="#3A3A40" stroke-width=".4"></line></svg>
+      </div>
+      <p style="margin:0;font-size:13px;line-height:1.6;color:#9A9AA0">外圆直径 = 1，高光点直径 ≈ 0.29，圆心在右上 45° 方向、距中心 0.26。高光点永远挖空，露出底色，不单独填色。</p>
+    </div>
+    <div style="border-radius:20px;background:#141416;padding:20px;display:flex;flex-direction:column;gap:14px">
+      <span style="font-size:13px;font-weight:600;color:#9A9AA0">应用图标</span>
+      <div style="height:220px;border-radius:14px;background:#0B0B0C;display:flex;align-items:center;justify-content:center;gap:18px"><span style="width:112px;height:112px;border-radius:26px;background:{{ brand }};display:flex;align-items:center;justify-content:center"><svg width="69" height="69" sc-camel-view-box="0 0 100 100" aria-hidden="true" ><circle cx="50" cy="50" r="38" fill="#0B0B0C"></circle><circle cx="64" cy="36" r="11" fill="{{ brand }}"></circle></svg></span><span style="width:64px;height:64px;border-radius:15px;background:{{ brand }};display:flex;align-items:center;justify-content:center"><svg width="39" height="39" sc-camel-view-box="0 0 100 100" aria-hidden="true" ><circle cx="50" cy="50" r="38" fill="#0B0B0C"></circle><circle cx="64" cy="36" r="11" fill="{{ brand }}"></circle></svg></span><span style="width:32px;height:32px;border-radius:8px;background:{{ brand }};display:flex;align-items:center;justify-content:center"><svg width="19" height="19" sc-camel-view-box="0 0 100 100" aria-hidden="true" ><circle cx="50" cy="50" r="38" fill="#0B0B0C"></circle><circle cx="64" cy="36" r="11" fill="{{ brand }}"></circle></svg></span><span style="width:16px;height:16px;display:flex"><svg width="16" height="16" sc-camel-view-box="0 0 100 100" aria-hidden="true" ><circle cx="50" cy="50" r="38" fill="{{ brand }}"></circle><circle cx="64" cy="36" r="11" fill="#0B0B0C"></circle></svg></span></div>
+      <p style="margin:0;font-size:13px;line-height:1.6;color:#9A9AA0">图标底用品牌色、标志用墨色；16 像素网页图标直接用彩色圆点，不加底板。</p>
+    </div>
+    <div style="border-radius:20px;background:#141416;padding:20px;display:flex;flex-direction:column;gap:14px">
+      <span style="font-size:13px;font-weight:600;color:#9A9AA0">横版组合</span>
+      <div style="height:104px;border-radius:14px;background:#0B0B0C;display:flex;align-items:center;justify-content:center;gap:12px"><svg width="40" height="40" sc-camel-view-box="0 0 100 100" aria-hidden="true" ><circle cx="50" cy="50" r="38" fill="{{ brand }}"></circle><circle cx="64" cy="36" r="11" fill="#0B0B0C"></circle></svg><span style="font:700 26px/1 'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif;letter-spacing:-0.02em">Rolling</span></div>
+      <div style="height:104px;border-radius:14px;background:#F5F5F5;color:#0B0B0C;display:flex;align-items:center;justify-content:center;gap:12px"><svg width="40" height="40" sc-camel-view-box="0 0 100 100" aria-hidden="true" ><circle cx="50" cy="50" r="38" fill="#0B0B0C"></circle><circle cx="64" cy="36" r="11" fill="#F5F5F5"></circle></svg><span style="font:700 26px/1 'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif;letter-spacing:-0.02em">Rolling</span></div>
+    </div>
+  </section>
+
+  <section style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px">
+    <div style="border-radius:20px;background:#141416;padding:20px;display:flex;flex-direction:column;gap:10px">
+      <span style="font-size:13px;font-weight:600;color:#9A9AA0">品牌色用在哪</span>
+      <span style="font-size:14px;line-height:1.7;color:#C8C8CC">标志、应用图标、启动动画、登录页、营销物料。</span>
+      <span style="font-size:13px;font-weight:600;color:#9A9AA0;margin-top:6px">不用在哪</span>
+      <span style="font-size:14px;line-height:1.7;color:#C8C8CC">按钮、选中态、进度、任何状态提示。界面强调色仍然是蓝色，主按钮仍然是白色。</span>
+    </div>
+    <div style="border-radius:20px;background:#141416;padding:20px;display:flex;flex-direction:column;gap:10px">
+      <span style="font-size:13px;font-weight:600;color:#9A9AA0">命名写法</span>
+      <span style="font-size:14px;line-height:1.7;color:#C8C8CC">所有语言、所有地区都只写 Rolling，不加中文名，也不音译。积分英文叫 Credits。</span>
+      <span style="font-size:14px;line-height:1.7;color:#9A9AA0">不要写成 ROLLING 全大写、Rolling AI、Rolling Studio。</span>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview": {"width": 1440, "height": 1500}, "color": {"editor": "enum", "options": ["场记黄", "胶片紫", "纸白"], "default": "场记黄"}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const C = {"场记黄": "#FFCB2B", "胶片紫": "#8E7BFF", "纸白": "#F5F5F5"}; const name = this.props.color || "场记黄"; const brand = C[name] || C["场记黄"];
+    const NOTE = { '场记黄': ['推荐', '#FFCB2B', '片场打板、胶带上的黄色。在深色界面上最醒目，和界面蓝、报错红都拉得开；授权提示的黄色标签要改成中性灰。'], '胶片紫': ['', '#9A9AA0', '偏冷、偏科技感，和界面蓝是邻近色，整体更统一，但品牌存在感弱一些。'], '纸白': ['', '#9A9AA0', '不用颜色，只靠图形和字标。最克制、最耐看，但应用商店和桌面上不容易一眼找到。'] };
+    const opts = Object.keys(C).map((n) => ({ name: n, c: C[n], tag: NOTE[n][0], tagFg: NOTE[n][1], note: NOTE[n][2], ring: n === name ? 'inset 0 0 0 2px #F5F5F5' : 'none' }));
+    return { brand, opts };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+{
+  "name": "@rolling/api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy:staging": "wrangler deploy --env staging",
+    "typecheck": "tsc -p .",
+    "test": "vitest run",
+    "cf-typegen": "wrangler types"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "^0.0.30",
+    "@rolling/agent": "workspace:*",
+    "@rolling/core": "workspace:*",
+    "@rolling/db": "workspace:*",
+    "drizzle-orm": "^0.44.7",
+    "graphql": "^16.11.0",
+    "graphql-yoga": "^5.16.0",
+    "hono": "^4.10.3",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.23.0",
+    "@cloudflare/workers-types": "^5.20261125.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0",
+    "wrangler": "^4.45.0"
+  }
+}

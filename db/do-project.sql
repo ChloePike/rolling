@@ -1,0 +1,9 @@
+-- ProjectRoom Durable Object (SQLite). One instance per project.
+CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);           -- revision, timeline_revision, workspace_id, title
+CREATE TABLE canvases (id TEXT PRIMARY KEY, title TEXT NOT NULL, viewport TEXT);
+CREATE TABLE nodes (id TEXT PRIMARY KEY, canvas_id TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('text','script','image','video','audio','asset','render')), title TEXT NOT NULL, params TEXT NOT NULL DEFAULT '{}', x REAL NOT NULL, y REAL NOT NULL, group_id TEXT, active_version_id TEXT, status TEXT NOT NULL DEFAULT 'idle', created_by TEXT NOT NULL, updated_at INTEGER NOT NULL);
+CREATE TABLE edges (id TEXT PRIMARY KEY, canvas_id TEXT NOT NULL, from_node TEXT NOT NULL, from_port TEXT NOT NULL, to_node TEXT NOT NULL, to_port TEXT NOT NULL, ord INTEGER NOT NULL DEFAULT 0, pinned_version_id TEXT);
+CREATE TABLE node_versions (id TEXT PRIMARY KEY, node_id TEXT NOT NULL, n INTEGER NOT NULL, asset_id TEXT, output TEXT, input_digest TEXT NOT NULL, model TEXT, job_id TEXT, created_at INTEGER NOT NULL, UNIQUE (node_id, n));
+CREATE TABLE groups (id TEXT PRIMARY KEY, canvas_id TEXT NOT NULL, title TEXT NOT NULL, color TEXT);
+CREATE TABLE timelines (canvas_id TEXT PRIMARY KEY, edl TEXT NOT NULL, revision INTEGER NOT NULL);
+CREATE TABLE patch_log (revision INTEGER PRIMARY KEY, actor TEXT NOT NULL, ops TEXT NOT NULL, created_at INTEGER NOT NULL);  -- undo/redo and audit

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Result</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin=""><link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Noto+Sans+SC:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-variant-numeric:tabular-nums}
+</style>
+</helmet>
+<div style="position:relative;width:100%;height:100vh;min-height:760px;background:rgba(5,5,6,.78);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:32px;box-sizing:border-box;color:#F5F5F5;font-family:'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif">
+  <div role="dialog" aria-label="Result" style="width:100%;max-width:1180px;height:100%;max-height:820px;border-radius:24px;background:#111113;box-shadow:0 30px 80px rgba(0,0,0,.6);display:flex;overflow:hidden;flex-wrap:wrap">
+    <div style="flex:999 1 520px;min-width:0;background:#0B0B0C;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;box-sizing:border-box">
+      <div style="height:min(600px,70vh);aspect-ratio:{{ ar }};border-radius:16px;background:#26232A;position:relative;display:flex;align-items:center;justify-content:center">
+        <button aria-label="Play" style="width:60px;height:60px;border-radius:999px;border:0;background:rgba(11,11,12,.55);cursor:pointer;display:flex;align-items:center;justify-content:center"><svg width="22" height="22" sc-camel-view-box="0 0 24 24" fill="#F5F5F5" aria-hidden="true"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5z"></path></svg></button>
+        <span style="position:absolute;left:10px;top:10px;height:24px;padding:0 10px;border-radius:999px;background:rgba(11,11,12,.6);font-size:12px;font-weight:600;line-height:24px">{{ verLabel }}</span>
+      </div>
+      <div style="width:min(520px,100%);display:flex;align-items:center;gap:10px">
+        <span style="font:500 12px/1 'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif;color:#C8C8CC">00:04</span>
+        <div style="flex:1;height:4px;border-radius:999px;background:#26262A;position:relative"><span style="position:absolute;left:0;top:0;bottom:0;width:27%;border-radius:999px;background:#F5F5F5"></span></div>
+        <span style="font:500 12px/1 'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif;color:#7C7C84">00:15</span>
+        <button aria-label="Mute" style="width:30px;height:30px;border-radius:999px;border:0;background:#1C1C1F;color:#C8C8CC;cursor:pointer;display:flex;align-items:center;justify-content:center"><svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z M16 9a5 5 0 0 1 0 6"></path></svg></button>
+      </div>
+      <div style="display:flex;gap:8px">
+        <sc-for list="{{ versions }}" as="v" hint-placeholder-count="4">
+          <button onClick="{{ v.pick }}" aria-pressed="{{ v.on }}" aria-label="{{ v.label }}" style="width:52px;height:52px;border-radius:10px;border:0;background:{{ v.bg }};box-shadow:{{ v.ring }};color:#F5F5F5;font:600 11px/1 'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif;cursor:pointer;display:flex;align-items:flex-end;justify-content:flex-start;padding:5px;box-sizing:border-box">{{ v.label }}</button>
+        </sc-for>
+      </div>
+    </div>
+
+    <aside style="flex:1 1 360px;max-width:420px;min-width:0;display:flex;flex-direction:column;overflow:auto">
+      <div style="display:flex;align-items:center;gap:8px;padding:16px 16px 8px">
+        <span style="flex:1;display:flex;flex-direction:column;gap:3px"><span style="font-size:16px;font-weight:700">{{ title }}</span><span style="font-size:12px;color:#7C7C84">10 min ago · Alex</span></span>
+        <button aria-label="Favorites" style="width:34px;height:34px;border-radius:999px;border:0;background:#1C1C1F;color:#C8C8CC;cursor:pointer;display:flex;align-items:center;justify-content:center"><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"></path></svg></button>
+        <button onClick="{{ close }}" aria-label="Close" style="width:34px;height:34px;border-radius:999px;border:0;background:#1C1C1F;color:#C8C8CC;font-size:16px;cursor:pointer"><svg width="16" height="16" style="display:block;margin:auto" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18 M6 6l12 12"></path></svg></button>
+      </div>
+      <div style="padding:8px 16px 16px;display:flex;flex-direction:column;gap:14px">
+        <div style="border-radius:14px;background:#1C1C1F;padding:12px;display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:center;font-size:12px;color:#9A9AA0"><span style="flex:1">Prompt</span><button style="height:24px;padding:0 8px;border-radius:999px;border:0;background:none;color:#93C5FD;font:inherit;font-size:12px;font-weight:600;cursor:pointer">Copy</button></div>
+          <span style="font-size:14px;line-height:1.6">{{ prompt }}</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px">
+          <sc-for list="{{ params }}" as="p" hint-placeholder-count="8">
+            <div style="border-radius:12px;background:#1C1C1F;padding:8px 10px;display:flex;flex-direction:column;gap:3px"><span style="font-size:11px;color:#7C7C84">{{ p.k }}</span><span style="font:600 13px/1.3 'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif">{{ p.v }}</span></div>
+          </sc-for>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:12px;color:#9A9AA0">Assets used</span>
+          <div style="display:flex;gap:6px">
+            <span style="width:44px;height:44px;border-radius:10px;background:#26232A"></span><span style="width:44px;height:44px;border-radius:10px;background:#1F2628"></span>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px">
+          <sc-for list="{{ actions }}" as="a" hint-placeholder-count="6">
+            <button style="height:40px;border-radius:12px;border:0;background:{{ a.bg }};color:{{ a.fg }};font:inherit;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px"><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ a.d }}"></path></svg>{{ a.label }}<sc-if value="{{ a.cost }}" hint-placeholder-val="{{ false }}"><span style="font:500 11px/1 'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif;opacity:.7">{{ a.cost }}</span></sc-if></button>
+          </sc-for>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"ar":{"editor":"enum","options":["9/16","16/9","2/3"],"default":"9/16"},"onClose":{"editor":null},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(p){ super(p); this.state = { v: 2 }; }
+  renderVals() {
+    const tones = ['#202330', '#1F2628', '#26232A', '#28251F'];
+    const versions = [1, 2, 3, 4].map((n, i) => { const on = this.state.v === i; return { label: 'v' + n, on, bg: tones[i], ring: on ? '0 0 0 2px #3B82F6' : 'none', pick: () => this.setState({ v: i }) }; });
+    return {
+      ar: this.props.ar || '9/16', versions, verLabel: 'v' + (this.state.v + 1) + ' · Current', title: 'Two-person product demo · New lighting',
+      prompt: 'In shot 2, change the white daylight outside the window to warm golden-hour light. Keep the action and camera position.',
+      params: [{ k: 'Model', v: 'Seedance 2.5' }, { k: 'Mode', v: 'From template' }, { k: 'Aspect ratio', v: '9:16' }, { k: 'Duration', v: '15s' }, { k: 'Resolution', v: '720p' }, { k: 'Seed', v: '48213' }, { k: 'Took', v: '1m 52s' }, { k: 'Cost', v: '10 credits' }],
+      actions: [
+        { label: 'Edit from here', d: 'M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z', bg: '#F5F5F5', fg: '#0B0B0C', cost: '' },
+        { label: 'Regenerate', d: 'M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8 M3 3v5h5', bg: '#1C1C1F', fg: '#F5F5F5', cost: '10' },
+        { label: 'Extend 5s', d: 'M6 17l5-5-5-5 M13 17l5-5-5-5', bg: '#1C1C1F', fg: '#F5F5F5', cost: '6' },
+        { label: 'HD 1080p', d: 'M4 3h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M8 21h8 M12 17v4', bg: '#1C1C1F', fg: '#F5F5F5', cost: '8' },
+        { label: 'Send to canvas', d: 'M5 3h4a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M7 11v4a2 2 0 0 0 2 2h4 M15 13h4a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2z', bg: '#1C1C1F', fg: '#F5F5F5', cost: '' },
+        { label: 'Download', d: 'M12 15V3 M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5', bg: '#1C1C1F', fg: '#F5F5F5', cost: '' }
+      ],
+      close: () => this.props.onClose && this.props.onClose()
+    };
+  }
+}
+</script>
+</body>
+</html>

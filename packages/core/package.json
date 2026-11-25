@@ -1,0 +1,5 @@
+{ "name": "@rolling/core", "private": true, "type": "module",
+  "exports": { ".": "./src/index.ts", "./*": "./src/*.ts" },
+  "scripts": { "typecheck": "tsc -p .", "test": "vitest run" },
+  "dependencies": { "zod": "^3.25.76", "ulid": "^3.0.1" },
+  "devDependencies": { "vitest": "^4.1.0", "typescript": "^5.9.3", "tsx": "^4.20.6" } }

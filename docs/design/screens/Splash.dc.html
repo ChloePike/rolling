@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Splash</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin=""><link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Noto+Sans+SC:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0B0B0C;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-variant-numeric:tabular-nums}
+a{color:#F5F5F5;text-decoration:none}a:hover{color:#FFFFFF}
+textarea::placeholder,input::placeholder{color:#7C7C84}
+*{scrollbar-width:thin;scrollbar-color:#3A3A40 transparent}
+::-webkit-scrollbar{width:6px;height:6px;background:transparent}
+::-webkit-scrollbar-thumb{background:#3A3A40;border-radius:999px}
+
+.sp{position:relative;height:100vh;min-height:600px;background:#0B0B0C;overflow:hidden;display:flex;align-items:center;justify-content:center;font-family:'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif}
+.lk{display:flex;align-items:center;animation:fade 5s cubic-bezier(.2,.7,.2,1) infinite}
+.mk{position:relative;width:var(--s);height:var(--s);flex:none}
+.mk .c{position:absolute;inset:0;border-radius:50%;background:var(--b);transform:scale(0);animation:pop 5s cubic-bezier(.3,1.4,.4,1) infinite}
+.mk .h{position:absolute;width:29%;height:29%;left:53.9%;top:17.1%;border-radius:50%;background:#0B0B0C;transform:scale(0);animation:hole 5s cubic-bezier(.3,1.5,.4,1) infinite}
+.mk .r{position:absolute;inset:0;border-radius:50%;box-shadow:0 0 0 2px var(--b);opacity:0;animation:ping 5s ease-out infinite}
+.tx{overflow:hidden;max-width:0;animation:reveal 5s cubic-bezier(.2,.8,.2,1) infinite;white-space:nowrap}
+.tx>span{display:inline-flex;align-items:baseline;gap:calc(var(--s)*.2);padding-left:calc(var(--s)*.28);transform:translateX(-12px);opacity:0;animation:slide 5s cubic-bezier(.2,.8,.2,1) infinite}
+.en{font-weight:700;font-size:calc(var(--s)*.62);letter-spacing:-0.03em;color:#F5F5F5}
+.cn{font-weight:700;font-size:calc(var(--s)*.44);color:#9A9AA0}
+.by{position:absolute;left:0;right:0;bottom:48px;text-align:center;font-size:13px;color:#7C7C84;opacity:0;animation:by 5s ease infinite}
+.tc{position:absolute;left:32px;top:28px;display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:#7C7C84;opacity:0;animation:by 5s ease infinite}
+.tc i{width:7px;height:7px;border-radius:50%;background:var(--b);animation:blink 1s steps(1) infinite}
+@keyframes pop{0%,6%{transform:scale(0)}20%{transform:scale(1)}92%{transform:scale(1)}100%{transform:scale(1)}}
+@keyframes hole{0%,22%{transform:scale(0)}32%{transform:scale(1)}100%{transform:scale(1)}}
+@keyframes ping{0%,32%{opacity:0;transform:scale(1)}34%{opacity:.9;transform:scale(1)}52%{opacity:0;transform:scale(1.7)}100%{opacity:0}}
+@keyframes reveal{0%,44%{max-width:0}64%,100%{max-width:900px}}
+@keyframes slide{0%,46%{opacity:0;transform:translateX(-12px)}62%,100%{opacity:1;transform:none}}
+@keyframes by{0%,62%{opacity:0}72%,90%{opacity:1}100%{opacity:0}}
+@keyframes fade{0%,90%{opacity:1;filter:none}97%,100%{opacity:0}}
+@keyframes blink{0%{opacity:1}50%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.lk,.mk .c,.mk .h,.tx,.tx>span,.by,.tc{animation:none!important;opacity:1;transform:none;max-width:none}.mk .r{display:none}}
+</style>
+</helmet>
+<div class="sp" style="--b:{{ brand }};--s:{{ size }}">
+  <div class="tc"><i></i>REC</div>
+  <div class="lk" role="img" aria-label="Rolling">
+    <div class="mk"><span class="r"></span><span class="c"></span><span class="h"></span></div>
+    <div class="tx"><span><span class="en">Rolling</span></span></div>
+  </div>
+  <div class="by">by AIGC.HUB</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview": {"width": 1440, "height": 900}, "color": {"editor": "enum", "options": ["Slate yellow", "Film violet", "Paper white"], "default": "Slate yellow"}, "compact": {"editor": "boolean", "default": false}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const C = {"Slate yellow": "#FFCB2B", "Film violet": "#8E7BFF", "Paper white": "#F5F5F5"}; const name = this.props.color || "Slate yellow"; const brand = C[name] || C["Slate yellow"];
+    return { brand, size: this.props.compact ? '56px' : '112px' };
+  }
+}
+</script>
+</body>
+</html>

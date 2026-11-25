@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Public library</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin=""><link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Noto+Sans+SC:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0B0B0C;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-variant-numeric:tabular-nums}
+a{color:#F5F5F5;text-decoration:none}a:hover{color:#FFFFFF}
+textarea::placeholder,input::placeholder{color:#7C7C84}
+*{scrollbar-width:thin;scrollbar-color:#3A3A40 transparent}
+::-webkit-scrollbar{width:6px;height:6px;background:transparent}
+::-webkit-scrollbar-thumb{background:#3A3A40;border-radius:999px}
+</style>
+</helmet>
+<div style="position:relative;min-height:100vh;background:#0B0B0C;color:#F5F5F5;font-family:'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif">
+  <header style="flex:none;position:relative;z-index:30;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 20px;background:#0B0B0C">
+    <div style="flex:1 1 160px;display:flex;align-items:center;gap:10px">
+      <svg width="30" height="30" sc-camel-view-box="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="40" fill="#FFCB2B"></circle><circle cx="64.7" cy="35.3" r="11.6" fill="#0B0B0C"></circle></svg>
+      <span style="font:700 16px/1 'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif;letter-spacing:-0.02em">Rolling</span>
+    </div>
+    <nav aria-label="Main" style="flex:0 1 auto;max-width:100%;overflow-x:auto;border-radius:999px;background:#161618;padding:4px;display:flex;gap:2px">
+      <sc-for list="{{ nav }}" as="n" hint-placeholder-count="8">
+        <a href="{{ n.href }}" aria-current="{{ n.cur }}" style="height:36px;padding:0 14px;border-radius:999px;background:{{ n.bg }};color:{{ n.fg }};display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:13px;font-weight:600">
+          <svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ n.d }}"></path></svg>{{ n.label }}</a>
+      </sc-for>
+    </nav>
+    <div style="flex:1 1 160px;display:flex;justify-content:flex-end;align-items:center;gap:8px">
+      <button onClick="{{ toggleCredits }}" aria-expanded="{{ creditsOpen }}" aria-label="Credit balance" style="height:34px;padding:0 4px 0 11px;border-radius:999px;border:0;background:{{ creditBg }};color:#F5F5F5;font:inherit;display:flex;align-items:center;gap:7px;cursor:pointer"><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="#9A9AA0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20z M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8 M12 18V6"></path></svg><span style="font-size:13px;font-weight:600">2,480</span><span style="width:26px;height:26px;border-radius:999px;background:#26262A;display:flex;align-items:center;justify-content:center"><svg width="13" height="13" sc-camel-view-box="0 0 24 24" fill="none" stroke="#F5F5F5" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14 M12 5v14"></path></svg></span></button>
+      <button onClick="{{ toggleSettings }}" aria-expanded="{{ settingsOpen }}" aria-label="Settings" title="Settings" style="width:34px;height:34px;border-radius:999px;border:0;background:{{ gearBg }};color:#F5F5F5;cursor:pointer;display:flex;align-items:center;justify-content:center"><svg width="17" height="17" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z M12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"></path></svg></button>
+      <button onClick="{{ toggleAccount }}" aria-expanded="{{ accountOpen }}" aria-label="Account" style="position:relative;width:34px;height:34px;border-radius:999px;border:0;background:#333338;color:#F5F5F5;font:inherit;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 0 0 2px #0B0B0C,0 0 0 3.5px #B8955A">A<span style="position:absolute;right:-7px;bottom:-5px;height:14px;padding:0 4px;border-radius:4px;background:#B8955A;color:#0B0B0C;font-size:9px;font-weight:800;line-height:14px;letter-spacing:.02em">PRO</span></button>
+    </div>
+    <sc-if value="{{ creditsOpen }}" hint-placeholder-val="{{ false }}">
+      <div role="dialog" aria-label="credits" style="position:absolute;right:68px;top:58px;width:340px;border-radius:20px;background:#1C1C1F;box-shadow:0 20px 60px rgba(0,0,0,.6);padding:16px;display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:flex-end;gap:8px">
+          <div style="flex:1;display:flex;flex-direction:column;gap:6px"><span style="font-size:12px;color:#9A9AA0">Available credits</span><span style="font-size:30px;font-weight:700;letter-spacing:-0.02em;line-height:1">2,480</span></div>
+          <a href="Tasks.dc.html" style="font-size:12px;color:#C8C8CC;text-decoration:none;padding-bottom:3px">Usage details ›</a>
+        </div>
+        <div style="display:flex;height:6px;border-radius:999px;overflow:hidden;gap:2px"><span style="flex:1800;background:#F5F5F5"></span><span style="flex:680;background:#55555E"></span></div>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:12px">
+          <div style="display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:2px;background:#F5F5F5"></span><span style="flex:1;color:#C8C8CC">Plan credits</span><span style="font-weight:600">1,800</span><span style="width:86px;text-align:right;color:#7C7C84">Expires Nov 30</span></div>
+          <div style="display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:2px;background:#55555E"></span><span style="flex:1;color:#C8C8CC">Purchased credits</span><span style="font-weight:600">680</span><span style="width:86px;text-align:right;color:#7C7C84">Never expire</span></div>
+        </div>
+        <div style="height:1px;background:#26262A"></div>
+        <div style="display:flex;flex-direction:column;gap:4px"><div style="display:flex;align-items:center;font-size:13px;padding:2px 0"><span style="flex:1;color:#9A9AA0">Used this month</span><span style="font-weight:600">1,284</span></div><div style="display:flex;align-items:center;font-size:13px;padding:2px 0"><span style="flex:1;color:#9A9AA0">Held for running jobs</span><span style="font-weight:600">16</span></div><div style="display:flex;align-items:center;font-size:13px;padding:2px 0"><span style="flex:1;color:#9A9AA0">Expiring this month</span><span style="font-weight:600">300</span></div></div>
+        <div style="height:1px;background:#26262A"></div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:12px;color:#9A9AA0">Top up</span>
+          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px">
+            <sc-for list="{{ packs }}" as="k" hint-placeholder-count="3">
+              <button onClick="{{ k.pick }}" aria-pressed="{{ k.on }}" style="border-radius:12px;border:0;background:#141416;box-shadow:{{ k.ring }};padding:10px 8px;color:#F5F5F5;font:inherit;display:flex;flex-direction:column;align-items:flex-start;gap:4px;cursor:pointer"><span style="font-size:15px;font-weight:700">{{ k.n }}</span><span style="font-size:11px;color:#9A9AA0">$[Price]</span></button>
+            </sc-for>
+          </div>
+          <button style="height:40px;border-radius:999px;border:0;background:#F5F5F5;color:#0B0B0C;font:inherit;font-size:14px;font-weight:700;cursor:pointer">Top up {{ packN }} credits</button>
+          <span style="font-size:11px;line-height:1.5;color:#7C7C84">Plan credits are used first, then purchased credits. You’re only charged for successful results; failed and canceled runs are refunded.</span>
+        </div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ accountOpen }}" hint-placeholder-val="{{ false }}">
+      <div role="menu" aria-label="Account" style="position:absolute;right:20px;top:58px;width:300px;border-radius:20px;background:#1C1C1F;box-shadow:0 20px 60px rgba(0,0,0,.6);padding:8px;display:flex;flex-direction:column;gap:2px">
+        <div style="display:flex;align-items:center;gap:10px;padding:8px">
+          <span style="width:40px;height:40px;border-radius:999px;background:#333338;display:flex;align-items:center;justify-content:center;font-weight:600">A</span>
+          <span style="flex:1;display:flex;flex-direction:column;gap:3px"><span style="font-size:14px;font-weight:700">A</span><span style="font-size:12px;color:#9A9AA0">Pro · Renews [date]</span></span>
+        </div>
+        <div style="padding:8px 8px 4px;font-size:11px;font-weight:600;color:#7C7C84">Workspace</div>
+        <sc-for list="{{ spaces }}" as="w" hint-placeholder-count="2">
+          <button role="menuitemradio" aria-checked="{{ w.on }}" onClick="{{ w.pick }}" style="height:44px;padding:0 8px;border-radius:12px;border:0;background:{{ w.bg }};color:#F5F5F5;font:inherit;display:flex;align-items:center;gap:10px;cursor:pointer;text-align:left">
+            <span style="width:28px;height:28px;border-radius:8px;background:{{ w.tone }};font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center">{{ w.mark }}</span>
+            <span style="flex:1;display:flex;flex-direction:column;gap:2px"><span style="font-size:13px;font-weight:600">{{ w.name }}</span><span style="font-size:11px;color:#7C7C84">{{ w.meta }}</span></span>
+            <sc-if value="{{ w.on }}" hint-placeholder-val="{{ false }}"><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="#F5F5F5" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg></sc-if>
+          </button>
+        </sc-for>
+        <div style="height:1px;background:#26262A;margin:6px 8px"></div>
+        <sc-for list="{{ acctMenu }}" as="a" hint-placeholder-count="4">
+          <a href="{{ a.href }}" role="menuitem" style="height:38px;padding:0 8px;border-radius:10px;color:#C8C8CC;text-decoration:none;font-size:13px;display:flex;align-items:center;gap:10px"><svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ a.d }}"></path></svg><span style="flex:1">{{ a.label }}</span><span style="font-size:12px;color:#7C7C84">{{ a.note }}</span></a>
+        </sc-for>
+        <div style="height:1px;background:#26262A;margin:6px 8px"></div>
+        <button role="menuitem" style="height:38px;padding:0 8px;border-radius:10px;border:0;background:none;color:#9A9AA0;font:inherit;font-size:13px;display:flex;align-items:center;gap:10px;cursor:pointer"><svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4 M16 17l5-5-5-5 M21 12H9"></path></svg>Log out</button>
+      </div>
+    </sc-if>
+    <sc-if value="{{ settingsOpen }}" hint-placeholder-val="{{ false }}">
+      <div role="dialog" aria-label="Settings" style="position:absolute;right:20px;top:58px;width:340px;border-radius:20px;background:#1C1C1F;box-shadow:0 20px 60px rgba(0,0,0,.6);padding:14px;display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;align-items:center"><span style="font-size:15px;font-weight:700;flex:1">Settings</span><button onClick="{{ toggleSettings }}" aria-label="Close settings" style="width:28px;height:28px;border-radius:999px;border:0;background:none;color:#9A9AA0;font-size:16px;cursor:pointer"><svg width="16" height="16" style="display:block;margin:auto" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18 M6 6l12 12"></path></svg></button></div>
+        <div style="font-size:12px;font-weight:600;color:#9A9AA0">Creation mode</div>
+        <div role="radiogroup" aria-label="Creation mode" style="display:flex;flex-direction:column;gap:6px">
+          <sc-for list="{{ modes }}" as="m" hint-placeholder-count="2">
+            <button role="radio" aria-checked="{{ m.on }}" onClick="{{ m.pick }}" style="border-radius:14px;border:0;background:{{ m.bg }};box-shadow:{{ m.ring }};padding:10px 12px;color:#F5F5F5;font:inherit;text-align:left;display:flex;gap:10px;align-items:flex-start;cursor:pointer">
+              <span style="flex:none;width:30px;height:30px;border-radius:9px;background:#26262A;display:flex;align-items:center;justify-content:center"><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ m.d }}"></path></svg></span>
+              <span style="flex:1;display:flex;flex-direction:column;gap:3px"><span style="font-size:13px;font-weight:700">{{ m.label }} <span style="font-weight:500;color:#9A9AA0">· {{ m.sub }}</span></span><span style="font-size:12px;line-height:1.45;color:#9A9AA0">{{ m.desc }}</span></span>
+              <span style="flex:none;width:16px;height:16px;border-radius:999px;margin-top:7px;box-shadow:{{ m.dot }}"></span>
+            </button>
+          </sc-for>
+        </div>
+        <div style="height:1px;background:#26262A"></div>
+        <div style="display:flex;align-items:center;font-size:13px"><span style="flex:1;color:#C8C8CC">Language</span><span style="color:#9A9AA0">English ›</span></div>
+        <div style="display:flex;align-items:center;font-size:13px"><span style="flex:1;color:#C8C8CC">Currency</span><span style="color:#9A9AA0">USD ›</span></div>
+        <div style="display:flex;align-items:center;font-size:13px"><span style="flex:1;color:#C8C8CC">Default aspect ratio</span><span style="color:#9A9AA0">9:16 ›</span></div>
+        <div style="display:flex;align-items:center;font-size:13px"><span style="flex:1;color:#C8C8CC">Notify when done</span><span style="color:#9A9AA0">On ›</span></div>
+      </div>
+    </sc-if>
+  </header>
+  <main style="max-width:1400px;margin:0 auto;padding:12px 28px 48px;box-sizing:border-box;display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
+    <aside aria-label="Category" style="flex:0 0 210px;display:flex;flex-direction:column;gap:2px">
+      <a href="Assets.dc.html" style="height:34px;padding:0 10px;border-radius:10px;display:flex;align-items:center;gap:8px;font-size:13px;color:#9A9AA0"><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>My assets</a>
+      <sc-for list="{{ groups }}" as="g" hint-placeholder-count="3">
+        <span style="padding:14px 10px 6px;font-size:11px;font-weight:600;color:#7C7C84">{{ g.name }}</span>
+        <sc-for list="{{ g.items }}" as="c" hint-placeholder-count="4">
+          <button onClick="{{ c.pick }}" aria-pressed="{{ c.on }}" style="height:36px;padding:0 10px;border-radius:10px;border:0;background:{{ c.bg }};color:{{ c.fg }};font:inherit;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:10px;text-align:left"><svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ c.d }}"></path></svg><span style="flex:1">{{ c.label }}</span><span style="font-size:12px;font-weight:500;color:#7C7C84">{{ c.n }}</span></button>
+        </sc-for>
+      </sc-for>
+    </aside>
+
+    <section style="flex:999 1 560px;min-width:0;display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap">
+        <div style="display:flex;flex-direction:column;gap:6px"><h1 style="margin:0;font-size:24px;font-weight:700;letter-spacing:-0.02em">{{ heading }}</h1><span style="font-size:13px;color:#9A9AA0">{{ sub }}</span></div>
+        <span style="flex:1"></span>
+        <label for="pq" style="height:38px;width:300px;max-width:100%;border-radius:999px;background:#161618;display:flex;align-items:center;gap:8px;padding:0 14px;box-sizing:border-box"><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="#7C7C84" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M11 3a8 8 0 1 1 0 16 8 8 0 0 1 0-16z M21 21l-4.3-4.3"></path></svg><input id="pq" placeholder="Search poses, outfits, expressions, or describe one" style="flex:1;min-width:0;border:0;outline:0;background:none;color:#F5F5F5;font:inherit;font-size:13px"></label>
+        <button aria-label="Surprise me" style="width:38px;height:38px;border-radius:999px;border:0;background:#161618;color:#C8C8CC;cursor:pointer;display:flex;align-items:center;justify-content:center"><svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.7-1.1 2-1.7 3.3-1.7H22 M18 2l4 4-4 4 M2 6h1.9c1.5 0 2.9.9 3.6 2.2 M22 18h-5.9c-1.3 0-2.6-.7-3.3-1.8l-.5-.8 M18 14l4 4-4 4"></path></svg></button>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <div style="display:flex;gap:6px;flex-wrap:wrap"><sc-for list="{{ subs }}" as="c" hint-placeholder-count="5"><button aria-pressed="{{ c.on }}" onClick="{{ c.pick }}" style="height:32px;padding:0 13px;border-radius:999px;border:0;background:{{ c.bg }};color:{{ c.fg }};font:inherit;font-size:13px;font-weight:600;cursor:pointer">{{ c.label }}</button></sc-for></div>
+        <span style="flex:1"></span>
+        <span style="font-size:12px;color:#7C7C84">{{ countText }}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px">
+        <sc-for list="{{ items }}" as="a" hint-placeholder-count="15">
+          <button onClick="{{ a.pick }}" aria-pressed="{{ a.on }}" style="border-radius:16px;border:0;background:#141416;box-shadow:{{ a.ring }};padding:8px;color:#F5F5F5;font:inherit;text-align:left;display:flex;flex-direction:column;gap:8px;cursor:pointer">
+            <span style="aspect-ratio:{{ a.ar }};border-radius:10px;background:{{ a.bg }};position:relative;display:flex;align-items:flex-end;justify-content:center;overflow:hidden">
+              <svg width="64%" height="78%" sc-camel-view-box="0 0 24 24" fill="none" stroke="rgba(245,245,245,.22)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ a.glyph }}"></path></svg>
+              <span style="position:absolute;left:6px;top:6px;height:18px;padding:0 6px;border-radius:5px;background:rgba(11,11,12,.6);font-size:10px;font-weight:700;line-height:18px">{{ a.id }}</span>
+              <sc-if value="{{ a.hasAngles }}" hint-placeholder-val="{{ true }}"><span style="position:absolute;right:6px;top:6px;height:18px;padding:0 6px;border-radius:5px;background:rgba(11,11,12,.6);font-size:10px;font-weight:600;line-height:18px;color:#C8C8CC">{{ a.angles }} angles</span></sc-if>
+            </span>
+            <span style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ a.name }}</span>
+            <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:#7C7C84"><span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ a.meta }}</span><span style="flex:none;height:16px;padding:0 5px;border-radius:4px;background:{{ a.licBg }};color:{{ a.licFg }};font-size:10px;font-weight:600;line-height:16px">{{ a.lic }}</span></span>
+          </button>
+        </sc-for>
+      </div>
+    </section>
+
+    <aside aria-label="Asset details" style="flex:0 0 340px;border-radius:20px;background:#141416;padding:14px;display:flex;flex-direction:column;gap:14px;box-sizing:border-box;position:sticky;top:12px">
+      <div style="aspect-ratio:{{ dAr }};border-radius:14px;background:{{ dBg }};display:flex;align-items:flex-end;justify-content:center;overflow:hidden;position:relative">
+        <svg width="62%" height="82%" sc-camel-view-box="0 0 24 24" fill="none" stroke="rgba(245,245,245,.28)" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ dGlyph }}"></path></svg>
+        <span style="position:absolute;left:10px;bottom:10px;height:22px;padding:0 8px;border-radius:6px;background:rgba(11,11,12,.6);font-size:11px;font-weight:600;line-height:22px">{{ dView }}</span>
+      </div>
+      <sc-if value="{{ dHasAngles }}" hint-placeholder-val="{{ true }}">
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px">
+          <sc-for list="{{ views }}" as="v" hint-placeholder-count="5">
+            <button onClick="{{ v.pick }}" aria-pressed="{{ v.on }}" aria-label="{{ v.label }}" style="aspect-ratio:3/4;border-radius:8px;border:0;background:{{ dBg }};box-shadow:{{ v.ring }};cursor:pointer;display:flex;align-items:flex-end;justify-content:center;padding:0 0 4px;color:#C8C8CC;font:inherit;font-size:10px;font-weight:600">{{ v.label }}</button>
+          </sc-for>
+        </div>
+      </sc-if>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <span style="font-size:12px;color:#7C7C84">{{ dId }}</span>
+        <span style="font-size:17px;font-weight:700">{{ dName }}</span>
+        <div style="display:flex;gap:6px;flex-wrap:wrap"><sc-for list="{{ dTags }}" as="t" hint-placeholder-count="3"><span style="height:22px;padding:0 8px;border-radius:6px;background:#1C1C1F;font-size:11px;color:#C8C8CC;line-height:22px">{{ t }}</span></sc-for></div>
+      </div>
+      <div style="border-radius:14px;background:#1C1C1F;padding:10px 12px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;gap:4px">
+          <sc-for list="{{ langs }}" as="l" hint-placeholder-count="2"><button onClick="{{ l.pick }}" aria-pressed="{{ l.on }}" style="height:26px;padding:0 10px;border-radius:999px;border:0;background:{{ l.bg }};color:{{ l.fg }};font:inherit;font-size:12px;font-weight:600;cursor:pointer">{{ l.label }}</button></sc-for>
+          <span style="flex:1"></span>
+          <button style="height:26px;padding:0 10px;border-radius:999px;border:0;background:none;color:#C8C8CC;font:inherit;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px"><svg width="13" height="13" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 8h12v12H8z M4 16V4h12"></path></svg>Copy</button>
+        </div>
+        <p style="margin:0;font-size:13px;line-height:1.6;color:#C8C8CC">{{ dPrompt }}</p>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;font-size:13px">
+        <div style="display:flex;gap:8px"><span style="width:56px;flex:none;color:#7C7C84">Source</span><span style="color:#C8C8CC">{{ dSrc }}</span></div>
+        <div style="display:flex;gap:8px"><span style="width:56px;flex:none;color:#7C7C84">License</span><span style="color:{{ dLicFg }}">{{ dLic }}</span></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <button style="height:40px;border-radius:999px;border:0;background:#F5F5F5;color:#0B0B0C;font:inherit;font-size:14px;font-weight:700;cursor:pointer">{{ dCta }}</button>
+        <div style="display:flex;gap:6px">
+          <button style="flex:1;height:36px;border-radius:999px;border:0;background:#1C1C1F;color:#F5F5F5;font:inherit;font-size:13px;font-weight:600;cursor:pointer">Add to board</button>
+          <button style="flex:1;height:36px;border-radius:999px;border:0;background:#1C1C1F;color:#F5F5F5;font:inherit;font-size:13px;font-weight:600;cursor:pointer">Add to canvas</button>
+          <button aria-label="Favorites" style="width:36px;height:36px;border-radius:999px;border:0;background:#1C1C1F;color:#C8C8CC;cursor:pointer;display:flex;align-items:center;justify-content:center"><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"></path></svg></button>
+        </div>
+        <span style="font-size:11px;line-height:1.5;color:#7C7C84">Type @ in the prompt box or on the canvas to use anything here</span>
+      </div>
+    </aside>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview": {"width": 1440, "height": 1100}, "initCat": {"editor": "enum", "options": ["Poses", "Outfits", "Portraits", "Expressions", "Scenes", "Lighting"], "default": "Poses"}}'>
+class Component extends DCLogic {
+  constructor(p){ super(p); this.state = {}; }
+  renderVals() {
+    const ACTIVE = "Assets";
+    const NAVD = [['Home','Main.dc.html','M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8 M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'],['Canvas','Canvas.dc.html','M5 3h4a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M7 11v4a2 2 0 0 0 2 2h4 M15 13h4a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2z'],['Quick Create','QuickCreate.dc.html','M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z'],['Remix','OriginalVideo.dc.html','M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3z M6.2 5.3l3.1 3.9 M12.4 3.4l3.1 4 M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'],['Avatar','DigitalHuman.dc.html','M18 20a6 6 0 0 0-12 0 M12 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8z'],['Character','Character.dc.html','M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 3a4 4 0 1 1 0 8 4 4 0 0 1 0-8z M22 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75'],['Assets','Assets.dc.html','M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M9 7a2 2 0 1 1 0 4 2 2 0 0 1 0-4z M21 15l-3.086-3.086a2 2 0 0 0-2.828 0L6 21'],['Activity','Tasks.dc.html','M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8 M3 3v5h5 M12 7v5l4 2']];
+    const nav = NAVD.map(([label, href, d]) => { const on = label === ACTIVE; return { label, href, d, cur: on ? 'page' : 'false', bg: on ? '#2E2E33' : 'transparent', fg: on ? '#F5F5F5' : '#9A9AA0' }; });
+    let stored = null; try { stored = window.localStorage.getItem('aigcStudioMode'); } catch (e) {}
+    const MODE = this.state.mode || stored || 'Simple';
+    const modes = [['Simple', 'Chat', 'Describe what you want in one line. Models and settings are handled by AI', 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'], ['Advanced', 'Settings panel', 'Model, seed, motion strength, negative prompt and more in the left panel', 'M21 4h-7 M10 4H3 M21 12h-9 M8 12H3 M21 20h-5 M12 20H3 M14 2v4 M8 10v4 M16 18v4']].map(([label, sub, desc, d]) => { const on = MODE === label; return { label, sub, desc, d, on, bg: on ? '#26262A' : '#161618', ring: on ? 'inset 0 0 0 1.5px #3B82F6' : 'none', dot: on ? 'inset 0 0 0 5px #3B82F6' : 'inset 0 0 0 1.5px #4A4A52', pick: () => { try { window.localStorage.setItem('aigcStudioMode', label); } catch (e) {} this.setState({ mode: label }); } }; });
+    const ACC = (() => {
+      const S = this.state;
+      const only = (k) => () => this.setState({ credits: k === 'credits' ? !S.credits : false, account: k === 'account' ? !S.account : false, settings: k === 'settings' ? !S.settings : false });
+      const pack = S.pack || '3,000';
+      return {
+        creditsOpen: !!S.credits, accountOpen: !!S.account, settingsOpen: !!S.settings,
+        toggleCredits: only('credits'), toggleAccount: only('account'), toggleSettings: only('settings'),
+        creditBg: S.credits ? '#2E2E33' : '#161618', gearBg: S.settings ? '#2E2E33' : '#161618',
+        packN: pack,
+        packs: ['1,000', '3,000', '10,000'].map((n) => ({ n, on: pack === n, ring: pack === n ? 'inset 0 0 0 1.5px #F5F5F5' : 'none', pick: () => this.setState({ pack: n }) })),
+        spaces: [['Personal', 'Only you', 'A', '#333338', 'me'], ['Ridgeline brand team', 'Team · 5 members · Shared credits', 'R', '#2B3A33', 'team']].map(([name, meta, mark, tone, k]) => { const on = (S.space || 'me') === k; return { name, meta, mark, tone, on, bg: on ? '#26262A' : 'transparent', pick: () => this.setState({ space: k }) }; }),
+        acctMenu: [
+          { label: 'Profile', note: '', href: 'Profile.dc.html', d: 'M18 20a6 6 0 0 0-12 0 M12 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8z' },
+          { label: 'Settings', note: '', href: 'SettingsAccount.dc.html', d: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z' },
+          { label: 'Plans and billing', note: 'Pro', href: 'Upgrade.dc.html', d: 'M11.562 3.266a.5.5 0 0 1 .876 0L15.39 8.87a1 1 0 0 0 1.516.294L21.183 5.5a.5.5 0 0 1 .798.519l-2.834 10.246a1 1 0 0 1-.956.734H5.81a1 1 0 0 1-.957-.734L2.02 6.02a.5.5 0 0 1 .798-.519l4.276 3.664a1 1 0 0 0 1.516-.294z M5 21h14' },
+          { label: 'Billing and invoices', note: '', href: 'Settings.dc.html', d: 'M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1z M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8 M12 17.5v-11' },
+          { label: 'Members', note: '5', href: 'SettingsTeam.dc.html', d: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 3a4 4 0 1 1 0 8 4 4 0 0 1 0-8z M22 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75' },
+          { label: 'Help and feedback', note: '', href: '#', d: 'M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20z M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3 M12 17h.01' }
+        ]
+      };
+    })();
+    const SET = Object.assign({ nav, modes }, ACC);
+    const chips = (key, list, def) => list.map((label) => { const on = (this.state[key] || def) === label; return { label, on, bg: on ? '#F5F5F5' : '#161618', fg: on ? '#0B0B0C' : '#C8C8CC', pick: () => this.setState({ [key]: label }) }; });
+    const IC = {
+      pose: 'M12 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4z M12 6v7 M8 9l4 1 4-3 M12 13l-3 8 M12 13l3 8',
+      wear: 'M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z',
+      face: 'M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20z M8 14s1.5 2 4 2 4-2 4-2 M9 9h.01 M15 9h.01',
+      user: 'M18 20a6 6 0 0 0-12 0 M12 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8z',
+      hair: 'M4 20c0-9 3-16 8-16s8 7 8 16 M8 20c0-6 1.5-10 4-10s4 4 4 10',
+      scene: 'M8 3l4 8 5-5 5 15H2L8 3z',
+      light: 'M9 18h6 M10 22h4 M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z',
+      prop: 'M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z M3.3 7l8.7 5 8.7-5 M12 22V12',
+      sofa: 'M20 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v3 M2 16a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5a2 2 0 0 0-4 0v1.5a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5V11a2 2 0 0 0-4 0z M4 18v2 M20 18v2',
+      robe: 'M12 3 6 6l-2 15h16l-2-15-6-3z M12 3v18 M9 10h6'
+    };
+    const LIC = {
+      auth: ['Rights reserved', 'rgba(250,204,21,.12)', '#FACC15', 'Copyright belongs to the original creators. Contact them before reposting or commercial use.'],
+      cc0: ['CC0', 'rgba(34,197,94,.12)', '#4ADE80', 'CC0 1.0, commercial use OK'],
+      cc0p: ['CC0', 'rgba(34,197,94,.12)', '#4ADE80', 'CC0 1.0, all people are fictional. Don’t repost in bulk.'],
+      mit: ['MIT', 'rgba(59,130,246,.14)', '#93C5FD', 'MIT · Head model © USC ICT']
+    };
+    const CAT = {
+      'Poses': { d: IC.pose, n: '98 sets', total: '98 sets · 490 angle shots', unit: 'P', ar: '3/4', angles: 5, lic: 'auth', src: 'PoseWear collection · several AI galleries', cta: 'Use as pose', subs: ['All', 'Cute', 'Sitting', 'Standing', 'Kneeling', 'Lying down', 'Side-sitting', 'Squatting', 'Leaning forward', 'Leaning back', 'Twisting'],
+        names: ['Sitting sideways, chin in hand', 'Looking back over shoulder', 'Hugging knees', 'One knee down', 'Lying on side, head propped', 'W-sitting', 'Leaning on a wall', 'Leaning back, stretching', 'Twisting to look back', 'Finger heart', 'Leaning back, legs crossed', 'Crouching to tie a lace', 'Brushing hair back, profile', 'Hands on hips', 'Lying on stomach, chin in hands'], tags: ['Sitting', 'Side', 'Casual'], prompt: ['A girl sitting sideways on the floor, chin resting on one hand, leaning slightly forward, gaze toward the left of the camera, relaxed', 'A girl sitting sideways on the floor, chin resting on one hand, leaning slightly forward, gaze toward the left of the camera, relaxed'] },
+      'Detail poses': { d: IC.pose, n: '233', total: '233 detail poses', unit: 'D', ar: '3/4', angles: 0, lic: 'auth', src: 'PoseWear collection · several AI galleries', cta: 'Use as pose', subs: ['All', 'Hands', 'Legs', 'Head', 'Interaction'], names: ['Holding a cup', 'Peace sign', 'Hair flip', 'Arms crossed', 'Handshake', 'Chin on hand', 'Fingers laced', 'Lifting skirt', 'On tiptoe', 'Arms folded', 'Fixing collar', 'Adjusting glasses', 'Hands in pockets', 'Legs crossed', 'Pointing into the distance'], tags: ['Hands', 'Close-up'], prompt: ['Holding a coffee cup with both hands at chest height, fingers interlaced', 'Holding a coffee cup with both hands at chest height, fingers interlaced'] },
+      'Outfits': { d: IC.wear, n: '1,068', total: '1,068 outfits', unit: 'W', ar: '3/4', angles: 0, lic: 'auth', src: 'PoseWear collection · several AI galleries', cta: 'Dress a character', subs: ['All', 'Spring', 'Summer', 'Autumn', 'Winter', 'Formal', 'Swimwear', 'By item', 'By color'], names: ['Beige trench', 'White shirt and jeans', 'Knit cardigan', 'Floral dress', 'Black suit', 'Tracksuit', 'Plaid skirt', 'Puffer jacket', 'Linen shirt', 'Slip dress', 'Work jacket', 'Preppy', 'Satin gown', 'Wool coat', 'Hoodie and shorts'], tags: ['Autumn', 'Workwear', 'Beige'], prompt: ['Beige double-breasted long trench coat with belt, white knit top underneath', 'Beige double-breasted long trench coat with belt, white knit top underneath'] },
+      'Anime outfits': { d: IC.wear, n: '1,380', total: '1,380 anime outfits', unit: 'A', ar: '3/4', angles: 0, lic: 'auth', src: 'PoseWear collection · CharaDB and others', cta: 'Dress a character', subs: ['All', 'Uniforms', 'Japanese', 'Fantasy', 'Techwear'], names: ['Sailor uniform', 'Yukata', 'Magical girl', 'Techwear jacket', 'Maid outfit', 'Knight armor', 'Idol stage outfit', 'Chinese style', 'Gym uniform', 'Gothic lolita', 'Cyber jacket', 'Adventurer', 'Miko outfit', 'School uniform', 'Pajamas'], tags: ['Uniforms', 'Anime'], prompt: ['Navy sailor uniform with red neckerchief and pleated skirt', 'Navy sailor uniform with red neckerchief and pleated skirt'] },
+      'Historical': { d: IC.robe, n: '57', total: '57 historical outfits', unit: 'H', ar: '3/4', angles: 0, lic: 'cc0', src: 'PoseWear · Historical', cta: 'Dress a character', subs: ['All', 'East Asian', 'European', 'Modern'], names: ['Song beizi', 'Ming aoqun', 'Tang ruqun', 'Victorian gown', 'Renaissance', 'Qipao', 'Hanfu robe', 'Baroque gown', 'Kimono', 'Hanbok', 'Mao suit', 'Knight’s tabard', 'Rococo', 'Wei-Jin wide sleeves', 'Qing magua'], tags: ['East Asian', 'Song dynasty'], prompt: ['Song dynasty beizi in pale celadon over a wrapped top and pleated skirt', 'Song dynasty beizi in pale celadon over a wrapped top and pleated skirt'] },
+      'Portraits': { d: IC.user, n: '1,499', total: '1,499 portraits', unit: 'R', ar: '1/1', angles: 0, lic: 'cc0p', src: 'AI Portrait Gallery(fictional people)', cta: 'Use as face', subs: ['All', 'Front', 'Lifestyle', 'Short', 'Medium', 'Long'], names: ['Short hair · Front', 'Long hair · Lifestyle', 'Shoulder-length · Front', 'Curly · Side light', 'Ponytail · Outdoors', 'Buzz cut · Front', 'Bob', 'Long, center part', 'Top bun', 'Short, side part', 'Long black, straight', 'Medium, soft waves', 'Crew cut · Lifestyle', 'Braids', 'Short with bangs'], tags: ['Front', 'Short', 'Natural light'], prompt: ['Front-facing half-body portrait of an Asian woman, short hair, natural light, light background', 'Front-facing half-body portrait of an Asian woman, short hair, natural light, light background'] },
+      'Expressions': { d: IC.face, n: '95', total: '95 expressions', unit: 'E', ar: '1/1', angles: 0, lic: 'mit', src: 'ICT-FaceKit Head model', cta: 'Use as expression', subs: ['All', 'Happy', 'Angry', 'Sad', 'Surprise', 'Subtle'], names: ['Smile', 'Laughing', 'Surprised', 'Frowning', 'Pouting', 'Squinting smile', 'Angry', 'Hurt', 'Thinking', 'Wink', 'Shy', 'Dismissive', 'Crying', 'Determined', 'Confused'], tags: ['Happy', 'Subtle'], prompt: ['A gentle smile, corners of the mouth slightly raised, eyes slightly narrowed', 'A gentle smile with corners of the mouth slightly raised, eyes slightly narrowed'] },
+      'Hair': { d: IC.hair, n: '122', total: '122 hairstyles', unit: 'S', ar: '1/1', angles: 0, lic: 'cc0', src: 'CharaDB(marked CC0)', cta: 'Use as hairstyle', subs: ['All', 'Short', 'Medium', 'Long', 'Tied up'], names: ['Flipped bob', 'Hime cut', 'High ponytail', 'Wolf cut', 'Tight curls', 'Twin tails', 'Low bun', 'Wispy bangs', 'Buzz cut', 'Big waves', 'Side braid', 'Mullet', 'French bangs', 'Updo', 'Slicked back'], tags: ['Medium', 'Everyday'], prompt: ['Shoulder-length hair flipped out at the ends, wispy bangs', 'Shoulder-length hair flipped outward at the ends, wispy bangs'] },
+      'Scenes': { d: IC.scene, n: '64', total: '64 scenes', unit: 'B', ar: '16/10', angles: 0, lic: 'cc0', src: 'PoseWear · Scenes', cta: 'Use as setting', subs: ['All', 'Indoor', 'City', 'Natural'], names: ['Café window', 'City rooftop', 'Seaside boardwalk', 'Study', 'Subway car', 'Cherry blossom street', 'Rainy night street', 'White cyclorama', 'Forest path', 'Classroom', 'Kitchen', 'Neon alley', 'Desert highway', 'Library', 'Bedroom'], tags: ['Indoor', 'Natural light'], prompt: ['Café window seat in the afternoon, wooden table, warm natural light', 'Café window seat in the afternoon, wooden table, warm natural light'] },
+      'Lighting': { d: IC.light, n: '50', total: '50 lighting setups', unit: 'L', ar: '16/10', angles: 0, lic: 'cc0', src: 'PoseWear · Lighting', cta: 'Use as lighting', subs: ['All', 'Studio', 'Natural light', 'Mood'], names: ['Rembrandt', 'Butterfly', 'Rim light', 'Window light', 'Golden hour', 'Neon', 'Top light', 'Softbox', 'Silhouette', 'Candlelight', 'Split light', 'Ring light', 'Overcast', 'Spotlight', 'Moonlight'], tags: ['Studio', 'Portraits'], prompt: ['Rembrandt lighting, key light 45° above and to the side, triangle of light on the shadow cheek', 'Rembrandt lighting, key light 45° above and to the side, triangle of light on the shadow cheek'] },
+      'Props': { d: IC.prop, n: '32', total: '32 props', unit: 'O', ar: '1/1', angles: 0, lic: 'cc0', src: 'PoseWear · Props', cta: 'Add to canvas', subs: ['All'], names: ['Coffee cup', 'Umbrella', 'Book', 'Camera', 'Bouquet', 'Headphones', 'Handbag', 'Guitar', 'Skateboard', 'Balloon', 'Glasses', 'Phone', 'Suitcase', 'Hat', 'Desk lamp'], tags: ['Everyday'], prompt: ['White ceramic coffee cup with saucer', 'White ceramic coffee cup with saucer'] },
+      'Furniture': { d: IC.sofa, n: '41', total: '41 pieces of furniture', unit: 'F', ar: '1/1', angles: 0, lic: 'cc0', src: 'PoseWear · Furniture', cta: 'Add to canvas', subs: ['All'], names: ['Armchair', 'Bar stool', 'Desk', 'Bed', 'Rattan chair', 'Bar counter', 'Bench', 'Wardrobe', 'Floor lamp', 'Coffee table', 'Vanity', 'Rocking chair', 'Dining table', 'Beanbag', 'Folding screen'], tags: ['Indoor'], prompt: ['Cream fabric armchair with wooden legs', 'Cream fabric armchair with wooden legs'] }
+    };
+    const GROUPS = [['People', ['Poses', 'Detail poses', 'Portraits', 'Expressions', 'Hair']], ['Outfits', ['Outfits', 'Anime outfits', 'Historical']], ['Environment', ['Scenes', 'Lighting', 'Props', 'Furniture']]];
+    const cat = this.state.cat || this.props.initCat || 'Poses';
+    const C = CAT[cat];
+    const groups = GROUPS.map(([name, list]) => ({ name, items: list.map((label) => { const on = cat === label; return { label, d: CAT[label].d, n: CAT[label].n, on, bg: on ? '#1C1C1F' : 'transparent', fg: on ? '#F5F5F5' : '#C8C8CC', pick: () => this.setState({ cat: label, sel: 0, view: 0, sub: 'All' }) }; }) }));
+    const tones = ['#26232A', '#1F2628', '#202330', '#28251F', '#26262A', '#1F2622', '#2A2420', '#22262E'];
+    const sel = this.state.sel || 0;
+    const L = LIC[C.lic];
+    const items = C.names.map((name, i) => { const on = sel === i; return { id: C.unit + String(i + 1).padStart(3, '0'), name, ar: C.ar, bg: tones[i % 8], glyph: C.d, hasAngles: C.angles > 0, angles: C.angles, meta: C.subs[(i % (C.subs.length - 1 || 1)) + (C.subs.length > 1 ? 1 : 0)] || C.subs[0], lic: L[0], licBg: L[1], licFg: L[2], on, ring: on ? 'inset 0 0 0 2px #F5F5F5' : 'none', pick: () => this.setState({ sel: i, view: 0 }) }; });
+    const view = this.state.view || 0;
+    const VN = ['Front', '3/4', 'Side', 'Back', 'Top'];
+    const lang = 'English';
+    return {
+      ...SET, groups, items,
+      heading: 'Public library', sub: 'Poses, outfits, portraits and environments. Base library from PoseWear',
+      subs: chips('sub', C.subs, 'All'),
+      countText: C.total,
+      dAr: C.ar, dBg: tones[sel % 8], dGlyph: C.d, dView: C.angles ? VN[view] : cat,
+      dHasAngles: C.angles > 0,
+      views: VN.map((label, i) => ({ label, on: view === i, ring: view === i ? 'inset 0 0 0 2px #F5F5F5' : 'none', pick: () => this.setState({ view: i }) })),
+      dId: items[sel].id + ' · ' + cat, dName: C.names[sel], dTags: C.tags,
+      langs: ['English'].map((label) => { const on = lang === label; return { label, on, bg: on ? '#2E2E33' : 'transparent', fg: on ? '#F5F5F5' : '#9A9AA0', pick: () => this.setState({ lang: label }) }; }),
+      dPrompt: C.prompt[lang === 'Chinese' ? 0 : 1],
+      dSrc: C.src, dLic: L[3], dLicFg: C.lic === 'auth' ? '#FACC15' : '#C8C8CC', dCta: C.cta
+    };
+  }
+}
+</script>
+</body>
+</html>

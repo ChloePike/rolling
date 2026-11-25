@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Templates</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin=""><link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Noto+Sans+SC:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0B0B0C;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-variant-numeric:tabular-nums}
+a{color:#F5F5F5;text-decoration:none}a:hover{color:#FFFFFF}
+textarea::placeholder,input::placeholder{color:#7C7C84}
+*{scrollbar-width:thin;scrollbar-color:#3A3A40 transparent}
+::-webkit-scrollbar{width:6px;height:6px;background:transparent}
+::-webkit-scrollbar-thumb{background:#3A3A40;border-radius:999px}
+</style>
+</helmet>
+<div style="position:relative;min-height:100vh;background:#0B0B0C;color:#F5F5F5;font-family:'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif">
+  <header style="flex:none;position:relative;z-index:30;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 20px;background:#0B0B0C">
+    <div style="flex:1 1 160px;display:flex;align-items:center;gap:10px">
+      <svg width="30" height="30" sc-camel-view-box="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="40" fill="#FFCB2B"></circle><circle cx="64.7" cy="35.3" r="11.6" fill="#0B0B0C"></circle></svg>
+      <span style="font:700 16px/1 'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif;letter-spacing:-0.02em">Rolling</span>
+    </div>
+    <nav aria-label="Main" style="flex:0 1 auto;max-width:100%;overflow-x:auto;border-radius:999px;background:#161618;padding:4px;display:flex;gap:2px">
+      <sc-for list="{{ nav }}" as="n" hint-placeholder-count="8">
+        <a href="{{ n.href }}" aria-current="{{ n.cur }}" style="height:36px;padding:0 14px;border-radius:999px;background:{{ n.bg }};color:{{ n.fg }};display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:13px;font-weight:600">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ n.d }}"></path></svg>{{ n.label }}</a>
+      </sc-for>
+    </nav>
+    <div style="flex:1 1 160px;display:flex;justify-content:flex-end;align-items:center;gap:8px">
+      <button onClick="{{ toggleCredits }}" aria-expanded="{{ creditsOpen }}" aria-label="Credit balance" style="height:34px;padding:0 4px 0 11px;border-radius:999px;border:0;background:{{ creditBg }};color:#F5F5F5;font:inherit;display:flex;align-items:center;gap:7px;cursor:pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9A9AA0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20z M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8 M12 18V6"></path></svg><span style="font-size:13px;font-weight:600">2,480</span><span style="width:26px;height:26px;border-radius:999px;background:#26262A;display:flex;align-items:center;justify-content:center"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#F5F5F5" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14 M12 5v14"></path></svg></span></button>
+      <button onClick="{{ toggleSettings }}" aria-expanded="{{ settingsOpen }}" aria-label="Settings" title="Settings" style="width:34px;height:34px;border-radius:999px;border:0;background:{{ gearBg }};color:#F5F5F5;cursor:pointer;display:flex;align-items:center;justify-content:center"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z M12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"></path></svg></button>
+      <button onClick="{{ toggleAccount }}" aria-expanded="{{ accountOpen }}" aria-label="Account" style="position:relative;width:34px;height:34px;border-radius:999px;border:0;background:#333338;color:#F5F5F5;font:inherit;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 0 0 2px #0B0B0C,0 0 0 3.5px #B8955A">A<span style="position:absolute;right:-7px;bottom:-5px;height:14px;padding:0 4px;border-radius:4px;background:#B8955A;color:#0B0B0C;font-size:9px;font-weight:800;line-height:14px;letter-spacing:.02em">PRO</span></button>
+    </div>
+    <sc-if value="{{ creditsOpen }}" hint-placeholder-val="{{ false }}">
+      <div role="dialog" aria-label="credits" style="position:absolute;right:68px;top:58px;width:340px;border-radius:20px;background:#1C1C1F;box-shadow:0 20px 60px rgba(0,0,0,.6);padding:16px;display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:flex-end;gap:8px">
+          <div style="flex:1;display:flex;flex-direction:column;gap:6px"><span style="font-size:12px;color:#9A9AA0">Available credits</span><span style="font-size:30px;font-weight:700;letter-spacing:-0.02em;line-height:1">2,480</span></div>
+          <a href="Tasks.dc.html" style="font-size:12px;color:#C8C8CC;text-decoration:none;padding-bottom:3px">Usage details ›</a>
+        </div>
+        <div style="display:flex;height:6px;border-radius:999px;overflow:hidden;gap:2px"><span style="flex:1800;background:#F5F5F5"></span><span style="flex:680;background:#55555E"></span></div>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:12px">
+          <div style="display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:2px;background:#F5F5F5"></span><span style="flex:1;color:#C8C8CC">Plan credits</span><span style="font-weight:600">1,800</span><span style="width:86px;text-align:right;color:#7C7C84">Expires Nov 30</span></div>
+          <div style="display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:2px;background:#55555E"></span><span style="flex:1;color:#C8C8CC">Purchased credits</span><span style="font-weight:600">680</span><span style="width:86px;text-align:right;color:#7C7C84">Never expire</span></div>
+        </div>
+        <div style="height:1px;background:#26262A"></div>
+        <div style="display:flex;flex-direction:column;gap:4px"><div style="display:flex;align-items:center;font-size:13px;padding:2px 0"><span style="flex:1;color:#9A9AA0">Used this month</span><span style="font-weight:600">1,284</span></div><div style="display:flex;align-items:center;font-size:13px;padding:2px 0"><span style="flex:1;color:#9A9AA0">Held for running jobs</span><span style="font-weight:600">16</span></div><div style="display:flex;align-items:center;font-size:13px;padding:2px 0"><span style="flex:1;color:#9A9AA0">Expiring this month</span><span style="font-weight:600">300</span></div></div>
+        <div style="height:1px;background:#26262A"></div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:12px;color:#9A9AA0">Top up</span>
+          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px">
+            <sc-for list="{{ packs }}" as="k" hint-placeholder-count="3">
+              <button onClick="{{ k.pick }}" aria-pressed="{{ k.on }}" style="border-radius:12px;border:0;background:#141416;box-shadow:{{ k.ring }};padding:10px 8px;color:#F5F5F5;font:inherit;display:flex;flex-direction:column;align-items:flex-start;gap:4px;cursor:pointer"><span style="font-size:15px;font-weight:700">{{ k.n }}</span><span style="font-size:11px;color:#9A9AA0">$[Price]</span></button>
+            </sc-for>
+          </div>
+          <button style="height:40px;border-radius:999px;border:0;background:#F5F5F5;color:#0B0B0C;font:inherit;font-size:14px;font-weight:700;cursor:pointer">Top up {{ packN }} credits</button>
+          <span style="font-size:11px;line-height:1.5;color:#7C7C84">Plan credits are used first, then purchased credits. You’re only charged for successful results; failed and canceled runs are refunded.</span>
+        </div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ accountOpen }}" hint-placeholder-val="{{ false }}">
+      <div role="menu" aria-label="Account" style="position:absolute;right:20px;top:58px;width:300px;border-radius:20px;background:#1C1C1F;box-shadow:0 20px 60px rgba(0,0,0,.6);padding:8px;display:flex;flex-direction:column;gap:2px">
+        <div style="display:flex;align-items:center;gap:10px;padding:8px">
+          <span style="width:40px;height:40px;border-radius:999px;background:#333338;display:flex;align-items:center;justify-content:center;font-weight:600">A</span>
+          <span style="flex:1;display:flex;flex-direction:column;gap:3px"><span style="font-size:14px;font-weight:700">A</span><span style="font-size:12px;color:#9A9AA0">Pro · Renews [date]</span></span>
+        </div>
+        <div style="padding:8px 8px 4px;font-size:11px;font-weight:600;color:#7C7C84">Workspace</div>
+        <sc-for list="{{ spaces }}" as="w" hint-placeholder-count="2">
+          <button role="menuitemradio" aria-checked="{{ w.on }}" onClick="{{ w.pick }}" style="height:44px;padding:0 8px;border-radius:12px;border:0;background:{{ w.bg }};color:#F5F5F5;font:inherit;display:flex;align-items:center;gap:10px;cursor:pointer;text-align:left">
+            <span style="width:28px;height:28px;border-radius:8px;background:{{ w.tone }};font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center">{{ w.mark }}</span>
+            <span style="flex:1;display:flex;flex-direction:column;gap:2px"><span style="font-size:13px;font-weight:600">{{ w.name }}</span><span style="font-size:11px;color:#7C7C84">{{ w.meta }}</span></span>
+            <sc-if value="{{ w.on }}" hint-placeholder-val="{{ false }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#F5F5F5" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg></sc-if>
+          </button>
+        </sc-for>
+        <div style="height:1px;background:#26262A;margin:6px 8px"></div>
+        <sc-for list="{{ acctMenu }}" as="a" hint-placeholder-count="4">
+          <a href="{{ a.href }}" role="menuitem" style="height:38px;padding:0 8px;border-radius:10px;color:#C8C8CC;text-decoration:none;font-size:13px;display:flex;align-items:center;gap:10px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ a.d }}"></path></svg><span style="flex:1">{{ a.label }}</span><span style="font-size:12px;color:#7C7C84">{{ a.note }}</span></a>
+        </sc-for>
+        <div style="height:1px;background:#26262A;margin:6px 8px"></div>
+        <button role="menuitem" style="height:38px;padding:0 8px;border-radius:10px;border:0;background:none;color:#9A9AA0;font:inherit;font-size:13px;display:flex;align-items:center;gap:10px;cursor:pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4 M16 17l5-5-5-5 M21 12H9"></path></svg>Log out</button>
+      </div>
+    </sc-if>
+    <sc-if value="{{ settingsOpen }}" hint-placeholder-val="{{ false }}">
+      <div role="dialog" aria-label="Settings" style="position:absolute;right:20px;top:58px;width:340px;border-radius:20px;background:#1C1C1F;box-shadow:0 20px 60px rgba(0,0,0,.6);padding:14px;display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;align-items:center"><span style="font-size:15px;font-weight:700;flex:1">Settings</span><button onClick="{{ toggleSettings }}" aria-label="Close settings" style="width:28px;height:28px;border-radius:999px;border:0;background:none;color:#9A9AA0;font-size:16px;cursor:pointer"><svg width="16" height="16" style="display:block;margin:auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18 M6 6l12 12"></path></svg></button></div>
+        <div style="font-size:12px;font-weight:600;color:#9A9AA0">Creation mode</div>
+        <div role="radiogroup" aria-label="Creation mode" style="display:flex;flex-direction:column;gap:6px">
+          <sc-for list="{{ modes }}" as="m" hint-placeholder-count="2">
+            <button role="radio" aria-checked="{{ m.on }}" onClick="{{ m.pick }}" style="border-radius:14px;border:0;background:{{ m.bg }};box-shadow:{{ m.ring }};padding:10px 12px;color:#F5F5F5;font:inherit;text-align:left;display:flex;gap:10px;align-items:flex-start;cursor:pointer">
+              <span style="flex:none;width:30px;height:30px;border-radius:9px;background:#26262A;display:flex;align-items:center;justify-content:center"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ m.d }}"></path></svg></span>
+              <span style="flex:1;display:flex;flex-direction:column;gap:3px"><span style="font-size:13px;font-weight:700">{{ m.label }} <span style="font-weight:500;color:#9A9AA0">· {{ m.sub }}</span></span><span style="font-size:12px;line-height:1.45;color:#9A9AA0">{{ m.desc }}</span></span>
+              <span style="flex:none;width:16px;height:16px;border-radius:999px;margin-top:7px;box-shadow:{{ m.dot }}"></span>
+            </button>
+          </sc-for>
+        </div>
+        <div style="height:1px;background:#26262A"></div>
+        <div style="display:flex;align-items:center;font-size:13px"><span style="flex:1;color:#C8C8CC">Language</span><span style="color:#9A9AA0">English ›</span></div>
+        <div style="display:flex;align-items:center;font-size:13px"><span style="flex:1;color:#C8C8CC">Currency</span><span style="color:#9A9AA0">USD ›</span></div>
+        <div style="display:flex;align-items:center;font-size:13px"><span style="flex:1;color:#C8C8CC">Default aspect ratio</span><span style="color:#9A9AA0">9:16 ›</span></div>
+        <div style="display:flex;align-items:center;font-size:13px"><span style="flex:1;color:#C8C8CC">Notify when done</span><span style="color:#9A9AA0">On ›</span></div>
+      </div>
+    </sc-if>
+  </header>
+  <main style="max-width:1280px;margin:0 auto;padding:12px 32px 64px;box-sizing:border-box;display:flex;flex-direction:column;gap:18px">
+    <div style="display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap">
+      <div style="flex:1;min-width:260px;display:flex;flex-direction:column;gap:6px"><h1 style="margin:0;font:700 28px/1.15 'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif;letter-spacing:-0.02em">Templates</h1><span style="font-size:14px;color:#9A9AA0">Pick a template, swap in your own characters and lines</span></div>
+      <label for="tq" style="height:38px;width:300px;max-width:100%;border-radius:999px;background:#161618;display:flex;align-items:center;gap:8px;padding:0 14px;box-sizing:border-box"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7C7C84" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M11 3a8 8 0 1 1 0 16 8 8 0 0 1 0-16z M21 21l-4.3-4.3"></path></svg><input id="tq" placeholder="Search templates, industries or shots, e.g. unboxing" style="flex:1;min-width:0;border:0;outline:0;background:none;color:#F5F5F5;font:inherit;font-size:13px"></label>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><sc-for list="{{ cats }}" as="c" hint-placeholder-count="5"><button aria-pressed="{{ c.on }}" onClick="{{ c.pick }}" style="height:32px;padding:0 13px;border-radius:999px;border:0;background:{{ c.bg }};color:{{ c.fg }};font:inherit;font-size:13px;font-weight:600;cursor:pointer">{{ c.label }}</button></sc-for></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <sc-for list="{{ facets }}" as="f" hint-placeholder-count="4">
+        <button style="height:32px;padding:0 12px;border-radius:10px;border:0;background:#141416;color:#C8C8CC;font:inherit;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:6px"><span style="color:#7C7C84">{{ f.k }}</span>{{ f.v }}<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="opacity:.7"><path d="m6 9 6 6 6-6"></path></svg></button>
+      </sc-for>
+      <span style="flex:1"></span>
+      <span style="font-size:12px;color:#7C7C84">{{ total }} templates · Most used first</span>
+    </div>
+
+    <section aria-label="Featured" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px">
+      <sc-for list="{{ featured }}" as="t" hint-placeholder-count="2">
+        <a href="QuickCreate.dc.html" style="border-radius:20px;background:#141416;padding:12px;display:flex;gap:14px;align-items:stretch;color:#F5F5F5;text-decoration:none">
+          <div style="flex:none;width:118px;aspect-ratio:9/16;border-radius:12px;background:{{ t.bg }};position:relative"><span style="position:absolute;right:6px;bottom:6px;padding:2px 5px;border-radius:5px;background:rgba(11,11,12,.6);font:600 10px/1.4 'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif">{{ t.dur }}</span></div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:8px;padding:4px 0">
+            <span style="height:20px;align-self:flex-start;padding:0 8px;border-radius:999px;background:rgba(59,130,246,.16);color:#93C5FD;font-size:11px;font-weight:700;line-height:20px">This week’s picks</span>
+            <span style="font-size:17px;font-weight:700">{{ t.name }}</span>
+            <span style="font-size:13px;line-height:1.5;color:#9A9AA0">{{ t.desc }}</span>
+            <span style="flex:1"></span>
+            <div style="display:flex;gap:4px;flex-wrap:wrap"><sc-for list="{{ t.tags }}" as="g" hint-placeholder-count="3"><span style="height:22px;padding:0 8px;border-radius:6px;background:#1C1C1F;font-size:11px;line-height:22px;color:#C8C8CC">{{ g }}</span></sc-for></div>
+            <span style="display:flex;align-items:center;gap:8px"><span style="font:500 12px/1 'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif;color:#7C7C84;flex:1">{{ t.uses }} uses</span><span style="height:32px;padding:0 14px;border-radius:999px;background:#F5F5F5;color:#0B0B0C;font-size:13px;font-weight:700;line-height:32px">Use template</span></span>
+          </div>
+        </a>
+      </sc-for>
+    </section>
+
+    <section aria-label="All templates" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px">
+      <sc-for list="{{ items }}" as="t" hint-placeholder-count="10">
+        <a href="QuickCreate.dc.html" style="display:flex;flex-direction:column;gap:8px;color:#F5F5F5;text-decoration:none">
+          <div style="aspect-ratio:9/16;border-radius:16px;background:{{ t.bg }};position:relative;overflow:hidden">
+            <span style="position:absolute;left:8px;top:8px;display:flex;gap:4px"><sc-for list="{{ t.badges }}" as="b" hint-placeholder-count="2"><span style="height:20px;padding:0 7px;border-radius:999px;background:rgba(11,11,12,.6);font-size:10.5px;font-weight:600;line-height:20px">{{ b }}</span></sc-for></span>
+            <span style="position:absolute;right:8px;bottom:8px;padding:3px 6px;border-radius:6px;background:rgba(11,11,12,.6);font:600 11px/1 'Geist','Noto Sans SC','PingFang SC',system-ui,sans-serif">{{ t.dur }}</span>
+          </div>
+          <span style="font-size:14px;font-weight:600;padding:0 2px">{{ t.name }}</span>
+          <span style="font-size:12px;color:#7C7C84;padding:0 2px;margin-top:-4px">{{ t.meta }}</span>
+        </a>
+      </sc-for>
+    </section>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview": {"width": 1440, "height": 1500}}'>
+class Component extends DCLogic {
+  constructor(p){ super(p); this.state = {}; }
+  renderVals() {
+    const ACTIVE = "Quick Create";
+    const NAVD = [['Home','Main.dc.html','M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8 M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'],['Canvas','Canvas.dc.html','M5 3h4a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M7 11v4a2 2 0 0 0 2 2h4 M15 13h4a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2z'],['Quick Create','QuickCreate.dc.html','M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z'],['Remix','OriginalVideo.dc.html','M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3z M6.2 5.3l3.1 3.9 M12.4 3.4l3.1 4 M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'],['Avatar','DigitalHuman.dc.html','M18 20a6 6 0 0 0-12 0 M12 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8z'],['Character','Character.dc.html','M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 3a4 4 0 1 1 0 8 4 4 0 0 1 0-8z M22 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75'],['Assets','Assets.dc.html','M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M9 7a2 2 0 1 1 0 4 2 2 0 0 1 0-4z M21 15l-3.086-3.086a2 2 0 0 0-2.828 0L6 21'],['Activity','Tasks.dc.html','M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8 M3 3v5h5 M12 7v5l4 2']];
+    const nav = NAVD.map(([label, href, d]) => { const on = label === ACTIVE; return { label, href, d, cur: on ? 'page' : 'false', bg: on ? '#2E2E33' : 'transparent', fg: on ? '#F5F5F5' : '#9A9AA0' }; });
+    let stored = null; try { stored = window.localStorage.getItem('aigcStudioMode'); } catch (e) {}
+    const MODE = this.state.mode || stored || 'Simple';
+    const modes = [['Simple', 'Chat', 'Describe what you want in one line. Models and settings are handled by AI', 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'], ['Advanced', 'Settings panel', 'Model, seed, motion strength, negative prompt and more in the left panel', 'M21 4h-7 M10 4H3 M21 12h-9 M8 12H3 M21 20h-5 M12 20H3 M14 2v4 M8 10v4 M16 18v4']].map(([label, sub, desc, d]) => { const on = MODE === label; return { label, sub, desc, d, on, bg: on ? '#26262A' : '#161618', ring: on ? 'inset 0 0 0 1.5px #3B82F6' : 'none', dot: on ? 'inset 0 0 0 5px #3B82F6' : 'inset 0 0 0 1.5px #4A4A52', pick: () => { try { window.localStorage.setItem('aigcStudioMode', label); } catch (e) {} this.setState({ mode: label }); } }; });
+    const ACC = (() => {
+      const S = this.state;
+      const only = (k) => () => this.setState({ credits: k === 'credits' ? !S.credits : false, account: k === 'account' ? !S.account : false, settings: k === 'settings' ? !S.settings : false });
+      const pack = S.pack || '3,000';
+      return {
+        creditsOpen: !!S.credits, accountOpen: !!S.account, settingsOpen: !!S.settings,
+        toggleCredits: only('credits'), toggleAccount: only('account'), toggleSettings: only('settings'),
+        creditBg: S.credits ? '#2E2E33' : '#161618', gearBg: S.settings ? '#2E2E33' : '#161618',
+        packN: pack,
+        packs: ['1,000', '3,000', '10,000'].map((n) => ({ n, on: pack === n, ring: pack === n ? 'inset 0 0 0 1.5px #F5F5F5' : 'none', pick: () => this.setState({ pack: n }) })),
+        spaces: [['Personal', 'Only you', 'A', '#333338', 'me'], ['Ridgeline brand team', 'Team · 5 members · Shared credits', 'R', '#2B3A33', 'team']].map(([name, meta, mark, tone, k]) => { const on = (S.space || 'me') === k; return { name, meta, mark, tone, on, bg: on ? '#26262A' : 'transparent', pick: () => this.setState({ space: k }) }; }),
+        acctMenu: [
+          { label: 'Profile', note: '', href: 'Profile.dc.html', d: 'M18 20a6 6 0 0 0-12 0 M12 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8z' },
+          { label: 'Settings', note: '', href: 'SettingsAccount.dc.html', d: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z' },
+          { label: 'Plans and billing', note: 'Pro', href: 'Upgrade.dc.html', d: 'M11.562 3.266a.5.5 0 0 1 .876 0L15.39 8.87a1 1 0 0 0 1.516.294L21.183 5.5a.5.5 0 0 1 .798.519l-2.834 10.246a1 1 0 0 1-.956.734H5.81a1 1 0 0 1-.957-.734L2.02 6.02a.5.5 0 0 1 .798-.519l4.276 3.664a1 1 0 0 0 1.516-.294z M5 21h14' },
+          { label: 'Billing and invoices', note: '', href: 'Settings.dc.html', d: 'M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1z M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8 M12 17.5v-11' },
+          { label: 'Members', note: '5', href: 'SettingsTeam.dc.html', d: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 3a4 4 0 1 1 0 8 4 4 0 0 1 0-8z M22 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75' },
+          { label: 'Help and feedback', note: '', href: '#', d: 'M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20z M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3 M12 17h.01' }
+        ]
+      };
+    })();
+    const SET = Object.assign({ nav, modes }, ACC);
+    const chips = (key, list, def) => list.map((label) => { const on = (this.state[key] || def) === label; return { label, on, bg: on ? '#F5F5F5' : '#161618', fg: on ? '#0B0B0C' : '#C8C8CC', pick: () => this.setState({ [key]: label }) }; });
+    const tones = ['#26232A', '#1F2628', '#202330', '#28251F', '#26262A', '#1F2622', '#2A2420', '#22262E'];
+    const N = ['Two-person product demo', 'Portrait by a window', 'Unboxing close-ups', 'Street style', 'Breakfast vlog', 'Holiday gift', 'Coffee maker features', 'Skincare close-ups', 'Period drama opener', 'Sneaker try-on', 'Restaurant visits', 'Office picks'];
+    const D = ['15s', '15s', '10s', '8s', '15s', '15s', '12s', '10s', '30s', '8s', '20s', '12s'];
+    const R = [2, 1, 1, 1, 1, 2, 1, 1, 3, 1, 2, 1];
+    const L = [true, false, true, false, true, true, true, false, true, false, true, true];
+    return {
+      ...SET, total: 128,
+      cats: chips('cat', ['All', 'Product picks', 'Explainers', 'Short drama', 'Holiday campaigns', 'Venue visits', 'Outfits', 'Comics'], 'All'),
+      facets: [{ k: 'Character', v: 'Any' }, { k: 'Lines', v: 'Any' }, { k: 'Aspect ratio', v: '9:16' }, { k: 'Duration', v: 'Any' }],
+      featured: [
+        { name: 'Two-person product demo', desc: 'Two characters trade lines to present a product. 3 shots, camera moves and pacing included.', dur: '15s', uses: '12K', bg: tones[0], tags: ['2 characters', 'Dialogue', 'Any language'] },
+        { name: 'Period drama opener', desc: 'A period-costume character entrance for drama and comic openers. Swap the setting freely.', dur: '30s', uses: '8,640', bg: tones[6], tags: ['3 characters', 'Dialogue', 'New setting'] }
+      ],
+      items: N.map((name, i) => ({ name, dur: D[i], bg: tones[i % 8], meta: R[i] + (R[i] > 1 ? ' characters · ' : ' character · ') + (L[i] ? 'Dialogue' : 'No dialogue') + ' · ' + ((i * 937) % 9000 + 600) + ' uses', badges: [R[i] + (R[i] > 1 ? ' roles' : ' role')].concat(L[i] ? ['Lines'] : []) }))
+    };
+  }
+}
+</script>
+</body>
+</html>
