@@ -52,10 +52,38 @@ export interface TemplateSummary {
   uses: number;
   nodeCount: number;
   skill: string | null;
-  /** Signed cover URL (never a mature asset, D-005), null without a preview. */
+  /** Cover picture URL (never a mature asset, D-005), null without a preview. */
   coverUrl: string | null;
+  /**
+   * Built-in covers (migration 0020): the poster in each format with its pixel size and
+   * average color (the card's fill while it loads); null for templates without one.
+   */
+  cover: TemplateCover | null;
+  /** Short muted looping preview (H.264 MP4) of video templates, null otherwise. */
+  previewUrl: string | null;
   slots: TemplateSlot[];
   createdAt: number;
+}
+
+export interface TemplateCover {
+  jpg: string;
+  webp: string | null;
+  avif: string | null;
+  width: number;
+  height: number;
+  /** `#rrggbb`. */
+  color: string | null;
+}
+
+/** Cover fields of a built-in's `meta` (migration 0020); keys live under `public/templates/<id>/`. */
+interface CoverMeta {
+  coverKey?: unknown;
+  coverWebpKey?: unknown;
+  coverAvifKey?: unknown;
+  previewKey?: unknown;
+  coverWidth?: unknown;
+  coverHeight?: unknown;
+  coverColor?: unknown;
 }
 
 export interface TemplateDetail extends TemplateSummary {
@@ -71,11 +99,35 @@ function parse<T>(raw: string | null, fallback: T): T {
   }
 }
 
-async function coverUrl(env: Env, row: TemplateRow, meta: { coverKey?: unknown }): Promise<string | null> {
-  // Built-in covers live on the public bucket (migration 0017): public media URL (D-008).
-  if (!row.workspace_id && typeof meta.coverKey === "string" && meta.coverKey === `public/templates/${row.id}/cover.png`) {
-    return publicMediaUrl(meta.coverKey, env.PUBLIC_MEDIA_BASE_URL);
-  }
+/** A key of this built-in's public cover folder, or undefined. */
+function ownKey(row: TemplateRow, v: unknown): string | undefined {
+  return !row.workspace_id && typeof v === "string" && v.startsWith(`public/templates/${row.id}/`) && !v.includes("..") ? v : undefined;
+}
+
+/** Built-in covers live on the public bucket (migrations 0017, 0020): public media URLs (D-008). */
+function builtinCover(env: Env, row: TemplateRow, meta: CoverMeta): { cover: TemplateCover | null; coverUrl: string | null; previewUrl: string | null } {
+  const url = (k: string | undefined) => (k ? publicMediaUrl(k, env.PUBLIC_MEDIA_BASE_URL) : null);
+  const jpg = ownKey(row, meta.coverKey);
+  const preview = url(ownKey(row, meta.previewKey));
+  const width = typeof meta.coverWidth === "number" ? meta.coverWidth : 0;
+  const height = typeof meta.coverHeight === "number" ? meta.coverHeight : 0;
+  if (!jpg) return { cover: null, coverUrl: null, previewUrl: preview };
+  const webp = url(ownKey(row, meta.coverWebpKey));
+  const cover =
+    width > 0 && height > 0
+      ? {
+          jpg: url(jpg)!,
+          webp,
+          avif: url(ownKey(row, meta.coverAvifKey)),
+          width,
+          height,
+          color: typeof meta.coverColor === "string" && /^#[0-9a-f]{6}$/i.test(meta.coverColor) ? meta.coverColor : null,
+        }
+      : null;
+  return { cover, coverUrl: webp ?? url(jpg), previewUrl: preview };
+}
+
+async function previewAssetUrl(env: Env, row: TemplateRow): Promise<string | null> {
   if (!row.preview_asset_id) return null;
   const a = await env.DB.prepare("SELECT r2_key, workspace_id, mature, status FROM assets WHERE id = ?").bind(row.preview_asset_id).first<{
     r2_key: string;
@@ -90,8 +142,9 @@ async function coverUrl(env: Env, row: TemplateRow, meta: { coverKey?: unknown }
 
 export async function templateSummary(env: Env, row: TemplateRow): Promise<TemplateSummary> {
   const graph = parse<TemplateGraph>(row.graph, { nodes: [], edges: [], groups: [] });
-  const meta: Partial<TemplateMeta> & { coverKey?: unknown } = { ...summarizeGraph(graph), ...parse<Partial<TemplateMeta>>(row.meta, {}) };
+  const meta: Partial<TemplateMeta> & CoverMeta = { ...summarizeGraph(graph), ...parse<Partial<TemplateMeta>>(row.meta, {}) };
   const ratio = meta.ratio ?? "16:9";
+  const builtin = builtinCover(env, row, meta);
   return {
     id: row.id,
     name: row.title,
@@ -100,7 +153,8 @@ export async function templateSummary(env: Env, row: TemplateRow): Promise<Templ
     source: row.workspace_id ? "workspace" : "builtin",
     durationSec: meta.durationSec ?? 0,
     ratio,
-    coverAspect: ratio.replace(":", "/"),
+    // The stored poster size when there is one (no layout shift), else the template ratio.
+    coverAspect: builtin.cover ? `${builtin.cover.width}/${builtin.cover.height}` : ratio.replace(":", "/"),
     roles: meta.roles ?? 0,
     hasLines: meta.hasLines ?? false,
     tags: meta.tags ?? [],
@@ -108,7 +162,9 @@ export async function templateSummary(env: Env, row: TemplateRow): Promise<Templ
     uses: row.uses,
     nodeCount: meta.nodeCount ?? graph.nodes.length,
     skill: meta.skill ?? null,
-    coverUrl: await coverUrl(env, row, meta),
+    coverUrl: builtin.coverUrl ?? (await previewAssetUrl(env, row)),
+    cover: builtin.cover,
+    previewUrl: builtin.previewUrl,
     slots: parse<TemplateSlot[]>(row.slots, inferSlots(graph)),
     createdAt: row.created_at,
   };

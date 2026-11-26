@@ -507,15 +507,17 @@ type TemplateSummary = {
   source: 'builtin' | 'workspace'
   durationSec; ratio /* '9:16' */; coverAspect /* '9/16' */; roles; hasLines; tags: string[]; featured; uses; nodeCount
   skill: string | null              // agent skill it matches (Home inspiration)
-  coverUrl: string | null           // never a mature asset (D-005)
+  coverUrl: string | null           // never a mature asset (D-005); built-ins: the WebP poster
+  cover: { jpg, webp, avif, width, height, color /* '#rrggbb' */ } | null   // built-ins (migration 0020); coverAspect = width/height
+  previewUrl: string | null         // built-in video templates: muted looping H.264 MP4 (≤ 5 s, ≤ 1.5 MB)
   slots: Array<{ id, kind: 'image'|'video'|'audio'|'text', label, param: 'assetId'|'text', required, default? }>
   createdAt
 }
 ```
 
-Covers: built-ins have a preview cover rendered from their layout and shot titles (`@rolling/core/templates` `templateCoverSvg`, PNG by `apps/api/scripts/template-covers.ts`, uploaded to `public/templates/<id>/cover.png`); migration 0017 sets `meta.coverKey` and `coverUrl` is the public media URL (`PUBLIC_MEDIA_BASE_URL`, else the `/api/media/public/templates/<id>/cover.png` fallback, D-008). Workspace templates use `preview_asset_id` (signed, never mature).
+Covers: built-ins show the output of their own run (made in a content workspace through the normal quote → hold → workflow → settle path; provenance per item in `scripts/templates/covers.manifest.json`), processed by `scripts/templates/covers.mts`: poster as AVIF, WebP and JPEG at 720 px wide plus its average color, and for video templates a ≤ 5 s silent MP4 preview. Keys are content-hashed under `public/templates/<id>/` (`poster-<hash>.{jpg,webp,avif}`, `preview-<hash>.mp4`) on the public bucket; migration 0020 merges them into `meta` (`coverKey`, `coverWebpKey`, `coverAvifKey`, `previewKey`, `coverWidth`, `coverHeight`, `coverColor`) and the API builds public media URLs (`PUBLIC_MEDIA_BASE_URL`, else the `/api/media/public/templates/...` fallback, which also answers `Range` for the MP4; D-008). `durationSec` is the sum of the template's video lengths, 0 for image-only templates (cards show no duration badge). Workspace templates use `preview_asset_id` (signed, never mature).
 
-Built-ins: `tpl_tv_ad_15s` (TV ad, 15 s), `tpl_product_showcase`, `tpl_talking_head` (lip sync, `lumina/wan2.7-i2v-spicy`), `tpl_comic_page`, `tpl_character_sheet`, `tpl_storyboard`, `tpl_holiday_greeting`, `tpl_outfit_try_on`.
+Built-ins (28; migrations 0016, 0019; at least 6 per Home inspiration category): product — `tpl_tv_ad_15s`, `tpl_product_showcase`, `tpl_unboxing_reel`, `tpl_lifestyle_scene`, `tpl_flat_lay_promo`, `tpl_feature_closeups`; talking — `tpl_talking_head` (lip sync, `lumina/wan2.7-i2v-spicy`), `tpl_presenter_intro`, `tpl_product_review`, `tpl_how_to_host`, `tpl_announcement`, `tpl_testimonial`; drama — `tpl_drama_rooftop`, `tpl_drama_rain_reunion`, `tpl_drama_office_twist`, `tpl_drama_letter`, `tpl_drama_cafe`, `tpl_drama_cliffhanger`; holiday — `tpl_holiday_greeting`, `tpl_new_year_countdown`, `tpl_valentines_card`, `tpl_halloween_teaser`, `tpl_lunar_new_year`, `tpl_holiday_sale`; plus `tpl_comic_page`, `tpl_character_sheet` (comic), `tpl_storyboard` (explainer), `tpl_outfit_try_on` (outfit). Re-seeding merges `meta`, so covers survive.
 
 ## Agent (M6)
 

@@ -13,9 +13,10 @@ import { fillSlots, inferSlots, selectionGraph, SlotFillError, summarizeGraph } 
 const EMPTY: GraphState = { revision: 0, nodes: [], edges: [], groups: [] };
 
 describe('built-in templates', () => {
-  it('has 6–10 templates with unique ids, real catalog models and Starter-safe settings', () => {
-    expect(BUILTIN_TEMPLATES.length).toBeGreaterThanOrEqual(6);
-    expect(BUILTIN_TEMPLATES.length).toBeLessThanOrEqual(10);
+  it('has at least 6 templates per Home inspiration category, unique ids, real catalog models and Starter-safe settings', () => {
+    for (const cat of ['product', 'talking', 'drama', 'holiday'] as const) {
+      expect(BUILTIN_TEMPLATES.filter((t) => t.category === cat).length, cat).toBeGreaterThanOrEqual(6);
+    }
     expect(new Set(BUILTIN_TEMPLATES.map((t) => t.id)).size).toBe(BUILTIN_TEMPLATES.length);
     for (const t of BUILTIN_TEMPLATES) {
       for (const n of t.graph.nodes) {

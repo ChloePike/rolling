@@ -27,6 +27,8 @@ interface ApiTemplate {
   nodeCount: number;
   skill: string | null;
   coverUrl: string | null;
+  cover?: TemplateSummary['cover'];
+  previewUrl?: string | null;
   slots: TemplateSummary['slots'];
   createdAt: number;
 }
@@ -51,6 +53,8 @@ function summaryFrom(t: ApiTemplate): TemplateSummary {
     nodeCount: t.nodeCount,
     skill: t.skill,
     coverUrl: t.coverUrl,
+    cover: t.cover ?? null,
+    previewUrl: t.previewUrl ?? null,
     slots: t.slots,
   };
 }

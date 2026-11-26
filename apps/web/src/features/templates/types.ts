@@ -24,8 +24,22 @@ export interface TemplateSummary {
   skill?: string | null;
   /** Signed cover picture; never mature (D-005). */
   coverUrl?: string | null;
+  /** Built-in poster in each format with its size and average color (`TemplateMedia`). */
+  cover?: TemplateCover | null;
+  /** Muted looping MP4 preview of video templates. */
+  previewUrl?: string | null;
   /** What to fill when making a project from it (asset and text nodes). */
   slots?: TemplateSlot[];
+}
+
+export interface TemplateCover {
+  jpg: string;
+  webp: string | null;
+  avif: string | null;
+  width: number;
+  height: number;
+  /** `#rrggbb`: the card's fill while the poster loads. */
+  color: string | null;
 }
 
 export interface TemplateSlot {

@@ -23,6 +23,16 @@ export const templatesTypeDefs = /* GraphQL */ `
     default: String
   }
 
+  "A built-in's poster (migration 0020): each format, its pixel size and average color."
+  type TemplateCover {
+    jpg: String!
+    webp: String
+    avif: String
+    width: Int!
+    height: Int!
+    color: String
+  }
+
   type Template {
     id: ID!
     name: String!
@@ -41,6 +51,9 @@ export const templatesTypeDefs = /* GraphQL */ `
     nodeCount: Int!
     skill: String
     coverUrl: String
+    cover: TemplateCover
+    "Short muted looping MP4 preview of video templates."
+    previewUrl: String
     slots: [TemplateSlot!]!
     createdAt: Float!
     "The canvas graph as JSON ({ nodes, edges, groups }); only on template(id)."

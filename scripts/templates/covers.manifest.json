@@ -1,0 +1,1015 @@
+{
+  "about": "Cover and preview media of the built-in templates (scripts/templates/covers.mts). One item per template: source, license, provenance, keys.",
+  "items": [
+    {
+      "templateId": "tpl_tv_ad_15s",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BKN92Q8AESS6F74AJSDCCY",
+        "runId": "run_01M8BKRMMTXQ1ESEE2S15QH5ST",
+        "runRef": "T-QH5ST",
+        "outputs": [
+          {
+            "node": "k1",
+            "assetId": "ast_01M8BKSNFYQA6BAT12THEP8S6S",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          },
+          {
+            "node": "v1",
+            "assetId": "ast_01M8BKYG3WN9JRQV2KFP3T92QM",
+            "model": "bytedance/seedance-2.5",
+            "prompt": null
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_tv_ad_15s/poster-ed7ef883e7.jpg",
+      "coverWebpKey": "public/templates/tpl_tv_ad_15s/poster-ed7ef883e7.webp",
+      "coverAvifKey": "public/templates/tpl_tv_ad_15s/poster-ed7ef883e7.avif",
+      "previewKey": "public/templates/tpl_tv_ad_15s/preview-f149b6ffa0.mp4",
+      "coverWidth": 720,
+      "coverHeight": 402,
+      "coverColor": "#d6d9d2",
+      "previewSec": 5,
+      "previewBytes": 411662
+    },
+    {
+      "templateId": "tpl_product_showcase",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BKN9SQ98NDVDEQ0BR2KNQE",
+        "runId": "run_01M8BKRQ8EDA4R8NQEYYJRHTK7",
+        "runRef": "T-RHTK7",
+        "outputs": [
+          {
+            "node": "front",
+            "assetId": "ast_01M8BKSSKJ55J0MSGR9X4ENN3V",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          },
+          {
+            "node": "loop1",
+            "assetId": "ast_01M8BKWT5XR65EPF645A0C5P88",
+            "model": "bytedance/seedance-2.0-mini",
+            "prompt": null
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_product_showcase/poster-182412a72a.jpg",
+      "coverWebpKey": "public/templates/tpl_product_showcase/poster-182412a72a.webp",
+      "coverAvifKey": "public/templates/tpl_product_showcase/poster-182412a72a.avif",
+      "previewKey": "public/templates/tpl_product_showcase/preview-51b6022ee4.mp4",
+      "coverWidth": 720,
+      "coverHeight": 720,
+      "coverColor": "#c9cec6",
+      "previewSec": 5,
+      "previewBytes": 243727
+    },
+    {
+      "templateId": "tpl_talking_head",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BKQ1A4VMBE452YB5MSSV83",
+        "runId": "run_01M8BNQ94NZFNQF3JRX9CH9QRM",
+        "runRef": "T-H9QRM",
+        "outputs": [
+          {
+            "node": "speak",
+            "assetId": "ast_01M8BNVVT3J8ZJFZBRNJ189GZ8",
+            "model": "lumina/wan2.7-i2v-spicy",
+            "prompt": null
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_talking_head/poster-37fc2a00fb.jpg",
+      "coverWebpKey": "public/templates/tpl_talking_head/poster-37fc2a00fb.webp",
+      "coverAvifKey": "public/templates/tpl_talking_head/poster-37fc2a00fb.avif",
+      "previewKey": "public/templates/tpl_talking_head/preview-916a7b6cea.mp4",
+      "coverWidth": 720,
+      "coverHeight": 720,
+      "coverColor": "#b09e93",
+      "previewSec": 5,
+      "previewBytes": 618490
+    },
+    {
+      "templateId": "tpl_comic_page",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BN3VCX1EA2GM0TBA0P55A6",
+        "runId": "run_01M8BN3X68BT89AH98Y7KW0M7T",
+        "runRef": "T-W0M7T",
+        "outputs": [
+          {
+            "node": "p1",
+            "assetId": "ast_01M8BN5S0M70DH08KS17Y6K734",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          },
+          {
+            "node": "p2",
+            "assetId": "ast_01M8BN5RWE1TD1YZN09HHP66FT",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          },
+          {
+            "node": "p3",
+            "assetId": "ast_01M8BN5S70HVB5K3E38JZVDFKS",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          },
+          {
+            "node": "p4",
+            "assetId": "ast_01M8BN5Z06C10SCGAPXJSB0RNX",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_comic_page/poster-82d63cb4ce.jpg",
+      "coverWebpKey": "public/templates/tpl_comic_page/poster-82d63cb4ce.webp",
+      "coverAvifKey": "public/templates/tpl_comic_page/poster-82d63cb4ce.avif",
+      "previewKey": null,
+      "coverWidth": 720,
+      "coverHeight": 720,
+      "coverColor": "#b3afb0",
+      "previewSec": null,
+      "previewBytes": null
+    },
+    {
+      "templateId": "tpl_character_sheet",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BKNBECF6J156BY0K99E42T",
+        "runId": "run_01M8BKS03ZC2JB9ZZ982MPRJXN",
+        "runRef": "T-PRJXN",
+        "outputs": [
+          {
+            "node": "front",
+            "assetId": "ast_01M8BKT8MHJA4R5QK5WWRWK771",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          },
+          {
+            "node": "side",
+            "assetId": "ast_01M8BKT2TFQ97NMGTM9DYNNM56",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          },
+          {
+            "node": "faces",
+            "assetId": "ast_01M8BKTE4723HKFWC78FR5ZWGR",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_character_sheet/poster-38ca05f310.jpg",
+      "coverWebpKey": "public/templates/tpl_character_sheet/poster-38ca05f310.webp",
+      "coverAvifKey": "public/templates/tpl_character_sheet/poster-38ca05f310.avif",
+      "previewKey": null,
+      "coverWidth": 720,
+      "coverHeight": 476,
+      "coverColor": "#ccc6b9",
+      "previewSec": null,
+      "previewBytes": null
+    },
+    {
+      "templateId": "tpl_storyboard",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BKNC2NGC408821CYS3DWXS",
+        "runId": "run_01M8BKTJ8Q9KMRYETWG5D1MGR4",
+        "runRef": "T-1MGR4",
+        "outputs": [
+          {
+            "node": "s1",
+            "assetId": "ast_01M8BKVVMAM5JHM9KJR9K94C3X",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          },
+          {
+            "node": "s2",
+            "assetId": "ast_01M8BKW3MYKEBZQ5MZHNDZ23JH",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          },
+          {
+            "node": "s3",
+            "assetId": "ast_01M8BKW36T7R1C5S18WBXDTXV7",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          },
+          {
+            "node": "s4",
+            "assetId": "ast_01M8BKVQ4Q9S1WSECAQRRH9JPK",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          },
+          {
+            "node": "s5",
+            "assetId": "ast_01M8BKVQNER98KSHGMPYNJXW6R",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          },
+          {
+            "node": "s6",
+            "assetId": "ast_01M8BKVN5N8SFV7VMM391DRK1Z",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_storyboard/poster-5364532361.jpg",
+      "coverWebpKey": "public/templates/tpl_storyboard/poster-5364532361.webp",
+      "coverAvifKey": "public/templates/tpl_storyboard/poster-5364532361.avif",
+      "previewKey": null,
+      "coverWidth": 720,
+      "coverHeight": 614,
+      "coverColor": "#2b2e31",
+      "previewSec": null,
+      "previewBytes": null
+    },
+    {
+      "templateId": "tpl_holiday_greeting",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BKNCKHWGHRHFXBX30WCAR7",
+        "runId": "run_01M8BKTRRBRAE50E4FT4D5VBDG",
+        "runRef": "T-5VBDG",
+        "outputs": [
+          {
+            "node": "card",
+            "assetId": "ast_01M8BKW47A75SHM9T55B97W4PY",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          },
+          {
+            "node": "clip",
+            "assetId": "ast_01M8BKZRC2MGXSB78H4Z1EYEFT",
+            "model": "bytedance/seedance-2.0-mini",
+            "prompt": null
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_holiday_greeting/poster-3c5d6278c4.jpg",
+      "coverWebpKey": "public/templates/tpl_holiday_greeting/poster-3c5d6278c4.webp",
+      "coverAvifKey": "public/templates/tpl_holiday_greeting/poster-3c5d6278c4.avif",
+      "previewKey": "public/templates/tpl_holiday_greeting/preview-f6767adcf7.mp4",
+      "coverWidth": 720,
+      "coverHeight": 1280,
+      "coverColor": "#a28373",
+      "previewSec": 5,
+      "previewBytes": 1060500
+    },
+    {
+      "templateId": "tpl_outfit_try_on",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BKND6RW55KA8B04JR6H7BK",
+        "runId": "run_01M8BKVHCBN1X6FXZ4GVMR09KE",
+        "runRef": "T-R09KE",
+        "outputs": [
+          {
+            "node": "look",
+            "assetId": "ast_01M8BKWVQKGKV8AZCGCVBTPCVT",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          },
+          {
+            "node": "walk",
+            "assetId": "ast_01M8BM1JRSSEY51FG75GCV4T6M",
+            "model": "bytedance/seedance-2.5",
+            "prompt": null
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_outfit_try_on/poster-7b2cd6ff3e.jpg",
+      "coverWebpKey": "public/templates/tpl_outfit_try_on/poster-7b2cd6ff3e.webp",
+      "coverAvifKey": "public/templates/tpl_outfit_try_on/poster-7b2cd6ff3e.avif",
+      "previewKey": "public/templates/tpl_outfit_try_on/preview-db565d35d6.mp4",
+      "coverWidth": 720,
+      "coverHeight": 1292,
+      "coverColor": "#8d7f78",
+      "previewSec": 5,
+      "previewBytes": 949546
+    },
+    {
+      "templateId": "tpl_unboxing_reel",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BKNDPVH6HDSPM2XC7Z2CW5",
+        "runId": "run_01M8BKW9EJDP2ZFF42W3RT2QCG",
+        "runRef": "T-T2QCG",
+        "outputs": [
+          {
+            "node": "reveal",
+            "assetId": "ast_01M8BKXC8XMG083MQAAN30KRWK",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          },
+          {
+            "node": "clip",
+            "assetId": "ast_01M8BM1829ABEYRQFS45528JRC",
+            "model": "bytedance/seedance-2.0-mini",
+            "prompt": null
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_unboxing_reel/poster-9b8546ea79.jpg",
+      "coverWebpKey": "public/templates/tpl_unboxing_reel/poster-9b8546ea79.webp",
+      "coverAvifKey": "public/templates/tpl_unboxing_reel/poster-9b8546ea79.avif",
+      "previewKey": "public/templates/tpl_unboxing_reel/preview-9907a735cb.mp4",
+      "coverWidth": 720,
+      "coverHeight": 1280,
+      "coverColor": "#a07054",
+      "previewSec": 5,
+      "previewBytes": 712705
+    },
+    {
+      "templateId": "tpl_lifestyle_scene",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BKNE8G7GAVFJJ4GJFWK0W3",
+        "runId": "run_01M8BKX3ZCH2BEK38XS7KYS6GB",
+        "runRef": "T-YS6GB",
+        "outputs": [
+          {
+            "node": "scene",
+            "assetId": "ast_01M8BKY6VJVGYE63F7WQRQCGA9",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          },
+          {
+            "node": "clip",
+            "assetId": "ast_01M8BM1P7ESYB0STHNEBAE8ZP9",
+            "model": "bytedance/seedance-2.0-mini",
+            "prompt": null
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_lifestyle_scene/poster-3284fa0c95.jpg",
+      "coverWebpKey": "public/templates/tpl_lifestyle_scene/poster-3284fa0c95.webp",
+      "coverAvifKey": "public/templates/tpl_lifestyle_scene/poster-3284fa0c95.avif",
+      "previewKey": "public/templates/tpl_lifestyle_scene/preview-8c58dbd637.mp4",
+      "coverWidth": 720,
+      "coverHeight": 960,
+      "coverColor": "#937961",
+      "previewSec": 5,
+      "previewBytes": 433602
+    },
+    {
+      "templateId": "tpl_flat_lay_promo",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BKNES6BRTDJQKJ3JGPGED2",
+        "runId": "run_01M8BKYNPGC2GGGEQ6G86MZE4S",
+        "runRef": "T-MZE4S",
+        "outputs": [
+          {
+            "node": "layout",
+            "assetId": "ast_01M8BKZQYXZMTCGVJF1A3MCYQ1",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          },
+          {
+            "node": "clip",
+            "assetId": "ast_01M8BM3HBT4HB6NSMJHJNBTT11",
+            "model": "bytedance/seedance-2.0-mini",
+            "prompt": null
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_flat_lay_promo/poster-2ba645d6d6.jpg",
+      "coverWebpKey": "public/templates/tpl_flat_lay_promo/poster-2ba645d6d6.webp",
+      "coverAvifKey": "public/templates/tpl_flat_lay_promo/poster-2ba645d6d6.avif",
+      "previewKey": "public/templates/tpl_flat_lay_promo/preview-93cd99bd29.mp4",
+      "coverWidth": 720,
+      "coverHeight": 720,
+      "coverColor": "#d8c5b8",
+      "previewSec": 5,
+      "previewBytes": 545548
+    },
+    {
+      "templateId": "tpl_feature_closeups",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BKNFA7N7XYVAXRBS3VWHNJ",
+        "runId": "run_01M8BKZZTJBFQ0XZFR9X5HB41J",
+        "runRef": "T-HB41J",
+        "outputs": [
+          {
+            "node": "c1",
+            "assetId": "ast_01M8BM14BJRJEXY4N2WVDG53HA",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          },
+          {
+            "node": "v1",
+            "assetId": "ast_01M8BM4E04KVD5VJ8KFAT1HQAM",
+            "model": "bytedance/seedance-2.0-mini",
+            "prompt": null
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_feature_closeups/poster-fd107f3cfd.jpg",
+      "coverWebpKey": "public/templates/tpl_feature_closeups/poster-fd107f3cfd.webp",
+      "coverAvifKey": "public/templates/tpl_feature_closeups/poster-fd107f3cfd.avif",
+      "previewKey": "public/templates/tpl_feature_closeups/preview-cd2ca79d6f.mp4",
+      "coverWidth": 720,
+      "coverHeight": 406,
+      "coverColor": "#3b312f",
+      "previewSec": 5,
+      "previewBytes": 1094793
+    },
+    {
+      "templateId": "tpl_presenter_intro",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BKNFTZVSJYTXRV4T19QWY4",
+        "runId": "run_01M8BM19MWAPP45KB5KS3FKH24",
+        "runRef": "T-FKH24",
+        "outputs": [
+          {
+            "node": "frame",
+            "assetId": "ast_01M8BM2G35HJA0T560J0XDXTWY",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          },
+          {
+            "node": "speak",
+            "assetId": "ast_01M8BM5TRZ09J0HXBAQK78W76W",
+            "model": "bytedance/seedance-2.0-mini",
+            "prompt": null
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_presenter_intro/poster-c180da9730.jpg",
+      "coverWebpKey": "public/templates/tpl_presenter_intro/poster-c180da9730.webp",
+      "coverAvifKey": "public/templates/tpl_presenter_intro/poster-c180da9730.avif",
+      "previewKey": "public/templates/tpl_presenter_intro/preview-8256eeaf90.mp4",
+      "coverWidth": 720,
+      "coverHeight": 406,
+      "coverColor": "#b4b3c0",
+      "previewSec": 5,
+      "previewBytes": 557625
+    },
+    {
+      "templateId": "tpl_product_review",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BKNGF8FFFYSCQZ36CQEMWM",
+        "runId": "run_01M8BM1TDBBNMZ2DQFFAJ3ND9A",
+        "runRef": "T-3ND9A",
+        "outputs": [
+          {
+            "node": "frame",
+            "assetId": "ast_01M8BM2THE00RW36NYT0JKW8WD",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          },
+          {
+            "node": "speak",
+            "assetId": "ast_01M8BM5NDNYNZ563K07VQP2ACE",
+            "model": "bytedance/seedance-2.0-mini",
+            "prompt": null
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_product_review/poster-8b0a3d6c22.jpg",
+      "coverWebpKey": "public/templates/tpl_product_review/poster-8b0a3d6c22.webp",
+      "coverAvifKey": "public/templates/tpl_product_review/poster-8b0a3d6c22.avif",
+      "previewKey": "public/templates/tpl_product_review/preview-12677df0c7.mp4",
+      "coverWidth": 720,
+      "coverHeight": 1280,
+      "coverColor": "#af8f74",
+      "previewSec": 5,
+      "previewBytes": 1132943
+    },
+    {
+      "templateId": "tpl_how_to_host",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BKNH0R080VF3PHHKBTQ9ZS",
+        "runId": "run_01M8BN40BV221RA9KMRYJ9C6SG",
+        "runRef": "T-9C6SG",
+        "outputs": [
+          {
+            "node": "speak",
+            "assetId": "ast_01M8BN6RN413CFSMBD7WREJ45E",
+            "model": "bytedance/seedance-2.0-mini",
+            "prompt": null
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_how_to_host/poster-9007beb91f.jpg",
+      "coverWebpKey": "public/templates/tpl_how_to_host/poster-9007beb91f.webp",
+      "coverAvifKey": "public/templates/tpl_how_to_host/poster-9007beb91f.avif",
+      "previewKey": "public/templates/tpl_how_to_host/preview-22ef8eed89.mp4",
+      "coverWidth": 720,
+      "coverHeight": 406,
+      "coverColor": "#b2957e",
+      "previewSec": 5,
+      "previewBytes": 727168
+    },
+    {
+      "templateId": "tpl_announcement",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BKNHK8FCWG5Q9TAJSGY6BF",
+        "runId": "run_01M8BM3NDRAWK7XXJ28CJDZCKF",
+        "runRef": "T-DZCKF",
+        "outputs": [
+          {
+            "node": "frame",
+            "assetId": "ast_01M8BM58R5949QP5JQ25VDGNGK",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          },
+          {
+            "node": "speak",
+            "assetId": "ast_01M8BM8K3D1J5CQAVE75BKFHKD",
+            "model": "bytedance/seedance-2.0-mini",
+            "prompt": null
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_announcement/poster-93fc423d9e.jpg",
+      "coverWebpKey": "public/templates/tpl_announcement/poster-93fc423d9e.webp",
+      "coverAvifKey": "public/templates/tpl_announcement/poster-93fc423d9e.avif",
+      "previewKey": "public/templates/tpl_announcement/preview-a8490bb62b.mp4",
+      "coverWidth": 720,
+      "coverHeight": 406,
+      "coverColor": "#79858e",
+      "previewSec": 5,
+      "previewBytes": 594511
+    },
+    {
+      "templateId": "tpl_testimonial",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BKNJ5FVGPMT4T6GDMJ5JMR",
+        "runId": "run_01M8BM4PJWJXVF4C1ETHNER4KW",
+        "runRef": "T-ER4KW",
+        "outputs": [
+          {
+            "node": "frame",
+            "assetId": "ast_01M8BM5SRRCRA3FKQF6QYCXZ03",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          },
+          {
+            "node": "speak",
+            "assetId": "ast_01M8BM963E4AXZHQ6230HK9DNW",
+            "model": "bytedance/seedance-2.0-mini",
+            "prompt": null
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_testimonial/poster-c5f778728d.jpg",
+      "coverWebpKey": "public/templates/tpl_testimonial/poster-c5f778728d.webp",
+      "coverAvifKey": "public/templates/tpl_testimonial/poster-c5f778728d.avif",
+      "previewKey": "public/templates/tpl_testimonial/preview-81dbab4d23.mp4",
+      "coverWidth": 720,
+      "coverHeight": 1280,
+      "coverColor": "#717c8b",
+      "previewSec": 5,
+      "previewBytes": 1276220
+    },
+    {
+      "templateId": "tpl_drama_rooftop",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BKNJREV4SA5MZ5DPFBJYW0",
+        "runId": "run_01M8BM6HG4E92QW5SF3AXYK38H",
+        "runRef": "T-YK38H",
+        "outputs": [
+          {
+            "node": "k1",
+            "assetId": "ast_01M8BM7RQCNGWZ3WDWPP75ZW8V",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          },
+          {
+            "node": "v1",
+            "assetId": "ast_01M8BMBKPY6DCC6SRJ7V38868X",
+            "model": "bytedance/seedance-2.0-mini",
+            "prompt": null
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_drama_rooftop/poster-9d1fa2c2ef.jpg",
+      "coverWebpKey": "public/templates/tpl_drama_rooftop/poster-9d1fa2c2ef.webp",
+      "coverAvifKey": "public/templates/tpl_drama_rooftop/poster-9d1fa2c2ef.avif",
+      "previewKey": "public/templates/tpl_drama_rooftop/preview-37b771c01a.mp4",
+      "coverWidth": 720,
+      "coverHeight": 1280,
+      "coverColor": "#686876",
+      "previewSec": 5,
+      "previewBytes": 852460
+    },
+    {
+      "templateId": "tpl_drama_rain_reunion",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BKNKBT5N5CX310DM66NEXJ",
+        "runId": "run_01M8BM6K69M4GJ6CATMG1YN4J8",
+        "runRef": "T-YN4J8",
+        "outputs": [
+          {
+            "node": "k1",
+            "assetId": "ast_01M8BM7JVGG5YGN3TMBGX0NJT1",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          },
+          {
+            "node": "v1",
+            "assetId": "ast_01M8BMB12KA6QGVFQZZAGMS81C",
+            "model": "bytedance/seedance-2.0-mini",
+            "prompt": null
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_drama_rain_reunion/poster-5578f42be7.jpg",
+      "coverWebpKey": "public/templates/tpl_drama_rain_reunion/poster-5578f42be7.webp",
+      "coverAvifKey": "public/templates/tpl_drama_rain_reunion/poster-5578f42be7.avif",
+      "previewKey": "public/templates/tpl_drama_rain_reunion/preview-5ffbe52450.mp4",
+      "coverWidth": 720,
+      "coverHeight": 1280,
+      "coverColor": "#27323c",
+      "previewSec": 5,
+      "previewBytes": 1131247
+    },
+    {
+      "templateId": "tpl_drama_office_twist",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BKNKY6BHH4XB0CNH3HN23J",
+        "runId": "run_01M8BM8WG9QZAWATAP4QD7RWEC",
+        "runRef": "T-7RWEC",
+        "outputs": [
+          {
+            "node": "k1",
+            "assetId": "ast_01M8BM9VCQB6ZFVFAT9HCB96CF",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          },
+          {
+            "node": "v1",
+            "assetId": "ast_01M8BMD03KYHXX0M7KSWADAVS2",
+            "model": "bytedance/seedance-2.0-mini",
+            "prompt": null
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_drama_office_twist/poster-d68da8cd00.jpg",
+      "coverWebpKey": "public/templates/tpl_drama_office_twist/poster-d68da8cd00.webp",
+      "coverAvifKey": "public/templates/tpl_drama_office_twist/poster-d68da8cd00.avif",
+      "previewKey": "public/templates/tpl_drama_office_twist/preview-4f604cc8f9.mp4",
+      "coverWidth": 720,
+      "coverHeight": 1280,
+      "coverColor": "#131113",
+      "previewSec": 5,
+      "previewBytes": 717740
+    },
+    {
+      "templateId": "tpl_drama_letter",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BKNMHHGJ98JD6MMWESD5EZ",
+        "runId": "run_01M8BM9DAN6PCZXSW4DQWM20SH",
+        "runRef": "T-M20SH",
+        "outputs": [
+          {
+            "node": "k1",
+            "assetId": "ast_01M8BMAAD0G77XBRGA63N83H0G",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          },
+          {
+            "node": "v1",
+            "assetId": "ast_01M8BMDAHS08R2BYHF2WRZ7AMX",
+            "model": "bytedance/seedance-2.0-mini",
+            "prompt": null
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_drama_letter/poster-af6efba339.jpg",
+      "coverWebpKey": "public/templates/tpl_drama_letter/poster-af6efba339.webp",
+      "coverAvifKey": "public/templates/tpl_drama_letter/poster-af6efba339.avif",
+      "previewKey": "public/templates/tpl_drama_letter/preview-ca978248d6.mp4",
+      "coverWidth": 720,
+      "coverHeight": 406,
+      "coverColor": "#795d43",
+      "previewSec": 5,
+      "previewBytes": 1090230
+    },
+    {
+      "templateId": "tpl_drama_cafe",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BKNN4A8DAAHTHFDZ5CWK0A",
+        "runId": "run_01M8BMBA9H3KW24SSF3ND0WKK3",
+        "runRef": "T-0WKK3",
+        "outputs": [
+          {
+            "node": "k1",
+            "assetId": "ast_01M8BMC9EGKM6HS9XVVV89Y4XV",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          },
+          {
+            "node": "v1",
+            "assetId": "ast_01M8BMFQJD9BJK7HGR5J93N4QQ",
+            "model": "bytedance/seedance-2.0-mini",
+            "prompt": null
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_drama_cafe/poster-6aecb347aa.jpg",
+      "coverWebpKey": "public/templates/tpl_drama_cafe/poster-6aecb347aa.webp",
+      "coverAvifKey": "public/templates/tpl_drama_cafe/poster-6aecb347aa.avif",
+      "previewKey": "public/templates/tpl_drama_cafe/preview-1adeb532e4.mp4",
+      "coverWidth": 720,
+      "coverHeight": 1280,
+      "coverColor": "#68543b",
+      "previewSec": 5,
+      "previewBytes": 1002787
+    },
+    {
+      "templateId": "tpl_drama_cliffhanger",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BKNNNY0BVC9RZXJBCYQNJN",
+        "runId": "run_01M8BMBQNSP33GR57ZVG8Z8F0F",
+        "runRef": "T-Z8F0F",
+        "outputs": [
+          {
+            "node": "k1",
+            "assetId": "ast_01M8BMCJXMA1R73EAK30PRJFWK",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          },
+          {
+            "node": "v1",
+            "assetId": "ast_01M8BMFRJG17WBDTJDTZNDCRR3",
+            "model": "bytedance/seedance-2.0-mini",
+            "prompt": null
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_drama_cliffhanger/poster-71b3417bb2.jpg",
+      "coverWebpKey": "public/templates/tpl_drama_cliffhanger/poster-71b3417bb2.webp",
+      "coverAvifKey": "public/templates/tpl_drama_cliffhanger/poster-71b3417bb2.avif",
+      "previewKey": "public/templates/tpl_drama_cliffhanger/preview-28b6ec5b70.mp4",
+      "coverWidth": 720,
+      "coverHeight": 1280,
+      "coverColor": "#212626",
+      "previewSec": 5,
+      "previewBytes": 730379
+    },
+    {
+      "templateId": "tpl_new_year_countdown",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BKNP9BDDFZ0YCE0KZV6PFK",
+        "runId": "run_01M8BMD7209HQ7V923FKP4M5TB",
+        "runRef": "T-4M5TB",
+        "outputs": [
+          {
+            "node": "still",
+            "assetId": "ast_01M8BME9822GJSEVF4QN95FRX0",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          },
+          {
+            "node": "clip",
+            "assetId": "ast_01M8BMH9H7V6Q4S246W3203QQ8",
+            "model": "bytedance/seedance-2.0-mini",
+            "prompt": null
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_new_year_countdown/poster-62a77aff21.jpg",
+      "coverWebpKey": "public/templates/tpl_new_year_countdown/poster-62a77aff21.webp",
+      "coverAvifKey": "public/templates/tpl_new_year_countdown/poster-62a77aff21.avif",
+      "previewKey": "public/templates/tpl_new_year_countdown/preview-6492bc4792.mp4",
+      "coverWidth": 720,
+      "coverHeight": 1280,
+      "coverColor": "#1f1e25",
+      "previewSec": 5,
+      "previewBytes": 1426156
+    },
+    {
+      "templateId": "tpl_valentines_card",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BKNQ05FAWSY708HGVGQWN3",
+        "runId": "run_01M8BMDG6V6D0M7Z05X2S3C1AB",
+        "runRef": "T-3C1AB",
+        "outputs": [
+          {
+            "node": "still",
+            "assetId": "ast_01M8BMEE93NYQV69X94E8AP49Z",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          },
+          {
+            "node": "clip",
+            "assetId": "ast_01M8BMJAR5WKXT8T1VQ1TVA5CD",
+            "model": "bytedance/seedance-2.0-mini",
+            "prompt": null
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_valentines_card/poster-7eeb165ad3.jpg",
+      "coverWebpKey": "public/templates/tpl_valentines_card/poster-7eeb165ad3.webp",
+      "coverAvifKey": "public/templates/tpl_valentines_card/poster-7eeb165ad3.avif",
+      "previewKey": "public/templates/tpl_valentines_card/preview-d76ce04df2.mp4",
+      "coverWidth": 720,
+      "coverHeight": 720,
+      "coverColor": "#a8896e",
+      "previewSec": 5,
+      "previewBytes": 427259
+    },
+    {
+      "templateId": "tpl_halloween_teaser",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BKNQJ7K6D3P9EMH4F7GW06",
+        "runId": "run_01M8BMFV7453EEQW11V7X0HQWA",
+        "runRef": "T-0HQWA",
+        "outputs": [
+          {
+            "node": "still",
+            "assetId": "ast_01M8BMGW2SFJKGDXJ0NQ5XSS3J",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          },
+          {
+            "node": "clip",
+            "assetId": "ast_01M8BMKV1MDC3TJMJFZZ6Z17D2",
+            "model": "bytedance/seedance-2.0-mini",
+            "prompt": null
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_halloween_teaser/poster-9bcf44adeb.jpg",
+      "coverWebpKey": "public/templates/tpl_halloween_teaser/poster-9bcf44adeb.webp",
+      "coverAvifKey": "public/templates/tpl_halloween_teaser/poster-9bcf44adeb.avif",
+      "previewKey": "public/templates/tpl_halloween_teaser/preview-ef15c95c15.mp4",
+      "coverWidth": 720,
+      "coverHeight": 1280,
+      "coverColor": "#4f2114",
+      "previewSec": 5,
+      "previewBytes": 1248520
+    },
+    {
+      "templateId": "tpl_lunar_new_year",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BKNR4Q7Q68934MH7FXCES2",
+        "runId": "run_01M8BMFWQ1TAY9YZVKJZJ1MBEN",
+        "runRef": "T-1MBEN",
+        "outputs": [
+          {
+            "node": "still",
+            "assetId": "ast_01M8BMGWV1FBG83BKWAAQRZCZ2",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          },
+          {
+            "node": "clip",
+            "assetId": "ast_01M8BMKPYE4N12BYAYCSWCJX5S",
+            "model": "bytedance/seedance-2.0-mini",
+            "prompt": null
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_lunar_new_year/poster-18ea820a62.jpg",
+      "coverWebpKey": "public/templates/tpl_lunar_new_year/poster-18ea820a62.webp",
+      "coverAvifKey": "public/templates/tpl_lunar_new_year/poster-18ea820a62.avif",
+      "previewKey": "public/templates/tpl_lunar_new_year/preview-c3cda72dd4.mp4",
+      "coverWidth": 720,
+      "coverHeight": 1280,
+      "coverColor": "#a96646",
+      "previewSec": 5,
+      "previewBytes": 1218992
+    },
+    {
+      "templateId": "tpl_holiday_sale",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BKNRN61H5BTN8S4VM72H4G",
+        "runId": "run_01M8BMHDNXDMY8B1J5HZWM0DXM",
+        "runRef": "T-M0DXM",
+        "outputs": [
+          {
+            "node": "still",
+            "assetId": "ast_01M8BMJPB4XZK8PJ544YQ4PBRX",
+            "model": "bytedance/seedream-5.0-lite",
+            "prompt": null
+          },
+          {
+            "node": "clip",
+            "assetId": "ast_01M8BMPM4E27GMEHQ91VQNEXAE",
+            "model": "bytedance/seedance-2.0-mini",
+            "prompt": null
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_holiday_sale/poster-4d5f60173d.jpg",
+      "coverWebpKey": "public/templates/tpl_holiday_sale/poster-4d5f60173d.webp",
+      "coverAvifKey": "public/templates/tpl_holiday_sale/poster-4d5f60173d.avif",
+      "previewKey": "public/templates/tpl_holiday_sale/preview-77cb3e9431.mp4",
+      "coverWidth": 720,
+      "coverHeight": 1280,
+      "coverColor": "#bda492",
+      "previewSec": 5,
+      "previewBytes": 893401
+    }
+  ]
+}

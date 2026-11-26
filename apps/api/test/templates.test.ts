@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { BUILTIN_TEMPLATES, inferSlots } from "@rolling/core/templates";
 import { personalWorkspaceId } from "../src/auth/workspace";
 import { projectRoom } from "../src/lib/access";
+import coversManifest from "../../../scripts/templates/covers.manifest.json";
 
 const BASE = "https://example.com";
 let seq = 0;
@@ -51,7 +52,7 @@ describe("templates: built-ins", () => {
     const builtins = body.items.filter((t: any) => t.source === "builtin");
     expect(builtins.map((t: any) => t.id).sort()).toEqual(BUILTIN_TEMPLATES.map((t) => t.id).sort());
     const tv = body.items.find((t: any) => t.id === "tpl_tv_ad_15s");
-    expect(tv).toMatchObject({ name: "TV ad, 15 seconds", category: "product", durationSec: 15, ratio: "16:9", coverAspect: "16/9", roles: 1, hasLines: true, featured: true, nodeCount: 8 });
+    expect(tv).toMatchObject({ name: "TV ad, 15 seconds", category: "product", durationSec: 15, ratio: "16:9", roles: 1, hasLines: true, featured: true, nodeCount: 8 });
     expect(tv.slots).toEqual(inferSlots(BUILTIN_TEMPLATES.find((t) => t.id === "tpl_tv_ad_15s")!.graph));
     expect(body.featured.map((t: any) => t.id)).toContain("tpl_tv_ad_15s");
     // The seeded graph is the source graph (migration 0016 is generated from it).
@@ -61,18 +62,41 @@ describe("templates: built-ins", () => {
       expect(JSON.parse(row!.graph)).toEqual(t.graph);
     }
 
-    // Covers (migration 0017): public media URLs for every built-in; the fallback route serves them.
-    for (const t of builtins) expect(t.coverUrl).toBe(`/api/media/public/templates/${t.id}/cover.png`);
-    await env.MEDIA.put("public/templates/tpl_tv_ad_15s/cover.png", new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]), { httpMetadata: { contentType: "image/png" } });
-    const cover = await SELF.fetch(`${BASE}${tv.coverUrl}`);
+    // Covers (migrations 0017, 0020): every built-in has a poster (AVIF/WebP/JPEG with its size and
+    // average color) on the public media URLs; video templates add a preview clip and a real duration.
+    const manifest = new Map(coversManifest.items.map((m) => [m.templateId, m]));
+    expect([...manifest.keys()].sort()).toEqual(BUILTIN_TEMPLATES.map((t) => t.id).sort());
+    for (const t of builtins) {
+      const m = manifest.get(t.id)!;
+      expect(t.cover, t.id).toEqual({ jpg: `/api/media/${m.coverKey}`, webp: `/api/media/${m.coverWebpKey}`, avif: `/api/media/${m.coverAvifKey}`, width: m.coverWidth, height: m.coverHeight, color: m.coverColor });
+      expect(t.coverUrl).toBe(`/api/media/${m.coverWebpKey}`);
+      expect(t.coverAspect).toBe(`${m.coverWidth}/${m.coverHeight}`);
+      const source = BUILTIN_TEMPLATES.find((b) => b.id === t.id)!;
+      const hasVideo = source.graph.nodes.some((n) => n.kind === "video");
+      expect(t.previewUrl, t.id).toBe(hasVideo ? `/api/media/${m.previewKey}` : null);
+      expect(t.durationSec > 0, t.id).toBe(hasVideo);
+    }
+    expect(builtins.find((t: any) => t.id === "tpl_character_sheet").durationSec).toBe(0);
+    const tvm = manifest.get("tpl_tv_ad_15s")!;
+    await env.MEDIA.put(tvm.coverKey, new Uint8Array([255, 216, 255, 224]), { httpMetadata: { contentType: "image/jpeg" } });
+    const cover = await SELF.fetch(`${BASE}/api/media/${tvm.coverKey}`);
     expect(cover.status).toBe(200);
-    expect(cover.headers.get("content-type")).toBe("image/png");
+    expect(cover.headers.get("content-type")).toBe("image/jpeg");
     await cover.arrayBuffer();
+    await env.MEDIA.put(tvm.previewKey!, new Uint8Array(64), { httpMetadata: { contentType: "video/mp4" } });
+    const clip = await SELF.fetch(`${BASE}/api/media/${tvm.previewKey}`, { headers: { range: "bytes=0-15" } });
+    expect(clip.status).toBe(206);
+    expect(clip.headers.get("content-type")).toBe("video/mp4");
+    await clip.arrayBuffer();
     await env.MEDIA.put("public/templates/tpl_nope/cover.png", new Uint8Array([1]));
     expect((await SELF.fetch(`${BASE}/api/media/public/templates/tpl_nope/cover.png`)).status).toBe(404);
+    // MP4 is served for template previews only.
+    expect((await SELF.fetch(`${BASE}/api/media/public/portrait/x1/clip.mp4`)).status).toBe(404);
 
     const filtered = (await (await api(user, "/api/templates?category=talking")).json()) as any;
-    expect(filtered.items.map((t: any) => t.id)).toEqual(["tpl_talking_head"]);
+    expect(filtered.items.map((t: any) => t.id)).toContain("tpl_talking_head");
+    expect(filtered.items.every((t: any) => t.category === "talking")).toBe(true);
+    expect(filtered.items.length).toBeGreaterThanOrEqual(6);
     const searched = (await (await api(user, "/api/templates?q=comic")).json()) as any;
     expect(searched.items.map((t: any) => t.id)).toContain("tpl_comic_page");
 
@@ -85,8 +109,11 @@ describe("templates: built-ins", () => {
 
   it("GraphQL templates(category, q) and template(id)", async () => {
     const { user } = await signedIn("tplgql");
-    const data = await gql(user, `query($c: String, $q: String) { templates(category: $c, q: $q) { id name category source slots { id kind param required } } }`, { c: "product" });
-    expect(data.templates.map((t: any) => t.id).sort()).toEqual(["tpl_product_showcase", "tpl_tv_ad_15s"]);
+    const data = await gql(user, `query($c: String, $q: String) { templates(category: $c, q: $q) { id name category source previewUrl cover { jpg width height color } slots { id kind param required } } }`, { c: "product" });
+    expect(data.templates.map((t: any) => t.id).sort()).toEqual(BUILTIN_TEMPLATES.filter((t) => t.category === "product").map((t) => t.id).sort());
+    const tv = data.templates.find((t: any) => t.id === "tpl_tv_ad_15s");
+    expect(tv.previewUrl).toMatch(/^\/api\/media\/public\/templates\/tpl_tv_ad_15s\/preview-[0-9a-f]{10}\.mp4$/);
+    expect(tv.cover).toMatchObject({ width: 720, color: expect.stringMatching(/^#[0-9a-f]{6}$/) });
     expect(data.templates[0].slots.length).toBeGreaterThan(0);
     const one = await gql(user, `query($id: ID!) { template(id: $id) { id graph nodeCount } }`, { id: "tpl_talking_head" });
     expect(JSON.parse(one.template.graph).nodes).toHaveLength(3);

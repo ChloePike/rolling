@@ -9,10 +9,12 @@ const CONTENT_TYPES: Record<string, string> = {
   png: "image/png",
   jpg: "image/jpeg",
   jpeg: "image/jpeg",
+  avif: "image/avif",
+  mp4: "video/mp4",
 };
 
 /** `public/<category>/<itemId>/<file>` — the R2 layout written by scripts/posewear (D-004). */
-const PUBLIC_KEY = /^public\/([a-z_]+)\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+\.(webp|png|jpe?g))$/;
+const PUBLIC_KEY = /^public\/([a-z_]+)\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+\.(webp|png|jpe?g|avif|mp4))$/;
 
 /**
  * URL of a public-library object. In production `PUBLIC_MEDIA_BASE_URL` points at
@@ -33,7 +35,7 @@ export function publicMediaUrl(r2Key: string, baseUrl?: string): string {
  * appear on public surfaces, D-005). Responses are immutable and edge-cached;
  * object keys never change content.
  */
-/** Built-in template covers (`public/templates/<id>/cover.png`, migration 0017) are served for built-in templates only. */
+/** Built-in template covers and previews (`public/templates/<id>/…`, migrations 0017, 0020) are served for built-in templates only; MP4 only there. */
 async function isServable(db: D1Database, category: string, itemId: string): Promise<boolean> {
   if (category === "templates") return !!(await db.prepare("SELECT 1 AS ok FROM templates WHERE id = ? AND workspace_id IS NULL").bind(itemId).first());
   return isPublicItemServable(db, itemId, category);
@@ -44,6 +46,7 @@ export const media = new Hono<AppEnv>().get("/public/*", async (c) => {
   const match = PUBLIC_KEY.exec(key);
   if (!match) return errorResponse(c, 404, "NOT_FOUND", "Not found");
   const [, category, itemId, , ext] = match as unknown as [string, string, string, string, string];
+  if (ext === "mp4" && category !== "templates") return errorResponse(c, 404, "NOT_FOUND", "Not found");
 
   // Resumable downloads (D-011): ranged requests are answered from R2 directly (206/416).
   if (c.req.header("range")) {

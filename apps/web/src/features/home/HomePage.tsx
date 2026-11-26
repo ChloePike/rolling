@@ -45,6 +45,7 @@ import { useHomePills } from './useHomePills';
 import styles from './HomePage.module.css';
 import type { ProjectSummary } from './types';
 import { coverStyle } from '@/features/templates/cover';
+import { TemplateMedia } from '@/features/templates/TemplateMedia';
 import { LoadError } from '@/lib/loading';
 
 const ENTRIES: Array<{ key: string; to: string; icon: PromptIconName }> = [
@@ -462,7 +463,7 @@ function Inspiration() {
   const indicator = useIndicator(tabsRef, cat);
   const templatesQ = useTemplates();
   const { data } = templatesQ;
-  const feed = data.items.slice(0, 10).filter(CAT_FILTER[cat]);
+  const feed = data.items.filter(CAT_FILTER[cat]).slice(0, 10);
   const loading = templatesQ.isPending && !templatesQ.isError;
   // Nothing to suggest (no templates at all): the section is left out rather than shown empty.
   if (!loading && !templatesQ.isError && !data.items.length) return null;
@@ -506,10 +507,11 @@ function Inspiration() {
             search={{ template: t.id } as never}
             aria-label={intl.formatMessage({ id: 'home.inspiration.useLabel' }, { name: t.name })}
             className={cx(styles.feedCard, 'rl-stagger')}
-            style={staggerStyle(i, coverStyle(t.coverUrl, FEED_TONES[i % FEED_TONES.length]!, { aspectRatio: t.coverAspect }))}
+            style={staggerStyle(i, coverStyle(t.cover ? null : t.coverUrl, t.cover?.color ?? FEED_TONES[i % FEED_TONES.length]!, { aspectRatio: t.coverAspect }))}
             data-motion=""
           >
-            <span className={styles.feedDur}>{formatSeconds(intl, t.durationSec)}</span>
+            <TemplateMedia t={t} />
+            {t.durationSec > 0 ? <span className={styles.feedDur}>{formatSeconds(intl, t.durationSec)}</span> : null}
             <div className={styles.feedFoot}>
               <span className={styles.feedName}>{t.name}</span>
               <span className={cx(styles.useBtn, 'rl-press')}>
