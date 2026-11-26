@@ -22,6 +22,8 @@ export interface CheckoutOptions {
   resume?: { runQuoteId: string };
   /** App path Stripe returns to (default: the current page). */
   returnTo?: string;
+  /** Team only: the workspace's name (the API defaults to “{owner}’s team”). */
+  workspaceName?: string;
 }
 
 /** Search params the return adds; stripped once handled. */
@@ -66,7 +68,7 @@ export async function realCheckoutPlan(planId: PlanId, period: 'monthly' | 'year
       kind: 'plan',
       planId,
       interval: toInterval(period),
-      ...(planId === 'team' ? { seats } : {}),
+      ...(planId === 'team' ? { seats, ...(opts.workspaceName?.trim() ? { workspaceName: opts.workspaceName.trim().slice(0, 60) } : {}) } : {}),
       ...(opts.resume ? { resume: opts.resume } : {}),
       returnTo: opts.returnTo ?? currentReturnPath(),
     });

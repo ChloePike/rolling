@@ -26,6 +26,8 @@ const Body = z.object({
   interval: z.enum(["month", "year"]).default("month"),
   seats: z.number().int().min(1).max(200).default(1),
   extraCredits: z.number().int().min(0).max(1_000_000).default(0),
+  /** Team: the workspace name the Team flow would send (default "{owner}’s team"). */
+  workspaceName: z.string().trim().min(1).max(60).optional(),
 });
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -44,7 +46,7 @@ export const testPlan = new Hono<AppEnv>().post(
   validate("json", Body),
   async (c) => {
     const auth = requireUser(c);
-    const { planId, interval, seats, extraCredits } = c.req.valid("json");
+    const { planId, interval, seats, extraCredits, workspaceName } = c.req.valid("json");
     const now = Date.now();
     const periodStart = now;
     const periodEnd = now + (interval === "year" ? 365 : 30) * DAY;
@@ -62,6 +64,7 @@ export const testPlan = new Hono<AppEnv>().post(
       seats: planId === "team" ? seats : 1,
       baseItemId: `test_base_${planId}`,
       seatItemId: planId === "team" ? `test_seat_${planId}` : null,
+      ...(workspaceName && { workspaceName }),
     });
     const account = creditAccount(c.env, auth.workspaceId);
     unwrapLedger(

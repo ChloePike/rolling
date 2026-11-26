@@ -6,6 +6,7 @@ import { createExecutionContext, env, waitOnExecutionContext } from "cloudflare:
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
 import { clearPriceCache } from "../src/billing/stripe";
+import { defaultTeamName } from "../src/auth/workspace";
 import { grantPlan } from "./auth-helpers";
 import { FakeStripe, stripeEnv, webhookRequest } from "./fake-stripe";
 
@@ -238,5 +239,48 @@ describe("personal plan → Team (fake Stripe)", () => {
     await api(userId, "GET", "/api/billing");
     await grantPlan(workspaceId, "team", "active", 3);
     expect((await api(userId, "GET", "/api/workspace/members")).body.seats).toEqual({ used: 1, limit: 3, team: true });
+  });
+});
+
+describe("Team workspace name (invites say who and where)", () => {
+  it("the name chosen in the Team flow goes to Stripe and names the workspace when Team goes live", async () => {
+    const { userId, workspaceId } = newUser("tname");
+    const r = await api(userId, "POST", "/api/billing/checkout", { kind: "plan", planId: "team", interval: "month", seats: 2, workspaceName: "  Acme Studio " });
+    expect(r.status).toBe(200);
+    const form = (fake.sessions.get(r.body.sessionId) as { form: Record<string, string> }).form;
+    expect(form["subscription_data[metadata][workspaceName]"]).toBe("Acme Studio");
+    const now = Date.now();
+    const sub = fake.addSubscription({ customer: form.customer!, lookupKey: "rolling_team_month", seatQuantity: 1, workspaceId, start: now - DAY, end: now + 29 * DAY });
+    (sub.metadata as Record<string, string>).workspaceName = "Acme Studio";
+    await hook({ type: "customer.subscription.created", object: sub });
+    expect(await env.DB.prepare("SELECT name, kind FROM workspaces WHERE id = ?").bind(workspaceId).first()).toEqual({ name: "Acme Studio", kind: "team" });
+    // A later rename survives webhook replays.
+    expect((await api(userId, "PATCH", "/api/workspace", { name: "Acme" })).body).toMatchObject({ workspace: { id: workspaceId, name: "Acme", kind: "team" } });
+    await hook({ type: "customer.subscription.updated", object: sub });
+    expect(await env.DB.prepare("SELECT name FROM workspaces WHERE id = ?").bind(workspaceId).first()).toEqual({ name: "Acme" });
+    expect((await api(userId, "GET", "/api/me")).body.workspace.name).toBe("Acme");
+  });
+
+  it("without a chosen name the workspace becomes “{owner}’s team”", async () => {
+    const { userId, workspaceId } = newUser("tdefault");
+    await api(userId, "GET", "/api/me");
+    await env.DB.prepare("INSERT OR REPLACE INTO users (id, name, email, email_verified, created_at, updated_at) VALUES (?1, 'Mira Chen', ?2, 1, ?3, ?3)")
+      .bind(userId, `${userId}@team.test`, new Date().toISOString())
+      .run();
+    const r = await api(userId, "POST", "/api/billing/checkout", { kind: "plan", planId: "team", interval: "month", seats: 2 });
+    const customer = (fake.sessions.get(r.body.sessionId) as { form: Record<string, string> }).form.customer!;
+    const now = Date.now();
+    const sub = fake.addSubscription({ customer, lookupKey: "rolling_team_month", seatQuantity: 1, workspaceId, start: now - DAY, end: now + 29 * DAY });
+    await hook({ type: "customer.subscription.created", object: sub });
+    expect(await env.DB.prepare("SELECT name FROM workspaces WHERE id = ?").bind(workspaceId).first()).toEqual({ name: "Mira Chen’s team" });
+  });
+
+  it("only owners of Team workspaces rename; names are validated", async () => {
+    const personal = newUser("tpersonal");
+    await api(personal.userId, "GET", "/api/me");
+    expect((await api(personal.userId, "PATCH", "/api/workspace", { name: "Mine" })).body.error.code).toBe("TEAM_REQUIRED");
+    expect((await api(personal.userId, "PATCH", "/api/workspace", { name: " " })).status).toBe(400);
+    expect(defaultTeamName({ name: "", email: "ada@x.test" })).toBe("ada’s team");
+    expect(defaultTeamName({})).toBe("Team");
   });
 });

@@ -8,6 +8,7 @@ import { errorCode } from '../api';
 import { motion, PathIcon, paths } from '../shared';
 import type { BillingPeriod } from '../types';
 import { PerSeatNote, SeatStepper, TeamGets, TeamPriceBreakdown } from '../team/TeamPricing';
+import { TeamNameField, useTeamName } from '../team/TeamNameField';
 import styles from './Upgrade.parts.module.css';
 
 const cx = (...c: Array<string | false | undefined>) => c.filter(Boolean).join(' ');
@@ -26,6 +27,8 @@ export function TeamPlan({ period, index }: { period: BillingPeriod; index: numb
   const onTeam = session.planId === 'team';
   const [seats, setSeats] = useState(onTeam ? session.seats : 3);
   const [pending, setPending] = useState(false);
+  // A real workspace name instead of “Personal” (invites read “invited you to join <name>”).
+  const [teamName, setTeamName, workspaceName] = useTeamName();
 
   async function start() {
     if (onTeam) return void navigate({ to: '/settings/$section', params: { section: 'team' } });
@@ -33,7 +36,7 @@ export function TeamPlan({ period, index }: { period: BillingPeriod; index: numb
     setPending(true);
     try {
       // Stripe returns to Settings → Team; a personal plan switches in place.
-      await checkoutPlan('team', period, seats, { returnTo: '/settings/team' });
+      await checkoutPlan('team', period, seats, { returnTo: '/settings/team', workspaceName });
       toast.show({ message: intl.formatMessage({ id: 'account.team.toast.started' }, { n: seats }) });
     } catch (e) {
       const code = errorCode(e);
@@ -82,6 +85,7 @@ export function TeamPlan({ period, index }: { period: BillingPeriod; index: numb
         <PerSeatNote />
       </div>
       <div className={styles.teamCalc} data-testid="team-calculator">
+        {!onTeam && session.status === 'signedIn' && <TeamNameField value={teamName} onChange={setTeamName} />}
         <SeatStepper value={seats} onChange={setSeats} />
         <TeamPriceBreakdown seats={seats} period={period} />
         <button

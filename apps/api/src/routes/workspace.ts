@@ -12,7 +12,7 @@ import type { AppEnv } from "../env";
 import { requireRole, requireUser, type AuthContext } from "../auth/context";
 import { authBaseUrl } from "../auth/betterAuth";
 import { enqueueEmail } from "../auth/email";
-import { personalWorkspaceId } from "../auth/workspace";
+import { personalWorkspaceId, WORKSPACE_NAME_MAX } from "../auth/workspace";
 import { limitOrThrow, sha256Hex } from "../auth/rateLimit";
 import { ApiError } from "../lib/errors";
 import { isLive, latestSubscription, seatsInUse } from "../billing/stripe";
@@ -95,7 +95,7 @@ async function findInviteByToken(db: D1Database, token: string) {
   const hash = await sha256Hex(token);
   return db
     .prepare(
-      `SELECT i.*, w.name AS workspace_name, w.kind AS workspace_kind, u.name AS inviter_name
+      `SELECT i.*, w.name AS workspace_name, w.kind AS workspace_kind, COALESCE(NULLIF(TRIM(u.name), ''), u.email) AS inviter_name
        FROM workspace_invites i JOIN workspaces w ON w.id = i.workspace_id LEFT JOIN users u ON u.id = i.invited_by
        WHERE i.token_hash = ?1`,
     )
@@ -110,7 +110,17 @@ function inviteState(r: InviteRow, now: number): "pending" | "accepted" | "revok
   return "pending";
 }
 
+const RenameBody = z.object({ name: z.string().trim().min(1).max(WORKSPACE_NAME_MAX) }).strict();
+
 export const workspace = new Hono<AppEnv>()
+  /** Renames the current Team workspace (owners). Personal workspaces keep their name. */
+  .patch("/", validate("json", RenameBody), async (c) => {
+    const auth = requireRole(c, "owner");
+    const { name } = c.req.valid("json");
+    if (auth.workspace.kind !== "team") throw new ApiError(402, "TEAM_REQUIRED", "Only Team workspaces have a name", { currentPlan: auth.plan });
+    await c.env.DB.prepare("UPDATE workspaces SET name = ? WHERE id = ?").bind(name, auth.workspaceId).run();
+    return c.json({ workspace: { id: auth.workspaceId, name, kind: auth.workspace.kind } });
+  })
   .get("/members", async (c) => {
     const auth = requireUser(c);
     const now = Date.now();
@@ -188,7 +198,8 @@ export const workspace = new Hono<AppEnv>()
       template: "workspace-invite",
       data: {
         workspaceName: auth.workspace.name,
-        inviterName: auth.user?.name ?? "",
+        // The inviter's name, else their email: never "A teammate" for a known sender.
+        inviterName: auth.user?.name?.trim() || auth.user?.email || "",
         role,
         acceptUrl: `${authBaseUrl(c.env)}/invite/${encodeURIComponent(token)}`,
         expiresInDays: INVITE_TTL_DAYS,

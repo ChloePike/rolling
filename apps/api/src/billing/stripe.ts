@@ -1,4 +1,5 @@
 /** Stripe client and D1 helpers shared by the billing routes, the webhook and BillingWorkflow. */
+import { nameTeamWorkspace } from "../auth/workspace";
 import { parsePlanLookupKey, parseTeamSeatLookupKey, planLookupKey, StripeClient, idOf, subscriptionPeriod, teamSeatLookupKey, type StripeSubscription } from "@rolling/core/billing";
 import type { PlanInterval } from "@rolling/core/credits";
 import type { PlanId } from "@rolling/core/pricing/config";
@@ -92,6 +93,8 @@ export interface SubscriptionState {
   /** Subscription item ids of the base price and the Team seat price (null without one). */
   baseItemId: string;
   seatItemId: string | null;
+  /** Team only: the workspace name chosen in the Team flow (subscription metadata `workspaceName`). */
+  workspaceName?: string;
 }
 
 /**
@@ -120,6 +123,7 @@ export function readSubscription(sub: StripeSubscription, workspaceId: string): 
     seats,
     baseItemId: base.id,
     seatItemId: seatItem?.id ?? null,
+    ...(typeof sub.metadata?.workspaceName === "string" && sub.metadata.workspaceName.trim() && { workspaceName: sub.metadata.workspaceName.trim() }),
   };
 }
 
@@ -137,6 +141,8 @@ export async function upsertSubscription(env: Env, s: SubscriptionState): Promis
   // D-013: a workspace on Team is a team workspace (its owner's personal workspace converts in place).
   if (s.planId === "team" && (s.status === "active" || s.status === "trialing")) {
     await env.DB.prepare("UPDATE workspaces SET kind = 'team' WHERE id = ? AND kind <> 'team'").bind(s.workspaceId).run();
+    // A real name instead of "Personal" (invites read "invited you to join <name>").
+    await nameTeamWorkspace(env.DB, s.workspaceId, s.workspaceName);
   }
 }
 

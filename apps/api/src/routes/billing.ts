@@ -16,6 +16,7 @@ import { billingSummary, listLedger } from "../billing/read";
 import { ensureCustomer, idOf, isLive, latestSubscription, planPriceId, readSubscription, seatsInUse, stripeFor, teamSeatPriceId, upsertSubscription, workspaceBilling } from "../billing/stripe";
 import { ApiError } from "../lib/errors";
 import { validate } from "../lib/validate";
+import { WORKSPACE_NAME_MAX } from "../auth/workspace";
 
 const ReturnTo = z
   .string()
@@ -32,6 +33,8 @@ export const CheckoutBody = z.discriminatedUnion("kind", [
     interval: z.enum(["month", "year"]),
     /** Team only (D-013): members including the owner; default 1. */
     seats: Seats.optional(),
+    /** Team only: the workspace's name (default "{owner}’s team"). */
+    workspaceName: z.string().trim().min(1).max(WORKSPACE_NAME_MAX).optional(),
     resume: Resume.optional(),
     returnTo: ReturnTo.optional(),
   }),
@@ -110,7 +113,7 @@ export const billing = new Hono<AppEnv>()
       const live = who.isMember || isLive(sub, now);
       if (live && team && sub && isLive(sub, now) && sub.plan !== "team") {
         // Personal plan → Team: the subscription switches in place and the workspace becomes a team workspace (D-013).
-        return c.json(await switchToTeam(c.env, sub.id, body.interval, seats, who.workspaceId));
+        return c.json(await switchToTeam(c.env, sub.id, body.interval, seats, who.workspaceId, body.workspaceName));
       }
       if (live) {
         throw new ApiError(409, "CONFLICT", team ? "This workspace is on Team already; change seats instead" : "This workspace already has a plan; change it in the billing portal", {
@@ -122,7 +125,7 @@ export const billing = new Hono<AppEnv>()
       const line_items: { price: string; quantity: number }[] = [{ price, quantity: 1 }];
       if (team && seats > 1) line_items.push({ price: await teamSeatPriceId(stripe, body.interval), quantity: seats - 1 });
       const customer = await ensureCustomer(c.env, stripe, who.workspaceId, who.email);
-      const planMeta = { workspaceId: who.workspaceId, planId: body.planId, interval: body.interval, seats: team ? String(seats) : undefined };
+      const planMeta = { workspaceId: who.workspaceId, planId: body.planId, interval: body.interval, seats: team ? String(seats) : undefined, workspaceName: team ? body.workspaceName : undefined };
       const session = await stripe.createCheckoutSession({
         mode: "subscription",
         customer,
@@ -379,7 +382,7 @@ async function liveTeam(env: Env, workspaceId: string, plan: string | null) {
  * and applied only once paid. `invoice.paid` (subscription_update) then grants
  * Team credits for the seats, and the workspace becomes a team workspace.
  */
-async function switchToTeam(env: Env, subscriptionId: string, interval: "month" | "year", seats: number, workspaceId: string) {
+async function switchToTeam(env: Env, subscriptionId: string, interval: "month" | "year", seats: number, workspaceId: string, workspaceName?: string) {
   const stripe = stripeFor(env);
   const state = readSubscription(await stripe.getSubscription(subscriptionId), workspaceId);
   if (!state) throw new ApiError(409, "CONFLICT", "This subscription cannot be switched here; use the billing portal", { reason: "unknown_subscription" });
@@ -391,14 +394,14 @@ async function switchToTeam(env: Env, subscriptionId: string, interval: "month" 
       items,
       proration_behavior: "always_invoice",
       payment_behavior: "pending_if_incomplete",
-      metadata: { workspaceId, planId: "team", interval, seats: String(seats) },
+      metadata: { workspaceId, planId: "team", interval, seats: String(seats), ...(workspaceName && { workspaceName }) },
     },
     `switch-team:${subscriptionId}:${interval}:${seats}:${state.periodStart}`,
   );
   if (updated.pending_update) throw new ApiError(402, "PAYMENT_FAILED", "The payment for Team did not go through", { seats });
   const next = readSubscription(updated, workspaceId);
   if (next) {
-    await upsertSubscription(env, next);
+    await upsertSubscription(env, { ...next, ...(workspaceName && { workspaceName }) });
     // Limits now; credits come with the paid invoice (invoice.paid).
     unwrapLedger(await creditAccount(env, workspaceId).setPlan("team"));
     unwrapLedger(await creditAccount(env, workspaceId).setSeats(next.seats, `seats:switch:${subscriptionId}:${next.seats}:${next.periodStart}`));

@@ -151,6 +151,13 @@ test('GATE-7 Team seats, roles and per-member monthly limits: SEATS_REQUIRED, ME
   // The invitee accepts from the emailed link.
   const mail = await waitMail(oreq, editorEmail, 'workspace-invite');
   expect(mail, 'invite email').toBeTruthy();
+  // The Team workspace has a real name ("{owner}’s team" by default) and the email names the inviter (name, else email).
+  const me = await getJson<{ user: { name: string | null }; workspace: { name: string; kind: string } }>(oreq, '/api/me');
+  expect(me.workspace).toMatchObject({ kind: 'team' });
+  expect(me.workspace.name).not.toBe('Personal');
+  expect(mail!.subject).not.toMatch(/A teammate|Personal/);
+  expect(mail!.subject.startsWith(me.user.name?.trim() || owner.email)).toBe(true);
+  expect(mail!.subject).toContain(me.workspace.name);
   const token = decodeURIComponent(/\/invite\/([^\s"<]+)/.exec(mail!.text)![1]!);
   const ectx = await browser.newContext({ baseURL });
   await apiSignIn(ectx.request, editorEmail, baseURL);

@@ -7,6 +7,7 @@ import { getAuth } from "../src/auth/betterAuth";
 import { ResendEmailProvider } from "@rolling/core/email/resend";
 import { RecordingEmailProvider } from "@rolling/core/email/recording";
 import { BASE, freshEmail, freshIp, getMe, grantPlan, ORIGIN, signIn, waitForEmail } from "./auth-helpers";
+import { defaultTeamName, nameTeamWorkspace } from "../src/auth/workspace";
 
 async function call(req: Request, overrides: Partial<Env>): Promise<Response> {
   const ctx = createExecutionContext();
@@ -99,6 +100,11 @@ describe("workspaces, invites and roles", () => {
     expect(full.status).toBe(402);
     expect(await full.json()).toMatchObject({ error: { code: "SEATS_REQUIRED", data: { seats: 1, used: 1, needed: 2 } } });
     await grantPlan(ws, "team", "active", 2);
+    // What upsertSubscription does when Team goes live: a team workspace with a real name (no name chosen → "{owner}’s team").
+    await env.DB.prepare("UPDATE workspaces SET kind = 'team' WHERE id = ?").bind(ws).run();
+    await nameTeamWorkspace(env.DB, ws);
+    const teamName = defaultTeamName({ name: ownerMe.user.name, email: ownerEmail });
+    expect(teamName).not.toBe("Personal");
 
     const created = await send("POST", "/api/workspace/invites", owner.cookie, { email: inviteeEmail.toUpperCase(), role: "editor" });
     expect(created.status).toBe(201);
@@ -106,7 +112,8 @@ describe("workspaces, invites and roles", () => {
     expect(invite).toMatchObject({ email: inviteeEmail, role: "editor", invitedBy: ownerMe.user.id });
     expect(invite.id).toMatch(/^inv_/);
     const [mail] = await waitForEmail(inviteeEmail);
-    expect(mail!.subject).toBe(`A teammate invited you to Personal on Rolling`);
+    // The inviter's name, else their email; never "A teammate" or "Personal".
+    expect(mail!.subject).toBe(`${ownerMe.user.name?.trim() || ownerEmail} invited you to ${teamName} on Rolling`);
     const token = /\/invite\/([A-Za-z0-9_-]+)/.exec(mail!.text)![1]!;
 
     const lookup = await SELF.fetch(`${BASE}/api/workspace/invites/lookup?token=${token}`);
@@ -122,7 +129,7 @@ describe("workspaces, invites and roles", () => {
 
     const invitee = await signIn(inviteeEmail, { "cf-connecting-ip": freshIp() });
     const accepted = await send("POST", "/api/workspace/invites/accept", invitee.cookie, { token });
-    expect(await accepted.json()).toEqual({ workspace: { id: ws, name: "Personal", kind: "personal" }, role: "editor" });
+    expect(await accepted.json()).toEqual({ workspace: { id: ws, name: teamName, kind: "team" }, role: "editor" });
     expect((await send("POST", "/api/workspace/invites/accept", invitee.cookie, { token })).status).toBe(409);
 
     // Default is the invitee's own workspace; x-workspace-id switches.

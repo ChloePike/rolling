@@ -132,3 +132,31 @@ export async function loadAccount(env: Env, userId: string, now = Date.now()): P
   return { memberships, prefs: prefsRow ? prefsFromRow(prefsRow) : null };
 }
 
+
+/** Longest workspace name (Team flow, `PATCH /api/workspace`). */
+export const WORKSPACE_NAME_MAX = 60;
+
+/** "{name}’s team" from the owner's name, else the local part of their email, else "Team". */
+export function defaultTeamName(owner: { name?: string | null; email?: string | null }): string {
+  const name = owner.name?.trim() || owner.email?.split("@")[0]?.trim() || "";
+  return (name ? `${name}’s team` : "Team").slice(0, WORKSPACE_NAME_MAX);
+}
+
+/**
+ * Names a workspace that becomes a Team workspace (D-013): the name the owner chose in the Team flow, else
+ * "{owner}’s team". Only a workspace still named "Personal" is renamed, so a webhook replay never undoes a
+ * rename made afterwards.
+ */
+export async function nameTeamWorkspace(db: D1Database, workspaceId: string, requested?: string | null): Promise<void> {
+  const ws = await db.prepare("SELECT name FROM workspaces WHERE id = ?").bind(workspaceId).first<{ name: string }>();
+  if (!ws || ws.name !== PERSONAL_WORKSPACE_NAME) return;
+  let name = requested?.trim().slice(0, WORKSPACE_NAME_MAX) ?? "";
+  if (!name) {
+    const owner = await db
+      .prepare("SELECT u.name, u.email FROM workspace_members m JOIN users u ON u.id = m.user_id WHERE m.workspace_id = ? AND m.role = 'owner' ORDER BY u.created_at LIMIT 1")
+      .bind(workspaceId)
+      .first<{ name: string | null; email: string | null }>();
+    name = defaultTeamName(owner ?? {});
+  }
+  await db.prepare("UPDATE workspaces SET name = ? WHERE id = ? AND name = ?").bind(name, workspaceId, PERSONAL_WORKSPACE_NAME).run();
+}

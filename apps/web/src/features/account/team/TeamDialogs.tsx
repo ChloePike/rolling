@@ -11,6 +11,7 @@ import type { BillingPeriod } from '../types';
 import settings from '../Settings.module.css';
 import { PerSeatNote, SeatStepper, seatUsd, TeamGets, TeamPriceBreakdown, teamInterval, useMoney } from './TeamPricing';
 import styles from './team.module.css';
+import { TeamNameField, useTeamName } from './TeamNameField';
 
 const cx = (...c: Array<string | false | undefined>) => c.filter(Boolean).join(' ');
 
@@ -43,13 +44,14 @@ export function StartTeamDialog({
   const [period, setPeriod] = useState<BillingPeriod>(session.plan?.period ?? 'monthly');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [teamName, setTeamName, workspaceName] = useTeamName();
 
   async function start() {
     setPending(true);
     setError(null);
     try {
       // Real API: a personal plan switches in place (resolves); otherwise the page leaves for Stripe.
-      await checkoutPlan('team', period, seats, { returnTo });
+      await checkoutPlan('team', period, seats, { returnTo, workspaceName });
       if (isMockApi()) await qc.invalidateQueries({ queryKey: meKey });
       toast.show({ message: intl.formatMessage({ id: 'account.team.toast.started' }, { n: seats }) });
       onStarted(seats);
@@ -76,6 +78,7 @@ export function StartTeamDialog({
       width={460}
     >
       <div className={styles.dlgBody} data-testid="start-team">
+        <TeamNameField value={teamName} onChange={setTeamName} />
         <Segmented<BillingPeriod>
           label={intl.formatMessage({ id: 'account.upgrade.period' })}
           value={period}

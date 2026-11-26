@@ -36,3 +36,12 @@
 .warn{margin:0;font-size:12px;line-height:1.5;color:var(--c-text-3)}
 
 .dlgBody{display:flex;flex-direction:column;gap:14px;align-self:stretch}
+
+/* Team name (Team flow): the workspace's name, sent with the checkout. */
+.nameField{display:flex;flex-direction:column;gap:6px}
+.nameInput{
+  height:36px;border-radius:8px;border:0;background:var(--c-surface-4);padding:0 12px;box-sizing:border-box;width:100%;
+  font:inherit;font-size:13px;color:var(--c-text-1);outline:0;
+  transition:box-shadow var(--m-fast) var(--m-ease-standard);
+}
+.nameInput:focus,.nameInput:focus-visible{box-shadow:inset 0 0 0 1.5px var(--c-accent)}
