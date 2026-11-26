@@ -286,7 +286,8 @@ export function PromptBox(props: PromptBoxProps) {
       placeholder={placeholder}
       aria-label={props.label ?? t('prompt.brief.label')}
       aria-controls={slash ? paletteId : undefined}
-      aria-expanded={slash || pickerOpen}
+      // No aria-expanded here: a <textarea> (role textbox) may not carry it (axe aria-allowed-attr, critical);
+      // the palette is tied to it by aria-controls and aria-activedescendant.
       aria-autocomplete={commandGroups ? 'list' : undefined}
       aria-activedescendant={slash && flat.length ? paletteOptionId(paletteId, active) : undefined}
       className={styles.textarea}
