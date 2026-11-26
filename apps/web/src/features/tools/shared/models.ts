@@ -1,10 +1,10 @@
-import type { CreditPoint } from '@/lib/models';
+import type { CatalogModel, CreditPoint } from '@/lib/models';
 import type { PickerKind } from '../types';
 
 /**
- * Model options for the tool pickers, keyed by real Hyperouter ids
- * (packages/core/src/models/capabilities.ts, D-002). Display names follow the
- * approved screens; the synced catalog replaces this list.
+ * Model options for the tool pickers. Real mode lists the synced catalog
+ * (`useToolModels`); this list is the approved screens' picker, used only in
+ * mock mode (keyed by real Hyperouter ids, D-002).
  */
 export interface ToolModel {
   id: string;
@@ -20,8 +20,10 @@ export interface ToolModel {
   disabled?: boolean;
   /** Catalog price points (absent in the mock list). */
   points?: CreditPoint[];
-  /** Catalog default model, used for Auto quotes. */
+  /** Catalog default model: what "Auto" starts from (its capabilities drive the settings). */
   isDefault?: boolean;
+  /** The catalog entry (real mode): ratios, resolutions, lengths, audio and limits. */
+  catalog?: CatalogModel;
 }
 
 export const toolModels: Record<PickerKind, ToolModel[]> = {

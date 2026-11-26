@@ -1,27 +1,25 @@
 import { useToast } from '@rolling/ui';
+import type { PlanId } from '@rolling/core/pricing/config';
+import { useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useIntl } from 'react-intl';
+import { isMockApi, mockData } from '@/lib/api/mode';
+import { useCreationMode } from '@/lib/prefs';
 import { useToolFeed } from '../api';
 import { AsideCard } from '../shared/AsideCard';
 import controls from '../shared/controls.module.css';
 import { ToolIcon } from '../shared/icons';
-import layout from '../shared/ToolLayout.module.css';
-import type { SettingsGroupDef } from '../shared/SettingsGroup';
-import { ToolLayout, type ToolOverlay } from '../shared/ToolLayout';
-import { useFilePicker } from '../shared/useFilePicker';
-import { useCreationMode } from '@/lib/prefs';
-import { quoteCredits, segModels, useToolModels } from '../shared/useToolModels';
-import type { PlanId } from '@rolling/core/pricing/config';
 import type { ToolModel } from '../shared/models';
 import { resolutionOptions, useToolPlan } from '../shared/plan';
+import type { SettingsGroupDef } from '../shared/SettingsGroup';
+import { useToolSettings, type ToolCaps } from '../shared/settings';
+import { ToolLayout, type ToolOverlay } from '../shared/ToolLayout';
+import layout from '../shared/ToolLayout.module.css';
+import { useFilePicker } from '../shared/useFilePicker';
+import { modelIdOf, segModels, TOOL_NEEDS, useToolModels } from '../shared/useToolModels';
 import type { ComposerPill } from '../types';
 import styles from './Character.module.css';
-import { characterBody, characterHair, characterOutfits, characterPrompt, characterStyles, characterStyleTones } from './mocks';
-
-const RES_COST: Record<string, number> = { '1K': 2, '2K': 4, '4K': 8 };
-/** Image models; "Seedream 5.0 Pro" runs on `bytedance/seedream-5.5` until Pro is listed (D-002). */
-/** Short list for the Advanced "Model" control (design order), by catalog id. */
-const SEG_IDS = ['bytedance/seedream-5.5', 'qwen/qwen-image-2.0'];
+import { characterBody, characterHair, characterOutfits, characterStyles, characterStyleTones } from './options';
 
 interface Props {
   initialOverlay?: ToolOverlay | null;
@@ -33,65 +31,75 @@ interface Props {
   isMember?: boolean;
 }
 
+type Pick = { hair: string; body: string | null; wear: string | null; style: string };
+
 export function CharacterPage({ initialOverlay, models: modelsOverride, plan: planProp, isMember }: Props) {
   const plan = useToolPlan(planProp);
   const intl = useIntl();
+  const navigate = useNavigate();
   const t = (id: string, v?: Record<string, string | number>) => intl.formatMessage({ id }, v);
   const adv = useCreationMode() === 'advanced';
-  const models = useToolModels('image', modelsOverride);
-  const segOptions = ['Auto', ...segModels(models, SEG_IDS).map((m) => m.name)];
+  // Mock mode: the design's sample character, only through the mock adapter.
+  const demo = isMockApi() ? mockData().character : null;
+  const models = useToolModels('image', modelsOverride, TOOL_NEEDS.character);
+  const segOptions = ['Auto', ...segModels(models, demo?.characterSegIds).map((m) => m.name)];
   const feed = useToolFeed('character');
-  const [p, setP] = useState({ model: 'Auto', idw: 85, facew: 70, wearw: 60, res: '2K', hairCustom: '', bodyCustom: '', seed: '', neg: '' });
+  const [p, setP] = useState({ model: 'Auto', idw: 85, facew: 70, wearw: 60, hairCustom: '', bodyCustom: '', seed: '', neg: '' });
   const set = <K extends keyof typeof p>(k: K, v: (typeof p)[K]) => setP((cur) => ({ ...cur, [k]: v }));
-  const [age, setAge] = useState('28');
-  const [height, setHeight] = useState('168');
-  const [pick, setPick] = useState({ hair: 'sideBob', body: 'balanced', wear: 'cityCasual', style: 'photoreal' });
-  const [text, setText] = useState(characterPrompt);
+  const model = adv ? p.model : 'Auto';
+  const settings = useToolSettings(models, model, 'image', demo?.characterSettings);
+  const s = settings.value;
+  // The tool makes one picture per view in its own framing (full body 3:4, face 1:1): no ratio or count to choose.
+  const caps: ToolCaps = settings.caps.design ? settings.caps : { ...settings.caps, ratios: [], counts: [] };
+  const [age, setAge] = useState(demo?.characterSample.age ?? '');
+  const [height, setHeight] = useState(demo?.characterSample.height ?? '');
+  const [pick, setPick] = useState<Pick>(() => demo?.characterSample.pick ?? { hair: 'fromDescription', body: null, wear: null, style: 'photoreal' });
+  const [text, setText] = useState(demo?.characterPrompt ?? '');
 
   const pct = (v: number) => intl.formatNumber(v / 100, { style: 'percent' });
   const styleLabel = t(`tools.character.style.${pick.style}`);
   const summary = [
     age && t('tools.character.age.value', { n: age }),
     height && t('tools.character.height.value', { n: height }),
-    t(`tools.character.hair.${pick.hair}`),
-    t(`tools.character.body.${pick.body}`),
-    t(`tools.character.wear.${pick.wear}`),
+    pick.hair !== 'fromDescription' || demo ? t(`tools.character.hair.${pick.hair}`) : '',
+    pick.body ? t(`tools.character.body.${pick.body}`) : '',
+    pick.wear ? t(`tools.character.wear.${pick.wear}`) : '',
     styleLabel,
   ].filter(Boolean) as string[];
 
+  // Only settings a real run uses; the reference weights exist for the design's sample model alone.
   const advGroups: SettingsGroupDef[] = [
     { kind: 'seg', id: 'model', title: t('tools.adv.model'), icon: 'cube', options: segOptions.map((m) => ({ value: m, label: m === 'Auto' ? t('tools.adv.auto') : m })), value: p.model, onChange: (v) => set('model', v) },
-    { kind: 'slider', id: 'idw', title: t('tools.character.adv.identity'), icon: 'person', min: 50, max: 100, step: 5, value: p.idw, display: pct(p.idw), low: t('tools.character.adv.identity.low'), high: t('tools.character.adv.identity.high'), onChange: (v) => set('idw', v) },
-    { kind: 'slider', id: 'facew', title: t('tools.character.adv.face'), icon: 'ref', min: 0, max: 100, step: 5, value: p.facew, display: pct(p.facew), low: t('tools.adv.low'), high: t('tools.adv.high'), onChange: (v) => set('facew', v) },
-    { kind: 'slider', id: 'wearw', title: t('tools.character.adv.outfit'), icon: 'shirt', min: 0, max: 100, step: 5, value: p.wearw, display: pct(p.wearw), low: t('tools.adv.low'), high: t('tools.adv.high'), onChange: (v) => set('wearw', v) },
-    { kind: 'seg', id: 'res', title: t('tools.adv.resolution'), icon: 'res', options: resolutionOptions(intl, plan, 'image', ['1K', '2K', '4K']), value: p.res, onChange: (v) => set('res', v) },
+    ...(caps.design
+      ? ([
+          { kind: 'slider', id: 'idw', title: t('tools.character.adv.identity'), icon: 'person', min: 50, max: 100, step: 5, value: p.idw, display: pct(p.idw), low: t('tools.character.adv.identity.low'), high: t('tools.character.adv.identity.high'), onChange: (v) => set('idw', v) },
+          { kind: 'slider', id: 'facew', title: t('tools.character.adv.face'), icon: 'ref', min: 0, max: 100, step: 5, value: p.facew, display: pct(p.facew), low: t('tools.adv.low'), high: t('tools.adv.high'), onChange: (v) => set('facew', v) },
+          { kind: 'slider', id: 'wearw', title: t('tools.character.adv.outfit'), icon: 'shirt', min: 0, max: 100, step: 5, value: p.wearw, display: pct(p.wearw), low: t('tools.adv.low'), high: t('tools.adv.high'), onChange: (v) => set('wearw', v) },
+        ] satisfies SettingsGroupDef[])
+      : []),
+    ...(caps.resolutions.length
+      ? [{ kind: 'seg', id: 'res', title: t('tools.adv.resolution'), icon: 'res', options: resolutionOptions(intl, plan, 'image', caps.resolutions), value: s.resolution, onChange: (v: string) => settings.set({ ...s, resolution: v }), onLocked: () => void navigate({ to: '/upgrade' }) } satisfies SettingsGroupDef]
+      : []),
     { kind: 'input', id: 'hairCustom', title: t('tools.character.adv.hair'), icon: 'person', value: p.hairCustom, placeholder: t('tools.character.adv.hair.placeholder'), onChange: (v) => set('hairCustom', v) },
     { kind: 'text', id: 'bodyCustom', title: t('tools.character.adv.body'), icon: 'body', value: p.bodyCustom, placeholder: t('tools.character.adv.body.placeholder'), onChange: (v) => set('bodyCustom', v) },
     { kind: 'input', id: 'seed', title: t('tools.adv.seed'), icon: 'seed', value: p.seed, placeholder: t('tools.adv.seed.placeholder'), dice: true, mono: true, onChange: (v) => set('seed', v), onRoll: () => set('seed', String(Math.floor(Math.random() * 90000) + 10000)) },
     { kind: 'text', id: 'neg', title: t('tools.adv.neg'), icon: 'neg', value: p.neg, placeholder: t('tools.character.neg.placeholder'), onChange: (v) => set('neg', v) },
   ];
 
-  const views = t('tools.character.pill.views');
-  const pills: ComposerPill[] = adv
-    ? [
-        { id: 'model', label: p.model === 'Auto' ? t('tools.model.auto') : p.model, icon: 'cube' },
-        { id: 'style', label: styleLabel, icon: 'style' },
-        { id: 'views', label: views, icon: 'ratio' },
-        { id: 'res', label: p.res, icon: 'res' },
-        { id: 'consistency', label: t('tools.character.pill.consistency', { pct: p.idw / 100 }), icon: 'person' },
-      ]
-    : [
-        { id: 'model', label: t('tools.model.auto'), icon: 'cube' },
-        { id: 'style', label: styleLabel, icon: 'style' },
-        { id: 'views', label: views, icon: 'ratio' },
-      ];
-  // Two views per run.
-  const cost = quoteCredits(models, adv ? p.model : 'Auto', { resolution: adv ? p.res : '2K', count: 2 }) ?? (adv ? RES_COST[p.res]! : 4);
+  const views = t(caps.design ? 'tools.character.pill.views' : 'tools.character.pill.viewsOnly');
+  const pills: ComposerPill[] = [
+    { id: 'model', label: model === 'Auto' ? t('tools.model.auto') : model, icon: 'cube' },
+    { id: 'style', label: styleLabel, icon: 'style' },
+    { id: 'views', label: views, icon: 'ratio' },
+    // The design's Simple mode shows no resolution pill; real mode always shows what the run sends.
+    ...((adv || !caps.design) && caps.resolutions.length && s.resolution ? [{ id: 'res', label: s.resolution, icon: 'res' } as ComposerPill] : []),
+    ...(adv && caps.design ? [{ id: 'consistency', label: t('tools.character.pill.consistency', { pct: p.idw / 100 }), icon: 'person' } as ComposerPill] : []),
+  ];
   const go = t('tools.character.go');
 
   const toast = useToast();
   const [refs, setRefs] = useState<Record<'face' | 'outfit', string | null>>({ face: null, outfit: null });
-  /** Real mode: the reference pictures' upload ids (resolved to asset ids before the quote). */
+  /** The reference pictures' upload ids (resolved to asset ids before the quote). */
   const [refIds, setRefIds] = useState<Record<'face' | 'outfit', string | null>>({ face: null, outfit: null });
   const [refTarget, setRefTarget] = useState<'face' | 'outfit'>('face');
   const refPicker = useFilePicker('image/*', (file, uploadId) => {
@@ -105,7 +113,14 @@ export function CharacterPage({ initialOverlay, models: modelsOverride, plan: pl
       <h2 className={layout.cardTitle}>{t(`tools.character.${key}`)}</h2>
       <div className={controls.chips}>
         {list.map((v) => (
-          <button key={v} type="button" className={controls.chip} aria-pressed={pick[key] === v} onClick={() => setPick((c) => ({ ...c, [key]: v }))}>
+          <button
+            key={v}
+            type="button"
+            className={controls.chip}
+            aria-pressed={pick[key] === v}
+            // Body and outfit can be left out (the description decides); hair falls back to "From description".
+            onClick={() => setPick((c) => ({ ...c, [key]: c[key] === v && key !== 'hair' ? null : v }))}
+          >
             {t(`tools.character.${key}.${v}`)}
           </button>
         ))}
@@ -183,6 +198,7 @@ export function CharacterPage({ initialOverlay, models: modelsOverride, plan: pl
       aside={aside}
       advanced={adv}
       advGroups={advGroups}
+      settings={{ value: s, caps, onChange: settings.set, onReset: settings.reset }}
       composer={{
         noteLead: t('tools.character.note'),
         noteChips: [t('tools.character.note.full'), t('tools.character.note.face'), ...summary.slice(0, 3)],
@@ -192,39 +208,34 @@ export function CharacterPage({ initialOverlay, models: modelsOverride, plan: pl
         onText: setText,
         placeholder: t('tools.character.composer.placeholder'),
         pills,
-        cost,
         goLabel: go,
       }}
       models={models}
       pickerKind="image"
       paramKind="image"
-      model={p.model}
+      model={model}
       onModel={(m) => set('model', m)}
-      confirm={{ cost, label: go }}
+      confirm={{ cost: demo ? demo.characterMockCost({ adv, res: s.resolution }) : 0, label: go }}
       run={{
         aspect: '2/3',
         video: false,
-        tags: summary.slice(0, 5),
+        tags: [...summary.slice(0, 5), ...(s.resolution && !caps.design ? [s.resolution] : [])],
         tiles: [t('tools.character.tile.full'), t('tools.character.tile.face')],
-        steps: [t('tools.run.step.describe'), p.model === 'Auto' || !adv ? t('tools.model.auto') : p.model],
+        steps: [t('tools.run.step.describe'), model === 'Auto' ? t('tools.model.auto') : model],
         generating: (n) => t('tools.run.step.generating', { pct: n / 100 }),
       }}
       actions={['redo', 'sliders', 'save', 'down', 'star']}
       spec={(prompt) => {
         // Full body, then the face from it; saved to Characters when it finishes (docs/api.md → Runs).
-        const traits = [
-          ...summary,
-          adv && p.hairCustom.trim() ? p.hairCustom.trim() : '',
-          adv && p.bodyCustom.trim() ? p.bodyCustom.trim() : '',
-        ].filter(Boolean);
+        const traits = [...summary, adv && p.hairCustom.trim() ? p.hairCustom.trim() : '', adv && p.bodyCustom.trim() ? p.bodyCustom.trim() : ''].filter(Boolean);
         const referenceAssetIds = [refIds.face, refIds.outfit].filter((x): x is string => !!x);
         return {
           kind: 'character',
           name: summary.slice(0, 3).join(', ') || t('tools.character.title'),
-          model: adv && p.model !== 'Auto' ? (models.find((m) => m.name === p.model)?.id ?? p.model) : 'auto',
+          model: modelIdOf(models, model),
           prompt: [prompt.trim(), traits.join(', ')].filter(Boolean).join('. '),
           title: t('tools.character.title'),
-          resolution: adv ? p.res : '2K',
+          ...(s.resolution ? { resolution: s.resolution } : {}),
           ...(adv && p.neg.trim() ? { negativePrompt: p.neg.trim() } : {}),
           ...(adv && /^\d+$/.test(p.seed) ? { seed: Number(p.seed) } : {}),
           ...(referenceAssetIds.length ? { inputs: { referenceAssetIds } } : {}),

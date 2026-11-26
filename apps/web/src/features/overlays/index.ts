@@ -12,7 +12,7 @@
  * adapter (`mockData().overlays`, lib/api/mode.ts), never in real mode.
  */
 export { ModelPicker, type ModelPickerProps } from './ModelPicker';
-export { ParamPopover, type ParamPopoverProps, type VideoParamPopoverProps, type ImageParamPopoverProps } from './ParamPopover';
+export { ParamPopover, type ParamPopoverProps, type VideoParamPopoverProps, type ImageParamPopoverProps, type ParamOptions } from './ParamPopover';
 export { RunConfirm, RunConfirmPanel, type RunConfirmProps, type RunConfirmPanelProps } from './RunConfirm';
 export { Paywall, PaywallPanel, defaultPaywallOptions, type PaywallProps, type PaywallPanelProps } from './Paywall';
 export { PlanLock, planLockInfo, type PlanLockInfo } from './PlanLock';

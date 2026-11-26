@@ -8,11 +8,11 @@
   font:inherit;font-size:12px;font-weight:600;cursor:pointer;
   transition:background-color var(--m-fast) var(--m-ease-standard),color var(--m-fast) var(--m-ease-standard);
 }
-.seg:hover:not(:disabled):not([aria-pressed="true"]){background:var(--c-surface-5);color:var(--c-text-1)}
+.seg:hover:not(:disabled):not([data-locked]):not([aria-pressed="true"]){background:var(--c-surface-5);color:var(--c-text-1)}
 .seg[aria-pressed="true"]{background:var(--c-text-1);color:var(--c-bg)}
 .seg:disabled{color:var(--c-disabled-text);cursor:not-allowed}
 /* Locked by plan (D-006): visible, disabled, with the plan that unlocks it. */
-.seg[data-locked]{display:inline-flex;align-items:center;gap:6px}
+.seg[data-locked]{display:inline-flex;align-items:center;gap:6px;color:var(--c-disabled-text)}
 .sliderRow{display:flex;align-items:center;gap:10px}
 .range{flex:1;min-width:0;accent-color:var(--c-accent);margin:2px}
 .value{font-variant-numeric:normal;min-width:48px;text-align:right;font-weight:600;font-size:12px;line-height:1}

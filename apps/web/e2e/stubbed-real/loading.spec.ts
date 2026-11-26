@@ -122,12 +122,8 @@ test('skeletons are static under reduced motion', async ({ page }) => {
   expect(names).not.toContain('pulse');
 });
 
-/**
- * Tools pages (Quick Create, Remix, Avatar, Characters) moved to the tools
- * owner mid-change; they still seed the composer and feed with design values
- * in real mode. Enable when `features/tools` reads its mocks through the adapter.
- */
-test.fixme('tools: Quick Create has an empty prompt, no scope or reference chips, and no demo params or quote', async ({ page }) => {
+/** Tools pages read their design values only through the mock adapter (e2e/tools-real covers them in depth). */
+test('tools: Quick Create has an empty prompt, no scope or reference chips, and no demo params or quote', async ({ page }) => {
   await page.goto('/create/quick');
   await watchForMockStrings(page, async () => {
     await expect(page.getByTestId('tool-composer')).toBeVisible({ timeout: 15_000 });

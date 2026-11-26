@@ -1,41 +1,37 @@
 /**
  * Adapters between the tool screens and the shared overlays in `features/overlays`
  * (ModelPicker, ParamPopover, RunConfirm, ResultViewer). Tools keep model
- * names in their state; the shared picker works with catalog ids.
+ * names in their state; the shared picker works with catalog ids. Real mode
+ * shows only what the run state, the catalog and the quote say; mock mode reads
+ * the designs' sample content through the mock adapter (`mockData()`).
  */
 import { useState, type RefObject } from 'react';
 import { useIntl } from 'react-intl';
 import {
   AUTO_MODEL,
-  defaultImageParams,
-  defaultVideoParams,
   ModelPicker,
   ParamPopover,
   Paywall,
   ResultViewer,
-  RunConfirm,
-  type ImageParams,
   resultActions,
+  RunConfirm,
   type ModelOption,
+  type ParamOptions,
   type ResultActionId,
-  type ResultVersion,
+  type ResultParam,
+  type RunPlanRow,
+  type VideoAspect,
   type VideoParams,
+  type ImageParams,
 } from '@/features/overlays';
-import type { ParamKind, PickerKind } from '../types';
-import type { ToolModel } from './models';
-import { checkoutPlan } from '@/lib/session';
-import { useToolPlan } from './plan';
-import type { PlanId } from '@rolling/core/pricing/config';
+import type { SpecQuote } from '@/features/overlays/runs';
 import { isMockApi, mockData } from '@/lib/api/mode';
-
-/** Mock mode: the design's estimator; real mode: no number until a quote exists (the popover shows a skeleton). */
-const estimateVideo = (v: VideoParams): number | null => (isMockApi() ? mockData().overlays.estimateVideoCost(v) : null);
-const estimateImage = (v: ImageParams): number | null => (isMockApi() ? mockData().overlays.estimateImageCost(v) : null);
-/** Real results have one version; mock mode shows the design's v1–v4. */
-const versions = (): ResultVersion[] => (isMockApi() ? mockData().overlays.mockVersions : [{ id: 'v3', label: 'v1', tone: 'var(--c-tone-blank)' }]);
-
-/** Balance shown in quotes until the credits API lands (same placeholder as the header). */
-const BALANCE = 2480;
+import { checkoutPlan, useSession } from '@/lib/session';
+import type { PlanId } from '@rolling/core/pricing/config';
+import type { MediaRun, ParamKind, PickerKind } from '../types';
+import type { ToolModel } from './models';
+import { useToolPlan } from './plan';
+import type { ToolCaps, ToolSettings } from './settings';
 
 function toOption(m: ToolModel): ModelOption {
   return {
@@ -85,28 +81,69 @@ export function ToolModelPicker({ open, kind, models, selected, onPick, onClose,
 interface ParamProps {
   open: boolean;
   kind: ParamKind;
+  /** The page's settings: what the pills show and the run sends. */
+  value: ToolSettings;
+  /** What the selected model can do (catalog); hidden settings are absent. */
+  caps: ToolCaps;
+  onChange: (value: ToolSettings) => void;
+  onReset: () => void;
+  /** Quoted credits (`POST /api/runs/quote`); null shows a skeleton. */
+  cost: number | null;
   onClose: () => void;
   anchorClassName?: string;
   anchorRef: RefObject<HTMLElement | null>;
   /** Locks resolutions above the plan's cap (D-006). */
   plan?: PlanId;
+  /** A locked resolution was picked: the upgrade. */
+  onLockedPick?: (plan: PlanId) => void;
 }
 
-export function ToolParamPopover({ open, kind, onClose, anchorClassName, anchorRef, plan: planProp }: ParamProps) {
+const asVideo = (v: ToolSettings): VideoParams => ({
+  aspectRatio: v.ratio as VideoAspect,
+  resolution: v.resolution as VideoParams['resolution'],
+  duration: `${v.seconds}s` as VideoParams['duration'],
+  count: String(v.count) as VideoParams['count'],
+  audio: v.audio,
+});
+
+const asImage = (v: ToolSettings, quality: ImageParams['quality']): ImageParams => ({
+  aspectRatio: v.ratio as VideoAspect,
+  quality,
+  size: v.resolution as ImageParams['size'],
+  count: String(v.count) as ImageParams['count'],
+});
+
+/** The shared settings popover, controlled by the page's settings and the model's caps. */
+export function ToolParamPopover({ open, kind, value, caps, onChange, onReset, cost, onClose, anchorClassName, anchorRef, plan: planProp, onLockedPick }: ParamProps) {
+  const intl = useIntl();
   const plan = useToolPlan(planProp);
-  const [video, setVideo] = useState<VideoParams>(defaultVideoParams);
-  const [image, setImage] = useState<ImageParams>(defaultImageParams);
+  /** Image quality: shown only for the design's sample model (no run parameter behind it). */
+  const [quality, setQuality] = useState<ImageParams['quality']>('standard');
+  // The design's sample model keeps the design's option rows (ParamPopover.dc.html).
+  const options: ParamOptions = caps.design ? {} : {
+    ratios: caps.ratios,
+    resolutions: caps.resolutions,
+    durations: caps.durations.map((n) => `${n}s`),
+    counts: caps.counts.length > 1 ? caps.counts.map(String) : null,
+    // No run parameter behind image quality: the size is the setting.
+    quality: false,
+  };
+  const max = caps.durations.length ? Math.max(...caps.durations) : 0;
   return (
     <div className={anchorClassName} data-overlay="params">
       {kind === 'video' ? (
         <ParamPopover
           kind="video"
           open={open}
-          value={video}
-          onValueChange={setVideo}
-          cost={estimateVideo(video)}
+          value={asVideo(value)}
+          onValueChange={(v) => onChange({ ...value, ratio: v.aspectRatio, resolution: v.resolution, seconds: parseInt(v.duration, 10) || 0, count: Number(v.count) || 1, audio: v.audio })}
+          options={options}
+          audioSupported={caps.audio}
+          durationNote={isMockApi() ? undefined : max ? intl.formatMessage({ id: 'tools.params.maxSeconds' }, { n: max }) : null}
+          cost={cost}
           plan={plan}
-          onReset={() => setVideo(defaultVideoParams)}
+          onLockedPick={onLockedPick}
+          onReset={onReset}
           onClose={onClose}
           anchorRef={anchorRef}
         />
@@ -114,11 +151,16 @@ export function ToolParamPopover({ open, kind, onClose, anchorClassName, anchorR
         <ParamPopover
           kind="image"
           open={open}
-          value={image}
-          onValueChange={setImage}
-          cost={estimateImage(image)}
+          value={asImage(value, quality)}
+          onValueChange={(v) => {
+            setQuality(v.quality);
+            onChange({ ...value, ratio: v.aspectRatio, resolution: v.size, count: Number(v.count) || 1 });
+          }}
+          options={options}
+          cost={cost}
           plan={plan}
-          onReset={() => setImage(defaultImageParams)}
+          onLockedPick={onLockedPick}
+          onReset={onReset}
           onClose={onClose}
           anchorRef={anchorRef}
         />
@@ -133,31 +175,44 @@ interface ConfirmProps {
   label: string;
   /** Image runs (Characters) quote the pair of views. */
   views?: boolean;
+  /** Real mode: the quote being confirmed (rows, balance). */
+  quote?: SpecQuote | null;
+  /** The run's settings line, e.g. "Seedance 2.5 · 9:16 · 720p · 5s". */
+  meta: string;
   onClose: () => void;
   /** Starts the run (the host closes the dialog). */
   onConfirm: () => void;
 }
 
-export function ToolRunConfirm({ open, cost, label, views, onClose, onConfirm }: ConfirmProps) {
+export function ToolRunConfirm({ open, cost, label, views, quote, meta, onClose, onConfirm }: ConfirmProps) {
   const intl = useIntl();
+  const mock = isMockApi();
+  const kind = views ? 'image' : 'video';
+  const demo = mock ? mockData().quick.toolOverlayDemo.confirm : null;
+  const rows: RunPlanRow[] = quote
+    ? quote.items
+        .filter((i) => i.action !== 'none')
+        .map((i) => ({
+          id: i.ref,
+          name: i.title,
+          meta: [i.modelName, meta].filter(Boolean).join(' · '),
+          kind: i.kind === 'image' ? 'image' : 'video',
+          state: i.action === 'run' ? 'run' : i.action === 'reuse' ? 'reuse' : i.action === 'blocked' ? 'blocked' : 'free',
+          cost: i.credits,
+        }))
+    : [{ id: 'run_this', name: intl.formatMessage({ id: views ? 'tools.confirm.rowViews' : 'tools.confirm.row' }), meta: demo?.meta ?? meta, kind, state: 'run', cost }];
+  const routed = quote?.items.find((i) => i.action === 'run')?.modelName;
   return (
     <RunConfirm
       open={open}
       onOpenChange={(o) => !o && onClose()}
       variant="single"
-      rows={[
-        {
-          id: 'run_this',
-          name: intl.formatMessage({ id: views ? 'tools.confirm.rowViews' : 'tools.confirm.row' }),
-          meta: 'Auto → Seedance 2.5 · 9:16 · 720p · 15s',
-          kind: views ? 'image' : 'video',
-          state: 'run',
-          cost,
-        },
-      ]}
-      balance={BALANCE}
-      eta="~2 min"
-      subtitle="Auto → Seedance 2.5"
+      rows={rows}
+      total={quote ? quote.total : undefined}
+      // Mock mode shows the design's balance and routing; real mode the quote's.
+      balance={quote ? quote.balance : (demo?.balance ?? 0)}
+      eta={demo?.eta ?? ''}
+      subtitle={demo ? demo.subtitle : routed ? intl.formatMessage({ id: 'tools.confirm.routed' }, { model: routed }) : undefined}
       actionLabel={label}
       onConfirm={onConfirm}
     />
@@ -167,45 +222,70 @@ export function ToolRunConfirm({ open, cost, label, views, onClose, onConfirm }:
 interface ViewerProps {
   open: boolean;
   aspect: string;
-  /** Prompt of the opened result; the mock text otherwise. */
-  prompt?: string;
+  /** The opened result (a feed card). */
+  run: MediaRun | null;
+  /** The tool's title, used when a run has no prompt. */
+  fallbackTitle: string;
   onClose: () => void;
   onAction: (id: ResultActionId) => void;
 }
 
-export function ToolResultViewer({ open, aspect, prompt, onClose, onAction }: ViewerProps) {
+export function ToolResultViewer({ open, aspect, run, fallbackTitle, onClose, onAction }: ViewerProps) {
   const intl = useIntl();
+  const session = useSession();
   const [version, setVersion] = useState('v3');
   const t = (id: string) => intl.formatMessage({ id });
+  if (isMockApi()) {
+    const m = mockData().overlays;
+    const demo = mockData().quick.toolOverlayDemo.viewer;
+    return (
+      <ResultViewer
+        open={open}
+        onOpenChange={(o) => !o && onClose()}
+        title={demo.title}
+        author={demo.author}
+        createdAt={new Date(Date.now() - 10 * 60_000)}
+        aspectRatio={aspect}
+        versions={m.mockVersions}
+        versionId={version}
+        onVersionChange={setVersion}
+        currentVersionId="v3"
+        durationSec={15}
+        positionSec={4}
+        // Runs started here show their own prompt; seeded history uses the design's details.
+        prompt={run?.cost !== undefined ? run.prompt : demo.prompt}
+        params={demo.params.map(([label, value]) => ({
+          label: t(label),
+          value: label === 'tools.viewer.mode' ? t('tools.viewer.fromTemplate') : label === 'tools.viewer.cost' ? intl.formatMessage({ id: 'tools.viewer.credits' }, { n: demo.cost }) : value,
+        }))}
+        assets={demo.assets}
+        actions={m.mockResultActions}
+        onAction={(id) => onAction(id)}
+      />
+    );
+  }
+  // Real mode: what the feed card knows about the run, nothing more.
+  const params: ResultParam[] = run?.tags.length ? [{ label: t('tools.viewer.settings'), value: run.tags.join(' · ') }] : [];
+  if (run?.cost !== undefined) params.push({ label: t('tools.viewer.cost'), value: intl.formatMessage({ id: 'tools.viewer.credits' }, { n: run.cost }) });
+  const tile = run?.tiles.find((x) => x.src);
   return (
     <ResultViewer
       open={open}
       onOpenChange={(o) => !o && onClose()}
-      title="Two-person product demo · New lighting"
-      author="Alex"
-      createdAt={new Date(Date.now() - 10 * 60_000)}
+      title={run?.prompt.slice(0, 80) || fallbackTitle}
+      author={session.user?.name ?? ''}
+      createdAt={new Date(Date.now() - (run?.finishedAgoMin ?? 0) * 60_000)}
       aspectRatio={aspect}
-      versions={versions()}
-      versionId={version}
-      onVersionChange={setVersion}
-      currentVersionId="v3"
-      durationSec={15}
-      positionSec={4}
-      prompt={prompt ?? 'In shot 2, change the white daylight outside the window to warm golden-hour light. Keep the action and camera position.'}
-      params={[
-        { label: t('tools.viewer.model'), value: 'Seedance 2.5' },
-        { label: t('tools.viewer.mode'), value: t('tools.viewer.fromTemplate') },
-        { label: t('tools.viewer.aspect'), value: '9:16' },
-        { label: t('tools.viewer.duration'), value: '15s' },
-        { label: t('tools.viewer.resolution'), value: '720p' },
-        { label: t('tools.viewer.seed'), value: '48213' },
-        { label: t('tools.viewer.took'), value: '1m 52s' },
-        { label: t('tools.viewer.cost'), value: intl.formatMessage({ id: 'tools.viewer.credits' }, { n: 10 }) },
-      ]}
-      assets={[
-        { id: 'ast_lead', name: '@Lead', tone: 'var(--c-tone-plum)' },
-        { id: 'ast_room', name: 'Kitchen set', tone: 'var(--c-tone-teal)' },
-      ]}
+      mediaKind={run?.video === false ? 'image' : 'video'}
+      versions={[{ id: 'current', label: t('tools.viewer.current'), tone: run?.tiles[0]?.tone ?? 'var(--c-tone-blank)' }]}
+      versionId="current"
+      onVersionChange={() => undefined}
+      currentVersionId="current"
+      src={tile?.src}
+      durationSec={run?.durationSec}
+      prompt={run?.prompt ?? ''}
+      params={params}
+      assets={[]}
       actions={resultActions()}
       onAction={(id) => onAction(id)}
     />

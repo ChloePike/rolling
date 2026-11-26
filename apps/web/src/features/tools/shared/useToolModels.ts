@@ -1,4 +1,5 @@
-import { useModels, type CatalogModel } from '@/lib/models';
+import { pickerModels, useModels, type CatalogModel } from '@/lib/models';
+import { isMockApi } from '@/lib/api/mode';
 import { toolModels, type ToolModel } from './models';
 import type { PickerKind } from '../types';
 
@@ -10,7 +11,7 @@ function mark(name: string): string {
   return letters.slice(0, 3) || name.slice(0, 2).toUpperCase();
 }
 
-/** Credits per 5s (video) or per image, from the catalog's price points at the default resolution. */
+/** Indicative credits per 5s (video) or per image from the catalog samples, for the picker rows only (runs use the quote). */
 function unitCredits(m: CatalogModel): number {
   const res = m.defaultResolution;
   const points = m.credits.filter((p) => p.resolution === null || p.resolution === res);
@@ -19,8 +20,15 @@ function unitCredits(m: CatalogModel): number {
   return pick.seconds && pick.seconds !== 5 ? Math.ceil((pick.credits * 5) / pick.seconds) : pick.credits;
 }
 
+/**
+ * Catalog models for a tool: video and image pickers drop hidden, tool-only and
+ * mature-only models (D-009, D-005); Avatar lists the lip-sync models.
+ */
 export function fromCatalog(list: CatalogModel[], kind: PickerKind): ToolModel[] {
-  const wanted = kind === 'avatar' ? list.filter((m) => m.lipSync) : list.filter((m) => m.kind === kind && !m.matureOnly);
+  const wanted =
+    kind === 'avatar'
+      ? list.filter((m) => m.kind === 'video' && m.lipSync && m.hidden !== true && !m.matureOnly)
+      : pickerModels(list).filter((m) => m.kind === kind && !m.matureOnly && !m.lipSync);
   return wanted.map((m, i) => ({
     id: m.id,
     name: m.name,
@@ -32,42 +40,53 @@ export function fromCatalog(list: CatalogModel[], kind: PickerKind): ToolModel[]
     eta: '',
     points: m.credits,
     isDefault: m.default,
+    catalog: m,
   }));
 }
 
 /**
- * Models for a tool picker and its Advanced "Model" control. Reads the synced
- * catalog through `useModels` (lib/models); until it has answered (or when the
- * API is unreachable, as in the design checks) the screen shows the mock list
- * from the approved designs. `override` injects a list (tests, stories).
+ * Models for a tool picker and its Advanced "Model" control, from the synced
+ * catalog (`useModels`, lib/models). Real mode never shows anything else (an
+ * empty list until the catalog answers); mock mode falls back to the approved
+ * screens' list. `override` injects a list (tests, stories).
  */
-export function useToolModels(kind: PickerKind, override?: ToolModel[]): ToolModel[] {
+export function useToolModels(kind: PickerKind, override?: ToolModel[], needs?: (m: CatalogModel) => boolean): ToolModel[] {
   const q = useModels(kind === 'image' ? 'image' : 'video');
   if (override) return override;
-  const live = q.data ? fromCatalog(q.data, kind) : [];
-  return live.length ? live : toolModels[kind];
+  const all = q.data ? fromCatalog(q.data, kind) : [];
+  const live = needs ? all.filter((m) => !m.catalog || needs(m.catalog)) : all;
+  return live.length || !isMockApi() ? live : toolModels[kind];
 }
+
+/** What each tool needs from a model (catalog `operations`, D-009 curated placement aside). */
+export const TOOL_NEEDS = {
+  /** Quick Create: text or reference video. */
+  quick: (m: CatalogModel) => m.operations.includes('t2v') || m.operations.includes('refs'),
+  /** Remix: reference inputs (the clip, new looks); first-frame models stand in with the clip's frame (core planRemix). */
+  remix: (m: CatalogModel) => m.operations.includes('refs') || m.operations.includes('i2v'),
+  /** Characters: text to image. */
+  character: (m: CatalogModel) => m.operations.length === 0 || m.operations.includes('t2i'),
+} as const;
+
+/** Most chips the Advanced "Model" control shows (the designs show two or three). */
+const SEG_MAX = 3;
 
 /**
- * Credits for one run from the catalog price points (`credits per resolution/seconds`).
- * Returns undefined when the list has no price data (mock list), so the caller
- * keeps its mock estimate.
+ * Options for the Advanced "Model" control. Catalog models: the curated
+ * featured ones that fit the tool (display names from the catalog), at most
+ * three. The mock list (mock mode): the design's short list by id.
  */
-export function quoteCredits(models: ToolModel[], selected: string, opts: { resolution?: string; seconds?: number; count?: number }): number | undefined {
-  const model = selected === 'Auto' ? (models.find((m) => m.isDefault) ?? models[0]) : models.find((m) => m.name === selected);
-  const points = model?.points;
-  if (!points?.length) return undefined;
-  const match =
-    points.find((p) => (p.resolution ?? null) === (opts.resolution ?? null) && (p.seconds ?? null) === (opts.seconds ?? null)) ??
-    points.find((p) => p.resolution === (opts.resolution ?? null) || p.resolution === null);
-  if (!match) return undefined;
-  const perSecond = match.seconds && opts.seconds && match.seconds !== opts.seconds ? match.credits / match.seconds : undefined;
-  const one = perSecond !== undefined ? Math.ceil(perSecond * opts.seconds!) : match.credits;
-  return one * (opts.count ?? 1);
+export function segModels(models: ToolModel[], mockIds: readonly string[] = []): ToolModel[] {
+  const usable = models.filter((m) => !m.disabled);
+  if (usable.some((m) => m.catalog)) {
+    const featured = usable.filter((m) => (m.catalog?.placement ?? 'featured') === 'featured');
+    return (featured.length ? featured : usable).slice(0, SEG_MAX);
+  }
+  const picked = mockIds.map((id) => usable.find((m) => m.id === id)).filter((m): m is ToolModel => !!m);
+  return picked.length ? picked : usable;
 }
 
-/** Options for the Advanced "Model" control: the design's short list when the catalog has it, else every model. */
-export function segModels(models: ToolModel[], preferredIds: string[]): ToolModel[] {
-  const picked = preferredIds.map((id) => models.find((m) => m.id === id)).filter((m): m is ToolModel => !!m);
-  return picked.length ? picked : models.filter((m) => !m.disabled);
+/** The run request's model: a catalog id, or `auto`. */
+export function modelIdOf(models: ToolModel[], selected: string): string {
+  return selected === 'Auto' ? 'auto' : (models.find((m) => m.name === selected)?.id ?? 'auto');
 }

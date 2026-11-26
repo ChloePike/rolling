@@ -164,7 +164,7 @@ export function registerFidelity(tool: ToolState['tool']) {
 
       const ratio = await pixelDiffRatio(page, app, design);
       test.info().annotations.push({ type: 'pixel-diff', description: `${s.id} ${(ratio * 100).toFixed(3)}%` });
-      expect(ratio, `${s.id} pixel diff ${(ratio * 100).toFixed(3)}%`).toBeLessThanOrEqual(MAX_DIFF);
+      expect(ratio, `${s.id} pixel diff ${(ratio * 100).toFixed(3)}%`).toBeLessThanOrEqual(s.maxDiff ?? MAX_DIFF);
 
       if (dAside) {
         const scroll = await page.evaluate(() => {

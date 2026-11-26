@@ -35,8 +35,31 @@ interface ParamPopoverCommon {
    * locked, with the lowest plan that unlocks them. Omit to show no plan locks.
    */
   plan?: PlanId;
+  /**
+   * A locked resolution was picked (D-006). When given, locked options stay
+   * clickable (lock badge kept) and call this with the plan that unlocks them,
+   * e.g. to open the upgrade page; otherwise they are disabled.
+   */
+  onLockedPick?: (plan: PlanId) => void;
+  /**
+   * Options from the selected model's capabilities (catalog). A list replaces
+   * the design's options; an empty list (or `counts: null`, `quality: false`)
+   * hides that setting. Omitted keys keep the design's options.
+   */
+  options?: ParamOptions;
   className?: string;
   style?: CSSProperties;
+}
+
+export interface ParamOptions {
+  ratios?: readonly string[];
+  /** Video resolutions or image sizes. */
+  resolutions?: readonly string[];
+  /** Video lengths, e.g. `5s`. */
+  durations?: readonly string[];
+  counts?: readonly string[] | null;
+  /** Image quality (standard / high); false hides it. */
+  quality?: boolean;
 }
 
 export interface VideoParamPopoverProps extends ParamPopoverCommon {
@@ -61,6 +84,15 @@ export interface ImageParamPopoverProps extends ParamPopoverCommon {
 
 /** Props: `kind` selects video or image settings (ParamPopover.dc.html `kind`). */
 export type ParamPopoverProps = VideoParamPopoverProps | ImageParamPopoverProps;
+
+/** Tile size of a ratio the table doesn't list (fits the same 20×18 box). */
+function ratioBox(r: string): [number, number] {
+  const m = /^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/.exec(r);
+  if (!m) return [14, 14];
+  const a = Number(m[1]);
+  const b = Number(m[2]);
+  return a >= b ? [20, Math.max(6, Math.round((20 * b) / a))] : [Math.max(6, Math.round((18 * a) / b)), 18];
+}
 
 const RATIOS: ReadonlyArray<[VideoAspect, number, number]> = [
   ['Auto', 14, 14],
@@ -97,7 +129,7 @@ export function ParamPopover(props: ParamPopoverProps) {
       if (!lock) return o;
       return {
         ...o,
-        disabled: true,
+        disabled: !props.onLockedPick,
         disabledReason: lock.reason,
         ariaLabel: lock.label,
         label: (
@@ -108,6 +140,18 @@ export function ParamPopover(props: ParamPopoverProps) {
         ),
       };
     });
+
+  /** Picking a locked option asks for the upgrade instead of selecting it. */
+  const unlessLocked = <T extends string>(kind: 'video' | 'image', pick: (value: T) => void) => (value: T) => {
+    const lock = props.plan ? planLockInfo(intl, props.plan, kind, value) : null;
+    if (lock) props.onLockedPick?.(lock.plan);
+    else pick(value);
+  };
+  const opt = props.options ?? {};
+  const shown = <T extends string>(design: readonly T[], list: readonly string[] | undefined): T[] => (list ? (list as T[]) : [...design]);
+  const ratioTiles: ReadonlyArray<[VideoAspect, number, number]> = opt.ratios
+    ? opt.ratios.map((r) => RATIOS.find(([k]) => k === r) ?? ([r as VideoAspect, ...ratioBox(r)] as [VideoAspect, number, number]))
+    : RATIOS;
 
   const setRatio = (aspectRatio: VideoAspect) => {
     if (props.kind === 'video') props.onValueChange({ ...props.value, aspectRatio });
@@ -124,17 +168,26 @@ export function ParamPopover(props: ParamPopoverProps) {
     const opts = <T extends string>(values: readonly T[], disabled: readonly T[] = []) =>
       values.map((value) => ({ value, label: value, disabled: disabled.includes(value), disabledReason: unsupported }));
     const durationNote = props.durationNote === undefined ? t('note.duration') : props.durationNote;
+    const resolutions = shown(['480p', '720p', '1080p'] as const, opt.resolutions);
+    const durations = shown(['5s', '10s', '15s', '30s'] as const, opt.durations);
+    const counts = opt.counts === null ? [] : shown(['1', '2', '4'] as const, opt.counts);
     groups = (
       <>
-        <Group label={t('resolution')}>
-          <SegmentedControl className={styles.seg} label={t('resolution')} value={v.resolution} onValueChange={(resolution) => set({ resolution })} options={withPlanLocks(opts(['480p', '720p', '1080p'] as const, off.resolution), 'video')} />
-        </Group>
-        <Group label={t('duration')} note={durationNote}>
-          <SegmentedControl className={styles.seg} label={t('duration')} value={v.duration} onValueChange={(duration) => set({ duration })} options={opts(['5s', '10s', '15s', '30s'] as const, off.duration)} />
-        </Group>
-        <Group label={t('count')} note={t('note.count')}>
-          <SegmentedControl className={styles.seg} label={t('count')} value={v.count} onValueChange={(count) => set({ count })} options={opts(['1', '2', '4'] as const, off.count)} />
-        </Group>
+        {resolutions.length ? (
+          <Group label={t('resolution')}>
+            <SegmentedControl className={styles.seg} label={t('resolution')} value={v.resolution} onValueChange={unlessLocked('video', (resolution: VideoParams['resolution']) => set({ resolution }))} options={withPlanLocks(opts(resolutions, off.resolution), 'video')} />
+          </Group>
+        ) : null}
+        {durations.length ? (
+          <Group label={t('duration')} note={durationNote}>
+            <SegmentedControl className={styles.seg} label={t('duration')} value={v.duration} onValueChange={(duration) => set({ duration })} options={opts(durations, opt.durations ? [] : off.duration)} />
+          </Group>
+        ) : null}
+        {counts.length > 1 ? (
+          <Group label={t('count')} note={t('note.count')}>
+            <SegmentedControl className={styles.seg} label={t('count')} value={v.count} onValueChange={(count) => set({ count })} options={opts(counts, off.count)} />
+          </Group>
+        ) : null}
         {props.audioSupported !== false ? (
           <div className={styles.audio}>
             <span className={styles.audioText}>
@@ -152,8 +205,12 @@ export function ParamPopover(props: ParamPopoverProps) {
     const v = props.value;
     const off = { size: [], count: [], ...props.unsupported };
     const set = (patch: Partial<ImageParams>) => props.onValueChange({ ...v, ...patch });
+    const sizes = shown(['1K', '2K', '4K'] as const, opt.resolutions);
+    const counts = opt.counts === null ? [] : shown(['1', '2', '4'] as const, opt.counts);
+    const quality = opt.quality !== false;
     groups = (
       <>
+        {quality ? (
         <Group label={t('quality')}>
           <SegmentedControl
             className={styles.seg}
@@ -166,26 +223,31 @@ export function ParamPopover(props: ParamPopoverProps) {
             ]}
           />
         </Group>
-        <Group label={t('resolution')} note={props.plan && planLockInfo(intl, props.plan, 'image', '4K') ? null : t('note.size')}>
+        ) : null}
+        {sizes.length ? (
+        <Group label={t('resolution')} note={!quality || (props.plan && planLockInfo(intl, props.plan, 'image', '4K')) ? null : t('note.size')}>
           <SegmentedControl
             className={styles.seg}
             label={t('resolution')}
             value={v.size}
-            onValueChange={(size) => set({ size })}
+            onValueChange={unlessLocked('image', (size: ImageParams['size']) => set({ size }))}
             options={withPlanLocks(
-              (['1K', '2K', '4K'] as const).map((value) => ({
+              sizes.map((value) => ({
                 value,
                 label: value,
-                disabled: (value === '4K' && v.quality === 'standard') || (off.size as string[]).includes(value),
+                disabled: (quality && value === '4K' && v.quality === 'standard') || (off.size as string[]).includes(value),
                 disabledReason: unsupported,
               })),
               'image',
             )}
           />
         </Group>
+        ) : null}
+        {counts.length > 1 ? (
         <Group label={t('images')}>
-          <SegmentedControl className={styles.seg} label={t('images')} value={v.count} onValueChange={(count) => set({ count })} options={(['1', '2', '4'] as const).map((value) => ({ value, label: value, disabled: (off.count as string[]).includes(value), disabledReason: unsupported }))} />
+          <SegmentedControl className={styles.seg} label={t('images')} value={v.count} onValueChange={(count) => set({ count })} options={counts.map((value) => ({ value, label: value, disabled: (off.count as string[]).includes(value), disabledReason: unsupported }))} />
         </Group>
+        ) : null}
       </>
     );
     cost = props.cost !== undefined ? props.cost : isMockApi() ? mockData().overlays.estimateImageCost(v) : null;
@@ -214,13 +276,14 @@ export function ParamPopover(props: ParamPopoverProps) {
         </button>
       </div>
 
+      {ratioTiles.length ? (
       <div className={styles.group}>
         <span id={ratioLabelId} className={styles.label}>
           {t('aspectRatio')}
         </span>
         <div ref={ratioRef} role="radiogroup" aria-labelledby={ratioLabelId} className={styles.ratios}>
           <span className={styles.ratioThumb} style={ratioThumb} aria-hidden="true" />
-          {RATIOS.map(([label, w, h]) => {
+          {ratioTiles.map(([label, w, h]) => {
             const on = props.value.aspectRatio === label;
             return (
               <button key={label} type="button" role="radio" aria-checked={on} tabIndex={on ? 0 : -1} className={styles.ratio} onClick={() => setRatio(label)}>
@@ -231,6 +294,7 @@ export function ParamPopover(props: ParamPopoverProps) {
           })}
         </div>
       </div>
+      ) : null}
 
       {groups}
 

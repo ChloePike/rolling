@@ -17,6 +17,8 @@ import styles from './ToolLayout.module.css';
 import { useFilePicker } from './useFilePicker';
 import { usePresence } from './usePresence';
 import { useRuns, type RunSpec } from './useRuns';
+import type { ToolCaps, ToolSettings } from './settings';
+import { useToolQuote } from './useToolQuote';
 import { assetMediaUrl, isApiError, isMockApi } from '@/features/overlays/backend';
 import { agentFailure, applyProposal, sendTurn, threadFor, type AgentTool } from '@/features/overlays/agent';
 import { downloadAsset } from '@/features/overlays/media';
@@ -51,7 +53,10 @@ export interface ToolLayoutProps {
   aside: ReactNode;
   advanced: boolean;
   advGroups: SettingsGroupDef[];
-  composer: Omit<ComposerProps, 'openOverlay' | 'onPill' | 'onSend' | 'onRefine' | 'onAdd' | 'refining'>;
+  /** The quote (`cost`) comes from `useToolQuote` here; pages don't pass one. */
+  composer: Omit<ComposerProps, 'openOverlay' | 'onPill' | 'onSend' | 'onRefine' | 'onAdd' | 'refining' | 'cost' | 'costLoading'>;
+  /** The page's generation settings and the selected model's caps: the pills, the settings popover and the run read the same value. */
+  settings: { value: ToolSettings; caps: ToolCaps; onChange: (v: ToolSettings) => void; onReset: () => void };
   pickerKind: PickerKind;
   /** Picker list, from `useToolModels`. */
   models: ToolModel[];
@@ -59,6 +64,7 @@ export interface ToolLayoutProps {
   /** Selected model name ("Auto" for Auto). */
   model: string;
   onModel: (name: string) => void;
+  /** `cost`: the mock-mode estimate (mock adapter); real mode shows only the server's quote. */
   confirm: { cost: number; label: string };
   /** Shape of a run started from the composer. */
   run: RunShape;
@@ -122,6 +128,11 @@ export function ToolLayout(p: ToolLayoutProps) {
   const session = useSession();
   const isMember = p.isMember ?? session.isMember;
   const threshold = usePref('confirmThreshold');
+  // The live quote of what Generate would run (real mode); mock mode shows the mock adapter's estimate.
+  const liveQuote = useToolQuote(real && p.spec ? p.spec(p.composer.text) : null, p.confirm.cost);
+  const confirmMeta = p.run.tags.join(' · ');
+  /** D-006: a locked resolution opens the upgrade page. */
+  const upgrade = () => void navigate({ to: '/upgrade' });
   const runs = useRuns(p.feed, {
     onDone: (run) =>
       toast.show({
@@ -349,6 +360,7 @@ export function ToolLayout(p: ToolLayoutProps) {
           void downloadAsset(item.assetId, item.prompt.slice(0, 60)).catch(() => toast.show({ message: t('tools.toast.runError') }));
           return toast.show({ message: t('tools.toast.downloaded') });
         }
+        if (real) return toast.show({ message: t('tools.toast.noResult') });
         downloadMock(item.id, item.prompt, item.video);
         return toast.show({ message: t('tools.toast.downloaded') });
       case 'star': {
@@ -449,6 +461,8 @@ export function ToolLayout(p: ToolLayoutProps) {
         </div>
         <Composer
           {...p.composer}
+          cost={liveQuote.credits}
+          costLoading={liveQuote.loading}
           refs={[...p.composer.refs, ...extraRefs]}
           pillsRef={pillsRef}
           openOverlay={overlay === 'model' || overlay === 'params' ? overlay : null}
@@ -471,13 +485,28 @@ export function ToolLayout(p: ToolLayoutProps) {
           anchorClassName={styles.anchor}
           anchorRef={pillsRef}
         />
-        <ToolParamPopover open={overlay === 'params'} kind={p.paramKind} plan={p.plan} onClose={close} anchorClassName={styles.anchor} anchorRef={pillsRef} />
+        <ToolParamPopover
+          open={overlay === 'params'}
+          kind={p.paramKind}
+          value={p.settings.value}
+          caps={p.settings.caps}
+          onChange={p.settings.onChange}
+          onReset={p.settings.onReset}
+          cost={liveQuote.loading ? null : liveQuote.credits}
+          plan={p.plan}
+          onLockedPick={upgrade}
+          onClose={close}
+          anchorClassName={styles.anchor}
+          anchorRef={pillsRef}
+        />
       </section>
       <ToolRunConfirm
         open={overlay === 'confirm'}
         cost={pendingRun.current?.cost ?? p.confirm.cost}
         label={p.confirm.label}
         views={p.paramKind === 'image'}
+        quote={pendingRun.current?.quote ?? null}
+        meta={confirmMeta}
         onClose={close}
         onConfirm={() => {
           const r = pendingRun.current ?? { prompt: p.composer.text, cost: p.confirm.cost };
@@ -496,8 +525,8 @@ export function ToolLayout(p: ToolLayoutProps) {
       <ToolResultViewer
         open={overlay === 'viewer'}
         aspect={viewing?.aspect ?? p.viewerAspect}
-        // Runs started here show their own prompt; seeded history uses the viewer's mock details.
-        prompt={viewing?.cost !== undefined ? viewing.prompt : undefined}
+        run={viewing}
+        fallbackTitle={p.title}
         onClose={close}
         onAction={(id) => {
           const run = viewing;
@@ -508,6 +537,7 @@ export function ToolLayout(p: ToolLayoutProps) {
               void downloadAsset(run.assetId, run.prompt.slice(0, 60)).catch(() => toast.show({ message: t('tools.toast.runError') }));
               return;
             }
+            if (real) return void toast.show({ message: t('tools.toast.noResult') });
             downloadMock(run?.id ?? 'result', run?.prompt ?? '', true);
             toast.show({ message: t('tools.toast.downloaded') });
           } else if (id === 'sendToCanvas') {

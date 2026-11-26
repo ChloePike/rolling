@@ -22,6 +22,6 @@ test.describe('Remix /create/remix', () => {
     await page.goto('/create/remix');
     await expect(page.getByRole('slider', { name: 'Motion strength' })).toHaveValue('6');
     await expect(page.getByRole('slider', { name: 'Character reference strength' })).toHaveValue('80');
-    await expect(page.locator('[data-pill="motion"]')).toHaveText('Sporty 6');
+    await expect(page.locator('[data-pill="motion"]')).toHaveText('Motion 6');
   });
 });

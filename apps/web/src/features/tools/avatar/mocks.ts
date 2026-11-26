@@ -32,6 +32,17 @@ export const avatarVoices: Array<[string, string]> = [
   ['Upbeat male', 'Bright · Good for selling'],
 ];
 
+/** The design's Advanced "Lip-sync method" short list (catalog ids) and composer pills (9:16, 10s, 720p). */
+export const avatarSegIds = ['minimax/minimax-h3', 'lumina/wan2.7-i2v-spicy'];
+export const avatarSettings = { ratio: '9:16', resolution: '720p' };
+export const avatarSeconds = 10;
+
+/** Mock-mode estimate shown where real mode shows the server's quote. */
+export function avatarMockCost(o: { adv: boolean; res: string }): number {
+  const res: Record<string, number> = { '480p': 6, '720p': 10, '1080p': 18 };
+  return (o.adv ? (res[o.res] ?? 10) : 10) + 2;
+}
+
 export const avatarClone = { name: 'My voice 01', progress: 64 };
 
 export const avatarPrompt =

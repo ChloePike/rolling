@@ -14,7 +14,20 @@ export const remixPresetOptions: Record<(typeof remixPresets)[number]['id'], str
   scene: ['Daylight studio', 'Kitchen', 'Office', 'Outdoor café'],
 };
 
-export const remixSlotTones = ['var(--c-tone-plum)', 'var(--c-tone-teal)', 'var(--c-tone-indigo)', 'var(--c-tone-sand)', 'var(--c-tone-neutral)'];
+/** The design's sample cast: character 1 from the template, character 2 uploaded. */
+export const remixSampleCast = ['template', 'uploaded'] as const;
+
+/** The design's composer pills: 16:9, 10s, 720p (OriginalVideo.dc.html). */
+export const remixSettings = { ratio: '16:9', seconds: 10, resolution: '720p' };
+
+/** The design's Advanced "Model" short list, by catalog id. */
+export const remixSegIds = ['bytedance/seedance-2.5', 'bytedance/seedance-2.0-mini'];
+
+/** Mock-mode estimate shown where real mode shows the server's quote. */
+export function remixMockCost(o: { adv: boolean; res: string; people: number; count: number }): number {
+  const res: Record<string, number> = { '480p': 6, '720p': 10, '1080p': 18 };
+  return Math.round((o.adv ? (res[o.res] ?? 10) : 10) * 1.2 * (1 + (o.people - 1) * 0.15) * (o.adv ? o.count : 1));
+}
 
 export const remixParsed = {
   camera: 'Slow push-in, ending on a two-shot',

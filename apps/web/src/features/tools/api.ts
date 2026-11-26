@@ -1,21 +1,22 @@
 import { useQuery } from '@tanstack/react-query';
-import { avatarFeed } from './avatar/mocks';
-import { characterFeed } from './character/mocks';
-import { quickFeed } from './quick/mocks';
-import { remixFeed } from './remix/mocks';
+import { isMockApi, mockData } from '@/lib/api/mode';
 import type { FeedItem, ToolId } from './types';
 
 /**
- * Tool history feed. Mocked until the runs API lands (docs/api.md, `GET /api/runs?tool=`);
- * the real client replaces `fetchToolFeed` only.
+ * Tool history feed seed. Real mode starts empty: ToolLayout fills it from
+ * `GET /api/runs` (this tool's runs). Mock mode shows the designs' sample
+ * feed from the mock adapter.
  */
-const MOCK_FEEDS: Record<ToolId, FeedItem[]> = { quick: quickFeed, remix: remixFeed, avatar: avatarFeed, character: characterFeed };
+function mockFeed(tool: ToolId): FeedItem[] {
+  const m = mockData();
+  return { quick: m.quick.quickFeed, remix: m.remix.remixFeed, avatar: m.avatar.avatarFeed, character: m.character.characterFeed }[tool];
+}
 
 export async function fetchToolFeed(tool: ToolId): Promise<FeedItem[]> {
-  return MOCK_FEEDS[tool];
+  return isMockApi() ? mockFeed(tool) : [];
 }
 
 export function useToolFeed(tool: ToolId): FeedItem[] {
-  const q = useQuery({ queryKey: ['tools', 'feed', tool], queryFn: () => fetchToolFeed(tool), initialData: MOCK_FEEDS[tool] });
+  const q = useQuery({ queryKey: ['tools', 'feed', tool, isMockApi()], queryFn: () => fetchToolFeed(tool), initialData: () => (isMockApi() ? mockFeed(tool) : []) });
   return q.data;
 }

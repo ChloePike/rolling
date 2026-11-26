@@ -49,7 +49,7 @@ test.describe('Quick Create /create/quick', () => {
     await expect(pill).toBeFocused();
   });
 
-  test('in Advanced, picking a model updates the pill and the Model control; settings pills open one settings popover', async ({ page }) => {
+  test('in Advanced, picking a model updates the pill and the Model control; a settings pill opens the settings popover and only it shows as open', async ({ page }) => {
     await setMode(page, 'advanced');
     await page.goto('/create/quick');
     await page.locator('[data-pill="model"]').click();
@@ -59,8 +59,9 @@ test.describe('Quick Create /create/quick', () => {
 
     await page.locator('[data-pill="res"]').click();
     await expect(page.getByRole('dialog', { name: 'Video settings' })).toBeVisible();
-    for (const id of ['ratio', 'duration', 'res', 'fps', 'count', 'seed']) {
-      await expect(page.locator(`[data-pill="${id}"]`)).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.locator('[data-pill="res"]')).toHaveAttribute('aria-expanded', 'true');
+    for (const id of ['ratio', 'duration', 'fps', 'count', 'seed']) {
+      await expect(page.locator(`[data-pill="${id}"]`)).toHaveAttribute('aria-expanded', 'false');
     }
     await page.mouse.click(1300, 130);
     await expect(page.getByRole('dialog', { name: 'Video settings' })).toHaveCount(0);
@@ -121,20 +122,20 @@ test.describe('Quick Create /create/quick', () => {
     for (const t of c[0]?.transforms ?? []) expect(t).toMatch(/^(none|translate(Y)?\(0px(, 0px)?\)( scale\(1\))?)$/);
   });
 
-  test('plan caps (D-006): on Starter, 1080p stays visible but locked and names Plus as the unlocking plan', async ({ page }) => {
+  test('plan caps (D-006): on Starter, 1080p stays visible but locked, names Plus, and opens the upgrade', async ({ page }) => {
     await asPlan(page, 'starter');
     await setMode(page, 'advanced');
     await page.goto('/create/quick');
     const locked = page.locator('main aside [data-group="res"] button[data-locked]');
     await expect(locked).toHaveCount(1);
-    await expect(locked).toBeDisabled();
     await expect(locked).toContainText('1080p');
     await expect(locked).toContainText('Plus');
     await expect(locked).toHaveAttribute('title', 'Available on Plus');
     await expect(locked).toHaveAccessibleName('1080p, Available on Plus');
-    await locked.click({ force: true });
     await expect(page.locator('main aside [data-group="res"] [aria-pressed="true"]')).toHaveText('720p');
     await expect(page.locator('[data-pill="res"]')).toHaveText('720p');
+    await locked.click();
+    await expect(page).toHaveURL(/\/upgrade$/);
   });
 
   test('non-members (D-007): Generate and Refine open the join paywall and keep the typed brief', async ({ page }) => {

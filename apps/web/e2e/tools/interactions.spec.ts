@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { asPlan } from '../support/session';
+import { mockPublicLibrary, type PublicNode } from '../support/publicLibrary';
 import { MODAL, setMode, setThreshold } from './support/toolSpec';
 
 /** Interaction pass: every left-panel control, feed action and composer control in the four tools does something. */
@@ -11,6 +12,10 @@ const fast = (page: Page, extra: Record<string, unknown> = {}) =>
 
 const png = { name: 'lead.png', mimeType: 'image/png', buffer: Buffer.from('89504e470d0a1a0a', 'hex') };
 const composer = (page: Page) => page.getByTestId('tool-composer');
+/** Public library items (GraphQL stub) behind the preset rows. */
+const libraryItem = (category: string, title: string): PublicNode => ({ id: `pw_${category}_${title.replace(/\W/g, '')}`, category, sub: null, title, promptEn: title.toLowerCase(), tags: [], assetId: `ast_${category}`, license: 'CC0', source: 'https://posewear.pages.dev/' });
+const library = (category: string | null): PublicNode[] =>
+  ({ scene: [libraryItem('scene', 'Kitchen'), libraryItem('scene', 'Office')], pose: [libraryItem('pose', 'Walk and talk')], lighting: [libraryItem('lighting', 'Golden hour')] })[category ?? ''] ?? [];
 
 test.describe('tools: generation flow', () => {
   test('under the confirm threshold Generate starts at once: progress → result in the feed → toast with View', async ({ page }) => {
@@ -133,18 +138,20 @@ test.describe('tools: left panels', () => {
     await expect(page).toHaveURL(/\/templates$/);
   });
 
-  test('Remix: preset rows open a choice list (keyboard too); character slots upload', async ({ page }) => {
+  test('Remix: preset rows open the public library (keyboard too); character slots upload', async ({ page }) => {
+    await mockPublicLibrary(page, library);
     await setMode(page, 'simple');
     await page.goto('/create/remix');
     const row = page.locator('[data-preset="scene"]');
     await row.click();
-    const list = page.getByRole('listbox', { name: 'Scenes' });
-    await expect(list).toBeVisible();
-    await list.getByRole('option', { name: 'Kitchen' }).click();
+    const picker = page.getByRole('dialog', { name: 'Scenes' });
+    await expect(picker.getByRole('tab')).toHaveText(['Scenes', 'Lighting', 'Props', 'Furniture']);
+    await picker.getByRole('option', { name: /Kitchen/ }).click();
     await expect(row).toContainText('Kitchen');
     await page.locator('[data-preset="action"]').focus();
     await page.keyboard.press('Enter');
-    await page.keyboard.press('ArrowDown');
+    const poses = page.getByRole('dialog', { name: 'Action' });
+    await poses.getByRole('option', { name: /Walk and talk/ }).focus();
     await page.keyboard.press('Enter');
     await expect(page.locator('[data-preset="action"]')).toContainText('Walk and talk');
     await page.getByRole('radio', { name: '3 people' }).click();
@@ -158,9 +165,11 @@ test.describe('tools: left panels', () => {
     await setMode(page, 'simple');
     await setThreshold(page, 0);
     await page.goto('/create/avatar');
+    await mockPublicLibrary(page, library);
     await page.locator('[data-look="scene"]').click();
-    await page.getByRole('listbox').getByRole('option', { name: 'Bright studio' }).click();
-    await expect(page.locator('[data-look="scene"]')).toContainText('Bright studio');
+    await page.getByRole('dialog', { name: 'Scenes' }).getByRole('tab', { name: 'Lighting' }).click();
+    await page.getByRole('dialog', { name: 'Scenes' }).getByRole('option', { name: /Golden hour/ }).click();
+    await expect(page.locator('[data-look="scene"]')).toContainText('Golden hour');
     await page.getByRole('button', { name: 'Custom' }).click();
     await page.getByLabel('Custom persona').fill('Calm skincare expert');
     await page.getByRole('button', { name: 'Add', exact: true }).click();

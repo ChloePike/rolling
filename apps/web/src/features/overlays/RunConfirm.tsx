@@ -127,7 +127,7 @@ export function RunConfirmPanel({
         </button>
       </div>
 
-      <div className={styles.stats}>{stats.join(' · ')}</div>
+      <div className={styles.stats}>{stats.filter(Boolean).join(' · ')}</div>
 
       <div className={styles.rows} role="list">
         {rows.map((r, i) => (

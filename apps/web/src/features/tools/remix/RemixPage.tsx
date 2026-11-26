@@ -1,28 +1,36 @@
 import { useToast } from '@rolling/ui';
+import type { LibraryCategoryKey } from '@rolling/core/library/types';
+import type { PlanId } from '@rolling/core/pricing/config';
+import { useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useIntl } from 'react-intl';
+import { isMockApi, mockData } from '@/lib/api/mode';
+import { useCreationMode } from '@/lib/prefs';
 import { useToolFeed } from '../api';
 import { AsideCard } from '../shared/AsideCard';
-import { remixHints, shotPrompt } from '../shared/promptHints';
 import controls from '../shared/controls.module.css';
-import { ToolIcon } from '../shared/icons';
-import type { SettingsGroupDef } from '../shared/SettingsGroup';
-import { ToolLayout, type ToolOverlay } from '../shared/ToolLayout';
-import { PickPopover } from '../shared/PickPopover';
-import { useFilePicker } from '../shared/useFilePicker';
-import { useCreationMode } from '@/lib/prefs';
-import { quoteCredits, segModels, useToolModels } from '../shared/useToolModels';
-import type { PlanId } from '@rolling/core/pricing/config';
+import { ToolIcon, type ToolIconName } from '../shared/icons';
+import { LibraryRow, type LibraryPick } from '../shared/LibraryPicker';
 import type { ToolModel } from '../shared/models';
 import { resolutionOptions, useToolPlan } from '../shared/plan';
+import { remixHints, shotPrompt } from '../shared/promptHints';
+import type { SettingsGroupDef } from '../shared/SettingsGroup';
+import { useToolSettings } from '../shared/settings';
+import { settingsPills, settingsTags } from '../shared/pills';
+import { ToolLayout, type ToolOverlay } from '../shared/ToolLayout';
+import { useFilePicker } from '../shared/useFilePicker';
+import { modelIdOf, segModels, TOOL_NEEDS, useToolModels } from '../shared/useToolModels';
 import type { ComposerPill } from '../types';
-import { remixParsed, remixPresetOptions, remixPresets, remixPrompt, remixSlotTones } from './mocks';
 import styles from './Remix.module.css';
-import { isMockApi } from '@/features/overlays/backend';
 
-const RES_COST: Record<string, number> = { '480p': 6, '720p': 10, '1080p': 18 };
-/** Short list for the Advanced "Model" control (design order), by catalog id. */
-const SEG_IDS = ['bytedance/seedance-2.5', 'bytedance/seedance-2.0-mini'];
+/** Preset rows and the public-library categories behind each (D-004). */
+const PRESETS: Array<{ id: 'action' | 'outfit' | 'scene'; icon: ToolIconName; tone: string; categories: LibraryCategoryKey[] }> = [
+  { id: 'action', icon: 'body', tone: 'var(--c-tone-teal)', categories: ['pose', 'pose_depth'] },
+  { id: 'outfit', icon: 'shirt', tone: 'var(--c-tone-sand)', categories: ['outfit', 'outfit_anime', 'outfit_historical'] },
+  { id: 'scene', icon: 'scene', tone: 'var(--c-tone-indigo)', categories: ['scene', 'lighting', 'prop', 'furniture'] },
+];
+type PresetId = (typeof PRESETS)[number]['id'];
+const SLOT_TONES = ['var(--c-tone-plum)', 'var(--c-tone-teal)', 'var(--c-tone-indigo)', 'var(--c-tone-sand)', 'var(--c-tone-neutral)'];
 
 interface Props {
   initialOverlay?: ToolOverlay | null;
@@ -37,112 +45,144 @@ interface Props {
 export function RemixPage({ initialOverlay, models: modelsOverride, plan: planProp, isMember }: Props) {
   const plan = useToolPlan(planProp);
   const intl = useIntl();
+  const navigate = useNavigate();
   const t = (id: string, v?: Record<string, string | number>) => intl.formatMessage({ id }, v);
   const adv = useCreationMode() === 'advanced';
-  const models = useToolModels('video', modelsOverride);
-  const segOptions = ['Auto', ...segModels(models, SEG_IDS).map((m) => m.name)];
+  // Mock mode: the design's sample content, only through the mock adapter.
+  const demo = isMockApi() ? mockData().remix : null;
+  const models = useToolModels('video', modelsOverride, TOOL_NEEDS.remix);
+  const segOptions = ['Auto', ...segModels(models, demo?.remixSegIds).map((m) => m.name)];
   const feed = useToolFeed('remix');
-  const [p, setP] = useState({ model: 'Auto', res: '720p', motion: 6, refw: 80, outfit: 'all', fps: '24', count: '1', seed: '', neg: '' });
+  const [p, setP] = useState({ model: 'Auto', motion: 6, refw: 80, outfit: 'all', fps: '24', seed: '', neg: '' });
   const set = <K extends keyof typeof p>(k: K, v: (typeof p)[K]) => setP((cur) => ({ ...cur, [k]: v }));
+  const model = adv ? p.model : 'Auto';
+  const settings = useToolSettings(models, model, 'video', demo?.remixSettings);
+  const s = settings.value;
+  const caps = settings.caps;
   const [people, setPeople] = useState(2);
-  const [text, setText] = useState(remixPrompt);
+  const [text, setText] = useState(demo?.remixPrompt ?? '');
   const toast = useToast();
-  const [presets, setPresets] = useState<Record<string, string>>(() => Object.fromEntries(remixPresets.map((x) => [x.id, x.value])));
-  const [uploads, setUploads] = useState<Record<number, string>>({});
-  /** Real mode: upload ids of the character slots, uploaded preset pictures and the reference video. */
-  const [slotIds, setSlotIds] = useState<Record<number, string>>({});
-  const [presetIds, setPresetIds] = useState<Record<string, string>>({});
+  /** Library items picked per preset row; uploads use the same row (`uploads`). */
+  const [picked, setPicked] = useState<Partial<Record<PresetId, LibraryPick>>>({});
+  const [presetUploads, setPresetUploads] = useState<Partial<Record<PresetId, { id: string; name: string }>>>({});
+  const [uploads, setUploads] = useState<Record<number, { id: string | null; name: string }>>({});
   const [video, setVideo] = useState<{ id: string; name: string } | null>(null);
-  /** Real mode: the shot fields the user writes (camera, line, actions), keyed by field id. */
+  /** The shot fields the user writes (camera, line, actions), keyed by field id. */
   const [shot, setShot] = useState<Record<string, string>>({});
-  const real = !isMockApi();
   const videoPicker = useFilePicker('video/*', (file, uploadId) => {
     setVideo({ id: uploadId, name: file.name });
     toast.show({ message: t('tools.remix.video.added', { file: file.name }) });
   });
-  const [target, setTarget] = useState<{ kind: 'slot'; i: number } | { kind: 'preset'; id: string } | null>(null);
+  const [target, setTarget] = useState<{ kind: 'slot'; i: number } | { kind: 'preset'; id: PresetId } | null>(null);
   const picker = useFilePicker('image/*,video/*', (file, uploadId) => {
     if (!target) return;
+    const image = file.type.startsWith('image/');
     if (target.kind === 'slot') {
-      if (file.type.startsWith('image/')) setSlotIds((u) => ({ ...u, [target.i]: uploadId }));
-      setUploads((u) => ({ ...u, [target.i]: file.name }));
+      setUploads((u) => ({ ...u, [target.i]: { id: image ? uploadId : null, name: file.name } }));
       toast.show({ message: t('tools.toast.slotUploaded', { name: charName(target.i), file: file.name }) });
     } else {
-      setPresets((cur) => ({ ...cur, [target.id]: file.name }));
-      if (file.type.startsWith('image/')) setPresetIds((cur) => ({ ...cur, [target.id]: uploadId }));
+      setPicked((cur) => ({ ...cur, [target.id]: undefined }));
+      setPresetUploads((cur) => ({ ...cur, [target.id]: { id: image ? uploadId : '', name: file.name } }));
       toast.show({ message: t('tools.toast.presetUploaded', { file: file.name }) });
     }
   });
 
   const charName = (i: number) => t('tools.remix.character', { n: i + 1 });
-  const slots = Array.from({ length: people }, (_, i) => ({
-    name: charName(i),
-    tone: i < 2 ? remixSlotTones[i]! : 'var(--c-surface-3)',
-    placeholder: i < 2 ? '' : t('tools.remix.slot.placeholder'),
-    // Real mode shows only what was uploaded; the mock shows the design's sample cast.
-    state: uploads[i] ?? (real ? t('tools.remix.slot.notSet') : i === 0 ? t('tools.remix.slot.template') : i === 1 ? t('tools.remix.slot.uploaded') : t('tools.remix.slot.notSet')),
-    set: uploads[i] !== undefined || (!real && i < 2),
-  }));
-  const fields: Array<[string, string]> = [
-    [t('tools.remix.parsed.camera'), remixParsed.camera],
-    [t('tools.remix.parsed.line', { n: 1 }), remixParsed.line1],
-    [t('tools.remix.parsed.action', { n: 1 }), remixParsed.action1],
-    [t('tools.remix.parsed.action', { n: 2 }), remixParsed.action2],
-  ];
-  for (let i = 2; i < people; i++) fields.push([t('tools.remix.parsed.actionExtra', { n: i + 1 }), t('tools.remix.parsed.idle')]);
-  /** Real mode: editable shot fields that become the shot's prompt (`shots[0].prompt`). */
+  const sample = (i: number) => demo?.remixSampleCast[i];
+  const slots = Array.from({ length: people }, (_, i) => {
+    const up = uploads[i];
+    const s0 = sample(i);
+    return {
+      name: charName(i),
+      tone: up || s0 ? SLOT_TONES[i]! : 'var(--c-surface-3)',
+      placeholder: up || s0 ? '' : t('tools.remix.slot.placeholder'),
+      state: up?.name ?? (s0 === 'template' ? t('tools.remix.slot.template') : s0 === 'uploaded' ? t('tools.remix.slot.uploaded') : t('tools.remix.slot.notSet')),
+      set: !!up || !!s0,
+    };
+  });
+  /** Characters with a look: the only ones an outfit can apply to. */
+  const cast = slots.map((x, i) => ({ ...x, i })).filter((x) => x.set);
+
+  /** Shot fields: the design's parsed sample in mock mode, else what the user types (sent as `shots[0].prompt`). */
   const shotFields: Array<{ id: string; label: string; placeholder: string }> = [
     { id: 'camera', label: t('tools.remix.parsed.camera'), placeholder: t('tools.remix.shot.placeholder.camera') },
     { id: 'line1', label: t('tools.remix.parsed.line', { n: 1 }), placeholder: t('tools.remix.shot.placeholder.line') },
     ...Array.from({ length: people }, (_, i) => ({ id: `action${i + 1}`, label: t('tools.remix.parsed.action', { n: i + 1 }), placeholder: t('tools.remix.shot.placeholder.action') })),
   ];
+  const parsed: Array<[string, string]> | null = demo
+    ? [
+        [t('tools.remix.parsed.camera'), demo.remixParsed.camera],
+        [t('tools.remix.parsed.line', { n: 1 }), demo.remixParsed.line1],
+        [t('tools.remix.parsed.action', { n: 1 }), demo.remixParsed.action1],
+        [t('tools.remix.parsed.action', { n: 2 }), demo.remixParsed.action2],
+        ...Array.from({ length: Math.max(0, people - 2) }, (_, k) => [t('tools.remix.parsed.actionExtra', { n: k + 3 }), t('tools.remix.parsed.idle')] as [string, string]),
+      ]
+    : null;
+  const filled = (prefix: string) => shotFields.filter((f) => f.id.startsWith(prefix) && (shot[f.id] ?? '').trim()).length;
+  const noteChips = demo
+    ? [t('tools.remix.note.camera', { n: 1 }), t('tools.remix.note.lines', { n: 1 }), t('tools.remix.note.actions', { n: people })]
+    : [
+        ...(filled('camera') ? [t('tools.remix.note.camera', { n: filled('camera') })] : []),
+        ...(filled('line') ? [t('tools.remix.note.lines', { n: filled('line') })] : []),
+        ...(filled('action') ? [t('tools.remix.note.actions', { n: filled('action') })] : []),
+      ];
 
   const pct = (v: number) => intl.formatNumber(v / 100, { style: 'percent' });
+  // Only settings with a run parameter behind them; the design's extra controls exist for the sample model alone.
   const advGroups: SettingsGroupDef[] = [
     { kind: 'seg', id: 'model', title: t('tools.adv.model'), icon: 'cube', options: segOptions.map((m) => ({ value: m, label: m === 'Auto' ? t('tools.adv.auto') : m })), value: p.model, onChange: (v) => set('model', v) },
-    { kind: 'seg', id: 'res', title: t('tools.adv.resolution'), icon: 'res', options: resolutionOptions(intl, plan, 'video', ['480p', '720p', '1080p']), value: p.res, onChange: (v) => set('res', v) },
-    { kind: 'slider', id: 'motion', title: t('tools.adv.motion'), icon: 'motion', min: 1, max: 10, step: 1, value: p.motion, display: t('tools.outOf10', { n: p.motion }), low: t('tools.adv.motion.low'), high: t('tools.adv.motion.high'), onChange: (v) => set('motion', v) },
-    { kind: 'slider', id: 'refw', title: t('tools.adv.refWeight'), icon: 'ref', min: 0, max: 100, step: 5, value: p.refw, display: pct(p.refw), low: t('tools.adv.refWeight.low'), high: t('tools.adv.refWeight.high'), onChange: (v) => set('refw', v) },
-    {
-      kind: 'seg', id: 'outfit', title: t('tools.adv.outfit'), icon: 'shirt',
-      options: [{ value: 'all', label: t('tools.adv.outfit.all') }, ...slots.map((s, i) => ({ value: String(i), label: s.name }))],
-      value: p.outfit, onChange: (v) => set('outfit', v),
-    },
-    { kind: 'seg', id: 'fps', title: t('tools.adv.fps'), icon: 'fps', hint: t('tools.adv.fps.hint'), options: ['24', '30'].map((v) => ({ value: v, label: v })), value: p.fps, onChange: (v) => set('fps', v) },
-    { kind: 'seg', id: 'count', title: t('tools.adv.count'), icon: 'count', options: ['1', '2', '4'].map((v) => ({ value: v, label: v })), value: p.count, onChange: (v) => set('count', v) },
+    ...(caps.resolutions.length
+      ? [{ kind: 'seg', id: 'res', title: t('tools.adv.resolution'), icon: 'res', options: resolutionOptions(intl, plan, 'video', caps.resolutions), value: s.resolution, onChange: (v: string) => settings.set({ ...s, resolution: v }), onLocked: () => void navigate({ to: '/upgrade' }) } satisfies SettingsGroupDef]
+      : []),
+    ...(caps.design
+      ? ([
+          { kind: 'slider', id: 'motion', title: t('tools.adv.motion'), icon: 'motion', min: 1, max: 10, step: 1, value: p.motion, display: t('tools.outOf10', { n: p.motion }), low: t('tools.adv.motion.low'), high: t('tools.adv.motion.high'), onChange: (v) => set('motion', v) },
+          { kind: 'slider', id: 'refw', title: t('tools.adv.refWeight'), icon: 'ref', min: 0, max: 100, step: 5, value: p.refw, display: pct(p.refw), low: t('tools.adv.refWeight.low'), high: t('tools.adv.refWeight.high'), onChange: (v) => set('refw', v) },
+        ] satisfies SettingsGroupDef[])
+      : []),
+    // "Apply outfit to": the characters this remix has; hidden until one is added.
+    ...(cast.length && (picked.outfit || presetUploads.outfit || demo)
+      ? [
+          {
+            kind: 'seg', id: 'outfit', title: t('tools.adv.outfit'), icon: 'shirt',
+            options: [{ value: 'all', label: t('tools.adv.outfit.all') }, ...cast.map((c) => ({ value: String(c.i), label: c.name }))],
+            value: p.outfit, onChange: (v: string) => set('outfit', v),
+          } satisfies SettingsGroupDef,
+        ]
+      : []),
+    ...(caps.design
+      ? ([
+          { kind: 'seg', id: 'fps', title: t('tools.adv.fps'), icon: 'fps', hint: t('tools.adv.fps.hint'), options: ['24', '30'].map((v) => ({ value: v, label: v })), value: p.fps, onChange: (v) => set('fps', v) },
+        ] satisfies SettingsGroupDef[])
+      : []),
+    ...(caps.counts.length > 1
+      ? [{ kind: 'seg', id: 'count', title: t('tools.adv.count'), icon: 'count', options: caps.counts.map((v) => ({ value: String(v), label: String(v) })), value: String(s.count), onChange: (v: string) => settings.set({ ...s, count: Number(v) }) } satisfies SettingsGroupDef]
+      : []),
     { kind: 'input', id: 'seed', title: t('tools.adv.seed'), icon: 'seed', value: p.seed, placeholder: t('tools.adv.seed.placeholder'), dice: true, mono: true, onChange: (v) => set('seed', v), onRoll: () => set('seed', String(Math.floor(Math.random() * 90000) + 10000)) },
     { kind: 'text', id: 'neg', title: t('tools.adv.neg'), icon: 'neg', value: p.neg, placeholder: t('tools.remix.neg.placeholder'), onChange: (v) => set('neg', v) },
   ];
 
-  // Real runs have no reference-weight, frame-rate or multi-take settings: those controls stay mock-only.
-  const shownAdvGroups = real ? advGroups.filter((g) => g.id !== 'refw' && g.id !== 'fps' && g.id !== 'count') : advGroups;
-
   const pills: ComposerPill[] = [
-    { id: 'model', label: adv && p.model !== 'Auto' ? p.model : t('tools.model.auto'), icon: 'cube' },
-    { id: 'ratio', label: '16:9', icon: 'wide' },
-    { id: 'duration', label: t('tools.seconds', { n: 10 }), icon: 'clock' },
-    { id: 'res', label: adv ? p.res : '720p', icon: 'res' },
-    { id: 'audio', label: t('tools.pill.audio'), icon: 'wave' },
-    ...(adv
-      ? ([
-          { id: 'motion', label: t('tools.remix.pill.motion', { n: p.motion }), icon: 'motion' },
-          ...(real ? [] : [{ id: 'count', label: t('tools.pill.count', { n: p.count }), icon: 'count' }]),
-        ] as ComposerPill[])
-      : []),
+    { id: 'model', label: model === 'Auto' ? t('tools.model.auto') : model, icon: 'cube' },
+    ...settingsPills(intl, s, caps, { ratioIcon: 'wide' }),
+    ...(adv && caps.design ? [{ id: 'motion', label: t('tools.remix.pill.motion', { n: p.motion }), icon: 'motion' } as ComposerPill] : []),
+    ...(adv && caps.counts.length > 1 ? [{ id: 'count', label: t('tools.pill.count', { n: s.count }), icon: 'count' } as ComposerPill] : []),
   ];
-  const cost =
-    quoteCredits(models, adv ? p.model : 'Auto', { resolution: adv ? p.res : '720p', seconds: 10, count: adv ? Number(p.count) : 1 }) ??
-    Math.round((adv ? RES_COST[p.res]! : 10) * 1.2 * (1 + (people - 1) * 0.15) * (adv ? Number(p.count) : 1));
+  const outfitFor = p.outfit === 'all' || !cast.some((c) => String(c.i) === p.outfit) ? null : charName(Number(p.outfit));
   const go = t('tools.go.video');
+  const tags = [...settingsTags(intl, s), t('tools.remix.people', { n: people })];
+
+  const presetValue = (id: PresetId) => picked[id] ?? null;
+  const presetFallback = (id: PresetId) => presetUploads[id]?.name ?? demo?.remixPresets.find((x) => x.id === id)?.value ?? null;
 
   const aside = (
     <>
       <AsideCard title={t('tools.remix.presets')} testId="presets">
         {picker.input}
-        {real && (
+        {!demo && (
           <>
             {videoPicker.input}
-            <button type="button" className={controls.pickRow} data-remix-video="" onClick={videoPicker.open}>
+            <button type="button" className={controls.pickRow} data-remix-video="" data-set={video ? 'true' : 'false'} onClick={videoPicker.open}>
               <span className={controls.pickThumb} style={{ background: 'var(--c-tone-slate)' }}>
                 <ToolIcon name="play" size={16} color="var(--c-text-2)" />
               </span>
@@ -154,29 +194,30 @@ export function RemixPage({ initialOverlay, models: modelsOverride, plan: planPr
             </button>
           </>
         )}
-        {remixPresets.map((x) => (
-          <PickPopover
+        {PRESETS.map((x) => (
+          <LibraryRow
             key={x.id}
+            testId={x.id}
             label={t(`tools.remix.preset.${x.id}`)}
-            value={presets[x.id]!}
-            options={remixPresetOptions[x.id].map((v) => ({ value: v, label: v }))}
-            onChange={(v) => {
-              setPresets((cur) => ({ ...cur, [x.id]: v }));
-              toast.show({ message: t('tools.toast.presetSet', { name: t(`tools.remix.preset.${x.id}`), value: v }) });
+            categories={x.categories}
+            icon={x.icon}
+            tone={x.tone}
+            value={presetValue(x.id)}
+            fallback={presetFallback(x.id)}
+            onChange={(item) => {
+              setPicked((cur) => ({ ...cur, [x.id]: item ?? undefined }));
+              setPresetUploads((cur) => ({ ...cur, [x.id]: undefined }));
+              if (item) toast.show({ message: t('tools.toast.presetSet', { name: t(`tools.remix.preset.${x.id}`), value: item.title }) });
             }}
+            onClear={
+              picked[x.id] || presetUploads[x.id]
+                ? () => {
+                    setPicked((cur) => ({ ...cur, [x.id]: undefined }));
+                    setPresetUploads((cur) => ({ ...cur, [x.id]: undefined }));
+                  }
+                : undefined
+            }
             extra={x.id === 'action' ? undefined : { label: t('tools.remix.preset.upload'), onSelect: () => (setTarget({ kind: 'preset', id: x.id }), picker.open()) }}
-            trigger={(tp) => (
-              <button {...tp} type="button" className={controls.pickRow} style={{ flex: 1 }} data-preset={x.id}>
-                <span className={controls.pickThumb} style={{ background: x.tone }}>
-                  <ToolIcon name={x.icon} size={18} color="var(--c-text-2)" />
-                </span>
-                <span className={controls.pickText}>
-                  <span className={controls.pickLabel}>{t(`tools.remix.preset.${x.id}`)}</span>
-                  <span className={controls.pickValue}>{presets[x.id]}</span>
-                </span>
-                <span className={controls.chev}>›</span>
-              </button>
-            )}
           />
         ))}
       </AsideCard>
@@ -189,30 +230,39 @@ export function RemixPage({ initialOverlay, models: modelsOverride, plan: planPr
           ))}
         </div>
         <div className={styles.slots}>
-          {slots.map((s, i) => (
+          {slots.map((x, i) => (
             <button
-              key={s.name}
+              key={x.name}
               type="button"
               className={styles.slot}
-              aria-label={t('tools.remix.slot.upload.label', { name: s.name })}
+              aria-label={t('tools.remix.slot.upload.label', { name: x.name })}
               data-slot={i}
               onClick={() => {
                 setTarget({ kind: 'slot', i });
                 picker.open();
               }}
             >
-              <span className={styles.slotThumb} style={{ background: s.tone }}>
-                {s.placeholder}
+              <span className={styles.slotThumb} style={{ background: x.tone }}>
+                {x.placeholder}
               </span>
-              <span className={styles.slotName}>@{s.name}</span>
-              <span className={styles.slotState} style={{ color: s.set ? 'var(--c-success)' : 'var(--c-text-3)' }}>
-                {s.state}
+              <span className={styles.slotName}>@{x.name}</span>
+              <span className={styles.slotState} style={{ color: x.set ? 'var(--c-success)' : 'var(--c-text-3)' }}>
+                {x.state}
               </span>
             </button>
           ))}
         </div>
       </AsideCard>
-      {real ? (
+      {parsed ? (
+        <AsideCard title={t('tools.remix.parsed')} hint={t('tools.remix.parsed.hint')} testId="parsed">
+          {parsed.map(([k, v]) => (
+            <div key={k} className={styles.field}>
+              <span className={styles.fieldK}>{k}</span>
+              <span className={styles.fieldV}>{v}</span>
+            </div>
+          ))}
+        </AsideCard>
+      ) : (
         <AsideCard title={t('tools.remix.shot')} hint={t('tools.remix.shot.hint')} testId="parsed">
           {shotFields.map((f) => (
             <label key={f.id} className={styles.field}>
@@ -225,15 +275,6 @@ export function RemixPage({ initialOverlay, models: modelsOverride, plan: planPr
                 onChange={(e) => setShot((cur) => ({ ...cur, [f.id]: e.target.value }))}
               />
             </label>
-          ))}
-        </AsideCard>
-      ) : (
-        <AsideCard title={t('tools.remix.parsed')} hint={t('tools.remix.parsed.hint')} testId="parsed">
-          {fields.map(([k, v]) => (
-            <div key={k} className={styles.field}>
-              <span className={styles.fieldK}>{k}</span>
-              <span className={styles.fieldV}>{v}</span>
-            </div>
           ))}
         </AsideCard>
       )}
@@ -250,50 +291,59 @@ export function RemixPage({ initialOverlay, models: modelsOverride, plan: planPr
       feed={feed}
       aside={aside}
       advanced={adv}
-      advGroups={shownAdvGroups}
+      advGroups={advGroups}
+      settings={{ value: s, caps, onChange: settings.set, onReset: settings.reset }}
       composer={{
         noteLead: t('tools.remix.note'),
-        noteChips: [t('tools.remix.note.camera', { n: 1 }), t('tools.remix.note.lines', { n: 1 }), t('tools.remix.note.actions', { n: people })],
-        refs: slots.slice(0, 2).map((s, i) => ({ badge: `@${i + 1}`, tone: s.tone })),
+        noteChips,
+        refs: slots.slice(0, demo ? 2 : people).flatMap((x, i) => (x.set ? [{ badge: `@${i + 1}`, tone: x.tone }] : [])),
         label: t('tools.remix.composer.label'),
         text,
         onText: setText,
         placeholder: t('tools.remix.composer.placeholder'),
         pills,
-        cost,
         goLabel: go,
       }}
       models={models}
       pickerKind="video"
       paramKind="video"
-      model={p.model}
+      model={model}
       onModel={(m) => set('model', m)}
-      confirm={{ cost, label: go }}
+      confirm={{ cost: demo ? demo.remixMockCost({ adv, res: s.resolution, people, count: s.count }) : 0, label: go }}
       run={{
-        aspect: '16/9',
+        aspect: s.ratio && s.ratio !== 'Auto' ? s.ratio.replace(':', '/') : '16/9',
         video: true,
-        tags: ['16:9', t('tools.seconds', { n: 10 }), adv ? p.res : '720p', t('tools.remix.people', { n: people })],
+        tags,
         tiles: [],
-        steps: [t('tools.run.step.tidy'), adv && p.model !== 'Auto' ? p.model : t('tools.model.auto')],
+        steps: [t('tools.run.step.tidy'), model === 'Auto' ? t('tools.model.auto') : model],
         generating: (n) => t('tools.run.step.generating', { pct: n / 100 }),
-        durationSec: 10,
+        durationSec: s.seconds || undefined,
       }}
       actions={['redo', 'sliders', 'frame', 'down', 'star']}
       spec={(prompt) => {
         if (!video) return t('tools.remix.needVideo');
-        // New looks: the character slots and any uploaded outfit/scene picture (docs/api.md → Runs, remix).
-        const referenceAssetIds = [...Object.entries(slotIds).filter(([i]) => Number(i) < people).map(([, id]) => id), ...Object.values(presetIds)].slice(0, 8);
+        // New looks: the character slots, then the presets (library items or uploads), as references (docs/api.md → Runs, remix).
+        const presetIds = PRESETS.flatMap((x) => {
+          const id = picked[x.id]?.assetId ?? presetUploads[x.id]?.id;
+          return id ? [id] : [];
+        });
+        const slotIds = Object.entries(uploads).flatMap(([i, u]) => (Number(i) < people && u.id ? [u.id] : []));
+        const referenceAssetIds = [...slotIds, ...presetIds].slice(0, 9);
         const shotLine = shotPrompt(shotFields.map((f) => [f.label, shot[f.id] ?? '']));
-        const hints = adv ? remixHints({ motion: p.motion, outfitFor: p.outfit === 'all' ? null : charName(Number(p.outfit)) }) : [];
+        const presetLines = PRESETS.flatMap((x) => {
+          const item = picked[x.id];
+          return item ? [`${t(`tools.remix.preset.${x.id}`)}: ${item.promptEn || item.title}`] : [];
+        });
         return {
           kind: 'remix',
-          model: adv && p.model !== 'Auto' ? (models.find((m) => m.name === p.model)?.id ?? p.model) : 'auto',
-          prompt: [prompt.trim(), ...remixPresets.map((x) => `${t(`tools.remix.preset.${x.id}`)}: ${presets[x.id]}`), ...hints].filter(Boolean).join('\n'),
+          model: modelIdOf(models, model),
+          prompt: [prompt.trim(), ...presetLines, ...(outfitFor ? remixHints({ outfitFor }) : [])].filter(Boolean).join('\n'),
           ...(shotLine ? { shots: [{ prompt: shotLine }] } : {}),
           title: t('tools.remix.title'),
-          ratio: '16:9',
-          seconds: 10,
-          resolution: adv ? p.res : '720p',
+          ...(s.ratio && s.ratio !== 'Auto' ? { ratio: s.ratio } : {}),
+          ...(s.seconds ? { seconds: s.seconds } : {}),
+          ...(s.resolution ? { resolution: s.resolution } : {}),
+          ...(caps.audio ? { audio: s.audio } : {}),
           ...(adv && p.neg.trim() ? { negativePrompt: p.neg.trim() } : {}),
           ...(adv && /^\d+$/.test(p.seed) ? { seed: Number(p.seed) } : {}),
           inputs: { videoAssetId: video.id, ...(referenceAssetIds.length ? { referenceAssetIds } : {}) },

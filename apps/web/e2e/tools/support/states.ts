@@ -18,6 +18,8 @@ export interface ToolState {
    * the whole viewport (modal states cover the header).
    */
   crop: Crop;
+  /** A wider pixel-diff bar where the app deliberately differs from the design (the reason sits next to the state). */
+  maxDiff?: number;
 }
 
 const clickModel = (page: Page) => page.locator('[data-pill="model"]').click();
@@ -33,7 +35,9 @@ export const TOOL_STATES: ToolState[] = [
   { id: 'quick-simple', tool: 'quick', design: 'QuickCreate', path: '/create/quick', mode: 'simple', crop: 'body' },
   { id: 'quick-advanced', tool: 'quick', design: 'QuickCreateAdv', path: '/create/quick', mode: 'advanced', crop: 'body' },
   { id: 'quick-model', tool: 'quick', design: 'QuickCreateModel', path: '/create/quick', mode: 'simple', open: clickModel, crop: 'body' },
-  { id: 'quick-params', tool: 'quick', design: 'QuickCreateParams', path: '/create/quick', mode: 'simple', open: clickParams, crop: 'body' },
+  // The design paints every settings pill blue and its popover at 5s while the pill reads 15s; the app shows only the
+  // pill that opened it, in the neutral style (owner, 99f4372), and the popover mirrors the pills (same settings state).
+  { id: 'quick-params', tool: 'quick', design: 'QuickCreateParams', path: '/create/quick', mode: 'simple', open: clickParams, crop: 'body', maxDiff: 0.012 },
   { id: 'quick-confirm', tool: 'quick', design: 'QuickCreateConfirm', path: '/create/quick', mode: 'simple', open: clickSend, crop: 'full' },
   { id: 'quick-viewer', tool: 'quick', design: 'QuickCreateViewer', path: '/create/quick', mode: 'simple', open: clickResult, crop: 'full' },
   { id: 'remix-simple', tool: 'remix', design: 'OriginalVideo', path: '/create/remix', mode: 'simple', crop: 'body' },

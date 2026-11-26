@@ -1,3 +1,4 @@
+import { Skeleton } from '@rolling/ui';
 import { useId, useState, type RefObject } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import type { ComposerPill, ComposerRef } from '../types';
@@ -16,7 +17,10 @@ export interface ComposerProps {
   /** Which pill popover is open: the model pill's picker or the shared settings popover. */
   openOverlay: 'model' | 'params' | null;
   onPill: (pill: ComposerPill, index: number) => void;
-  cost: number;
+  /** Quoted credits (`POST /api/runs/quote`); null: no quote (an input is missing or the server refused). */
+  cost: number | null;
+  /** A quote is on its way: a skeleton instead of a number. */
+  costLoading?: boolean;
   goLabel: string;
   onSend: () => void;
   /** Refine goes through the agent (members only, D-007). */
@@ -106,8 +110,12 @@ export function Composer(p: ComposerProps) {
             >
               <FormattedMessage id={p.refining ? 'tools.composer.refining' : 'tools.composer.refine'} />
             </button>
-            <span className={styles.cost}>
-              <FormattedMessage id="tools.composer.cost" values={{ n: p.cost, b: (c) => <b>{c}</b> }} />
+            <span className={styles.cost} data-cost={p.cost ?? undefined} aria-busy={p.costLoading || undefined}>
+              {p.costLoading ? (
+                <Skeleton width={64} height={13} />
+              ) : p.cost !== null ? (
+                <FormattedMessage id="tools.composer.cost" values={{ n: p.cost, b: (c) => <b>{c}</b> }} />
+              ) : null}
             </span>
             <button type="button" className={styles.send} aria-label={p.goLabel} title={p.goLabel} onClick={p.onSend}>
               <ToolIcon name="send" size={16} strokeWidth={2.8} />

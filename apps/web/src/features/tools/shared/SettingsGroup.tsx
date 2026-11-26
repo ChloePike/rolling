@@ -24,7 +24,14 @@ export interface SegOption {
 }
 
 export type SettingsGroupDef =
-  | (Base & { kind: 'seg'; options: SegOption[]; value: string; onChange: (v: string) => void })
+  | (Base & {
+      kind: 'seg';
+      options: SegOption[];
+      value: string;
+      onChange: (v: string) => void;
+      /** A plan-locked option was clicked (D-006): e.g. open the upgrade page. */
+      onLocked?: (plan: PlanId) => void;
+    })
   | (Base & {
       kind: 'slider';
       min: number;
@@ -70,11 +77,12 @@ export function SettingsGroup({ def, className, style }: { def: SettingsGroupDef
               type="button"
               className={styles.seg}
               aria-pressed={def.value === o.value}
-              disabled={o.disabled}
+              // Plan-locked options stay clickable when the host offers the upgrade.
+              disabled={o.disabled && !(o.lockedBy && def.onLocked)}
               title={o.disabled ? (o.reason ?? intl.formatMessage({ id: 'tools.adv.unavailable' })) : undefined}
               aria-label={o.lockedBy ? intl.formatMessage({ id: 'overlays.planLock.label' }, { option: o.label, reason: o.reason ?? '' }) : undefined}
               data-locked={o.lockedBy ? 'true' : undefined}
-              onClick={() => def.onChange(o.value)}
+              onClick={() => (o.lockedBy ? def.onLocked?.(o.lockedBy) : def.onChange(o.value))}
             >
               {o.label}
               {o.lockedBy && <PlanLock plan={o.lockedBy} />}

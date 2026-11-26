@@ -1,11 +1,18 @@
 import type { FeedItem } from '../types';
 
 /** Mock data for Characters, matching Character.dc.html. */
-export const characterStyleTones = ['var(--c-tone-moss)', 'var(--c-tone-plum)', 'var(--c-tone-indigo)', 'var(--c-tone-sand)', 'var(--c-tone-neutral)', 'var(--c-tone-teal)', 'var(--c-tone-clay)'];
-export const characterStyles = ['photoreal', 'anime', '3d', 'painterly', 'ink', 'comic', 'clay'];
-export const characterHair = ['fromDescription', 'shortCrop', 'sideBob', 'long', 'curls', 'ponytail', 'updo'];
-export const characterBody = ['balanced', 'slim', 'athletic', 'broad', 'curvy', 'stocky'];
-export const characterOutfits = ['cityCasual', 'business', 'athleisure', 'streetwear', 'hanfu', 'outdoor'];
+/** The design's sample character: measurements and chip choices. */
+export const characterSample = { age: '28', height: '168', pick: { hair: 'sideBob', body: 'balanced', wear: 'cityCasual', style: 'photoreal' } };
+
+/** The design's Advanced "Model" short list (catalog ids). */
+export const characterSegIds = ['bytedance/seedream-5.5', 'qwen/qwen-image-2.0'];
+export const characterSettings = { resolution: '2K' };
+
+/** Mock-mode estimate shown where real mode shows the server's quote. */
+export function characterMockCost(o: { adv: boolean; res: string }): number {
+  const res: Record<string, number> = { '1K': 2, '2K': 4, '4K': 8 };
+  return o.adv ? (res[o.res] ?? 4) : 4;
+}
 
 export const characterPrompt = 'Natural features, calm expression. Slightly upturned eyes, dimples when smiling.';
 

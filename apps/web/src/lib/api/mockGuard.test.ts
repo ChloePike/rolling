@@ -22,13 +22,7 @@ const MOCK_FILE = /(^|\/)(mocks|[A-Za-z]+Mocks|mock|mockRoom|mockPeaks)\.tsx?$/;
  * still import their own mocks and are tracked to be moved behind the adapter.
  * Remove entries as they are fixed; nothing may be added here.
  */
-const PENDING = new Set([
-  'features/tools/api.ts',
-  'features/tools/quick/QuickCreatePage.tsx',
-  'features/tools/avatar/AvatarPage.tsx',
-  'features/tools/character/CharacterPage.tsx',
-  'features/tools/remix/RemixPage.tsx',
-]);
+const PENDING = new Set<string>([]);
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
