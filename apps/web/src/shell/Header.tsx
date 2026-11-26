@@ -132,9 +132,12 @@ export function Header() {
             >
               <CreditsPopoverContent onNavigate={() => setOpen(null)} />
             </Popover>
-            <Link to="/upgrade" className={styles.upgrade}>
-              <FormattedMessage id="header.upgrade" />
-            </Link>
+            {/* Upgrade only when there is a higher plan to move to: none for Pro or Team. */}
+            {planId !== 'pro' && planId !== 'team' ? (
+              <Link to="/upgrade" className={styles.upgrade}>
+                <FormattedMessage id="header.upgrade" />
+              </Link>
+            ) : null}
             <Popover
               open={open === 'settings'}
               onOpenChange={toggle('settings')}

@@ -12,6 +12,8 @@ const NAV_LABELS = ['Home', 'Canvas', 'Quick Create', 'Remix', 'Avatar', 'Charac
 const HEADER_CLIP_HEIGHT = 80;
 
 async function openApp(page: Page, width: number, path = '/') {
+  // The design draws Upgrade next to the account; the app shows it only below Pro/Team, so compare as Plus.
+  await asPlan(page, 'plus');
   await page.setViewportSize({ width, height: 900 });
   await page.goto(path);
   await page.locator('[data-testid="app-header"]').waitFor();
@@ -568,4 +570,15 @@ test.describe('header interactions', () => {
     await page.getByRole('link', { name: 'Rolling home' }).click();
     await expect(page).toHaveURL(/\/$/);
   });
+});
+
+test('Upgrade is hidden for Pro and Team, shown below them', async ({ page }) => {
+  for (const [plan, visible] of [['pro', false], ['team', false], ['plus', true], ['starter', true]] as const) {
+    const p = await page.context().newPage();
+    await asPlan(p, plan);
+    await p.goto('/');
+    await p.locator('[data-testid="app-header"]').waitFor();
+    await expect(p.getByTestId('app-header').getByRole('link', { name: 'Upgrade' })).toHaveCount(visible ? 1 : 0);
+    await p.close();
+  }
 });
