@@ -161,6 +161,16 @@ describe('planRun', () => {
     expect(auto.items[0]!.spec!.mature).toBe(true);
   });
 
+  it('D-005: an explicit canvas node of a mature-allowed caller runs mature without the toggle', async () => {
+    const g = graphOf([node('img', 'image', { model: 'auto', prompt: 'nsfw scene between two consenting adults' })], []);
+    const on = await planRun({ graph: g, active: new Map(), scope: 'all', catalog: fixtureCatalog, ctx: { plan: 'plus', matureAllowed: true } });
+    expect(on.items[0]).toMatchObject({ action: 'run' });
+    expect(on.items[0]!.spec).toMatchObject({ mature: true, matureAuto: true });
+    expect(fixtureCatalog.get(on.items[0]!.model!)!.matureRouting).toBe('allowed');
+    const off = await planRun({ graph: g, active: new Map(), scope: 'all', catalog: fixtureCatalog, ctx: PLUS });
+    expect(off.items[0]!.spec).toMatchObject({ mature: false });
+  });
+
   it('lets identity-driven models take mature runs only with platform assets', async () => {
     const photo = (source: string) => node('photo', 'asset', { assetId: 'ast_p', source, media: 'image' });
     const vid = node('vid', 'video', { model: 'lumina/wan2.2-i2v-spicy', prompt: 'move', mature: true, resolution: '480p', length: 5 });

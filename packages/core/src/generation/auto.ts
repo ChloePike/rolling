@@ -114,6 +114,17 @@ export function autoCandidates(catalog: Catalog | readonly CatalogModel[], req: 
   return capableCandidates(models, req, plan, (m) => m.auto && !m.hidden && !m.requiresIdentitySafety);
 }
 
+/**
+ * Every listed model that takes a mature run of this request without an asset
+ * check (D-005 `matureRouting: 'allowed'`), Auto-eligible or not (the spicy
+ * family is not Auto-eligible), cheapest first. Used when a run becomes mature
+ * and its model can't take it.
+ */
+export function matureCandidates(catalog: Catalog | readonly CatalogModel[], req: AutoRequest, plan: PlanId | null): CatalogModel[] {
+  const models = 'models' in catalog ? catalog.models : catalog;
+  return capableCandidates(models, { ...req, mature: true }, plan, (m) => !m.hidden && !m.requiresIdentitySafety && m.matureRouting === 'allowed');
+}
+
 /** `bytedance/seedream-5.0-lite` → `bytedance/seedream`: the vendor and model family. */
 export function modelFamily(id: string): string {
   const [vendor, name = ''] = id.split('/');

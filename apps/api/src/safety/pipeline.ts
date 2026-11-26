@@ -8,13 +8,13 @@ import type { CatalogModel, ImageSource } from "@rolling/core";
 import type { Catalog } from "@rolling/core";
 import type { GenInput, GenSpec } from "@rolling/core/generation";
 import {
-  MATURE_JOIN_MESSAGE,
-  MATURE_REQUIRED_MESSAGE,
   SAFETY_BLOCKED_MESSAGE,
   SAFETY_REVIEW_MESSAGE,
   postCheck,
   preCheck,
+  matureRequiredMessage,
   quickCheck,
+  type MatureAccess,
   type ReferenceSource,
   type SafetyOutput,
   type SafetyReference,
@@ -34,9 +34,9 @@ export interface SafetyJobError {
   message: string;
 }
 
-export function jobErrorFor(v: SafetyVerdict): SafetyJobError {
+export function jobErrorFor(v: SafetyVerdict, access?: MatureAccess): SafetyJobError {
   const codes = new Set(v.reasons.map((r) => r.code));
-  if (codes.size === 1 && codes.has("MATURE_REQUIRED")) return { code: "mature_required", message: `${MATURE_REQUIRED_MESSAGE} No credits were charged.` };
+  if (codes.size === 1 && codes.has("MATURE_REQUIRED")) return { code: "mature_required", message: `${matureRequiredMessage(access)} No credits were charged.` };
   if (codes.size === 1 && codes.has("SAFETY_UNAVAILABLE")) {
     return { code: "safety_unavailable", message: "Content checks are unavailable right now. Try again in a few minutes. No credits were charged." };
   }
@@ -53,23 +53,41 @@ export interface JobRef {
   spec: GenSpec;
 }
 
-/** `prepare`: flagged workspaces lose mature runs; then the full pre-check. Returns the error to fail with, or null. */
-export async function jobPreCheck(env: Env, job: JobRef, model: CatalogModel, prompt: string, negativePrompt: string | undefined, references: SafetyReference[]): Promise<SafetyJobError | null> {
+/** D-005: the caller was mature-allowed when the run was quoted (snapshot on the spec). */
+export function specMatureAllowed(spec: Pick<GenSpec, "matureAccess">): boolean {
+  return spec.matureAccess === "allowed";
+}
+
+/**
+ * `prepare`: flagged workspaces lose mature runs; then the full pre-check.
+ * Returns the error to fail with, `needsMature` when a mature-allowed caller's
+ * non-mature item turned out explicit (the caller re-plans it as mature), or null.
+ */
+export async function jobPreCheck(
+  env: Env,
+  job: JobRef,
+  model: CatalogModel,
+  prompt: string,
+  negativePrompt: string | undefined,
+  references: SafetyReference[],
+): Promise<SafetyJobError | "needsMature" | null> {
   if (job.spec.mature && (await workspaceFlagged(env, job.workspaceId))) return SAFETY_REVIEW_ERROR;
-  const verdict = await preCheck({ prompt, ...(negativePrompt && { negativePrompt }), references, mature: job.spec.mature, model }, await safetyDeps(env));
+  const matureAllowed = specMatureAllowed(job.spec);
+  const verdict = await preCheck({ prompt, ...(negativePrompt && { negativePrompt }), references, mature: job.spec.mature, matureAllowed, model }, await safetyDeps(env));
   if (shouldLog(verdict)) {
     await logSafety(env, { id: `${job.jobId}:pre:${model.id}`, workspaceId: job.workspaceId, userId: job.userId, runId: job.runId, jobId: job.jobId, stage: "pre", verdict, prompt });
   }
-  return verdict.verdict === "block" ? jobErrorFor(verdict) : null;
+  if (verdict.verdict === "block") return jobErrorFor(verdict, job.spec.matureAccess);
+  return verdict.needsMature && !job.spec.mature ? "needsMature" : null;
 }
 
 /** `store`: the post-check over what was just stored. */
 export async function jobPostCheck(env: Env, job: JobRef, outputs: SafetyOutput[]): Promise<{ verdict: SafetyVerdict; error: SafetyJobError | null }> {
-  const verdict = await postCheck({ outputs, mature: job.spec.mature, prompt: job.spec.prompt }, await safetyDeps(env));
+  const verdict = await postCheck({ outputs, mature: job.spec.mature, matureAllowed: specMatureAllowed(job.spec), prompt: job.spec.prompt }, await safetyDeps(env));
   if (shouldLog(verdict)) {
     await logSafety(env, { id: `${job.jobId}:post`, workspaceId: job.workspaceId, userId: job.userId, runId: job.runId, jobId: job.jobId, stage: "post", verdict, prompt: job.spec.prompt });
   }
-  return { verdict, error: verdict.verdict === "block" ? jobErrorFor(verdict) : null };
+  return { verdict, error: verdict.verdict === "block" ? jobErrorFor(verdict, job.spec.matureAccess) : null };
 }
 
 /** The quote's view of a plan item (structural subset of PlanItem). */
@@ -81,6 +99,7 @@ export interface QuoteSafetyItem {
   model: string | null;
   code?: string;
   reason?: string;
+  matureAccess?: MatureAccess;
 }
 
 function inputSources(inputs: readonly GenInput[]): SafetyReference[] {
@@ -95,7 +114,8 @@ function inputSources(inputs: readonly GenInput[]): SafetyReference[] {
 /**
  * Quote-time checks (cheap, deterministic): hard-limit rules → SAFETY_BLOCKED,
  * flagged workspace + mature → SAFETY_REVIEW, explicit terms on a non-mature
- * run → MATURE_REQUIRED (or NO_PLAN for non-members). Dependents of a blocked
+ * run of a caller without mature access → MATURE_REQUIRED with copy for their
+ * situation (`matureAccess`). Dependents of a blocked
  * item become `upstream_blocked`. Mutates `items` in place (planner order).
  */
 export async function quoteSafety(
@@ -111,8 +131,8 @@ export async function quoteSafety(
       if (item.action === "blocked") blocked.add(item.ref);
       continue;
     }
-    const block = (code: string, reason: string) => {
-      Object.assign(item, { action: "blocked", code, reason });
+    const block = (code: string, reason: string, extra: Partial<QuoteSafetyItem> = {}) => {
+      Object.assign(item, { action: "blocked", code, reason, ...extra });
       blocked.add(item.ref);
     };
     if (item.dependsOn.some((d) => blocked.has(d))) {
@@ -130,9 +150,11 @@ export async function quoteSafety(
     if (spec.mature) {
       flagged ??= await workspaceFlagged(env, auth.workspaceId);
       if (flagged) block("SAFETY_REVIEW", SAFETY_REVIEW_MESSAGE);
-    } else if (q.explicit.length > 0) {
-      if (auth.isMember) block("MATURE_REQUIRED", MATURE_REQUIRED_MESSAGE);
-      else block("NO_PLAN", MATURE_JOIN_MESSAGE);
+    } else if (q.explicit.length > 0 && !specMatureAllowed(spec)) {
+      // D-005: mature-allowed callers never get here (the planner made the item mature). The copy fits the caller:
+      // no plan → paid plan (upgrade modal reason `mature`), preference off → Settings, workspace off → the workspace.
+      const access: MatureAccess = spec.matureAccess ?? (auth.isMember ? "preference_off" : "no_plan");
+      block("MATURE_REQUIRED", matureRequiredMessage(access), { matureAccess: access });
     }
   }
 }

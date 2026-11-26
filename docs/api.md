@@ -424,14 +424,14 @@ Quote item codes (`action: 'blocked'`, `credits: 0`; the copy is neutral, intern
 
 | `code` | When | `reason` (show as is, or map) |
 |---|---|---|
-| `SAFETY_BLOCKED` | The deterministic rules hit a hard limit (e.g. minor-coded + sexual terms; face/head swap on a mature run). Logged. | “This can’t be generated under our content rules.” |
-| `MATURE_REQUIRED` | A non-mature run whose prompt is clearly explicit (member). Not silently routed to a mature model. | “Turn on mature content in Settings to generate this, or change the prompt.” |
-| `NO_PLAN` | Same, for a non-member → open Paywall `variant=join`. | “Join a plan and turn on mature content to generate this, or change the prompt.” |
+| `SAFETY_BLOCKED` | The deterministic rules hit a hard limit (e.g. minor-coded + sexual terms; sexual content involving an animal; face/head swap on a mature run). Logged. | “This can’t be generated under our content rules.” |
+| `MATURE_REQUIRED` | A clearly explicit prompt from a caller **without** mature access. Mature-allowed callers (member + preference + workspace flag) never get it: their explicit prompts are planned as mature runs automatically. `matureAccess` says why: `no_plan` → open the upgrade modal with reason `mature`; `preference_off` → Settings; `workspace_off` → the workspace has mature content off. | `no_plan`: “Mature content needs a paid plan. Join a plan to generate this, or change the prompt.” `preference_off`: “Turn on mature content in Settings to generate this, or change the prompt.” `workspace_off`: “Mature content is off for this workspace. Change the prompt to generate this.” |
 | `SAFETY_REVIEW` | A mature item in a workspace flagged for review (≥ 3 hard-limit blocks in 24 h). Non-mature runs still work. | “Mature content is paused for this workspace while recent activity is reviewed.” |
 
 Job error codes (run item / job `errorCode`, node `job.failed.reason`; the hold is always released, “No credits were charged.”):
 - `safety_blocked` — the `prepare` pre-check (rules → DeepSeek V4.1 Flash text classifier → on mature runs vision on image references and `lumina/face-detect` on uploaded photographs) or the `store` post-check (vision on image outputs / the video poster frame) hit a hard limit. A post-blocked output is deleted from R2 and never registered or versioned.
-- `mature_required` — a non-mature run classified explicit (prompt or output).
+- `mature_required` — a non-mature run of a caller without mature access classified explicit (prompt or output); the copy follows the caller's access as above. For a mature-allowed caller, `prepare` instead re-plans the item as a mature run (`moderation: "low"`; a model that can't take it falls back to a mature-capable one within the hold, stored on the run item), and explicit output only rates.
+- `no_mature_model` — that re-plan found no mature-capable model within the hold (“No model that takes mature content fits these settings.”).
 - `safety_unavailable` — a classifier failed or timed out on a mature run (fail closed). Non-mature runs continue when the rules pass; the outage is logged.
 - `safety_review` — mature job of a flagged workspace.
 

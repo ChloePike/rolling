@@ -12,6 +12,8 @@ export type SafetyCode =
   | 'REAL_PERSON_SEXUAL'
   /** Face/head swap or identity-driven model with an uploaded photo on a mature run. */
   | 'IDENTITY_SWAP_MATURE'
+  /** Sexual content involving an animal (bestiality, zoophilia), including sexual acts directed at an animal. */
+  | 'ANIMAL_SEXUAL'
   /** Sexual content without consent (coercion, assault, hidden camera, "revenge" imagery). */
   | 'NON_CONSENSUAL'
   /** Realistic real-world extreme violence or gore imagery. */
@@ -29,6 +31,7 @@ export const HARD_LIMIT_CODES: ReadonlySet<SafetyCode> = new Set<SafetyCode>([
   'MINOR_SEXUAL',
   'REAL_PERSON_SEXUAL',
   'NON_CONSENSUAL',
+  'ANIMAL_SEXUAL',
   'EXTREME_VIOLENCE',
   'VIOLENT_EXTREMISM',
   'SELF_HARM',
@@ -73,6 +76,8 @@ export interface SafetyVerdict {
   checks: CheckRecord[];
   /** Media checks only: the highest rating seen; null when nothing could be rated. */
   rating?: RatingResult | null;
+  /** Pre-check of a non-mature run for a mature-allowed caller: the content is explicit, re-plan it as a mature run. */
+  needsMature?: boolean;
 }
 
 export type ReferenceSource = 'upload' | 'generated' | 'character' | 'public';
@@ -102,6 +107,12 @@ export interface PreCheckInput {
   negativePrompt?: string;
   references: SafetyReference[];
   mature: boolean;
+  /**
+   * D-005: the caller may run mature content (member, preference on, workspace
+   * allows). Explicit content then never blocks: a non-mature run reports
+   * `needsMature` so the caller re-plans it as a mature run.
+   */
+  matureAllowed?: boolean;
   model?: SafetyModel | null;
 }
 
@@ -117,6 +128,8 @@ export interface SafetyOutput {
 export interface PostCheckInput {
   outputs: SafetyOutput[];
   mature: boolean;
+  /** D-005: the caller may run mature content: explicit output only rates, never blocks. */
+  matureAllowed?: boolean;
   prompt: string;
 }
 
@@ -144,7 +157,29 @@ export interface SafetyEvent {
 /** Neutral user-facing copy for any block (codes and details stay internal). */
 export const SAFETY_BLOCKED_MESSAGE = 'This can’t be generated under our content rules.';
 export const MATURE_REQUIRED_MESSAGE = 'Turn on mature content in Settings to generate this, or change the prompt.';
-export const MATURE_JOIN_MESSAGE = 'Join a plan and turn on mature content to generate this, or change the prompt.';
+export const MATURE_PLAN_MESSAGE = 'Mature content needs a paid plan. Join a plan to generate this, or change the prompt.';
+export const MATURE_WORKSPACE_MESSAGE = 'Mature content is off for this workspace. Change the prompt to generate this.';
+
+/**
+ * D-005 access of a caller to mature content: `allowed` = member, preference
+ * on and workspace allows. Otherwise the first missing piece, which decides
+ * the MATURE_REQUIRED copy (never ask someone who has it on to turn it on).
+ */
+export type MatureAccess = 'allowed' | 'no_plan' | 'preference_off' | 'workspace_off';
+
+export function matureAccessOf(input: { isMember: boolean; preference: boolean; workspaceAllowed: boolean }): MatureAccess {
+  if (!input.isMember) return 'no_plan';
+  if (!input.workspaceAllowed) return 'workspace_off';
+  if (!input.preference) return 'preference_off';
+  return 'allowed';
+}
+
+/** MATURE_REQUIRED copy for a caller without mature access (`allowed` callers never get MATURE_REQUIRED). */
+export function matureRequiredMessage(access: MatureAccess | undefined): string {
+  if (access === 'no_plan') return MATURE_PLAN_MESSAGE;
+  if (access === 'workspace_off') return MATURE_WORKSPACE_MESSAGE;
+  return MATURE_REQUIRED_MESSAGE;
+}
 export const SAFETY_REVIEW_MESSAGE = 'Mature content is paused for this workspace while recent activity is reviewed.';
 
 /** Workspace review flag: this many hard-limit blocks within the window. */

@@ -4,7 +4,7 @@ import type { ChatEvent, ChatRequest, LlmProvider } from '../models/types';
 import { detectUploadFaces, isMatureRating, postCheck, preCheck, quickCheck, rateMedia, type SafetyDeps } from './check';
 import { createSafetyGate } from './gate';
 import { FACE_DETECT_MODEL, faceBoxOf, faceResultOf, visionModelsFor, type ImageAssessment, type TextAssessment } from './llm';
-import type { VerdictCache } from './types';
+import { HARD_LIMIT_CODES, type VerdictCache } from './types';
 
 const chatModels = fixtureCatalog.list({ kind: 'chat', includeMatureOnly: true });
 
@@ -16,6 +16,7 @@ const SAFE_TEXT: TextAssessment = {
   realPersonNames: [],
   realPersonSexualOrIntimate: false,
   nonConsensualSexual: false,
+  animalSexual: false,
   extremeViolence: false,
   violentExtremism: false,
   selfHarm: false,
@@ -28,6 +29,7 @@ const SAFE_IMAGE: ImageAssessment = {
   apparentMinor: false,
   minorSexualized: false,
   knownPerson: false,
+  animalSexual: false,
   extremeViolence: false,
   violentExtremism: false,
   selfHarm: false,
@@ -94,6 +96,7 @@ describe('preCheck: text classifier', () => {
     ['minor sexualized', { minorSexualized: true, apparentMinor: true, sexualLevel: 'suggestive' }, 'MINOR_SEXUAL'],
     ['real person intimate', { realPerson: true, realPersonNames: ['A Celebrity'], realPersonSexualOrIntimate: true, sexualLevel: 'suggestive' }, 'REAL_PERSON_SEXUAL'],
     ['non-consensual', { nonConsensualSexual: true, sexualLevel: 'explicit' }, 'NON_CONSENSUAL'],
+    ['sexual content involving an animal', { animalSexual: true, sexualLevel: 'explicit' }, 'ANIMAL_SEXUAL'],
     ['gore', { extremeViolence: true }, 'EXTREME_VIOLENCE'],
     ['extremism', { violentExtremism: true }, 'VIOLENT_EXTREMISM'],
     ['self-harm', { selfHarm: true }, 'SELF_HARM'],
@@ -114,6 +117,61 @@ describe('preCheck: text classifier', () => {
     const f = fakeLlm({ text: text({ sexualLevel: 'explicit' }) });
     expect((await preCheck({ prompt: 'adult category', references: [], mature: false }, deps(f.llm))).reasons.map((r) => r.code)).toEqual(['MATURE_REQUIRED']);
     expect((await preCheck({ prompt: 'adult category', references: [], mature: true }, deps(f.llm))).verdict).toBe('allow');
+  });
+
+  it('maps the classifier animalSexual flag to the ANIMAL_SEXUAL hard limit, even for a mature-allowed caller', async () => {
+    const f = fakeLlm({ text: text({ animalSexual: true, sexualLevel: 'explicit' }) });
+    const v = await preCheck({ prompt: 'an old man and his pet, adult category', references: [], mature: true, matureAllowed: true }, deps(f.llm));
+    expect(v.verdict).toBe('block');
+    expect(v.reasons.map((r) => r.code)).toEqual(['ANIMAL_SEXUAL']);
+    expect(HARD_LIMIT_CODES.has('ANIMAL_SEXUAL')).toBe(true);
+  });
+
+  it('blocks the zh example by rules before any classifier call, even on a mature run', async () => {
+    const f = fakeLlm({ text: text({}) });
+    const v = await preCheck({ prompt: '我想看一个亚洲老头对着猫儿打飞机', references: [], mature: true, matureAllowed: true }, deps(f.llm));
+    expect(v.reasons.map((r) => r.code)).toEqual(['ANIMAL_SEXUAL']);
+    expect(f.calls).toHaveLength(0);
+  });
+
+  it('keeps pets in a non-sexual scene allowed (classifier says no)', async () => {
+    const v = await preCheck({ prompt: 'an old man feeding his cat on a sunny porch', references: [], mature: false }, deps(fakeLlm({ text: text({}) }).llm));
+    expect(v.verdict).toBe('allow');
+  });
+
+  it('D-005: a mature-allowed caller is never asked to turn mature content on; the run reports needsMature', async () => {
+    const f = fakeLlm({ text: text({ sexualLevel: 'explicit' }) });
+    const v = await preCheck({ prompt: 'adult category', references: [], mature: false, matureAllowed: true }, deps(f.llm));
+    expect(v).toMatchObject({ verdict: 'allow', reasons: [], needsMature: true });
+    const mature = await preCheck({ prompt: 'adult category', references: [], mature: true, matureAllowed: true }, deps(f.llm));
+    expect(mature.verdict).toBe('allow');
+    expect(mature.needsMature).toBeUndefined();
+  });
+
+  it('D-005: for a mature-allowed caller only hard limits block, at every stage', async () => {
+    // Pre (text) on a mature run: explicit, suggestive, real person non-sexual → allow.
+    for (const a of [{ sexualLevel: 'explicit' as const }, { sexualLevel: 'suggestive' as const }, { realPerson: true, realPersonNames: ['Chef'] }]) {
+      const v = await preCheck({ prompt: 'adult category', references: [], mature: true, matureAllowed: true }, deps(fakeLlm({ text: text(a) }).llm));
+      expect(v.verdict).toBe('allow');
+    }
+    // Vision on inputs: an explicit platform reference passes.
+    const ref = { kind: 'image' as const, source: 'generated' as const, url: 'data:image/png;base64,AAAA', hash: 'h-explicit' };
+    const withRef = await preCheck({ prompt: 'adult category', references: [ref], mature: true, matureAllowed: true }, deps(fakeLlm({ text: text({ sexualLevel: 'explicit' }), vision: vision({ rating: 'explicit' }) }).llm));
+    expect(withRef.verdict).toBe('allow');
+    // Post: explicit output of a non-mature run only rates.
+    const post = await postCheck({ outputs: [{ kind: 'image', url: 'https://x/o.png' }], mature: false, matureAllowed: true, prompt: 'p' }, deps(fakeLlm({ vision: vision({ rating: 'explicit' }) }).llm));
+    expect(post).toMatchObject({ verdict: 'allow', reasons: [] });
+    expect(post.rating?.rating).toBe('explicit');
+    // Every code that still blocks is a hard limit or the fail-closed outage.
+    const blocks = await Promise.all(
+      [{ minorSexualized: true, apparentMinor: true }, { nonConsensualSexual: true }, { animalSexual: true }, { extremeViolence: true }, { violentExtremism: true }, { selfHarm: true }].map((a) =>
+        preCheck({ prompt: 'adult category', references: [], mature: true, matureAllowed: true }, deps(fakeLlm({ text: text({ sexualLevel: 'explicit', ...a }) }).llm)),
+      ),
+    );
+    for (const b of blocks) {
+      expect(b.verdict).toBe('block');
+      for (const r of b.reasons) expect(HARD_LIMIT_CODES.has(r.code) || r.code === 'SAFETY_UNAVAILABLE').toBe(true);
+    }
   });
 
   it('blocks deterministic hits without calling the classifier', async () => {
@@ -232,6 +290,13 @@ describe('postCheck and rateMedia', () => {
     expect(none.checks[0]).toMatchObject({ name: 'vision', status: 'skipped' });
   });
 
+  it('blocks outputs showing sexual content involving an animal (vision), whatever the run', async () => {
+    for (const [mature, matureAllowed] of [[true, true], [false, true], [false, false]] as const) {
+      const v = await postCheck({ outputs: [{ kind: 'image', url: `https://o/an-${mature}-${matureAllowed}.png` }], mature, matureAllowed, prompt: 'p' }, deps(fakeLlm({ vision: vision({ rating: 'explicit', animalSexual: true }) }).llm));
+      expect(v.reasons.map((r) => r.code)).toContain('ANIMAL_SEXUAL');
+    }
+  });
+
   it('fails closed on mature outputs when vision is down; non-mature outputs pass unrated', async () => {
     expect((await postCheck({ outputs: [{ kind: 'image', url: 'u' }], mature: true, prompt: 'p' }, deps(fakeLlm({ vision: 'hang' }).llm))).reasons[0]!.code).toBe('SAFETY_UNAVAILABLE');
     const plain = await postCheck({ outputs: [{ kind: 'image', url: 'u' }], mature: false, prompt: 'p' }, deps(fakeLlm({ vision: 'hang' }).llm));
@@ -279,6 +344,11 @@ describe('quickCheck and SafetyGate', () => {
     const p = await gate.checkProposal({ mature: false, prompts: [{ prompt: 'shot 1: an nsfw scene' }] });
     expect(p.reasons.map((r) => r.code)).toEqual(['MATURE_REQUIRED']);
     expect(f.calls).toHaveLength(0);
+    // Mature (mature-allowed) turns: explicit proposals pass; only hard limits block.
+    const adult = await createSafetyGate(deps(fakeLlm({ text: text({ sexualLevel: 'explicit' }) }).llm)).checkProposal({ mature: true, prompts: [{ prompt: 'shot 1: an nsfw scene between two adults' }] });
+    expect(adult.verdict).toBe('allow');
+    const animal = await createSafetyGate(deps(fakeLlm({ text: text({}) }).llm)).checkBrief({ text: 'make a clip of a man having sex with a dog', mature: true });
+    expect(animal.reasons.map((r) => r.code)).toEqual(['ANIMAL_SEXUAL']);
     // Mature proposals: one classifier call for all prompts.
     await gate.checkProposal({ mature: true, prompts: [{ prompt: 'shot 1' }, { prompt: 'shot 2' }, { prompt: 'shot 3' }] });
     expect(f.calls).toHaveLength(1);

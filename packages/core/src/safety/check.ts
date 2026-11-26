@@ -94,6 +94,7 @@ export function textReasons(a: TextAssessment, mature: boolean): SafetyReason[] 
     out.push({ code: 'REAL_PERSON_SEXUAL', detail: `text: real person (${a.realPersonNames.slice(0, 3).join(', ') || 'unnamed'}) with sexual level ${a.sexualLevel}` });
   }
   if (a.nonConsensualSexual) out.push({ code: 'NON_CONSENSUAL', detail: 'text: non-consensual sexual content' });
+  if (a.animalSexual) out.push({ code: 'ANIMAL_SEXUAL', detail: 'text: sexual content involving an animal' });
   if (a.extremeViolence) out.push({ code: 'EXTREME_VIOLENCE', detail: 'text: real-world extreme violence or gore' });
   if (a.violentExtremism) out.push({ code: 'VIOLENT_EXTREMISM', detail: 'text: violent-extremist content' });
   if (a.selfHarm) out.push({ code: 'SELF_HARM', detail: 'text: self-harm' });
@@ -118,6 +119,7 @@ export function imageReasons(a: ImageAssessment, opts: { mature: boolean; upload
   }
   const realFace = opts.upload && opts.face && opts.face.faces > 0 && opts.face.maxConfidence >= (opts.threshold ?? FACE_THRESHOLD) && a.photographic;
   if (realFace && opts.mature) out.push({ code: 'REAL_PERSON_SEXUAL', detail: `${opts.label}: uploaded photo of a real face on a mature run` });
+  if (a.animalSexual) out.push({ code: 'ANIMAL_SEXUAL', detail: `${opts.label}: sexual content involving an animal` });
   if (a.extremeViolence) out.push({ code: 'EXTREME_VIOLENCE', detail: `${opts.label}: extreme violence or gore` });
   if (a.violentExtremism) out.push({ code: 'VIOLENT_EXTREMISM', detail: `${opts.label}: violent-extremist imagery` });
   if (a.selfHarm) out.push({ code: 'SELF_HARM', detail: `${opts.label}: self-harm imagery` });
@@ -209,6 +211,7 @@ export async function preCheck(input: PreCheckInput, deps: SafetyDeps): Promise<
   // Deterministic hard-limit hits block without spending on classifiers.
   if (quick.verdict === 'block') return verdictOf(quick.reasons, checks);
   const reasons: SafetyReason[] = [];
+  let needsMature = false;
   const failClosed = (detail: string) => reasons.push({ code: 'SAFETY_UNAVAILABLE', detail });
 
   // Text classifier.
@@ -228,7 +231,12 @@ export async function preCheck(input: PreCheckInput, deps: SafetyDeps): Promise<
         costUsd = res.costUsd;
         return res.value;
       });
-      const r = textReasons(value, input.mature);
+      let r = textReasons(value, input.mature);
+      // D-005: a mature-allowed caller is never asked to turn mature content on; the run is re-planned as mature.
+      if (input.matureAllowed && r.some((x) => x.code === 'MATURE_REQUIRED')) {
+        r = r.filter((x) => x.code !== 'MATURE_REQUIRED');
+        needsMature = true;
+      }
       reasons.push(...r);
       checks.push({ name: 'text', status: r.length ? 'block' : 'pass', model, ms: Date.now() - t0, ...(hit && { cached: true }), ...(costUsd !== undefined && { costUsd }) });
     } catch (err) {
@@ -281,7 +289,8 @@ export async function preCheck(input: PreCheckInput, deps: SafetyDeps): Promise<
   }
   // A hard-limit hit outranks the outage code.
   const hard = reasons.filter((r) => r.code !== 'SAFETY_UNAVAILABLE');
-  return verdictOf(hard.length ? hard : reasons, checks);
+  const v = verdictOf(hard.length ? hard : reasons, checks);
+  return needsMature && v.verdict === 'allow' ? { ...v, needsMature: true } : v;
 }
 
 /** The pictures a check looks at: an image output itself, a video's frames. */
@@ -303,7 +312,8 @@ function picturesOf(outputs: readonly SafetyOutput[]): { pictures: { url: string
  * Checks outputs before they are committed. Image outputs are rated
  * themselves, videos through their frames (skipped when no frame is
  * available: the pre-check and the log stand). Non-mature runs that produce
- * explicit output are blocked with MATURE_REQUIRED.
+ * explicit output are blocked with MATURE_REQUIRED, unless the caller is
+ * mature-allowed (then only hard limits block).
  */
 export async function postCheck(input: PostCheckInput, deps: SafetyDeps): Promise<SafetyVerdict> {
   const checks: CheckRecord[] = [];
@@ -317,7 +327,8 @@ export async function postCheck(input: PostCheckInput, deps: SafetyDeps): Promis
   const reasons: SafetyReason[] = [];
   rated.assessments.forEach((a, i) => reasons.push(...imageReasons(a, { mature: input.mature, label: `output ${pictures[i]!.output + 1}` })));
   const rating = maxRating(rated.assessments, rated.model);
-  if (!input.mature && rating?.rating === 'explicit' && reasons.length === 0) reasons.push({ code: 'MATURE_REQUIRED', detail: 'output rated explicit on a non-mature run' });
+  // D-005: for a mature-allowed caller explicit output only rates (visibility), it never blocks.
+  if (!input.mature && !input.matureAllowed && rating?.rating === 'explicit' && reasons.length === 0) reasons.push({ code: 'MATURE_REQUIRED', detail: 'output rated explicit on a non-mature run' });
   return verdictOf(reasons, checks, rating);
 }
 

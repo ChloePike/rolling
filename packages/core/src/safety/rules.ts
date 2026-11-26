@@ -4,6 +4,10 @@
  *
  * - Minor-coded terms (multilingual, plus ages under 18) in the same text as
  *   sexual terms → MINOR_SEXUAL. Negated sexual terms ("no nudity") don't count.
+ * - Sexual content involving animals → ANIMAL_SEXUAL: strong terms
+ *   (bestiality, zoophilia, 兽交 …) and a sexual act directed at an animal
+ *   ("sex with a dog", "jerking off at a cat", "对着猫打飞机"). Animals in a
+ *   non-sexual scene, or present next to adult content, don't count.
  * - Face/head swap or identity-driven models on a mature run with any uploaded
  *   reference → IDENTITY_SWAP_MATURE; face/head swap never takes a mature run.
  * - `explicitSignal`: strong explicit terms, used to ask for mature content
@@ -86,6 +90,47 @@ const EXPLICIT_TERMS = terms([
   'orgasm\\p{L}*', 'genitals?', 'fully nude', 'fully naked', 'completely naked', 'sexo explícito', 'porno\\p{L}*', 'pornographique',
   'секс', 'порн\\p{L}*', 'セックス', '色情', '做爱', '做愛', '性行为', '性行為', '섹스', 'सेक्स',
 ]);
+
+// Sexual content involving animals: terms that mean it on their own (en + zh; others go to the classifier).
+const ANIMAL_SEXUAL_TERMS = terms([
+  'bestiality', 'zoophil\\p{L}*', 'zoosex\\p{L}*', 'zoo ?porn\\p{L}*', 'beastiality', 'animal sex', 'sex with (?:an? )?animals?', 'dog ?knott\\p{L}*',
+  '兽交', '獸交', '人兽', '人獸', '兽奸', '獸姦', '獸奸', '兽性恋', '獸性戀', '恋兽', '戀獸', '人畜交',
+]);
+
+// Animal words for the "sexual act directed at an animal" patterns.
+const ANIMAL_EN =
+  '(?:dogs?|pupp(?:y|ies)|cats?(?! ?(?:ears?|girls?|boys?|suits?|wom[ae]n|costumes?|tails?|eyes?))|kittens?|horses?|ponies|pony|mares?|stallions?|pigs?|goats?|sheep|cows?|donkeys?|monkeys?|apes?|animals?|beasts?)(?!\\s+(?:farms?|ranch\\p{L}*|beds?|houses?|parks?|shows?|prints?|costumes?|masks?|ears?|tails?|food|collars?|leash\\p{L}*|style|stables?|pens?|patterns?|onesies?|pajamas?))';
+const ANIMAL_ZH = '(?:猫(?![耳娘女])|貓(?![耳娘女])|狗(?!仔)|犬|马(?![上桶路赛克甲尾])|馬(?![上桶路賽克甲尾])|猪|豬|驴|驢|山羊|绵羊|綿羊|母牛|公牛|猴子|动物|動物|畜生|牲口|牲畜)';
+const SEX_ACT_EN =
+  '(?:sex|fuck\\p{L}*|intercourse|blowjobs?|masturbat\\p{L}*|jerk(?:s|ed|ing)? off|jack(?:s|ed|ing)? off|wank\\p{L}*|hump\\p{L}*|penetrat\\p{L}*|cum(?:s|ming)?|ejaculat\\p{L}*|rub(?:s|bing)? (?:his|her|their) (?:cock|dick|penis|pussy|clit)|grind\\p{L}*)';
+const SEX_ACT_ZH_ALT = '打飞机|打飛機|撸管|擼管|撸|擼|自慰|手淫|做爱|做愛|性交|交配|口交|肛交|乳交|性行为|性行為|射精|插入|发泄性欲|發洩性慾';
+const SEX_ACT_ZH = `(?:${SEX_ACT_ZH_ALT})`;
+const ZH_GAP = '[^，。,.!?！？；;\\n]{0,8}?';
+const ZH_GAP_SHORT = '[^，。,.!?！？；;\\n]{0,4}?';
+const ANIMAL_SEXUAL_PATTERNS: RegExp[] = [
+  // "sex with a dog", "jerking off at/to/toward the cat", "fucking a horse"
+  new RegExp(`(?<![\\p{L}])${SEX_ACT_EN}(?:\\s+\\p{L}+){0,2}?(?<!\\s(?:next|close|near|due|thanks|according|up))\\s+(?:with|on|at|to|towards?|into|over)\\s+(?:(?:a|an|the|his|her|their|my|your|some|two|three)\\s+)?(?:\\p{L}+\\s+)?${ANIMAL_EN}(?![\\p{L}])`, 'u'),
+  new RegExp(`(?<![\\p{L}])(?:fuck(?:s|ed|ing)?|rap(?:e|es|ed|ing)|penetrat\\p{L}*|hump(?:s|ed|ing)?|blow(?:s|ing)?|suck(?:s|ed|ing)?)\\s+(?:(?:a|an|the|his|her|their|my|your)\\s+)?(?:(?!like\\s|as\\s)\\p{L}+\\s+)?${ANIMAL_EN}(?![\\p{L}])`, 'u'),
+  // "a dog fucking her", "the horse penetrates him"
+  new RegExp(`(?<![\\p{L}])${ANIMAL_EN}\\s+(?:fuck(?:s|ed|ing)?|rap(?:es|ed|ing)|penetrat\\p{L}*|hump(?:s|ed|ing)? (?:her|him|them|a (?:wom[ae]n|man|girl|guy))|has sex with|having sex with|licks? (?:her|his) (?:pussy|cock|dick|clit|genitals))(?![\\p{L}])`, 'u'),
+  // "对着猫儿打飞机", "和狗做爱", "跟马性交", "给狗口交", "被狗操"
+  new RegExp(`(?:对着|對著|朝着|朝著|冲着|衝著|和|跟|与|與|同|给|給|让|讓|看着|看著)${ZH_GAP}${ANIMAL_ZH}${ZH_GAP_SHORT}${SEX_ACT_ZH}`, 'u'),
+  new RegExp(`${ANIMAL_ZH}${ZH_GAP}(?:操|肏|干|幹|插|奸|姦)(?:她|他|我|你|女人|男人|女孩|男孩|人)`, 'u'),
+  new RegExp(`被${ZH_GAP}${ANIMAL_ZH}${ZH_GAP}(?:操|肏|干|幹|插|奸|姦|强奸|強姦|${SEX_ACT_ZH_ALT})`, 'u'),
+];
+
+/** Sexual content involving an animal (strong terms, or a sexual act directed at an animal); negated terms don't count. */
+export function animalSexualSignal(text: string): string[] {
+  const t = normalizeText(text);
+  const out = findTerms(t, ANIMAL_SEXUAL_TERMS)
+    .filter((h) => !h.negated)
+    .map((h) => h.term);
+  for (const re of ANIMAL_SEXUAL_PATTERNS) {
+    const m = re.exec(t);
+    if (m && !NEGATION_BEFORE.test(t.slice(Math.max(0, m.index - 40), m.index)) && !NEGATION_CJK_BEFORE.test(t.slice(Math.max(0, m.index - 2), m.index))) out.push(m[0]);
+  }
+  return out;
+}
 
 const NEGATION_BEFORE = /(?<![\p{L}])(?:no|not|non|without|never|avoid|zero|nothing|nor|sin|sans|ohne|keine?n?|без|не|nicht|senza|sem)[\s,-]+(?:[\p{L}]+[\s,-]+)?$/u;
 const NEGATION_CJK_BEFORE = /[不无無非没禁]$/u;
@@ -188,6 +233,8 @@ export function runRules(input: Pick<PreCheckInput, 'prompt' | 'references' | 'm
   if (minors.length > 0 && (sexual.length > 0 || input.mature)) {
     reasons.push({ code: 'MINOR_SEXUAL', detail: `rules: minor terms [${minors.slice(0, 3).join(', ')}] with ${sexual.length ? `sexual terms [${sexual.slice(0, 3).join(', ')}]` : 'a mature run'}` });
   }
+  const animal = animalSexualSignal(text);
+  if (animal.length > 0) reasons.push({ code: 'ANIMAL_SEXUAL', detail: `rules: sexual content involving an animal [${animal.slice(0, 3).join(', ')}]` });
   const identity = identityRule(input);
   if (identity) reasons.push(identity);
   return { reasons, explicit: explicitSignal(text) };

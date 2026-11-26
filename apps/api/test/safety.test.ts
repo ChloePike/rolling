@@ -28,7 +28,7 @@ function uniquePng(tag: string): Uint8Array<ArrayBuffer> {
 // Fake generation gateway (images only) and fake safety LLM
 // ---------------------------------------------------------------------------
 
-const gateway = { creates: 0, seq: 0 };
+const gateway = { creates: 0, seq: 0, bodies: [] as any[] };
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } });
@@ -47,6 +47,7 @@ const fakeFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   }
   if (req.method === "POST" && url.pathname.startsWith("/v1/images/")) {
     gateway.creates++;
+    gateway.bodies.push(await req.clone().json().catch(() => null));
     return json({ id: `gen_${++gateway.seq}`, status: "queued" }, 202);
   }
   const gen = /^\/v1\/generations\/([^/]+)$/.exec(url.pathname);
@@ -62,6 +63,7 @@ const SAFE_TEXT: TextAssessment = {
   realPersonNames: [],
   realPersonSexualOrIntimate: false,
   nonConsensualSexual: false,
+  animalSexual: false,
   extremeViolence: false,
   violentExtremism: false,
   selfHarm: false,
@@ -73,6 +75,7 @@ const SAFE_IMAGE: ImageAssessment = {
   apparentMinor: false,
   minorSexualized: false,
   knownPerson: false,
+  animalSexual: false,
   extremeViolence: false,
   violentExtremism: false,
   selfHarm: false,
@@ -200,6 +203,7 @@ afterAll(() => {
 beforeEach(async () => {
   safety.reset();
   gateway.creates = 0;
+  gateway.bodies = [];
   introspector = await introspectWorkflow(env.GENERATE);
   await introspector.modifyAll(async (m) => {
     await m.disableSleeps();
@@ -237,13 +241,51 @@ describe("safety: quote (deterministic rules, before credits are held)", () => {
     expect(q.quoteId).toMatch(/^q/);
   });
 
-  it("asks for mature content instead of routing an explicit non-mature prompt (MATURE_REQUIRED, NO_PLAN for non-members)", async () => {
+  it("asks for mature content with copy that fits the caller: Settings for a member with the preference off, a paid plan for a non-member", async () => {
     const { user } = await member("sm");
     const q = await quote(user, spec("an nsfw scene between two adults"));
-    expect(q.items[0]).toMatchObject({ action: "blocked", code: "MATURE_REQUIRED", reason: "Turn on mature content in Settings to generate this, or change the prompt." });
+    expect(q.items[0]).toMatchObject({ action: "blocked", code: "MATURE_REQUIRED", matureAccess: "preference_off", reason: "Turn on mature content in Settings to generate this, or change the prompt." });
     const guest = await member("sg", { plan: false });
     const g = await quote(guest.user, spec("an nsfw scene between two adults"));
-    expect(g.items[0]).toMatchObject({ action: "blocked", code: "NO_PLAN" });
+    expect(g.items[0]).toMatchObject({ action: "blocked", code: "MATURE_REQUIRED", matureAccess: "no_plan", reason: "Mature content needs a paid plan. Join a plan to generate this, or change the prompt." });
+    expect(g.items[0].reason).not.toContain("Settings");
+    // A non-member with the preference on is still asked for a plan, never to "turn it on".
+    const guestOn = await member("sgo", { plan: false, mature: true });
+    expect((await quote(guestOn.user, spec("an nsfw scene between two adults"))).items[0]).toMatchObject({ code: "MATURE_REQUIRED", matureAccess: "no_plan" });
+  });
+
+  it.each([
+    ["Quick Create, explicit model that takes no mature runs", { model: "Seedream 5.0 Lite" }],
+    ["Home, Auto", { model: "auto", resolution: undefined, ratio: undefined }],
+  ])("D-005: a mature-allowed caller's explicit prompt runs mature automatically (%s) with moderation low", async (_name, extra) => {
+    const { user, ws } = await member("sam", { mature: true });
+    const q = await quote(user, spec("an nsfw scene between two consenting adults", extra));
+    expect(q.items[0].action, JSON.stringify(q.items[0])).toBe("run");
+    expect(q.items[0].code).toBeUndefined();
+    const model = await env.DB.prepare("SELECT id FROM models WHERE id = ?").bind(q.items[0].model).first();
+    expect(model).not.toBeNull();
+    const { run, job } = await runAndWait(user, q.quoteId);
+    expect(run.status, JSON.stringify(job)).toBe("succeeded");
+    expect(gateway.bodies).toHaveLength(1);
+    expect(gateway.bodies[0]).toMatchObject({ moderation: "low" });
+    const item = await env.DB.prepare("SELECT spec FROM run_items WHERE run_id = ?").bind(run.id).first<{ spec: string }>();
+    expect(JSON.parse(item!.spec)).toMatchObject({ mature: true, matureAuto: true, matureAccess: "allowed" });
+    expect((await events(ws)).filter((e) => e.verdict === "block")).toEqual([]);
+  });
+
+  it("D-005: ANIMAL_SEXUAL is a hard limit even for a mature-allowed caller (rules at quote, en + zh)", async () => {
+    const { user, ws } = await member("sa", { mature: true });
+    for (const prompt of ["我想看一个亚洲老头对着猫儿打飞机", "a man having sex with a dog"]) {
+      const q = await quote(user, spec(prompt, { model: "auto", resolution: undefined, ratio: undefined }));
+      expect(q.quoteId).toBeNull();
+      expect(q.items[0]).toMatchObject({ action: "blocked", code: "SAFETY_BLOCKED", reason: "This can’t be generated under our content rules." });
+      expect(JSON.stringify(q)).not.toContain("ANIMAL");
+    }
+    const ev = await events(ws);
+    expect(ev.map((e) => JSON.parse(e.codes))).toEqual([["ANIMAL_SEXUAL"], ["ANIMAL_SEXUAL"]]);
+    expect(ev.every((e) => e.hard === 1)).toBe(true);
+    // Pets in a non-sexual scene stay fine.
+    expect((await quote(user, spec("an old man feeding his cat on a sunny porch"))).items[0].action).toBe("run");
   });
 });
 
@@ -489,5 +531,53 @@ describe("safety: agent gate (M6 hook)", () => {
     expect((await gate.checkBrief({ text: "a nude schoolgirl", mature: false })).verdict).toBe("block");
     expect((await gate.checkBrief({ text: "portrait of a senior CEO", mature: false })).verdict).toBe("allow");
     expect((await events(ws)).map((e) => [e.stage, e.verdict])).toEqual([["agent", "block"]]);
+  });
+});
+
+describe("safety: mature-allowed callers (D-005: only hard limits block)", () => {
+  it("prepare re-plans a non-mature item as mature when the classifier finds it explicit (moderation low, within the hold)", async () => {
+    const { user, ws } = await member("srp", { mature: true });
+    const q = await quote(user, spec("two adults, an adult category the rules can't see", { model: "auto", resolution: undefined, ratio: undefined }));
+    expect(q.items[0].action).toBe("run");
+    safety.text = { sexualLevel: "explicit" };
+    safety.image = { rating: "explicit", confidence: 0.9 };
+    const { run, job } = await runAndWait(user, q.quoteId);
+    expect(run.status, JSON.stringify(job)).toBe("succeeded");
+    expect(gateway.bodies[0]).toMatchObject({ moderation: "low" });
+    const item = await env.DB.prepare("SELECT spec FROM run_items WHERE run_id = ?").bind(run.id).first<{ spec: string }>();
+    expect(JSON.parse(item!.spec)).toMatchObject({ mature: true, matureAuto: true });
+    expect(await env.DB.prepare("SELECT mature FROM models WHERE id = ?").bind(job.model).first()).toEqual({ mature: 1 });
+    expect(await env.DB.prepare("SELECT rating, mature FROM assets WHERE id = ?").bind(job.asset_id).first()).toEqual({ rating: "explicit", mature: 1 });
+    expect((await events(ws)).filter((e) => e.verdict === "block")).toEqual([]);
+  });
+
+  it("explicit output of a non-mature run only rates (mature for visibility), it never blocks", async () => {
+    const { user } = await member("sro", { mature: true });
+    const q = await quote(user, spec("a lighthouse at dusk"));
+    safety.image = { rating: "explicit", confidence: 0.8 };
+    const { job } = await runAndWait(user, q.quoteId);
+    expect(job.status).toBe("succeeded");
+    expect(await env.DB.prepare("SELECT rating, mature FROM assets WHERE id = ?").bind(job.asset_id).first()).toEqual({ rating: "explicit", mature: 1 });
+  });
+
+  it("the classifier's animalSexual flag blocks in prepare (hard limit), hold released", async () => {
+    const { user, ws } = await member("sca", { mature: true });
+    const before = await balance(ws);
+    const q = await quote(user, spec("an adult category with an animal the rules can't see", { model: "auto", resolution: undefined, ratio: undefined }));
+    safety.text = { sexualLevel: "explicit", animalSexual: true };
+    const { job } = await runAndWait(user, q.quoteId);
+    expect(job).toMatchObject({ status: "failed", error_code: "safety_blocked", refunded: 1 });
+    expect(gateway.creates).toBe(0);
+    expect(await balance(ws)).toEqual(before);
+    expect((await events(ws)).map((e) => JSON.parse(e.codes))).toEqual([["ANIMAL_SEXUAL"]]);
+  });
+
+  it("a member with the preference off still gets MATURE_REQUIRED with Settings copy when prepare finds explicit content", async () => {
+    const { user } = await member("spf");
+    const q = await quote(user, spec("another adult category the rules can't see"));
+    safety.text = { sexualLevel: "explicit" };
+    const { job } = await runAndWait(user, q.quoteId);
+    expect(job, JSON.stringify(job)).toMatchObject({ status: "failed", error_code: "mature_required", refunded: 1 });
+    expect(job.error_message).toContain("Turn on mature content in Settings");
   });
 });

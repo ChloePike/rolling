@@ -111,8 +111,16 @@ export class GenerateWorkflow extends WorkflowEntrypoint<Env, GenerateWorkflowPa
         // The request crosses the step boundary as JSON (it has free-form `extra`).
         const prepared = await step.do(`prepare-${attempt}`, RETRY, guard(async () => {
           const p = await prepareJob(env, ctx, modelId);
-          return { request: JSON.stringify(p.request), digest: p.digest };
+          return { request: JSON.stringify(p.request), digest: p.digest, ...(p.replanned && { replanned: JSON.stringify(p.replanned) }) };
         }));
+        if (prepared.replanned) {
+          // D-005: re-planned as a mature run in prepare (explicit content of a mature-allowed caller): later steps,
+          // retries and fallbacks use the mature spec and its model. Deterministic on replay (the step result is stored).
+          const r = JSON.parse(prepared.replanned) as { spec: JobContext["spec"]; modelId: string };
+          ctx.spec = r.spec;
+          modelId = r.modelId;
+          if (!tried.includes(modelId)) tried.push(modelId);
+        }
         digest = prepared.digest;
         const req = JSON.parse(prepared.request) as GenerateRequest;
         request = req;

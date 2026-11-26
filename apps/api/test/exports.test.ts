@@ -104,6 +104,7 @@ const fakeSafetyLlm: LlmProvider = {
       knownPerson: false,
       extremeViolence: false,
       violentExtremism: false,
+      animalSexual: false,
       selfHarm: false,
     };
     const text = {
@@ -116,6 +117,7 @@ const fakeSafetyLlm: LlmProvider = {
       nonConsensualSexual: false,
       extremeViolence: false,
       violentExtremism: false,
+      animalSexual: false,
       selfHarm: false,
     };
     yield { type: "text", delta: JSON.stringify(images > 0 ? { images: Array.from({ length: images }, () => image) } : text) };

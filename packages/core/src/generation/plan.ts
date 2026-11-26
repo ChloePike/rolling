@@ -14,10 +14,12 @@ import type { GraphNode, GraphState } from '../graph/types';
 import { outputType } from '../graph/ports';
 import { hash64, stableStringify } from '../project/digest';
 import type { PlanItem as StructuralItem } from '../project/plan';
-import { lowestPlanFor, planAllowsResolution } from '../pricing/config';
-import { autoCandidates, chooseModel, fitRequest, type Classify, familyFallbacks } from './auto';
+import { lowestPlanFor, planAllowsResolution, type PlanId } from '../pricing/config';
+import { autoCandidates, chooseModel, fitRequest, matureCandidates, type Classify, familyFallbacks } from './auto';
 import { cleanPrompt, findModel, imageSizeFor, isAuto, modelRefOf, settingsOf, textOfNode, usesSize, type NodeSettings } from './spec';
 import type { BlockCode, GenInput, GenSpec, PlanContext, PlanItem, RunPlan } from './types';
+import { explicitSignal } from '../safety/rules';
+import type { MatureAccess } from '../safety/types';
 
 const GENERATIVE = new Set<string>(['image', 'video']);
 
@@ -118,13 +120,37 @@ export function modelProblem(model: CatalogModel, spec: GenSpec, ctx: PlanContex
   return null;
 }
 
+/** D-005 access of the caller for a plan context (`allowed` iff `matureAllowed`). */
+export function matureAccessOfPlan(ctx: PlanContext): MatureAccess {
+  if (ctx.matureAllowed) return 'allowed';
+  return ctx.matureAccess && ctx.matureAccess !== 'allowed' ? ctx.matureAccess : 'preference_off';
+}
+
+/** Models that take this mature spec (routing, identity rule, capability, plan cap), cheapest first; `preferred` first when it qualifies. */
+function matureCapable(catalog: Catalog, spec: GenSpec, ctx: PlanContext, imageOrigins: readonly ImageSource[], preferred?: CatalogModel): CatalogModel[] {
+  const req = autoRequestOf(spec);
+  const pool = [...(preferred ? familyFallbacks(catalog, preferred, req, ctx.plan) : []), ...matureCandidates(catalog, req, ctx.plan)];
+  const seen = new Set<string>();
+  return pool.filter((m) => {
+    if (seen.has(m.id)) return false;
+    seen.add(m.id);
+    return matureRunProblem(m, imageOrigins, imageOrigins.length) === null && modelProblem(m, spec, ctx, imageOrigins) === null;
+  });
+}
+
+export const NO_MATURE_MODEL_REASON = 'No model that takes mature content fits these settings.';
+
 /** Builds and validates the spec for one item and resolves Auto (D-009). */
 export async function buildSpec(input: BuildSpecInput): Promise<BuiltSpec> {
-  const { kind, settings, inputs, ctx } = input;
+  const { kind, inputs, ctx } = input;
   const prompt = cleanPrompt(input.prompt);
-  if (settings.mature && !ctx.matureAllowed) {
+  if (input.settings.mature && !ctx.matureAllowed) {
     return { ok: false, code: 'mature_not_allowed', reason: 'Mature content is off for this workspace.' };
   }
+  // D-005: a mature-allowed caller's explicit prompt runs as a mature run without asking (Quick Create, Home, tools and
+  // canvas nodes never send the toggle on their own). Callers without access keep the flag off: the quote asks them.
+  const matureAuto = !input.settings.mature && ctx.matureAllowed && explicitSignal(prompt).length > 0;
+  const settings = matureAuto ? { ...input.settings, mature: true } : input.settings;
   const mode = modeOf(kind, settings, inputs);
   const base: Omit<GenSpec, 'modelId' | 'auto' | 'fallbacks'> = {
     kind,
@@ -138,6 +164,8 @@ export async function buildSpec(input: BuildSpecInput): Promise<BuiltSpec> {
     ...(settings.audio !== undefined && { audio: settings.audio }),
     ...(settings.n !== undefined && { n: settings.n }),
     mature: settings.mature,
+    matureAccess: matureAccessOfPlan(ctx),
+    ...(matureAuto && { matureAuto: true as const }),
     inputs,
   };
   if (prompt === '' && (mode === 't2v' || mode === 't2i')) return { ok: false, code: 'empty_prompt', reason: 'Add a prompt first.' };
@@ -147,11 +175,13 @@ export async function buildSpec(input: BuildSpecInput): Promise<BuiltSpec> {
   let autoVia: PlanItem['autoVia'];
   if (isAuto(input.modelRef)) {
     const req = autoRequestOf(base);
-    const candidates = autoCandidates(input.catalog, req, ctx.plan).filter(
+    let candidates = autoCandidates(input.catalog, req, ctx.plan).filter(
       (m) => !base.mature || matureRunProblem(m, input.imageOrigins, input.imageOrigins.length) === null,
     );
+    // No Auto-eligible model takes this mature run: any listed mature-capable one (D-005 routing).
+    if (candidates.length === 0 && base.mature) candidates = matureCandidates(input.catalog, req, ctx.plan);
     const chosen = await chooseModel({ request: req, candidates, classify: input.classify ?? null });
-    if (!chosen) return { ok: false, code: 'no_capable_model', reason: 'No model available on your plan fits these settings.' };
+    if (!chosen) return { ok: false, code: 'no_capable_model', reason: matureAuto ? NO_MATURE_MODEL_REASON : 'No model available on your plan fits these settings.' };
     model = chosen.model;
     fallbacks = chosen.fallbacks.map((m) => m.id);
     autoVia = chosen.via;
@@ -164,7 +194,14 @@ export async function buildSpec(input: BuildSpecInput): Promise<BuiltSpec> {
       .filter((m) => !base.mature || matureRunProblem(m, input.imageOrigins, input.imageOrigins.length) === null)
       .map((m) => m.id);
   }
-  const spec: GenSpec = { ...base, modelId: model.id, auto: isAuto(input.modelRef), fallbacks };
+  let spec: GenSpec = { ...base, modelId: model.id, auto: isAuto(input.modelRef), fallbacks };
+  if (matureAuto && matureRunProblem(model, input.imageOrigins, input.imageOrigins.length) !== null) {
+    // The chosen model can't take the mature run this prompt needs: a mature-capable one of the same family, else the cheapest.
+    const capable = matureCapable(input.catalog, spec, ctx, input.imageOrigins, model);
+    if (capable.length === 0) return { ok: false, model, code: 'no_capable_model', reason: NO_MATURE_MODEL_REASON };
+    model = capable[0]!;
+    spec = { ...spec, modelId: model.id, fallbacks: capable.slice(1, 4).map((m) => m.id) };
+  }
   const problem = modelProblem(model, spec, ctx, input.imageOrigins);
   if (problem) return { ok: false, model, ...problem };
   return { ok: true, spec, model, priceRequest: priceRequestOf(spec, model), ...(autoVia && { autoVia }) };
@@ -329,4 +366,37 @@ export async function planRun(input: PlanGraphInput): Promise<RunPlan> {
 /** Hash of a node's kind and params: an edit after the quote changes it. */
 export function paramsHash(node: Pick<GraphNode, 'kind' | 'params'>): string {
   return hash64(stableStringify({ k: node.kind, p: node.params }));
+}
+
+export type MatureReplan = { ok: true; spec: GenSpec; model: CatalogModel } | { ok: false; code: 'no_capable_model'; reason: string };
+
+export interface MatureReplanInput {
+  spec: GenSpec;
+  /** The model the job was about to use. */
+  model: CatalogModel;
+  catalog: Catalog;
+  plan: PlanId | null;
+  /** The model's price for the spec fits what was held for the job. */
+  fits: (model: CatalogModel) => boolean;
+}
+
+/**
+ * D-005 re-plan in `prepare`: the pre-check found explicit content on a
+ * non-mature item of a mature-allowed caller. The item becomes a mature run
+ * (`moderation: "low"`); a model that can't take it falls back to a
+ * mature-capable one within the hold (Auto: its candidates, filtered). Null
+ * model → fail (refunded) with a clear reason.
+ */
+export function replanMature(input: MatureReplanInput): MatureReplan {
+  const ctx: PlanContext = { plan: input.plan, matureAllowed: true };
+  const origins = imageOriginsOf(input.spec.inputs);
+  const spec: GenSpec = { ...input.spec, mature: true, matureAuto: true, matureAccess: 'allowed' };
+  const ok = (m: CatalogModel) => matureRunProblem(m, origins, origins.length) === null && modelProblem(m, spec, ctx, origins) === null && input.fits(m);
+  const fromSpec = spec.fallbacks.map((id) => input.catalog.get(id)).filter((m): m is CatalogModel => !!m);
+  const pool = [input.model, ...fromSpec, ...matureCapable(input.catalog, spec, ctx, origins, input.model)];
+  const seen = new Set<string>();
+  const capable = pool.filter((m) => (seen.has(m.id) ? false : (seen.add(m.id), ok(m))));
+  if (capable.length === 0) return { ok: false, code: 'no_capable_model', reason: `${NO_MATURE_MODEL_REASON} No credits were charged.` };
+  const model = capable[0]!;
+  return { ok: true, model, spec: { ...spec, modelId: model.id, fallbacks: capable.slice(1, 4).map((m) => m.id) } };
 }

@@ -12,6 +12,7 @@
 import type { PriceRequest } from '../models/catalog';
 import type { GenerationMode, ImageSource } from '../models/types';
 import type { PlanId } from '../pricing/config';
+import type { MatureAccess } from '../safety/types';
 
 export type RunScope = 'node' | 'selection' | 'all' | 'upTo' | 'from';
 export type PlanAction = 'run' | 'reuse' | 'blocked' | 'none' | 'bypassed';
@@ -70,6 +71,14 @@ export interface GenSpec {
   n?: number;
   /** D-005 mature run: routed with `moderation: "low"`. */
   mature: boolean;
+  /**
+   * D-005 access of the caller at quote time (snapshot). `allowed`: content the
+   * pre-check finds explicit re-plans the item as a mature run in `prepare`
+   * instead of failing; otherwise it decides the MATURE_REQUIRED copy.
+   */
+  matureAccess?: MatureAccess;
+  /** The run became mature because the prompt is explicit (not by the user's toggle). */
+  matureAuto?: true;
   /** Media inputs (frames, references, edit inputs, audio), resolved to signed URLs in `prepare`. */
   inputs: GenInput[];
   /** Total length of the reference videos in ms, when known (priced by models that meter input video). */
@@ -94,6 +103,8 @@ export interface PlanItem {
   reason?: string;
   /** For `resolution_locked`: the lowest plan that allows it. */
   lowestPlan?: PlanId | null;
+  /** For `MATURE_REQUIRED`: the caller's D-005 access (the copy, and `no_plan` opens the upgrade modal with reason `mature`). */
+  matureAccess?: MatureAccess;
   /** Catalog model id (run/reuse rows) or null. */
   model: string | null;
   modelName: string | null;
@@ -119,6 +130,8 @@ export interface PlanContext {
   plan: PlanId | null;
   /** D-005: member, preference on, workspace allows. */
   matureAllowed: boolean;
+  /** D-005: why mature content is not allowed (MATURE_REQUIRED copy); derived from `matureAllowed` when absent. */
+  matureAccess?: MatureAccess;
 }
 
 /** Active version of a node: the version id and the digest it was made with. */

@@ -3,7 +3,7 @@
  * idempotent: a step may run again after a crash or a retry.
  */
 import { hyperouter, type CatalogModel, type GenerateRequest, type JobError, type JobStatus } from "@rolling/core";
-import { buildGenerateRequest, paramsHash, priceRequestOf, requestProblems, type GenInput, type GenSpec, type ResolvedInput } from "@rolling/core/generation";
+import { buildGenerateRequest, paramsHash, priceRequestOf, replanMature, requestProblems, type GenInput, type GenSpec, type ResolvedInput } from "@rolling/core/generation";
 import { creditsFor, creditsForUsd } from "@rolling/core/pricing/config";
 import { newId } from "@rolling/core/ids";
 import type { ImageSource } from "@rolling/core";
@@ -20,6 +20,7 @@ import { jobPostCheck, jobPreCheck, referenceSource } from "../safety/pipeline";
 import { faceResultFromMeta, pictureDataUrl, r2Picture, sha256OfBytes } from "../safety/service";
 import { getItem, getJob, getRun, parseJson, refreshRun, type RunOptions } from "./store";
 import { ensureFrame } from "./frames";
+import { loadAccount } from "../auth/workspace";
 
 export interface GenerateParams {
   jobId: string;
@@ -174,6 +175,30 @@ export interface Prepared {
   request: GenerateRequest;
   /** Digest the new version records: current inputs, or a stale marker when the node changed after the quote. */
   digest: string;
+  /** D-005: the item was re-planned as a mature run here; the job continues with this spec and model. */
+  replanned?: { spec: GenSpec; modelId: string };
+}
+
+/**
+ * D-005: a mature-allowed caller's item turned out explicit in the pre-check.
+ * It becomes a mature run (`moderation: "low"`) on a mature-capable model
+ * within the hold, stored on the run item; none fits → the job fails (refunded).
+ */
+async function replanAsMature(env: Env, ctx: JobContext, model: CatalogModel): Promise<{ spec: GenSpec; model: CatalogModel }> {
+  const catalog = await loadCatalog(env);
+  const { memberships } = await loadAccount(env, ctx.createdBy);
+  const plan = memberships.find((m) => m.workspaceId === ctx.workspaceId)?.plan ?? null;
+  const fits = (m: CatalogModel) => {
+    try {
+      return creditsFor(m, priceRequestOf({ ...ctx.spec, mature: true }, m)) <= ctx.credits;
+    } catch {
+      return false; // Unpriced.
+    }
+  };
+  const r = replanMature({ spec: ctx.spec, model, catalog, plan, fits });
+  if (!r.ok) fail("no_mature_model", r.reason);
+  await env.DB.prepare("UPDATE run_items SET spec = ?, updated_at = ? WHERE run_id = ? AND ref = ?").bind(JSON.stringify(r.spec), Date.now(), ctx.runId, ctx.ref).run();
+  return { spec: r.spec, model: r.model };
 }
 
 /**
@@ -237,6 +262,12 @@ export async function prepareJob(env: Env, ctx: JobContext, modelId: string): Pr
   const problems = requestProblems(model, request);
   if (problems.length) fail("invalid_request", `The request does not fit ${model.displayName}: ${problems.join("; ")}.`);
   const blocked = await jobPreCheck(env, safetyJob(ctx), model, request.prompt, ctx.spec.negativePrompt, references);
+  if (blocked === "needsMature") {
+    // Mature runs re-resolve their references for the vision and face checks, then pre-check again as mature.
+    const next = await replanAsMature(env, ctx, model);
+    const again = await prepareJob(env, { ...ctx, spec: next.spec }, next.model.id);
+    return { ...again, replanned: { spec: next.spec, modelId: next.model.id } };
+  }
   if (blocked) fail(blocked.code, blocked.message);
   return { request, digest };
 }

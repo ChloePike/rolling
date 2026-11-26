@@ -12,6 +12,7 @@ import type { LedgerErrorCode } from "@rolling/core/credits";
 import { planPromptSpec, planRun, specAssetIds, specTitle, type PlanItem, type PromptSpec, type RunScope, type SpecAsset } from "@rolling/core/generation";
 import { newId } from "@rolling/core/ids";
 import type { ImageSource } from "@rolling/core";
+import { matureAccessOf, type MatureAccess } from "@rolling/core/safety";
 import type { AuthContext } from "../auth/context";
 import { ApiError } from "../lib/errors";
 import { isRoomError, roomFailure } from "../lib/room";
@@ -46,6 +47,8 @@ export interface QuoteResponseItem {
   code?: string;
   reason?: string;
   lowestPlan?: string | null;
+  /** MATURE_REQUIRED rows: the caller's D-005 access (`no_plan` → upgrade modal reason `mature`; `preference_off` → Settings). */
+  matureAccess?: string;
   autoVia?: string;
   dependsOn: string[];
 }
@@ -81,6 +84,7 @@ function toResponseItem(i: StoredQuoteItem): QuoteResponseItem {
     ...(i.code && { code: i.code }),
     ...(i.reason && { reason: i.reason }),
     ...(i.lowestPlan !== undefined && { lowestPlan: i.lowestPlan }),
+    ...(i.matureAccess && { matureAccess: i.matureAccess }),
     ...(i.autoVia && { autoVia: i.autoVia }),
     dependsOn: i.dependsOn,
   };
@@ -152,6 +156,15 @@ export type RunRequestRecord =
   | { promptSpec: PromptSpec; onlyRefs?: string[]; priorAssets?: Record<string, string>; retryOf?: string }
   | { scope: RunScope; nodeIds?: string[]; retryOf?: string };
 
+/** D-005 access of the caller (member, preference, workspace flag); decides auto-mature routing and the MATURE_REQUIRED copy. */
+export function callerMatureAccess(auth: Pick<AuthContext, "isMember" | "prefs" | "workspace">, allowed?: boolean): MatureAccess {
+  const access = matureAccessOf({ isMember: auth.isMember, preference: auth.prefs.matureContent, workspaceAllowed: auth.workspace.matureAllowed });
+  if (allowed === undefined) return access;
+  // Canvas runs use the project's workspace: its flag decides when the caller's own context says yes.
+  if (allowed) return "allowed";
+  return access === "allowed" ? "workspace_off" : access;
+}
+
 /** Plans and prices a run; stores the quote (10 minutes, D-006 CreditAccount TTL). */
 export async function quoteRun(env: Env, auth: AuthContext, req: QuoteRequest): Promise<QuoteResponse> {
   const catalog = await loadCatalog(env);
@@ -174,7 +187,7 @@ export async function quoteRun(env: Env, auth: AuthContext, req: QuoteRequest): 
       await planPromptSpec({
         spec: req.promptSpec,
         catalog,
-        ctx: { plan: auth.plan, matureAllowed: auth.matureAllowed },
+        ctx: { plan: auth.plan, matureAllowed: auth.matureAllowed, matureAccess: callerMatureAccess(auth) },
         classify,
         assetOrigins: origins,
         ...(req.onlyRefs && { onlyRefs: req.onlyRefs }),
@@ -192,7 +205,7 @@ export async function quoteRun(env: Env, auth: AuthContext, req: QuoteRequest): 
     if (req.nodeIds?.some((id) => !graph.state.nodes.some((n) => n.id === id))) {
       throw new ApiError(404, "NOT_FOUND", "Node not found", { nodeIds: req.nodeIds });
     }
-    items = (await planRun({ graph: graph.state, structural: structural.items, catalog, ctx: { plan: auth.plan, matureAllowed: req.matureAllowed }, classify })).items;
+    items = (await planRun({ graph: graph.state, structural: structural.items, catalog, ctx: { plan: auth.plan, matureAllowed: req.matureAllowed, matureAccess: callerMatureAccess(auth, req.matureAllowed) }, classify })).items;
   }
 
   // D-005: deterministic hard-limit rules before anything is priced or held.

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { fixtureCatalog } from '../models/__fixtures__/catalog';
-import { validateRequest } from '../models/capabilities';
+import { moderationFor, validateRequest } from '../models/capabilities';
+import { replanMature } from './plan';
 import { buildGenerateRequest, type ResolvedInput } from './request';
 import { PromptSpecSchema, specAssetIds } from './spec';
 import { AVATAR_MODEL, planPromptSpec, remixShotTimes, type SpecAsset } from './specPlan';
@@ -230,5 +231,65 @@ describe('specAssetIds', () => {
     expect(
       specAssetIds(spec({ kind: 'remix', shots: [{ frameAssetId: 'a' }, { frameAssetId: 'b' }], inputs: { videoAssetId: 'v', referenceAssetIds: ['a', 'c'], photoAssetId: 'p', audioAssetId: 'au' } })).sort(),
     ).toEqual(['a', 'au', 'b', 'c', 'p', 'v']);
+  });
+});
+
+describe('D-005: explicit prompts of mature-allowed callers run mature automatically', () => {
+  const EXPLICIT = 'nsfw scene between two consenting adults in a hotel room';
+
+  it('Quick Create / Home (Auto, no toggle): the item is mature, on a mature-capable model, sent with moderation low', async () => {
+    const plan = await planPromptSpec({ spec: spec({ kind: 'image', model: 'auto', prompt: EXPLICIT }), catalog: fixtureCatalog, ctx: MATURE, assetOrigins: assets });
+    const item = plan.items[0]!;
+    expect(item.action).toBe('run');
+    expect(item.spec).toMatchObject({ mature: true, matureAuto: true, matureAccess: 'allowed' });
+    const model = fixtureCatalog.get(item.model!)!;
+    expect(model.matureRouting).toBe('allowed');
+    const { req, problems } = request(item);
+    expect(problems).toEqual([]);
+    expect(req.mature).toBe(true);
+    expect(moderationFor(model, req.mature, req)).toBe('low');
+  });
+
+  it('an explicitly chosen model that takes no mature runs falls back to a mature-capable one', async () => {
+    const plan = await planPromptSpec({ spec: spec({ kind: 'image', model: 'bytedance/seedream-5.0-lite', prompt: EXPLICIT }), catalog: fixtureCatalog, ctx: MATURE, assetOrigins: assets });
+    const item = plan.items[0]!;
+    expect(item.action).toBe('run');
+    expect(item.model).not.toBe('bytedance/seedream-5.0-lite');
+    expect(fixtureCatalog.get(item.model!)!.matureRouting).toBe('allowed');
+    expect(item.spec!.mature).toBe(true);
+  });
+
+  it('fails with a clear reason when no mature-capable model fits (text-to-video in the fixture catalog)', async () => {
+    const plan = await planPromptSpec({ spec: spec({ kind: 'video', model: 'lumina/berry-1.0', prompt: EXPLICIT }), catalog: fixtureCatalog, ctx: MATURE, assetOrigins: assets });
+    expect(plan.items[0]).toMatchObject({ action: 'blocked', code: 'no_capable_model', reason: 'No model that takes mature content fits these settings.' });
+  });
+
+  it('a non-explicit prompt stays a normal run; callers without access keep the flag off with their access snapshot', async () => {
+    const plain = await planPromptSpec({ spec: spec({ kind: 'image', model: 'auto', prompt: 'a bowl of ramen, studio light' }), catalog: fixtureCatalog, ctx: MATURE, assetOrigins: assets });
+    expect(plain.items[0]!.spec).toMatchObject({ mature: false, matureAccess: 'allowed' });
+    expect(plain.items[0]!.spec!.matureAuto).toBeUndefined();
+    const off = await planPromptSpec({ spec: spec({ kind: 'image', model: 'auto', prompt: EXPLICIT }), catalog: fixtureCatalog, ctx: { ...PLUS, matureAccess: 'preference_off' }, assetOrigins: assets });
+    expect(off.items[0]!.spec).toMatchObject({ mature: false, matureAccess: 'preference_off' });
+    const guest = await planPromptSpec({ spec: spec({ kind: 'image', model: 'auto', prompt: EXPLICIT }), catalog: fixtureCatalog, ctx: { plan: null, matureAllowed: false, matureAccess: 'no_plan' }, assetOrigins: assets });
+    expect(guest.items[0]!.spec).toMatchObject({ mature: false, matureAccess: 'no_plan' });
+  });
+
+  it('replanMature (prepare): keeps a mature-capable model, else falls back within the hold, else fails', async () => {
+    const plan = await planPromptSpec({ spec: spec({ kind: 'image', model: 'bytedance/seedream-5.0-lite', prompt: 'two adults, adult category' }), catalog: fixtureCatalog, ctx: MATURE, assetOrigins: assets });
+    const item = plan.items[0]!;
+    expect(item.spec!.mature).toBe(false);
+    const model = fixtureCatalog.get(item.model!)!;
+    const moved = replanMature({ spec: item.spec!, model, catalog: fixtureCatalog, plan: 'plus', fits: () => true });
+    expect(moved.ok).toBe(true);
+    if (moved.ok) {
+      expect(moved.spec).toMatchObject({ mature: true, matureAuto: true, matureAccess: 'allowed', modelId: moved.model.id });
+      expect(moved.model.matureRouting).toBe('allowed');
+      expect(moved.spec.fallbacks.every((id) => fixtureCatalog.get(id)!.matureRouting === 'allowed')).toBe(true);
+    }
+    const tooDear = replanMature({ spec: item.spec!, model, catalog: fixtureCatalog, plan: 'plus', fits: () => false });
+    expect(tooDear).toMatchObject({ ok: false, code: 'no_capable_model' });
+    const capable = fixtureCatalog.get('qwen/qwen-image-2.0')!;
+    const kept = replanMature({ spec: { ...item.spec!, modelId: capable.id }, model: capable, catalog: fixtureCatalog, plan: 'plus', fits: () => true });
+    expect(kept.ok && kept.model.id).toBe('qwen/qwen-image-2.0');
   });
 });

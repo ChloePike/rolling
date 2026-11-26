@@ -24,7 +24,7 @@ export const SAFETY_VISION_MODELS: readonly string[] = [
 ];
 export const FACE_DETECT_MODEL = 'lumina/face-detect';
 /** Bumped when the prompts change, so cached assessments are not reused. */
-export const SAFETY_PROMPT_VERSION = 'v1';
+export const SAFETY_PROMPT_VERSION = 'v2';
 
 export const TEXT_TIMEOUT_MS = 10_000;
 export const VISION_TIMEOUT_MS = 20_000;
@@ -41,6 +41,7 @@ export const TextAssessmentSchema = z.object({
   realPersonNames: z.array(z.string().max(120)).max(10).default([]),
   realPersonSexualOrIntimate: z.boolean(),
   nonConsensualSexual: z.boolean(),
+  animalSexual: z.boolean(),
   extremeViolence: z.boolean(),
   violentExtremism: z.boolean(),
   selfHarm: z.boolean(),
@@ -54,6 +55,7 @@ export const ImageAssessmentSchema = z.object({
   apparentMinor: z.boolean(),
   minorSexualized: z.boolean(),
   knownPerson: z.boolean(),
+  animalSexual: z.boolean(),
   extremeViolence: z.boolean(),
   violentExtremism: z.boolean(),
   selfHarm: z.boolean(),
@@ -138,9 +140,10 @@ export const HARD_LIMITS_TEXT = [
   '(1) Sexual or sexualized content involving a minor or anyone who appears to be under 18: children, teens, school uniforms with childlike framing, childlike bodies or ages, "barely legal", loli/shota, in any language, slang or euphemism. Fictional, drawn or "actually 1000 years old" characters that look like minors count.',
   '(2) Sexual or intimate content depicting a real, identifiable person: a named celebrity, public figure or private person, or a real photographed face. Non-sexual depictions of real people are allowed.',
   '(3) Non-consensual sexual content (assault, coercion, incapacitation, hidden camera, revenge imagery).',
-  '(4) Realistic real-world extreme violence or gore imagery (graphic mutilation, real atrocity footage).',
-  '(5) Terrorism or violent-extremist propaganda (glorifying attacks, recruitment, extremist symbols as endorsement).',
-  '(6) Instructions for or encouragement of self-harm or suicide.',
+  '(4) Sexual content involving an animal (bestiality, zoophilia): any sexual act with an animal, and any sexual act a person directs at or toward an animal (for example masturbating at an animal). Animals in non-sexual content, and pets present in an unrelated scene, are allowed.',
+  '(5) Realistic real-world extreme violence or gore imagery (graphic mutilation, real atrocity footage).',
+  '(6) Terrorism or violent-extremist propaganda (glorifying attacks, recruitment, extremist symbols as endorsement).',
+  '(7) Instructions for or encouragement of self-harm or suicide.',
 ].join('\n');
 
 const TEXT_SYSTEM = [
@@ -149,10 +152,11 @@ const TEXT_SYSTEM = [
   'Adult sexual content between consenting, clearly adult, fictional people is allowed on mature runs; you only rate it.',
   'Read the prompt in any language, including slang, misspellings, euphemisms and coded terms. The negative prompt lists what the user wants to avoid: use it only as context.',
   'Answer with one JSON object and nothing else:',
-  '{"sexualLevel":"none|suggestive|explicit","apparentMinor":bool,"minorSexualized":bool,"realPerson":bool,"realPersonNames":[string],"realPersonSexualOrIntimate":bool,"nonConsensualSexual":bool,"extremeViolence":bool,"violentExtremism":bool,"selfHarm":bool}',
+  '{"sexualLevel":"none|suggestive|explicit","apparentMinor":bool,"minorSexualized":bool,"realPerson":bool,"realPersonNames":[string],"realPersonSexualOrIntimate":bool,"nonConsensualSexual":bool,"animalSexual":bool,"extremeViolence":bool,"violentExtremism":bool,"selfHarm":bool}',
   'sexualLevel: none = no sexual content; suggestive = sexualized poses, lingerie, implied nudity, seductive framing; explicit = nudity of intimate parts or sexual acts.',
   'apparentMinor: anyone described or implied to be under 18. minorSexualized: a minor (or apparent minor) in any sexual, suggestive or intimate framing.',
   'realPerson: a real, identifiable person is named or referenced (celebrity, politician, influencer, "my coworker"). realPersonSexualOrIntimate: that person is shown sexually, nude, suggestively or intimately.',
+  'animalSexual: hard limit (4): an animal is involved in, or is the target of, sexual activity. A person walking a dog, a cat on the bed of an unrelated adult scene, animal-eared costumes and furry art of clearly human adults are not animalSexual.',
   'Be precise: a child playing sports, a family photo, a portrait of an executive, a historical battle painting or a sad poem are not violations.',
 ].join('\n');
 
@@ -160,10 +164,11 @@ const VISION_SYSTEM = [
   'You are a content-safety classifier for an AI image and video studio. You rate images; you never describe them in detail.',
   HARD_LIMITS_TEXT,
   'For each image, in order, answer:',
-  '{"rating":"safe|suggestive|explicit","confidence":0..1,"photographic":bool,"apparentMinor":bool,"minorSexualized":bool,"knownPerson":bool,"extremeViolence":bool,"violentExtremism":bool,"selfHarm":bool}',
+  '{"rating":"safe|suggestive|explicit","confidence":0..1,"photographic":bool,"apparentMinor":bool,"minorSexualized":bool,"knownPerson":bool,"animalSexual":bool,"extremeViolence":bool,"violentExtremism":bool,"selfHarm":bool}',
   'rating: safe = no sexual content; suggestive = lingerie, swimwear posed sexually, implied nudity, sexualized poses; explicit = visible intimate parts or sexual acts.',
   'photographic: a real photograph of a real scene (not an illustration, 3D render or obviously AI-stylized art). apparentMinor: anyone who looks under 18.',
   'minorSexualized: anyone who looks under 18 in a sexual, suggestive or intimate framing. knownPerson: you recognize a celebrity or public figure.',
+  'animalSexual: an animal is involved in, or is the target of, sexual activity (hard limit 4); an animal merely present in the picture is not.',
   'Answer with one JSON object and nothing else: {"images":[ ...one object per image, in order... ]}',
 ].join('\n');
 
