@@ -70,7 +70,7 @@ Sources: **PRD** = `docs/PRD.md`, **M*n*** = `docs/milestones.md`, **CF*n*** = `
 | Bypass | The menu toggles it with a toast and a “Bypassed” mark. The quote marks the node `bypassed`. It persists after reload and can be turned off. | HO, API | CANVAS-6 |
 | Reroute, collapse | A reroute point on a wire, plus collapse/expand, persist after reload. Delete removes the reroute. | HO | CANVAS-7 |
 | Delete node, undo/redo | The menu Delete shows a toast with Undo. Keyboard Delete and Ctrl+Z restore the node and its edges. | HO | CANVAS-8 |
-| Delete project | API DELETE: an open tab shows “deleted”, after reload “doesn’t exist”, and the project leaves the index. The UI has a delete control. | API | CANVAS-9, CANVAS-10 |
+| Delete project | API DELETE: an open tab shows “deleted”, after reload “doesn’t exist”, and the project leaves the index. The UI deletes from the Home card “…” menu (Rename, Delete) and the canvas project menu, each behind a confirm (no restore API); the canvas then goes Home and forgets the last-canvas id. | API, HO | CANVAS-9, CANVAS-10 |
 | Conflicts | A stale `baseRevision` returns `409 CONFLICT` with the snapshot | API | CANVAS-11 |
 | Missing / foreign project | “This canvas doesn’t exist” | API | CANVAS-12 |
 | Initial fit | The first fit keeps every node right of the left tool rail (and left of the agent panel) | HO Canvas | CANVAS-13 |

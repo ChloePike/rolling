@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { dragWire, nodesByKind, portCenter } from '../real/support';
 import { account, api, env, errorCode, getJson, openCanvas, projectSnapshot, SAMPLE_OPS, seedProject, shot, watchErrors } from './support';
 
-/** Matrix: CANVAS-1 … CANVAS-12. No spending: quotes and dialogs only. */
+/** Matrix: CANVAS-1 … CANVAS-13. No spending: quotes and dialogs only. */
 test.skip(!env.inboxToken, 'TEST_INBOX_TOKEN (or PW_TEST_INBOX_TOKEN_FILE) is required');
 
 async function snapshot(page: Page, id: string) {
@@ -236,27 +236,34 @@ test('CANVAS-9 delete a project: the index drops it, the canvas shows “deleted
   expect((await getJson<{ items: Array<{ id: string }> }>(page.request, '/api/projects')).items.map((i) => i.id)).not.toContain(p.id);
 });
 
-test('CANVAS-10 delete a project from the UI (Home card menu or canvas project menu)', async ({ page, context, baseURL }) => {
+test('CANVAS-10 delete a project from the UI: Home card “…” menu and the canvas project menu, each with a confirm', async ({ page, context, baseURL }) => {
   await account(context, baseURL, 'delhome');
-  const p = await seedProject(page.request, baseURL, `Home delete ${Date.now().toString(36)}`, []);
+  const tag = Date.now().toString(36);
+  const a = await seedProject(page.request, baseURL, `Home delete ${tag}`, []);
+  const b = await seedProject(page.request, baseURL, `Canvas delete ${tag}`, SAMPLE_OPS);
+  const ids = async () => (await getJson<{ items: Array<{ id: string }> }>(page.request, '/api/projects')).items.map((i) => i.id);
+
+  // Home: the card's “…” menu → Delete → confirm.
   await page.goto('/');
-  const card = page.getByRole('link', { name: /Home delete/ }).or(page.locator('a', { hasText: 'Home delete' })).first();
-  await expect(card).toBeVisible();
-  // A project can be deleted from its card menu (Home) or the canvas project menu.
-  await card.click({ button: 'right' });
-  let del = page.getByRole('menuitem', { name: /Delete/ });
-  if (!(await del.isVisible().catch(() => false))) {
-    await page.keyboard.press('Escape');
-    await openCanvas(page, p.id);
-    await page.getByRole('button', { name: /^Project:/ }).click();
-    del = page.getByRole('menuitem', { name: /Delete/ });
-  }
-  await expect(del, 'a “Delete project” control exists in the UI').toBeVisible({ timeout: 5000 });
-  await del.click();
-  const confirm = page.getByRole('dialog').or(page.getByRole('alertdialog')).first();
-  if (await confirm.isVisible().catch(() => false)) await confirm.getByRole('button', { name: /Delete/ }).click();
-  await expect(page.getByText(/Home delete/)).toHaveCount(0, { timeout: 20_000 });
-  expect((await getJson<{ items: Array<{ id: string }> }>(page.request, '/api/projects')).items.map((i) => i.id)).not.toContain(p.id);
+  const card = page.locator(`[data-project="${a.id}"]`);
+  await expect(card).toBeVisible({ timeout: 30_000 });
+  await card.hover();
+  await card.getByRole('button', { name: /^Project actions:/ }).click();
+  await page.getByRole('menuitem', { name: 'Delete' }).click();
+  const confirm = page.getByRole('dialog', { name: /^Delete “Home delete/ });
+  await expect(confirm).toContainText('This can’t be undone.');
+  await confirm.getByRole('button', { name: 'Delete project' }).click();
+  await expect(card).toHaveCount(0, { timeout: 20_000 });
+  expect(await ids()).not.toContain(a.id);
+
+  // Canvas: the project menu → Delete → confirm → Home, and the last-canvas id is forgotten.
+  await openCanvas(page, b.id);
+  await page.getByRole('button', { name: /^Project:/ }).click();
+  await page.getByRole('menuitem', { name: 'Delete' }).click();
+  await page.getByRole('dialog', { name: /^Delete “Canvas delete/ }).getByRole('button', { name: 'Delete project' }).click();
+  await expect(page).toHaveURL(/\/$/, { timeout: 20_000 });
+  expect(await ids()).not.toContain(b.id);
+  expect(await page.evaluate((pid) => Object.entries(localStorage).some(([k, v]) => k.startsWith('rolling.canvas.last.') && v === pid), b.id)).toBe(false);
 });
 
 test('CANVAS-11 stale writes conflict with the current snapshot (409), never overwrite', async ({ page, context, baseURL }) => {

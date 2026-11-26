@@ -36,6 +36,7 @@ function getAgentLlm(): string | null {
 import { useAgentAllowance } from '@/lib/session/agentAllowance';
 import type { TemplateSummary } from '@/features/templates/types';
 import { useCreateProject, useRecentProjects } from './api';
+import { ProjectCard } from './ProjectCard';
 import { HomeResult, nextVersion, type HomeResultState, type PendingHomeResult } from './HomeResult';
 import type { ResultActionId } from '@/features/overlays';
 import type { PromptSpec } from '@/features/overlays/runs';
@@ -423,15 +424,7 @@ function RecentProjects() {
             ))
           : null}
         {projects.map((p) => (
-          <Link key={p.id} to="/p/$projectId" params={{ projectId: p.id }} className={styles.project}>
-            <div className={styles.projectThumb} style={p.thumbUrl ? { background: `center / cover no-repeat url("${p.thumbUrl}"), ${p.tone}` } : { background: p.tone }}>
-              <span className={styles.badge}>
-                <FormattedMessage id={`home.project.kind.${p.kind}`} />
-              </span>
-            </div>
-            <span className={styles.projectName}>{p.title}</span>
-            <span className={styles.projectMeta}>{meta(p)}</span>
-          </Link>
+          <ProjectCard key={p.id} project={p} meta={meta(p)} />
         ))}
       </div>
       {projectsQ.isError && projectsQ.data === undefined ? <LoadError inline onRetry={() => projectsQ.refetch()} retrying={projectsQ.isFetching} /> : null}

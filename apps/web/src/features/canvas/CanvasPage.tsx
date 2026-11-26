@@ -52,6 +52,7 @@ import { CanvasError } from './CanvasError';
 import { forgetCanvas, rememberCanvas } from './target/projects';
 import { incomingParams, takeIncoming } from './target/incoming';
 import { freePosition } from './target/resolve';
+import { DeleteProjectDialog } from './target/DeleteProjectDialog';
 import { assetMediaUrl, hasPendingAction, isMockApi, savePendingAction, takePendingAction } from '@/features/overlays/backend';
 import { saveSelectionAsTemplate } from '@/features/templates/api';
 import { useQueryClient } from '@tanstack/react-query';
@@ -335,6 +336,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
   const uploadAssets = useUploadToAssets();
   const [fileDrag, setFileDrag] = useState(false);
   const [projectMenu, setProjectMenu] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [zoomMenu, setZoomMenu] = useState(false);
   const [menu, setMenu] = useState<Menu | null>(null);
@@ -1539,6 +1541,12 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
         />
       ) : null}
 
+      <DeleteProjectDialog
+        project={deleting ? { id: projectId, title: project.title } : null}
+        onClose={() => setDeleting(false)}
+        // Deleted: Home (the last-canvas id is already forgotten).
+        onDeleted={() => void navigate({ to: '/' })}
+      />
       <div className={canvas.topLeft}>
         <Link to="/" className={canvas.logo} aria-label={intl.formatMessage({ id: 'canvas.backHome' })}>
           <CanvasLogo />
@@ -1565,6 +1573,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
               { key: 'edit', label: intl.formatMessage({ id: 'canvas.project.openEditor' }), onSelect: () => setOverlay('edit') },
               { key: 'history', label: intl.formatMessage({ id: 'canvas.tools.history' }), onSelect: () => setHistoryOpen(true) },
               { key: 'home', label: intl.formatMessage({ id: 'canvas.backHome' }), onSelect: () => void navigate({ to: '/' }) },
+              ...(session.sync.canEdit ? [{ key: 'delete', label: intl.formatMessage({ id: 'canvas.project.delete' }), danger: true, onSelect: () => setDeleting(true) }] : []),
             ]}
             trigger={(t) => (
               <button {...t} type="button" className={canvas.project} aria-label={intl.formatMessage({ id: 'canvas.projectMenu' }, { title: project.title })}>

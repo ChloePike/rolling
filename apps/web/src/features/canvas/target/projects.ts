@@ -66,6 +66,16 @@ export function forgetCanvas(projectId: string, workspaceId = activeWorkspace())
 /* ---------- Mock directory ---------- */
 
 const MOCK_CREATED_KEY = 'rolling.mock.projects';
+/** Mock: ids deleted in this browser (the demo projects are fixtures, so they are hidden instead). */
+export const MOCK_DELETED_KEY = 'rolling.mock.deletedProjects';
+
+export function mockDeletedProjects(): Set<string> {
+  try {
+    return new Set(JSON.parse(window.localStorage.getItem(MOCK_DELETED_KEY) ?? '[]') as string[]);
+  } catch {
+    return new Set();
+  }
+}
 
 function mockCreated(): CanvasSummary[] {
   try {
@@ -80,13 +90,14 @@ function mockCreated(): CanvasSummary[] {
 function mockList(): CanvasSummary[] {
   const seam = mocks().projects;
   const base = seam ? seam.map((p, i) => ({ id: p.id, title: p.title, updatedAt: p.updatedAt ?? Date.now() - (i + 1) * 3_600_000 })) : [{ id: mockData().canvas.MOCK_PROJECT.id, title: mockData().canvas.MOCK_PROJECT.title, updatedAt: Date.now() - 2 * 3_600_000 }];
-  return [...mockCreated(), ...base];
+  const deleted = mockDeletedProjects();
+  return [...mockCreated(), ...base].filter((p) => !deleted.has(p.id));
 }
 
 /** Mock: does `projectId` open in `workspaceId`? */
 export function mockProjectOpens(projectId: string, workspaceId = activeWorkspace()): boolean {
   const m = mocks();
-  if (projectId.startsWith('prj_missing') || m.missingProjects?.includes(projectId)) return false;
+  if (projectId.startsWith('prj_missing') || m.missingProjects?.includes(projectId) || mockDeletedProjects().has(projectId)) return false;
   const owner = m.foreignProjects?.[projectId];
   return !owner || owner === workspaceId;
 }
@@ -176,4 +187,28 @@ export function resolveNavCanvas(opts: ResolveOptions): Promise<CanvasTarget> {
           )
       : null,
   });
+}
+
+/* ---------- Delete ---------- */
+
+/**
+ * Deletes a project for everyone (`DELETE /api/projects/:id`: graph, timeline and history; share links stop
+ * working). There is no restore, so callers confirm first. Forgets it as the last canvas and refreshes every
+ * project list (Home, the canvas picker).
+ */
+export async function deleteProject(projectId: string, workspaceId = activeWorkspace()): Promise<void> {
+  if (isMockApi()) {
+    try {
+      const raw = window.localStorage.getItem(MOCK_CREATED_KEY);
+      const list = raw ? (JSON.parse(raw) as Array<{ id: string }>) : [];
+      window.localStorage.setItem(MOCK_CREATED_KEY, JSON.stringify(list.filter((p) => p.id !== projectId)));
+      window.localStorage.setItem(MOCK_DELETED_KEY, JSON.stringify([...mockDeletedProjects(), projectId]));
+    } catch {
+      /* Storage unavailable. */
+    }
+  } else {
+    await apiFetch(`/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE' });
+  }
+  forgetCanvas(projectId, workspaceId);
+  await queryClient.invalidateQueries({ queryKey: ['projects'] });
 }

@@ -103,3 +103,34 @@
 .pillOptionMeta{margin-left:auto;padding-left:16px;font-size:12px;font-weight:400;color:var(--c-text-3)}
 .pillOption:hover{background:var(--c-surface-5);color:var(--c-text-1)}
 .pillOption[aria-pressed="true"]{background:var(--c-surface-6);color:var(--c-text-1);font-weight:600}
+
+/* Project card “…” menu (Rename, Delete): shown on hover and keyboard focus, over the thumbnail's top right. */
+.projectCard{position:relative;display:flex;flex-direction:column}
+.projectCard > .project{flex:1}
+.projectMore{
+  position:absolute;right:8px;top:8px;width:28px;height:28px;border-radius:999px;border:0;padding:0;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;background:var(--c-media-chip);color:var(--c-text-1);
+  opacity:0;transition:opacity var(--dur-fast) var(--ease-standard),background-color var(--dur-fast) var(--ease-standard);
+}
+.projectCard:hover .projectMore,.projectCard:focus-within .projectMore,.projectCard[data-open] .projectMore,.projectMore[aria-expanded="true"]{opacity:1}
+.projectMore:hover{background:var(--c-media-chip-strong)}
+.projectMore:focus-visible{outline:none;box-shadow:var(--focus-ring);opacity:1}
+@media (hover:none){.projectMore{opacity:1}}
+.renameForm{display:flex;flex-direction:column;gap:8px}
+.renameLabel{font-size:12px;font-weight:600;color:var(--c-text-3)}
+.renameInput{
+  height:36px;border-radius:10px;border:0;background:var(--c-surface-5);padding:0 12px;box-sizing:border-box;width:100%;
+  font:inherit;font-size:14px;color:var(--c-text-1);outline:0;transition:box-shadow var(--dur-fast) var(--ease-standard);
+}
+.renameInput:focus-visible{box-shadow:inset 0 0 0 1.5px var(--c-accent)}
+.renameError{margin:0;font-size:12px;color:var(--c-danger)}
+.renameActions{display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
+.renameCancel,.renameSave{
+  height:34px;padding:0 14px;border:0;border-radius:10px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;
+  transition:background-color var(--dur-fast) var(--ease-standard);
+}
+.renameCancel{background:var(--c-surface-5);color:var(--c-text-1)}
+.renameCancel:hover{background:var(--c-surface-6)}
+.renameSave{background:var(--c-text-1);color:var(--c-bg);font-weight:700}
+.renameSave[aria-busy="true"]{cursor:progress;opacity:.7}
+.renameCancel:focus-visible,.renameSave:focus-visible{outline:none;box-shadow:var(--focus-ring)}

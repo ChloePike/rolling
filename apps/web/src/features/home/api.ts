@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, gql, isMockApi } from '@/features/overlays/backend';
 import { mockData } from '@/lib/api/mode';
+import { mockDeletedProjects } from '@/features/canvas/target/projects';
 import type { ProjectSummary } from './types';
 
 /**
@@ -42,13 +43,49 @@ function created(): ProjectSummary[] {
 /** Mock-backed `GET /api/projects` (recent first). */
 export async function fetchRecentProjects(): Promise<ProjectSummary[]> {
   if (!isMockApi()) return fetchRealProjects(4);
-  return [...created(), ...mockData().home.MOCK_PROJECTS].slice(0, 4);
+  return mockRecent();
+}
+
+/** Mock list: created here first, then the fixtures, minus deleted ids, with renames applied. */
+function mockRecent(): ProjectSummary[] {
+  const deleted = mockDeletedProjects();
+  const titles = mockTitles();
+  return [...created(), ...mockData().home.MOCK_PROJECTS]
+    .filter((p) => !deleted.has(p.id))
+    .map((p) => (titles[p.id] ? { ...p, title: titles[p.id]! } : p))
+    .slice(0, 4);
+}
+
+const TITLES_KEY = 'rolling.mock.projectTitles';
+function mockTitles(): Record<string, string> {
+  try {
+    return JSON.parse(window.localStorage.getItem(TITLES_KEY) ?? '{}') as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+/** Renames a project from its Home card (`PATCH /api/projects/:id`); refreshes every project list. */
+export async function renameRecentProject(projectId: string, title: string): Promise<string> {
+  const t = title.trim().slice(0, 120);
+  if (!t) throw new Error('EMPTY_TITLE');
+  let saved = t;
+  if (!isMockApi()) {
+    saved = (await apiFetch<{ project: { title: string } }>(`/projects/${encodeURIComponent(projectId)}`, { method: 'PATCH', body: { title: t } })).project.title;
+  } else {
+    try {
+      window.localStorage.setItem(TITLES_KEY, JSON.stringify({ ...mockTitles(), [projectId]: t }));
+    } catch {
+      /* Storage unavailable. */
+    }
+  }
+  return saved;
 }
 
 export function useRecentProjects() {
   const mock = isMockApi();
   // Real mode: no placeholder rows; the page shows skeletons until the list arrives.
-  return useQuery({ queryKey: projectsKey, queryFn: fetchRecentProjects, ...(mock ? { initialData: () => [...created(), ...mockData().home.MOCK_PROJECTS].slice(0, 4) } : { staleTime: 15_000 }) });
+  return useQuery({ queryKey: projectsKey, queryFn: fetchRecentProjects, ...(mock ? { initialData: mockRecent } : { staleTime: 15_000 }) });
 }
 
 const CREATED_TONES = ['var(--c-tone-indigo)', 'var(--c-tone-teal)', 'var(--c-tone-plum)', 'var(--c-tone-sand)'];
