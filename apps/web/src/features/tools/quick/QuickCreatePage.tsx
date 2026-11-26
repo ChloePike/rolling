@@ -57,7 +57,8 @@ export function QuickCreatePage({ initialOverlay, models: modelsOverride, plan: 
   const detail = useTemplate(demo ? undefined : templateId).data;
   const picked = templateId ? (detail ?? [...templates.featured, ...templates.items].find((x) => x.id === templateId)) : undefined;
   const urlRatio = ratioParam && /^\d{1,2}:\d{1,2}$/.test(ratioParam) ? ratioParam : undefined;
-  const templateRatio = picked ? (picked.ratio ?? picked.coverAspect.replace('/', ':')) : demo?.quickTemplate.aspect;
+  // The template's own ratio; the cover's pixel size is not a ratio (it gave "720:614").
+  const templateRatio = picked ? (picked.ratio ?? undefined) : demo?.quickTemplate.aspect;
   const ratio = urlRatio ?? templateRatio;
   const template = picked
     ? { name: picked.name, durationSec: picked.durationSec, tone: 'var(--c-tone-indigo)', shots: demo?.quickTemplate.shots, style: demo?.quickTemplate.style }
@@ -194,23 +195,30 @@ export function QuickCreatePage({ initialOverlay, models: modelsOverride, plan: 
           </span>
           <span className={styles.tplName}>{template?.name ?? t('tools.quick.noTemplate')}</span>
           <span className={styles.tplMeta}>
-            {template && template.shots !== undefined && template.style ? (
-              <FormattedMessage id="tools.quick.templateMeta" values={{ aspect: ratio ?? '', dur: t('tools.seconds', { n: template.durationSec }), shots: template.shots, style: template.style }} />
-            ) : template ? (
-              <FormattedMessage id="tools.quick.templateMetaShort" values={{ aspect: ratio ?? '', dur: t('tools.seconds', { n: template.durationSec }) }} />
+            {template ? (
+              [
+                ratio,
+                template.durationSec > 0 ? t('tools.seconds', { n: template.durationSec }) : null,
+                template.shots !== undefined ? t('tools.quick.shotCount', { n: Number(template.shots) }) : null,
+                template.style ?? null,
+              ]
+                .filter((x): x is string => !!x)
+                .join(' · ')
             ) : (
               <FormattedMessage id="tools.quick.noTemplate.hint" />
             )}
           </span>
+          <span className={styles.tplActions}>
+            <Link to="/templates" className={layout.chipBtn}>
+              <FormattedMessage id={template ? 'tools.quick.changeTemplate' : 'tools.quick.pickTemplate'} />
+            </Link>
+            {!demo && templateId ? (
+              <button type="button" className={layout.chipBtn} data-open-canvas="" disabled={opening} onClick={() => void openOnCanvas()}>
+                <FormattedMessage id="tools.quick.openOnCanvas" />
+              </button>
+            ) : null}
+          </span>
         </div>
-        <Link to="/templates" className={layout.chipBtn}>
-          <FormattedMessage id={template ? 'tools.quick.changeTemplate' : 'tools.quick.pickTemplate'} />
-        </Link>
-        {!demo && templateId ? (
-          <button type="button" className={layout.chipBtn} data-open-canvas="" disabled={opening} onClick={() => void openOnCanvas()}>
-            <FormattedMessage id="tools.quick.openOnCanvas" />
-          </button>
-        ) : null}
       </AsideCard>
       {slots.length > 0 && (
         <AsideCard title={t('tools.quick.swap')} hint={t('tools.quick.swap.hint')} testId="swap">
