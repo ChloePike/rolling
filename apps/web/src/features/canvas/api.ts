@@ -515,6 +515,8 @@ export interface QuoteItem {
   code?: QuoteCode;
   /** `resolution_locked`: the plan that unlocks it. */
   lowestPlan?: 'starter' | 'plus' | 'pro' | null;
+  /** `MATURE_REQUIRED`: why the caller has no mature access (D-005); picks the copy. */
+  matureAccess?: 'no_plan' | 'preference_off' | 'workspace_off';
   dependsOn?: string[];
 }
 

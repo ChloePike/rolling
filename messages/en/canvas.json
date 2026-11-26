@@ -334,6 +334,8 @@
   "canvas.quote.code.empty_prompt": "Add a prompt first.",
   "canvas.quote.code.SAFETY_BLOCKED": "This can’t be generated under our content rules.",
   "canvas.quote.code.MATURE_REQUIRED": "Turn on mature content in Settings to generate this, or change the prompt.",
+  "canvas.quote.code.MATURE_REQUIRED.no_plan": "Mature content needs a paid plan. Join a plan to generate this, or change the prompt.",
+  "canvas.quote.code.MATURE_REQUIRED.workspace_off": "Mature content is off for this workspace. Change the prompt to generate this.",
   "canvas.quote.code.SAFETY_REVIEW": "Mature content is paused for this workspace while recent activity is reviewed.",
   "canvas.quote.code.NO_PLAN": "Join a plan and turn on mature content to generate this, or change the prompt.",
   "canvas.templates.failed": "Couldn’t load this template. Try again.",

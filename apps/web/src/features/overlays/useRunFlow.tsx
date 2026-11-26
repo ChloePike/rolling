@@ -224,6 +224,8 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
           const blocked = q.items.find((i) => i.action === 'blocked');
           if (!q.quoteId) {
             if (blocked?.code === 'NO_PLAN') return toPaywall(run, 'join');
+            // D-005: mature content needs a paid plan → the upgrade modal with reason `mature` (members get the Settings copy).
+            if (blocked?.code === 'MATURE_REQUIRED' && blocked.matureAccess === 'no_plan') return void openUpgrade({ kind: 'mature' });
             return void toast.show({ message: blocked?.reason ?? t('overlays.run.unavailable') });
           }
           if (q.balance < q.total) return toPaywall(run, 'credits');

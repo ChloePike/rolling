@@ -160,6 +160,8 @@ export interface SpecQuote {
     code?: string;
     reason?: string;
     lowestPlan?: 'starter' | 'plus' | 'pro' | null;
+    /** `MATURE_REQUIRED`: why the caller has no mature access (D-005); `no_plan` opens the upgrade modal with reason `mature`. */
+    matureAccess?: 'no_plan' | 'preference_off' | 'workspace_off';
     autoVia?: 'classifier' | 'fallback' | 'single';
   }>;
   total: number;

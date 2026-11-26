@@ -1992,7 +1992,11 @@ function quoteBlockText(intl: ReturnType<typeof useIntl>, item: QuoteItem | unde
 const QUOTE_CODES = new Set(['missing_input', 'upstream_blocked', 'bypassed_input', 'unknown_model', 'no_capable_model', 'unsupported', 'unpriced', 'resolution_locked', 'mature_not_allowed', 'identity_requires_platform_assets', 'empty_prompt', 'SAFETY_BLOCKED', 'MATURE_REQUIRED', 'SAFETY_REVIEW', 'NO_PLAN']);
 
 /** Copy for a blocked quote row: mapped by `code` (plan cap names the plan), else the API's English `reason`. */
-export function quoteCodeText(intl: ReturnType<typeof useIntl>, item: Pick<QuoteItem, 'code' | 'reason' | 'lowestPlan'>): string | undefined {
+export function quoteCodeText(intl: ReturnType<typeof useIntl>, item: Pick<QuoteItem, 'code' | 'reason' | 'lowestPlan' | 'matureAccess'>): string | undefined {
+  // D-005: the mature-content copy fits the caller (a paid plan, the workspace setting, or the Settings preference).
+  if (item.code === 'MATURE_REQUIRED' && (item.matureAccess === 'no_plan' || item.matureAccess === 'workspace_off')) {
+    return intl.formatMessage({ id: `canvas.quote.code.MATURE_REQUIRED.${item.matureAccess}`, defaultMessage: item.reason ?? item.code });
+  }
   if (item.code && QUOTE_CODES.has(item.code)) {
     const plan = item.lowestPlan ? (PLAN_LABELS[item.lowestPlan] ?? item.lowestPlan) : '';
     return intl.formatMessage({ id: `canvas.quote.code.${item.code}`, defaultMessage: item.reason ?? item.code }, { plan, reason: item.reason ?? '' });
