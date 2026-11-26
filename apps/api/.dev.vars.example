@@ -1,7 +1,7 @@
 # Local secrets for `wrangler dev`: copy to `.dev.vars` (git-ignored) and fill in.
 # Deployed environments: `wrangler secret put <NAME> --env staging|production`.
 # Empty values are fine locally: auth uses a development-only secret, email codes are
-# logged instead of sent, and Google / Apple sign-in are hidden until configured.
+# logged instead of sent, and Google sign-in is hidden until configured.
 
 HYPEROUTER_API_KEY=
 # Standard Webhooks secret (whsec_...) of the Hyperouter webhook endpoint pointing at /api/hooks/hyperouter.
@@ -16,20 +16,10 @@ RESEND_API_KEY=
 # Only with the EMAIL_PROVIDER=test-inbox var (staging e2e): bearer token for GET /api/test/inbox.
 TEST_INBOX_TOKEN=
 
-# Google OAuth client (Web). Redirect URI: <PUBLIC_APP_URL>/api/auth/callback/google
+# Google OAuth client (Web) id. No client secret (D-016): Google Identity Services sends an ID
+# token we verify against Google's keys. Authorized JavaScript origin: the SPA origin
+# (http://localhost:5173 in dev); authorized redirect URI: <PUBLIC_APP_URL>/api/auth/google/credential.
 GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-
-# Sign in with Apple. APPLE_CLIENT_ID is the Services ID; return URL: <PUBLIC_APP_URL>/api/auth/callback/apple
-# Either APPLE_CLIENT_SECRET (a pre-signed ES256 JWT) or the three values below, from which
-# the Worker signs one: team id, key id and the .p8 private key (PEM, `\n` for newlines).
-APPLE_CLIENT_ID=
-APPLE_CLIENT_SECRET=
-APPLE_TEAM_ID=
-APPLE_KEY_ID=
-APPLE_PRIVATE_KEY=
-# Optional: iOS bundle id when ID tokens come from a native app (not used by the web app).
-APPLE_APP_BUNDLE_IDENTIFIER=
 
 # Stripe (M2). Test-mode secret key and the webhook signing secret
 # (`stripe listen --forward-to localhost:8787/api/stripe/webhook` prints one locally).

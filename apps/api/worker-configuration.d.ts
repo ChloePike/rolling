@@ -14,7 +14,7 @@ interface __BaseEnv_Env {
 	ASSETS: Fetcher;
 	ENVIRONMENT: "staging" | "production" | "development";
 	APP_NAME: "Rolling";
-	PUBLIC_APP_URL: "https://rolling-api-staging.swiftpayx.workers.dev" | "https://rolling-api.swiftpayx.workers.dev" | "http://localhost:8787";
+	PUBLIC_APP_URL: "https://staging.rolling.actor" | "https://rolling-api.swiftpayx.workers.dev" | "http://localhost:8787";
 	HYPEROUTER_BASE_URL: "https://api.hyperouter.app/v1";
 	PUBLIC_MEDIA_BASE_URL: "";
 	EMAIL_FROM: "";
@@ -46,7 +46,7 @@ declare namespace Cloudflare {
 		ASSETS: Fetcher;
 		ENVIRONMENT: "staging";
 		APP_NAME: "Rolling";
-		PUBLIC_APP_URL: "https://rolling-api-staging.swiftpayx.workers.dev";
+		PUBLIC_APP_URL: "https://staging.rolling.actor";
 		HYPEROUTER_BASE_URL: "https://api.hyperouter.app/v1";
 		PUBLIC_MEDIA_BASE_URL: "";
 		EMAIL_FROM: "";

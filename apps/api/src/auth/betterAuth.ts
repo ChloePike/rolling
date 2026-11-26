@@ -1,5 +1,7 @@
 /**
- * Better Auth on D1 (M1). Methods: email one-time code, Google, Apple.
+ * Better Auth on D1 (M1). Methods: email one-time code and Google (D-016: Google
+ * ID tokens from Google Identity Services, verified against Google's keys; no
+ * client secret, so the OAuth code flow is off).
  *
  * D1 goes straight into `database`: Better Auth's Kysely adapter detects the D1
  * binding and uses its built-in D1 dialect (no interactive transactions; D1
@@ -10,7 +12,6 @@
 import { betterAuth, type BetterAuthOptions } from "better-auth";
 import { emailOTP } from "better-auth/plugins";
 import { waitUntil } from "cloudflare:workers";
-import { appleClientSecret } from "@rolling/core/auth/appleSecret";
 import { newId, type IdKind } from "@rolling/core/ids";
 import { emailProviderName, enqueueEmail } from "./email";
 import { onUserCreated } from "./workspace";
@@ -33,42 +34,39 @@ const ID_KIND: Record<string, IdKind> = { user: "user", session: "session", acco
 type Auth = Awaited<ReturnType<typeof buildAuth>>;
 const cache = new WeakMap<object, Promise<Auth>>();
 
-/** Social providers whose credentials are configured (others are not offered). */
-export function configuredProviders(env: Env): ("google" | "apple")[] {
-  const out: ("google" | "apple")[] = [];
-  if (env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) out.push("google");
-  if (env.APPLE_CLIENT_ID && (env.APPLE_CLIENT_SECRET || (env.APPLE_TEAM_ID && env.APPLE_KEY_ID && env.APPLE_PRIVATE_KEY))) out.push("apple");
-  return out;
+/** Social providers whose credentials are configured (others are not offered). Google needs only its public client id. */
+export function configuredProviders(env: Env): "google"[] {
+  return env.GOOGLE_CLIENT_ID ? ["google"] : [];
 }
 
-async function socialProviders(env: Env): Promise<NonNullable<BetterAuthOptions["socialProviders"]>> {
-  const providers: NonNullable<BetterAuthOptions["socialProviders"]> = {};
-  const enabled = configuredProviders(env);
-  if (enabled.includes("google")) {
-    providers.google = { clientId: env.GOOGLE_CLIENT_ID!, clientSecret: env.GOOGLE_CLIENT_SECRET!, prompt: "select_account" };
-  }
-  if (enabled.includes("apple")) {
-    const clientSecret =
-      env.APPLE_CLIENT_SECRET ||
-      (await appleClientSecret({
-        clientId: env.APPLE_CLIENT_ID!,
-        teamId: env.APPLE_TEAM_ID!,
-        keyId: env.APPLE_KEY_ID!,
-        privateKey: env.APPLE_PRIVATE_KEY!,
-        // Isolates live far less than this; a fresh secret is signed per isolate.
-        ttlSeconds: 7 * 86_400,
-      }));
-    providers.apple = {
-      clientId: env.APPLE_CLIENT_ID!,
-      clientSecret,
-      ...(env.APPLE_APP_BUNDLE_IDENTIFIER ? { appBundleIdentifier: env.APPLE_APP_BUNDLE_IDENTIFIER } : {}),
-    };
-  }
-  return providers;
+function socialProviders(env: Env): NonNullable<BetterAuthOptions["socialProviders"]> {
+  if (!env.GOOGLE_CLIENT_ID) return {};
+  // No clientSecret: Better Auth's authorization-code redirect refuses to start without
+  // one, and routes/auth.ts closes `/sign-in/social` (without `idToken`), `/callback/*`
+  // and `/link-social` anyway. ID-token sign-in verifies against Google's JWKS.
+  return { google: { clientId: env.GOOGLE_CLIENT_ID } };
 }
 
 export function authBaseUrl(env: Env): string {
   return (env.PUBLIC_APP_URL || "http://localhost:8787").replace(/\/+$/, "");
+}
+
+/**
+ * Origins the app is served from: PUBLIC_APP_URL plus the optional comma-separated
+ * EXTRA_TRUSTED_ORIGINS var (e.g. staging's workers.dev URL next to staging.rolling.actor).
+ */
+export function trustedOrigins(env: Env): string[] {
+  const extra = ((env as { EXTRA_TRUSTED_ORIGINS?: string }).EXTRA_TRUSTED_ORIGINS ?? "")
+    .split(",")
+    .map((o) => o.trim().replace(/\/+$/, ""))
+    .filter((o) => /^https?:\/\/[^/]+$/.test(o));
+  return [...new Set([authBaseUrl(env), ...extra])];
+}
+
+/** The request's own origin when it is trusted, else PUBLIC_APP_URL (Google posts back to the origin the user is on). */
+export function originFor(env: Env, requestUrl: string): string {
+  const origin = new URL(requestUrl).origin;
+  return trustedOrigins(env).includes(origin) ? origin : authBaseUrl(env);
 }
 
 async function buildAuth(env: Env) {
@@ -87,7 +85,7 @@ async function buildAuth(env: Env) {
     secret: env.BETTER_AUTH_SECRET || "development-only-secret-not-for-production-use",
     database: env.DB,
     telemetry: { enabled: false },
-    trustedOrigins: [baseURL, "https://appleid.apple.com"],
+    trustedOrigins: trustedOrigins(env),
     // Rate limits use the Workers rate-limit bindings (routes/auth.ts); Better Auth's
     // in-memory limiter is per isolate and would not hold across Workers.
     rateLimit: { enabled: false },
@@ -118,8 +116,8 @@ async function buildAuth(env: Env) {
     },
     account: {
       modelName: "accounts",
-      // Google and Apple verify emails, so a returning email-code user can link them.
-      accountLinking: { enabled: true, trustedProviders: ["google", "apple", "email-otp"] },
+      // Google verifies emails (we also refuse `email_verified: false`), so a returning email-code user links.
+      accountLinking: { enabled: true, trustedProviders: ["google", "email-otp"] },
       fields: {
         accountId: "account_id",
         providerId: "provider_id",
@@ -137,7 +135,7 @@ async function buildAuth(env: Env) {
       modelName: "verifications",
       fields: { expiresAt: "expires_at", createdAt: "created_at", updatedAt: "updated_at" },
     },
-    socialProviders: await socialProviders(env),
+    socialProviders: socialProviders(env),
     plugins: [
       emailOTP({
         otpLength: OTP_LENGTH,

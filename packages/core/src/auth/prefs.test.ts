@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { appleClientSecret } from './appleSecret';
 import {
   applyPrefsPatch,
   currencyForLocale,
@@ -85,21 +84,5 @@ describe('roles', () => {
     expect(roleAtLeast('owner', 'editor')).toBe(true);
     expect(roleAtLeast('viewer', 'editor')).toBe(false);
     expect(roleAtLeast('editor', 'editor')).toBe(true);
-  });
-});
-
-describe('Apple client secret', () => {
-  it('signs an ES256 JWT that verifies with the public key', async () => {
-    const pair = (await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify'])) as CryptoKeyPair;
-    const pkcs8 = new Uint8Array((await crypto.subtle.exportKey('pkcs8', pair.privateKey)) as ArrayBuffer);
-    const pem = `-----BEGIN PRIVATE KEY-----\\n${btoa(String.fromCharCode(...pkcs8))}\\n-----END PRIVATE KEY-----`;
-    const jwt = await appleClientSecret({ clientId: 'com.example.web', teamId: 'TEAM1', keyId: 'KEY1', privateKey: pem, now: 1_000 });
-    const [h, p, s] = jwt.split('.');
-    const dec = (x: string) => JSON.parse(atob(x.replace(/-/g, '+').replace(/_/g, '/')));
-    expect(dec(h!)).toEqual({ alg: 'ES256', kid: 'KEY1', typ: 'JWT' });
-    expect(dec(p!)).toEqual({ iss: 'TEAM1', iat: 1_000, exp: 1_000 + 86_400, aud: 'https://appleid.apple.com', sub: 'com.example.web' });
-    const sig = Uint8Array.from(atob(s!.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
-    const ok = await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, pair.publicKey, sig, new TextEncoder().encode(`${h}.${p}`));
-    expect(ok).toBe(true);
   });
 });

@@ -21,15 +21,8 @@ interface RollingSecrets {
   HYPEROUTER_WEBHOOK_SECRET?: string;
   // Auth (M1). BETTER_AUTH_SECRET is required outside development.
   BETTER_AUTH_SECRET?: string;
+  /** Google OAuth client (Web) id: public, no client secret (D-016: ID-token sign-in only). */
   GOOGLE_CLIENT_ID?: string;
-  GOOGLE_CLIENT_SECRET?: string;
-  APPLE_CLIENT_ID?: string;
-  /** Either a pre-signed client secret JWT, or APPLE_TEAM_ID + APPLE_KEY_ID + APPLE_PRIVATE_KEY to sign one. */
-  APPLE_CLIENT_SECRET?: string;
-  APPLE_TEAM_ID?: string;
-  APPLE_KEY_ID?: string;
-  APPLE_PRIVATE_KEY?: string;
-  APPLE_APP_BUNDLE_IDENTIFIER?: string;
   // Email (M1).
   RESEND_API_KEY?: string;
   /** Bearer token for `GET /api/test/inbox` (only with EMAIL_PROVIDER=test-inbox, never production). */

@@ -218,7 +218,9 @@
       "vars": {
         "ENVIRONMENT": "staging",
         "APP_NAME": "Rolling",
-        "PUBLIC_APP_URL": "https://rolling-api-staging.swiftpayx.workers.dev",
+        "PUBLIC_APP_URL": "https://staging.rolling.actor",
+        // The workers.dev URL keeps working for sign-in (Better Auth trustedOrigins, Google login_uri).
+        "EXTRA_TRUSTED_ORIGINS": "https://rolling-api-staging.swiftpayx.workers.dev",
         "HYPEROUTER_BASE_URL": "https://api.hyperouter.app/v1",
         "PUBLIC_MEDIA_BASE_URL": "",
         // Direct browser uploads (D-011): S3 API endpoint of the MEDIA bucket. Secrets: R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY.
