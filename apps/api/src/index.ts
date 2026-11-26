@@ -48,10 +48,10 @@ export { DataExportWorkflow } from "./workflows/DataExport";
 
 export const app = new Hono<AppEnv>();
 
-// `www.<app host>` (custom domain on this Worker) redirects to the apex app URL (D-015).
 // Only production is indexed: elsewhere robots.txt disallows all, no sitemap, X-Robots-Tag on every response (LEGAL-3).
 app.use("*", robotsPolicy);
 
+// `www.<app host>` (custom domain on this Worker) redirects to the apex app URL (D-015).
 app.use("*", async (c, next) => {
   const url = new URL(c.req.url);
   if (url.hostname.startsWith("www.") && c.env.PUBLIC_APP_URL) {
