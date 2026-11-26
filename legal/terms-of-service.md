@@ -99,7 +99,7 @@ We do not use your inputs or outputs to train our own models. [CONFIRM: vendor t
 
 ### Model vendors' terms
 
-Outputs are made by third-party models. Their vendors' terms and usage policies may also apply to you: [MODEL VENDOR TERMS LIST — for example ByteDance (Seedance, Seedream), MiniMax, Alibaba (Wan, Qwen), Lumina, xAI, Anthropic, OpenAI, DeepSeek, Zhipu, and Hyperouter]. If a vendor's terms restrict a use, you must follow that restriction.
+Outputs are made by third-party models. Their vendors' terms and usage policies may also apply to you: [MODEL VENDOR TERMS LIST: for example ByteDance (Seedance, Seedream), MiniMax, Alibaba (Wan, Qwen), Lumina, xAI, Anthropic, OpenAI, DeepSeek, Zhipu, and Hyperouter]. If a vendor's terms restrict a use, you must follow that restriction.
 
 ## Public library
 
