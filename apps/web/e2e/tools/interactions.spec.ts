@@ -13,10 +13,11 @@ const fast = (page: Page, extra: Record<string, unknown> = {}) =>
 
 const png = { name: 'lead.png', mimeType: 'image/png', buffer: Buffer.from('89504e470d0a1a0a', 'hex') };
 const composer = (page: Page) => page.getByTestId('tool-composer');
+const LONG_SCENE = 'Sunlit loft kitchen with tall arched windows, hanging copper pans and a marble island seen from the doorway';
 /** Public library items (GraphQL stub) behind the preset rows. */
 const libraryItem = (category: string, title: string): PublicNode => ({ id: `pw_${category}_${title.replace(/\W/g, '')}`, category, sub: null, title, promptEn: title.toLowerCase(), tags: [], assetId: `ast_${category}`, license: 'CC0', source: 'https://posewear.pages.dev/' });
 const library = (category: string | null): PublicNode[] =>
-  ({ scene: [libraryItem('scene', 'Kitchen'), libraryItem('scene', 'Office')], pose: [libraryItem('pose', 'Walk and talk')], lighting: [libraryItem('lighting', 'Golden hour')] })[category ?? ''] ?? [];
+  ({ scene: [libraryItem('scene', 'Kitchen'), libraryItem('scene', 'Office'), libraryItem('scene', LONG_SCENE)], pose: [libraryItem('pose', 'Walk and talk')], lighting: [libraryItem('lighting', 'Golden hour')] })[category ?? ''] ?? [];
 
 test.describe('tools: generation flow', () => {
   test('under the confirm threshold Generate starts at once: progress → result in the feed → toast with View', async ({ page }) => {
@@ -171,6 +172,63 @@ test.describe('tools: left panels', () => {
     await uploadFromPicker(slot, { ...png, name: 'third.png' });
     await use(slot);
     await expect(page.locator('[data-slot="2"]')).toContainText('third');
+  });
+
+  test('preset rows: once set, a × inside the row clears it (mouse and keyboard) without opening the picker; the row keeps full width, clamps long names, square thumb', async ({ page }) => {
+    await mockPublicLibrary(page, library);
+    await setMode(page, 'simple');
+    await page.goto('/create/remix');
+    const row = page.locator('[data-preset="scene"]');
+    const card = page.locator('[data-card="presets"]');
+    const width = async () => (await row.boundingBox())!.width;
+    const full = await width();
+    const cardBox = (await card.boundingBox())!;
+    // Nothing picked yet: the chevron, no clear button.
+    await expect(page.getByRole('button', { name: 'Clear Scenes' })).toHaveCount(0);
+    await expect(row.getByText('›')).toBeVisible();
+
+    await row.click();
+    const scenes = picker(page, 'Scenes');
+    await scenes.locator(`[role="option"][title="${LONG_SCENE}"]`).click();
+    await use(scenes);
+    await expect(row).toContainText('Sunlit loft kitchen');
+    const clear = page.getByRole('button', { name: 'Clear Scenes' });
+    await expect(clear).toBeVisible();
+    // The × replaces the chevron and sits inside the row card, which keeps its full width.
+    await expect(row.getByText('›')).toHaveCount(0);
+    expect(await width()).toBeCloseTo(full, 0);
+    const r = (await row.boundingBox())!;
+    const c = (await clear.boundingBox())!;
+    expect(c.x).toBeGreaterThan(r.x);
+    expect(c.x + c.width).toBeLessThanOrEqual(r.x + r.width);
+    expect(c.y).toBeGreaterThanOrEqual(r.y);
+    expect(c.y + c.height).toBeLessThanOrEqual(r.y + r.height);
+    expect(r.x + r.width).toBeLessThanOrEqual(cardBox.x + cardBox.width);
+    // Long names clamp to two lines; the thumbnail stays square.
+    const value = row.locator('span', { hasText: 'Sunlit loft kitchen' }).last();
+    const lines = await value.evaluate((el) => Math.round(el.getBoundingClientRect().height / parseFloat(getComputedStyle(el).lineHeight)));
+    expect(lines).toBeLessThanOrEqual(2);
+    const thumb = (await row.locator('span').first().boundingBox())!;
+    expect(thumb.width).toBe(thumb.height);
+
+    // Mouse: clears, never opens the picker.
+    await clear.click();
+    await expect(page.locator('[data-picker-scroll]')).toHaveCount(0);
+    await expect(row).not.toContainText('Sunlit loft kitchen');
+    await expect(clear).toHaveCount(0);
+    await expect(row.getByText('›')).toBeVisible();
+    expect(await width()).toBeCloseTo(full, 0);
+
+    // Keyboard: Tab from the row reaches the ×; Enter clears.
+    await row.click();
+    await picker(page, 'Scenes').getByRole('option', { name: /Kitchen/ }).first().dblclick();
+    await expect(row).toContainText('Kitchen');
+    await row.focus();
+    await page.keyboard.press('Tab');
+    await expect(clear).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('[data-picker-scroll]')).toHaveCount(0);
+    await expect(row).not.toContainText('Kitchen');
   });
 
   test('Avatar: look rows pick, custom persona adds a chip, voice preview plays, draft rewrite and confirm', async ({ page }) => {

@@ -204,6 +204,67 @@ for (const vp of [
   });
 }
 
+const sceneLib = Array.from({ length: 40 }, (_, i) => node(i % 3 ? 'scene' : 'lighting', `Scene ${i + 1}`, i));
+for (const vp of [
+  { width: 1280, height: 720 },
+  { width: 1440, height: 900 },
+  { width: 760, height: 720 },
+]) {
+  test(`grid at ${vp.width}×${vp.height}: never scrolls sideways; every column fits inside the scroller`, async ({ page }) => {
+    await mockPublicLibrary(page, (c) => (c === null ? sceneLib : sceneLib.filter((n) => n.category === c)));
+    await page.setViewportSize(vp);
+    await page.goto('/create/remix');
+    await page.locator('[data-preset="scene"]').click();
+    const d = picker(page, 'Scenes');
+    await expect(d.getByRole('option').first()).toBeVisible();
+    const scroll = d.locator('[data-picker-scroll]');
+    const geo = await scroll.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      const box = el.getBoundingClientRect();
+      const right = box.left + el.clientLeft + el.clientWidth - parseFloat(cs.paddingRight);
+      const cells = [...el.querySelectorAll<HTMLElement>('[role="option"]')].map((c) => c.getBoundingClientRect());
+      const top = Math.min(...cells.map((c) => c.top));
+      const row = cells.filter((c) => Math.abs(c.top - top) < 1);
+      return { overflow: el.scrollWidth - el.clientWidth, overflowX: cs.overflowX, right, maxRight: Math.max(...cells.map((c) => c.right)), cols: row.length, minW: Math.min(...row.map((c) => c.width)) };
+    });
+    expect(geo.overflow).toBeLessThanOrEqual(0);
+    expect(geo.overflowX).toBe('hidden');
+    expect(geo.maxRight).toBeLessThanOrEqual(geo.right + 0.5);
+    expect(geo.cols).toBeGreaterThanOrEqual(vp.width >= 1280 ? 5 : 3);
+    expect(geo.minW).toBeGreaterThanOrEqual(140);
+    // Every category chip is reachable without a hidden scroll: the row wraps inside the panel.
+    const panel = (await d.boundingBox())!;
+    for (const chip of await d.getByRole('group', { name: 'Public library categories' }).getByRole('button').all()) {
+      const b = (await chip.boundingBox())!;
+      expect(b.x + b.width).toBeLessThanOrEqual(panel.x + panel.width);
+    }
+  });
+}
+
+test('Public library tiles: no redundant Public badge or kind subtitle; mixed lists (All, Recent) keep what tells items apart', async ({ page }) => {
+  await mockPublicLibrary(page, (c) => (c === null ? sceneLib : sceneLib.filter((n) => n.category === c)));
+  await page.goto('/create/remix');
+  await page.locator('[data-preset="scene"]').click();
+  const d = picker(page, 'Scenes');
+  const first = d.getByRole('option').first();
+  await expect(first).toBeVisible();
+  // Inside one category every tile is public and the category is the chip: neither is repeated.
+  await expect(d.getByRole('option').filter({ hasText: /^.*Public/ })).toHaveCount(0);
+  await expect(d.getByRole('option').filter({ hasText: 'Images' })).toHaveCount(0);
+  await expect(first).toHaveText('Scene 2');
+  // All categories: the subtitle names each tile's category.
+  await d.getByRole('group', { name: 'Public library categories' }).getByRole('button', { name: 'All' }).click();
+  await expect(d.locator('[role="option"][title="Scene 1"]')).toHaveText('Scene 1Lighting');
+  await expect(d.locator('[role="option"][title="Scene 2"]')).toHaveText('Scene 2Scenes');
+  await d.locator('[role="option"][title="Scene 2"]').click();
+  await expect(d.locator('[role="option"][title="Scene 2"]')).toHaveAttribute('aria-selected', 'true');
+  await use(d);
+  // Recent mixes sources: the badge says where the item came from.
+  await page.locator('[data-preset="scene"]').click();
+  await d.getByRole('tab', { name: 'Recent' }).click();
+  await expect(d.locator('[role="option"][title="Scene 2"]')).toContainText('Public');
+});
+
 test('reduced motion: the modal only fades; light and dark themes use their tokens', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' });
   await page.goto('/create/avatar');

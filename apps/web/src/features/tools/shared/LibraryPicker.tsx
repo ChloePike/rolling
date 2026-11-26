@@ -39,7 +39,7 @@ interface RowProps {
   /** Text when nothing is set (a hint, or a mock-mode sample). */
   fallback?: string | null;
   onChange: (item: LibraryPick | null) => void;
-  /** Shown as a Clear button next to the row when something is set. */
+  /** The row's × button (inside the row, in place of the chevron) when something is set. Defaults to `onChange(null)`. */
   onClear?: () => void;
   testId: string;
   /** Data attribute name for the row (`data-preset`, `data-look`). */
@@ -50,6 +50,8 @@ interface RowProps {
  * A `›` row of a tool's left panel. It opens the shared asset picker modal
  * (My assets, Public library on the row's categories, Recent, Upload), never
  * a popover; shows the picked item's thumbnail and name, else "Not set".
+ * When a value is set, a × button at the row's right edge (in place of the
+ * chevron) clears it without opening the picker. The row is always full width.
  */
 export function LibraryRow({ label, categories, kinds = ['image'], icon, tone, value, fallback, onChange, onClear, testId, attr = 'preset' }: RowProps) {
   const intl = useIntl();
@@ -60,20 +62,20 @@ export function LibraryRow({ label, categories, kinds = ['image'], icon, tone, v
     const picks = await picker.open({ title: label, kinds, categories, tab: 'public' });
     if (picks?.[0]) onChange(toPick(picks[0]));
   };
+  const clearable = !!(clear && value);
   return (
-    <div className={styles.row}>
+    <div className={styles.row} data-clearable={clearable || undefined}>
       {picker.element}
       <button
         type="button"
         className={controls.pickRow}
-        style={{ flex: 1 }}
         aria-haspopup="dialog"
         aria-expanded={picker.isOpen}
         {...{ [`data-${attr}`]: testId }}
         data-set={value || fallback ? 'true' : 'false'}
         onClick={() => void open()}
       >
-        <span className={controls.pickThumb} style={{ background: tone, overflow: 'hidden' }}>
+        <span className={controls.pickThumb} style={{ background: tone }}>
           {value?.thumbUrl ? <img className={styles.rowImg} src={value.thumbUrl} alt="" /> : <ToolIcon name={icon} size={18} color="var(--c-text-2)" />}
         </span>
         <span className={controls.pickText}>
@@ -82,11 +84,23 @@ export function LibraryRow({ label, categories, kinds = ['image'], icon, tone, v
             {shown}
           </span>
         </span>
-        <span className={controls.chev}>›</span>
+        {clearable ? <span className={styles.clearSlot} aria-hidden="true" /> : <span className={controls.chev}>›</span>}
       </button>
-      {clear && value ? (
-        <button type="button" className={styles.clear} aria-label={intl.formatMessage({ id: 'tools.library.clearLabel' }, { label })} onClick={clear}>
-          {intl.formatMessage({ id: 'tools.library.clear' })}
+      {clearable ? (
+        <button
+          type="button"
+          className={styles.clear}
+          aria-label={intl.formatMessage({ id: 'tools.library.clearLabel' }, { label })}
+          title={intl.formatMessage({ id: 'tools.library.clearLabel' }, { label })}
+          data-clear={testId}
+          onClick={(e) => {
+            e.stopPropagation();
+            clear!();
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+            <path d="M18 6 6 18 M6 6l12 12" />
+          </svg>
         </button>
       ) : null}
     </div>

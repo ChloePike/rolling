@@ -1,10 +1,15 @@
 /* Preset / look rows that open the asset picker modal. Colors are tokens only (D-010). */
-.row{display:flex;align-items:center;gap:6px;min-width:0}
-.rowImg{width:100%;height:100%;object-fit:cover}
+/* The row is the card's positioning box: the clear button sits inside the card, never beside it. */
+.row{position:relative;display:flex;width:100%;min-width:0}
+.rowImg{width:100%;height:100%;object-fit:cover;display:block}
+/* Reserves the chevron's place under the absolutely placed clear button. */
+.clearSlot{flex:none;width:28px;height:28px}
 .clear{
-  flex:none;border:0;background:transparent;color:var(--c-text-3);font:inherit;font-size:12px;cursor:pointer;padding:4px 6px;border-radius:6px;
-  transition:color var(--m-fast) var(--m-ease-standard);
+  position:absolute;right:8px;top:50%;transform:translateY(-50%);
+  width:28px;height:28px;display:flex;align-items:center;justify-content:center;padding:0;
+  border:0;border-radius:var(--r-pill);background:transparent;color:var(--c-text-3);cursor:pointer;
+  transition:background-color var(--m-fast) var(--m-ease-standard),color var(--m-fast) var(--m-ease-standard);
 }
-.clear:hover{color:var(--c-text-1)}
+.clear:hover{background:var(--c-surface-6);color:var(--c-text-1)}
 .clear:focus-visible{box-shadow:var(--focus-ring);outline:0}
 @media (prefers-reduced-motion: reduce){.clear{transition:none}}

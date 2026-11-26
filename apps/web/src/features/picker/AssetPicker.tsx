@@ -35,7 +35,7 @@ export interface AssetPickerProps {
   onConfirm: (picks: AssetPick[]) => void;
 }
 
-const MIN_CELL = 132;
+const MIN_CELL = 140;
 const GAP = 10;
 /** Name and detail lines under the thumbnail. */
 const LABEL_H = 40;
@@ -118,7 +118,14 @@ export function AssetPicker({ open, options, onClose, onConfirm }: AssetPickerPr
   useLayoutEffect(() => {
     const el = scroller.current;
     if (!el) return;
-    const measure = () => setBox({ width: el.clientWidth, height: el.clientHeight });
+    // The grid lays out in the content box: clientWidth already excludes the
+    // vertical scrollbar, but includes the scroller's horizontal padding.
+    const measure = () => {
+      const cs = getComputedStyle(el);
+      const padX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+      const padY = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+      setBox({ width: Math.max(0, Math.floor(el.clientWidth - padX)), height: Math.max(0, el.clientHeight - padY) });
+    };
     measure();
     if (typeof ResizeObserver === 'undefined') return;
     const ro = new ResizeObserver(measure);
@@ -363,6 +370,8 @@ export function AssetPicker({ open, options, onClose, onConfirm }: AssetPickerPr
                     on={isSelected(s.selected, cell.pick)}
                     active={i === active}
                     style={style}
+                    showSource={s.tab !== 'public'}
+                    showCategory={s.tab !== 'public' || s.category === 'all'}
                     onFocus={() => dispatch({ type: 'active', index: i })}
                     onClick={() => pickCell(cell, false)}
                     onDoubleClick={() => pickCell(cell, true)}
@@ -438,11 +447,14 @@ function Glyph({ kind }: { kind: PickKind }) {
   );
 }
 
-function ItemCell(p: { pick: AssetPick; index: number; count: number; on: boolean; active: boolean; style: CSSProperties; onFocus: () => void; onClick: () => void; onDoubleClick: () => void }) {
+function ItemCell(p: { pick: AssetPick; index: number; count: number; on: boolean; active: boolean; style: CSSProperties; showSource: boolean; showCategory: boolean; onFocus: () => void; onClick: () => void; onDoubleClick: () => void }) {
   const intl = useIntl();
   const [failed, setFailed] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const { pick } = p;
+  // Under the name: the item's own detail (size, duration), else its library
+  // category when that tells the user something; never the bare kind.
+  const meta = pick.meta ?? (p.showCategory && pick.category ? intl.formatMessage({ id: `library.category.${pick.category}` }) : null);
   return (
     <button
       type="button"
@@ -475,7 +487,8 @@ function ItemCell(p: { pick: AssetPick; index: number; count: number; on: boolea
             onError={() => setFailed(true)}
           />
         ) : null}
-        <span className={styles.src}>{intl.formatMessage({ id: SOURCE_KEY[pick.source] })}</span>
+        {/* The source badge only helps in mixed lists; inside Public library every tile is public. */}
+        {p.showSource ? <span className={styles.src}>{intl.formatMessage({ id: SOURCE_KEY[pick.source] })}</span> : null}
         {pick.mature ? <span className={styles.mature}>{intl.formatMessage({ id: 'picker.mature' })}</span> : null}
         <span className={styles.check} aria-hidden="true">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
@@ -484,7 +497,7 @@ function ItemCell(p: { pick: AssetPick; index: number; count: number; on: boolea
         </span>
       </span>
       <span className={styles.name}>{pick.name}</span>
-      <span className={styles.meta}>{pick.meta ?? intl.formatMessage({ id: `picker.kind.${pick.kind}` })}</span>
+      {meta ? <span className={styles.meta}>{meta}</span> : null}
     </button>
   );
 }

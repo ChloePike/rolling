@@ -15,13 +15,13 @@
 .chip[aria-pressed="true"]{background:var(--c-text-1);color:var(--c-bg)}
 .chips{display:flex;gap:6px;flex-wrap:wrap}
 .pickRow{
-  display:flex;align-items:center;gap:10px;border-radius:14px;border:0;background:var(--c-surface-4);padding:8px;color:var(--c-text-1);
+  display:flex;align-items:center;gap:10px;width:100%;min-width:0;border-radius:14px;border:0;background:var(--c-surface-4);padding:8px;color:var(--c-text-1);
   font:inherit;text-align:left;cursor:pointer;
   transition:background-color var(--m-fast) var(--m-ease-standard);
 }
 .pickRow:hover{background:var(--c-surface-hover)}
-.pickThumb{flex:none;width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center}
-.pickText{flex:1;display:flex;flex-direction:column;gap:3px}
+.pickThumb{flex:none;width:40px;height:40px;aspect-ratio:1/1;border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.pickText{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
 .pickLabel{font-size:11px;color:var(--c-text-4)}
-.pickValue{font-size:13px;font-weight:600}
-.chev{color:var(--c-text-4)}
+.pickValue{font-size:13px;font-weight:600;line-height:1.3;overflow:hidden;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2}
+.chev{flex:none;color:var(--c-text-4)}
