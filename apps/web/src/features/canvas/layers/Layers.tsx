@@ -381,6 +381,8 @@ export function ShareDialog({ state, onClose, share, onCopy, onUpdate, onStop, o
     ...(share.showOnProfile !== undefined ? [{ k: 'profile' as const, on: share.showOnProfile, flip: () => onUpdate({ showOnProfile: !share.showOnProfile }) }] : []),
   ];
   const audienceLabel = (a: ShareAudience) => intl.formatMessage({ id: `canvas.shareDialog.view.${a}` });
+  // Three states: shared (active), stopped (revoked: the old link no longer opens) and never shared (first share).
+  const phase: 'active' | 'stopped' | 'first' = share.active ? 'active' : share.revoked ? 'stopped' : 'first';
   return (
     <div className={cx(canvas.scrim, 'rl-fade')} {...presenceProps(state)} onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
       <div
@@ -393,6 +395,7 @@ export function ShareDialog({ state, onClose, share, onCopy, onUpdate, onStop, o
         className={cx(styles.share, 'rl-modal')}
         {...presenceProps(state)}
         data-active={share.active}
+        data-phase={phase}
       >
         <div className={styles.shareHead}>
           <h2 id="canvas-share-title" className={styles.shareTitle}>
@@ -403,21 +406,21 @@ export function ShareDialog({ state, onClose, share, onCopy, onUpdate, onStop, o
           </button>
         </div>
         <span className={styles.shareNote} role="status">
-          {share.active ? (
+          {phase === 'active' ? (
             <FormattedMessage id="canvas.shareDialog.snapshot" values={{ date: share.snapshotAt }} />
           ) : (
-            <FormattedMessage id="canvas.shareDialog.stopped" />
+            <FormattedMessage id={phase === 'stopped' ? 'canvas.shareDialog.stopped' : 'canvas.shareDialog.first'} />
           )}
         </span>
         <div className={styles.linkRow}>
           <div className={cx(styles.link, !share.active && styles.linkOff)} data-testid="share-link">
-            {share.active ? share.url : intl.formatMessage({ id: 'canvas.shareDialog.linkOff' })}
+            {share.active ? share.url : intl.formatMessage({ id: phase === 'stopped' ? 'canvas.shareDialog.linkOff' : 'canvas.shareDialog.linkNone' })}
           </div>
           <button
             type="button"
             className={cx(styles.copy, 'rl-press')}
             aria-disabled={!share.active || undefined}
-            title={share.active ? undefined : intl.formatMessage({ id: 'canvas.shareDialog.copyOff' })}
+            title={share.active ? undefined : intl.formatMessage({ id: phase === 'stopped' ? 'canvas.shareDialog.copyOff' : 'canvas.shareDialog.copyNone' })}
             onClick={() => share.active && onCopy()}
           >
             <FormattedMessage id="canvas.shareDialog.copy" />
@@ -472,13 +475,13 @@ export function ShareDialog({ state, onClose, share, onCopy, onUpdate, onStop, o
             type="button"
             className={styles.stop}
             aria-disabled={!share.active || busy || undefined}
-            title={share.active ? undefined : intl.formatMessage({ id: 'canvas.shareDialog.stoppedShort' })}
+            title={share.active ? undefined : intl.formatMessage({ id: phase === 'stopped' ? 'canvas.shareDialog.stoppedShort' : 'canvas.shareDialog.notShared' })}
             onClick={() => share.active && !busy && onStop()}
           >
             <FormattedMessage id="canvas.shareDialog.stop" />
           </button>
           <button type="button" className={styles.publish} aria-busy={busy || undefined} onClick={() => !busy && onPublish()}>
-            <FormattedMessage id={share.active ? 'canvas.shareDialog.publish' : 'canvas.shareDialog.shareAgain'} />
+            <FormattedMessage id={phase === 'active' ? 'canvas.shareDialog.publish' : phase === 'stopped' ? 'canvas.shareDialog.shareAgain' : 'canvas.shareDialog.publishFirst'} />
           </button>
         </div>
       </div>

@@ -16,7 +16,11 @@ test('SHARE-1 share link: create from the Share dialog, opens signed out as a re
   // First share of a never-shared canvas: the dialog should not talk about an “old link”.
   const firstNote = await dialog.getByRole('status').first().innerText();
   testInfo.annotations.push({ type: 'first-share-note', description: firstNote });
-  await dialog.getByRole('button', { name: /Share again|Publish new snapshot|Publish|Create link/ }).first().click();
+  expect(firstNote).toMatch(/Not shared yet/);
+  expect((await getJson<{ enabled: boolean; revoked: boolean }>(page.request, `/api/projects/${p.id}/share`)).revoked).toBe(false);
+  await expect(dialog.getByTestId('share-link')).toHaveText('No link yet');
+  await expect(dialog.getByRole('button', { name: 'Share again' })).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Publish snapshot' }).click();
   await expect(dialog.getByRole('button', { name: 'Copy link' })).toBeEnabled({ timeout: 20_000 });
   await expect(dialog.getByTestId('share-link')).toBeVisible({ timeout: 20_000 });
   const share = await getJson<{ enabled: boolean; shareId: string; url: string }>(page.request, `/api/projects/${p.id}/share`);
@@ -38,6 +42,12 @@ test('SHARE-1 share link: create from the Share dialog, opens signed out as a re
   await ap.reload();
   await expect(ap.getByTestId('share-missing')).toBeVisible({ timeout: 30_000 });
   expect(firstNote, 'a canvas that was never shared does not say “The old link no longer opens”').not.toMatch(/old link/);
+  // After stopping, the owner's state is “stopped” (revoked), not first-share.
+  expect(await getJson<{ enabled: boolean; revoked: boolean }>(page.request, `/api/projects/${p.id}/share`)).toMatchObject({ enabled: false, revoked: true });
+  await page.reload();
+  await expect(page.getByTestId('canvas')).toBeVisible({ timeout: 45_000 });
+  await page.getByRole('button', { name: 'Share', exact: true }).click();
+  await expect(page.getByRole('dialog').filter({ hasText: /Share/ }).first().getByRole('status').first()).toContainText('The old link no longer opens');
   expect((await anon.request.get(`/api/share/${share.shareId}`)).status()).toBe(404);
   await anon.close();
 });

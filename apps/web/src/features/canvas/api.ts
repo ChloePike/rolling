@@ -333,8 +333,10 @@ export async function renameProject(projectId: string, title: string): Promise<{
 export type ShareAudience = 'link' | 'workspace';
 
 export interface ShareSettings {
-  /** False after "Stop sharing": the link no longer opens. */
+  /** False when nothing is shared: never published, or after "Stop sharing" (see `revoked`). */
   active: boolean;
+  /** Not active because a link was stopped (the old URL no longer opens); false when the canvas was never shared. */
+  revoked?: boolean;
   url: string;
   snapshotAt: Date;
   audience: ShareAudience;
@@ -353,7 +355,7 @@ const shareLoads = new Map<string, Promise<void>>();
 
 function defaultShare(): ShareSettings {
   // Real mode: nothing is shared until the first publish; `GET /api/projects/:id/share` replaces this on open.
-  if (!isMockApi()) return { active: false, url: '', snapshotAt: new Date(), audience: 'link', allowDownloads: false, showPrompt: true, showOnProfile: false };
+  if (!isMockApi()) return { active: false, revoked: false, url: '', snapshotAt: new Date(), audience: 'link', allowDownloads: false, showPrompt: true, showOnProfile: false };
   const MOCK_SHARE = mockData().canvas.MOCK_SHARE;
   return { active: true, url: MOCK_SHARE.url, snapshotAt: MOCK_SHARE.snapshotAt, audience: 'link', allowDownloads: false, showPrompt: true };
 }
@@ -368,14 +370,17 @@ interface ShareSettingsWire {
 /** `GET` and `PATCH /api/projects/:id/share` answer this; `POST` answers `{ shareId, url, createdAt, ...settings }`. */
 interface ShareStateWire extends ShareSettingsWire {
   enabled: boolean;
+  /** A stopped link exists (absent on older servers). */
+  revoked?: boolean;
   url: string | null;
   snapshotAt: number | null;
 }
 
-function fromWire(cur: ShareSettings, w: ShareSettingsWire & { url: string | null; at: number | null; active: boolean }): ShareSettings {
+function fromWire(cur: ShareSettings, w: ShareSettingsWire & { url: string | null; at: number | null; active: boolean; revoked?: boolean }): ShareSettings {
   return {
     ...cur,
     active: w.active,
+    revoked: !w.active && w.revoked === true,
     url: w.active && w.url ? w.url.replace(/^https?:\/\//, '') : cur.url,
     snapshotAt: w.at ? new Date(w.at) : cur.snapshotAt,
     audience: w.audience,
@@ -465,7 +470,7 @@ export async function updateShare(projectId: string, patch: SharePatch): Promise
 /** `DELETE /api/projects/:id/share`: the link stops working. */
 export async function stopSharing(projectId: string): Promise<ShareSettings> {
   if (!isMockApi()) await apiFetch(`/projects/${encodeURIComponent(projectId)}/share`, { method: 'DELETE' });
-  return saveShare(projectId, { ...getShare(projectId), active: false });
+  return saveShare(projectId, { ...getShare(projectId), active: false, revoked: true });
 }
 
 /** `POST /api/projects/:id/share`: a new snapshot (and a link again after stopping), with the current settings. */
@@ -473,7 +478,7 @@ export async function publishShare(projectId: string): Promise<ShareSettings> {
   const cur = getShare(projectId);
   if (!isMockApi()) return postShare(projectId, cur);
   const url = cur.active ? cur.url : `${mockData().canvas.MOCK_SHARE.url.replace(/\/s\/.*/, '')}/s/${Math.random().toString(36).slice(2, 6)}-${Math.random().toString(36).slice(2, 6)}`;
-  return saveShare(projectId, { ...cur, active: true, url, snapshotAt: new Date() });
+  return saveShare(projectId, { ...cur, active: true, revoked: false, url, snapshotAt: new Date() });
 }
 
 /* ---------- Runs ---------- */

@@ -243,7 +243,8 @@ describe("share settings", () => {
     const a = await user("shs");
     const { projectId } = await projectWithOutput(a.cookie);
     const empty = (await (await send(a.cookie, "GET", `/api/projects/${projectId}/share`)).json()) as any;
-    expect(empty).toEqual({ enabled: false, shareId: null, url: null, snapshotAt: null, audience: "link", allowDownload: false, showPrompt: true, showOnProfile: false });
+    // Never shared: not "revoked" (the dialog shows the first-share state, not "the old link no longer opens").
+    expect(empty).toEqual({ enabled: false, shareId: null, url: null, snapshotAt: null, revoked: false, audience: "link", allowDownload: false, showPrompt: true, showOnProfile: false });
     expect((await send(a.cookie, "PATCH", `/api/projects/${projectId}/share`, { allowDownload: true })).status).toBe(404);
 
     const created = (await (await send(a.cookie, "POST", `/api/projects/${projectId}/share`, { allowDownload: true, showPrompt: false })).json()) as any;
@@ -268,6 +269,9 @@ describe("share settings", () => {
     expect(((await (await SELF.fetch(`${BASE}/api/share/${created.shareId}`)).json()) as any).nodes[0].params.prompt).toBeUndefined();
     expect((await send(a.cookie, "PATCH", `/api/projects/${projectId}/share`, {})).status).toBe(400);
     expect((await send(a.cookie, "PATCH", `/api/projects/${projectId}/share`, { audience: "public" })).status).toBe(400);
+    // Stopped: no link, and the state says it was revoked.
+    expect((await send(a.cookie, "DELETE", `/api/projects/${projectId}/share`)).status).toBe(200);
+    expect(await (await send(a.cookie, "GET", `/api/projects/${projectId}/share`)).json()).toMatchObject({ enabled: false, url: null, revoked: true });
   });
 
   it("workspace-only links open for signed-in members only", async () => {

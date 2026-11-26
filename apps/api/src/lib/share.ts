@@ -182,6 +182,8 @@ export interface ShareState extends ShareSettings {
   url: string | null;
   /** When the snapshot was last written (epoch ms), null without a link. */
   snapshotAt: number | null;
+  /** No active link, but one existed and was stopped (the old URL no longer opens); false when never shared. */
+  revoked: boolean;
 }
 
 interface LinkRow {
@@ -271,8 +273,11 @@ export async function createShare(
 /** The project's share state (`enabled: false` with default settings when there is no active link). */
 export async function shareState(env: Env, projectId: string): Promise<ShareState> {
   const link = await activeLink(env, projectId);
-  if (!link) return { enabled: false, shareId: null, url: null, snapshotAt: null, ...DEFAULT_SHARE_SETTINGS };
-  return { enabled: true, shareId: link.id, url: shareUrl(env, link.id), snapshotAt: link.created_at, ...settingsOf(link) };
+  if (!link) {
+    const stopped = await env.DB.prepare("SELECT 1 AS x FROM share_links WHERE project_id = ? AND revoked_at IS NOT NULL LIMIT 1").bind(projectId).first();
+    return { enabled: false, shareId: null, url: null, snapshotAt: null, revoked: stopped !== null, ...DEFAULT_SHARE_SETTINGS };
+  }
+  return { enabled: true, shareId: link.id, url: shareUrl(env, link.id), snapshotAt: link.created_at, revoked: false, ...settingsOf(link) };
 }
 
 /**
@@ -288,7 +293,7 @@ export async function updateShareSettings(env: Env, projectId: string, userId: s
   await env.DB.prepare("UPDATE share_links SET allow_download = ?, show_on_profile = ?, show_prompt = ?, audience = ?, created_by = CASE WHEN ? THEN ? ELSE created_by END WHERE id = ?")
     .bind(next.allowDownload ? 1 : 0, next.showOnProfile ? 1 : 0, next.showPrompt ? 1 : 0, next.audience, patch.showOnProfile === true ? 1 : 0, userId, link.id)
     .run();
-  return { enabled: true, shareId: link.id, url: shareUrl(env, link.id), snapshotAt: link.created_at, ...next };
+  return { enabled: true, shareId: link.id, url: shareUrl(env, link.id), snapshotAt: link.created_at, revoked: false, ...next };
 }
 
 export async function revokeShares(env: Env, projectId: string): Promise<number> {
