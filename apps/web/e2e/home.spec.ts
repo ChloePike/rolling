@@ -415,6 +415,9 @@ test.describe('home interactions', () => {
 
   test('full page (below the fold: projects, Inspiration) differs from Main.dc.html in under 1% of pixels', async ({ page }) => {
     await openDesign(page);
+    // Owner decision (Inspiration cards): at rest a card shows only the poster and the duration; the name and
+    // Use template appear on hover. The design still draws them at rest, so its card footers are hidden here.
+    await page.addStyleTag({ content: 'a[href="QuickCreate.dc.html"] > div{visibility:hidden}' });
     const design = await page.screenshot({ fullPage: true, path: `${OUT}full-page-design.png` });
     await openApp(page);
     await pickSkill(page, 'TV ad');
@@ -746,12 +749,17 @@ test.describe('home flows', () => {
     await expect(page.getByRole('dialog', { name: 'Choose model' }).locator('[data-model-icon]')).toHaveCount(0);
   });
 
-  test('recent project cards open their canvas; Inspiration tabs filter; a feed card opens Quick Create with its template', async ({ page }) => {
+  test('recent project cards open their canvas; Inspiration tabs filter; a feed card previews, its Use template opens Quick Create', async ({ page }) => {
     await openApp(page);
     const feed = page.locator('section[aria-labelledby="h-insp"]');
     await feed.getByRole('tab', { name: 'Short drama' }).click();
-    await expect(feed.getByRole('link')).toHaveText([/Period drama opener/]);
-    await feed.getByRole('link', { name: /Period drama opener/ }).click();
+    const cards = feed.locator('[data-template-card]');
+    await expect(cards).toHaveCount(1);
+    await cards.first().getByRole('button', { name: 'Preview Period drama opener' }).click();
+    await expect(page.getByRole('dialog', { name: 'Period drama opener' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await cards.first().hover();
+    await feed.getByRole('link', { name: 'Use template: Period drama opener' }).click();
     await expect(page).toHaveURL(/\/create\/quick\?template=tpl_09$/);
     await page.goto('/');
     await page.locator('#projects').getByRole('link', { name: /Desk organizer pitch/ }).click();

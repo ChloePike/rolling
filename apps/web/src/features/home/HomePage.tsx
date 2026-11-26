@@ -47,6 +47,7 @@ import styles from './HomePage.module.css';
 import type { ProjectSummary } from './types';
 import { coverStyle } from '@/features/templates/cover';
 import { TemplateMedia } from '@/features/templates/TemplateMedia';
+import { TemplatePreview } from '@/features/templates/TemplatePreview';
 import { LoadError } from '@/lib/loading';
 
 const ENTRIES: Array<{ key: string; to: string; icon: PromptIconName }> = [
@@ -449,6 +450,8 @@ const CAT_FILTER: Record<FeedCat, (t: TemplateSummary) => boolean> = {
 function Inspiration() {
   const intl = useIntl();
   const [cat, setCat] = useState<FeedCat>('forYou');
+  const [preview, setPreview] = useState<TemplateSummary | null>(null);
+  const navigate = useNavigate();
   const tabsRef = useRef<HTMLDivElement>(null);
   const indicator = useIndicator(tabsRef, cat);
   const templatesQ = useTemplates();
@@ -491,26 +494,48 @@ function Inspiration() {
           ? FEED_SKELETON.map((ratio, i) => <Skeleton key={i} className={styles.feedCard} height="auto" radius={16} style={{ aspectRatio: ratio, display: 'block' }} />)
           : null}
         {feed.map((t, i) => (
-          <Link
-            key={t.id}
-            to="/create/quick"
-            search={{ template: t.id } as never}
-            aria-label={intl.formatMessage({ id: 'home.inspiration.useLabel' }, { name: t.name })}
-            className={cx(styles.feedCard, 'rl-stagger')}
-            style={staggerStyle(i, coverStyle(t.cover ? null : t.coverUrl, t.cover?.color ?? FEED_TONES[i % FEED_TONES.length]!, { aspectRatio: t.coverAspect }))}
-            data-motion=""
-          >
-            <TemplateMedia t={t} />
-            {t.durationSec > 0 ? <span className={styles.feedDur}>{formatSeconds(intl, t.durationSec)}</span> : null}
-            <div className={styles.feedFoot}>
-              <span className={styles.feedName}>{t.name}</span>
-              <span className={cx(styles.useBtn, 'rl-press')}>
-                <FormattedMessage id="home.inspiration.use" />
-              </span>
+          <div key={t.id} className={cx(styles.feedCard, 'rl-stagger')} style={staggerStyle(i)} data-motion="" data-template-card="" data-template={t.id}>
+            {/* At rest only the poster and the duration. Hover or focus brings up a solid bar with the name and Use
+                template; touch devices have no hover, so the name sits below the poster. The card opens the preview. */}
+            <div className={styles.feedMedia} style={coverStyle(t.cover ? null : t.coverUrl, t.cover?.color ?? FEED_TONES[i % FEED_TONES.length]!, { aspectRatio: t.coverAspect })}>
+              <TemplateMedia t={t} />
+              <button
+                type="button"
+                className={styles.feedOpen}
+                aria-haspopup="dialog"
+                aria-label={intl.formatMessage({ id: 'templates.preview.open' }, { name: t.name })}
+                onClick={() => setPreview(t)}
+              />
+              {t.durationSec > 0 ? <span className={styles.feedDur}>{formatSeconds(intl, t.durationSec)}</span> : null}
+              <div className={styles.feedBar} data-testid="template-bar">
+                <span className={styles.feedName}>{t.name}</span>
+                <Link
+                  to="/create/quick"
+                  search={{ template: t.id } as never}
+                  aria-label={intl.formatMessage({ id: 'home.inspiration.useLabel' }, { name: t.name })}
+                  className={cx(styles.useBtn, 'rl-press')}
+                >
+                  <FormattedMessage id="home.inspiration.use" />
+                </Link>
+              </div>
             </div>
-          </Link>
+            <span className={styles.feedCaption} data-testid="template-caption" aria-hidden="true">
+              {t.name}
+            </span>
+          </div>
         ))}
       </div>
+      <TemplatePreview
+        template={preview}
+        items={feed}
+        tone={FEED_TONES[0]!}
+        onClose={() => setPreview(null)}
+        onSelect={setPreview}
+        onUse={(t) => {
+          setPreview(null);
+          void navigate({ to: '/create/quick', search: { template: t.id } as never });
+        }}
+      />
     </section>
   );
 }

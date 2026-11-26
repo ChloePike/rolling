@@ -8,33 +8,33 @@
       "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
       "generated": {
         "environment": "staging",
-        "projectId": "prj_01M8BKN92Q8AESS6F74AJSDCCY",
-        "runId": "run_01M8BKRMMTXQ1ESEE2S15QH5ST",
-        "runRef": "T-QH5ST",
+        "projectId": "prj_01M8BS148WMZFP00D67ETXCYFN",
+        "runId": "run_01M8BSDZDXYZE730VP2MT30PSD",
+        "runRef": "T-30PSD",
         "outputs": [
           {
             "node": "k1",
-            "assetId": "ast_01M8BKSNFYQA6BAT12THEP8S6S",
-            "model": "bytedance/seedream-5.0-lite",
-            "prompt": null
+            "assetId": "ast_01M8BS3DFYB6NDKCAN5S2DAFN3",
+            "model": "bytedance/seedream-5.5",
+            "prompt": "Commercial film still at golden hour on a city rooftop: a woman in her thirties in running gear pauses mid-workout and drinks from the product, two friends stretching behind her, skyline and low sun behind, warm backlight with a soft lens flare, 35mm lens, medium-wide shot, shallow depth of field, warm teal-and-amber grade. Fictional adults only, no real people. No logos, no brand marks, no readable text."
           },
           {
             "node": "v1",
-            "assetId": "ast_01M8BKYG3WN9JRQV2KFP3T92QM",
-            "model": "bytedance/seedance-2.5",
-            "prompt": null
+            "assetId": "ast_01M8BSHD8CS4CWGNFXH7N97PG8",
+            "model": "lumina/berry-1.0",
+            "prompt": "She lowers the product after a long drink and laughs with a friend, wind in her hair, slow handheld push-in, golden hour"
           }
         ]
       },
-      "coverKey": "public/templates/tpl_tv_ad_15s/poster-ed7ef883e7.jpg",
-      "coverWebpKey": "public/templates/tpl_tv_ad_15s/poster-ed7ef883e7.webp",
-      "coverAvifKey": "public/templates/tpl_tv_ad_15s/poster-ed7ef883e7.avif",
-      "previewKey": "public/templates/tpl_tv_ad_15s/preview-f149b6ffa0.mp4",
+      "coverKey": "public/templates/tpl_tv_ad_15s/poster-2dee48e866.jpg",
+      "coverWebpKey": "public/templates/tpl_tv_ad_15s/poster-2dee48e866.webp",
+      "coverAvifKey": "public/templates/tpl_tv_ad_15s/poster-2dee48e866.avif",
+      "previewKey": "public/templates/tpl_tv_ad_15s/preview-031b386bb3.mp4",
       "coverWidth": 720,
-      "coverHeight": 402,
-      "coverColor": "#d6d9d2",
+      "coverHeight": 412,
+      "coverColor": "#55564a",
       "previewSec": 5,
-      "previewBytes": 411662
+      "previewBytes": 659096
     },
     {
       "templateId": "tpl_product_showcase",
@@ -43,33 +43,33 @@
       "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
       "generated": {
         "environment": "staging",
-        "projectId": "prj_01M8BKN9SQ98NDVDEQ0BR2KNQE",
-        "runId": "run_01M8BKRQ8EDA4R8NQEYYJRHTK7",
-        "runRef": "T-RHTK7",
+        "projectId": "prj_01M8BS155D8HMMQQDF9YSAMCXQ",
+        "runId": "run_01M8BSE1MM1VD6WNWJNTMM5783",
+        "runRef": "T-M5783",
         "outputs": [
           {
             "node": "front",
-            "assetId": "ast_01M8BKSSKJ55J0MSGR9X4ENN3V",
-            "model": "bytedance/seedream-5.0-lite",
-            "prompt": null
+            "assetId": "ast_01M8BS38VHPM2Q5VRKHSP7B4VX",
+            "model": "bytedance/seedream-5.5",
+            "prompt": "Lifestyle product photo: a barista in her late twenties in a denim apron holds the product out across the wooden counter of a busy sunlit cafe, regulars chatting and an espresso machine soft behind, morning window light from the left, 50mm lens, shallow depth of field, warm film grade. Fictional adults only, no real people. No logos, no brand marks, no readable text."
           },
           {
             "node": "loop1",
-            "assetId": "ast_01M8BKWT5XR65EPF645A0C5P88",
-            "model": "bytedance/seedance-2.0-mini",
-            "prompt": null
+            "assetId": "ast_01M8BSHE791XGC775C449XGZSB",
+            "model": "lumina/berry-1.0",
+            "prompt": "She turns the product in her hands, smiles and offers it to the camera, people move behind, slow push-in"
           }
         ]
       },
-      "coverKey": "public/templates/tpl_product_showcase/poster-182412a72a.jpg",
-      "coverWebpKey": "public/templates/tpl_product_showcase/poster-182412a72a.webp",
-      "coverAvifKey": "public/templates/tpl_product_showcase/poster-182412a72a.avif",
-      "previewKey": "public/templates/tpl_product_showcase/preview-51b6022ee4.mp4",
+      "coverKey": "public/templates/tpl_product_showcase/poster-97d0932e4b.jpg",
+      "coverWebpKey": "public/templates/tpl_product_showcase/poster-97d0932e4b.webp",
+      "coverAvifKey": "public/templates/tpl_product_showcase/poster-97d0932e4b.avif",
+      "previewKey": "public/templates/tpl_product_showcase/preview-1047fe2d29.mp4",
       "coverWidth": 720,
       "coverHeight": 720,
-      "coverColor": "#c9cec6",
+      "coverColor": "#6b5f55",
       "previewSec": 5,
-      "previewBytes": 243727
+      "previewBytes": 454557
     },
     {
       "templateId": "tpl_talking_head",
@@ -78,27 +78,33 @@
       "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
       "generated": {
         "environment": "staging",
-        "projectId": "prj_01M8BKQ1A4VMBE452YB5MSSV83",
-        "runId": "run_01M8BNQ94NZFNQF3JRX9CH9QRM",
-        "runRef": "T-H9QRM",
+        "projectId": "prj_01M8BS15VGZ9M797HVJJM00KMD",
+        "runId": "run_01M8BSE3F8GSMPXD3PDXT6YP27",
+        "runRef": "T-6YP27",
         "outputs": [
           {
+            "node": "photo",
+            "assetId": "ast_01M8BS0C05QB93A4TXCJS1YF41",
+            "model": "bytedance/seedream-5.5",
+            "prompt": "Photorealistic medium close-up of a woman in her thirties with shoulder-length dark hair and a rust linen shirt, mid-sentence and looking into the camera, one hand raised as she makes a point, seated in a lived-in podcast studio: warm practical table lamp, bookshelves and acoustic panels behind, a microphone on a boom arm at the edge of frame, soft key light from a large window on the left, 50mm lens, shallow depth of field, natural film grade. Fictional adult, not a real person. No logos, no brand marks, no readable text."
+          },
+          {
             "node": "speak",
-            "assetId": "ast_01M8BNVVT3J8ZJFZBRNJ189GZ8",
+            "assetId": "ast_01M8BSJR04DDXBKYDH795ZWB6W",
             "model": "lumina/wan2.7-i2v-spicy",
-            "prompt": null
+            "prompt": "The person speaks to the camera with natural expressions and small head movements."
           }
         ]
       },
-      "coverKey": "public/templates/tpl_talking_head/poster-37fc2a00fb.jpg",
-      "coverWebpKey": "public/templates/tpl_talking_head/poster-37fc2a00fb.webp",
-      "coverAvifKey": "public/templates/tpl_talking_head/poster-37fc2a00fb.avif",
-      "previewKey": "public/templates/tpl_talking_head/preview-916a7b6cea.mp4",
+      "coverKey": "public/templates/tpl_talking_head/poster-e9e3eafe33.jpg",
+      "coverWebpKey": "public/templates/tpl_talking_head/poster-e9e3eafe33.webp",
+      "coverAvifKey": "public/templates/tpl_talking_head/poster-e9e3eafe33.avif",
+      "previewKey": "public/templates/tpl_talking_head/preview-09b27bfff9.mp4",
       "coverWidth": 720,
       "coverHeight": 720,
-      "coverColor": "#b09e93",
+      "coverColor": "#483429",
       "previewSec": 5,
-      "previewBytes": 618490
+      "previewBytes": 286570
     },
     {
       "templateId": "tpl_comic_page",
@@ -289,33 +295,33 @@
       "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
       "generated": {
         "environment": "staging",
-        "projectId": "prj_01M8BKND6RW55KA8B04JR6H7BK",
-        "runId": "run_01M8BKVHCBN1X6FXZ4GVMR09KE",
-        "runRef": "T-R09KE",
+        "projectId": "prj_01M8BS183C8ZYKAHRH0509KSQD",
+        "runId": "run_01M8BSE73WFES21XG5JBZK58JJ",
+        "runRef": "T-K58JJ",
         "outputs": [
           {
             "node": "look",
-            "assetId": "ast_01M8BKWVQKGKV8AZCGCVBTPCVT",
-            "model": "bytedance/seedream-5.0-lite",
-            "prompt": null
+            "assetId": "ast_01M8BS3F0PRY2A5T21PESAMZAJ",
+            "model": "bytedance/seedream-5.5",
+            "prompt": "Editorial street-fashion photo: the person wears the outfit, full body, mid-stride on a cobblestone street in an old city quarter at golden hour, cafe tables, passersby and a cyclist soft behind, warm light in shop windows, 85mm lens, shallow depth of field, Portra film grade. Fictional adults only, no real people. No logos, no brand marks, no readable text."
           },
           {
             "node": "walk",
-            "assetId": "ast_01M8BM1JRSSEY51FG75GCV4T6M",
-            "model": "bytedance/seedance-2.5",
-            "prompt": null
+            "assetId": "ast_01M8BSHH24TMXGZKHD7B0RCTR4",
+            "model": "lumina/berry-1.0",
+            "prompt": "The person walks toward the camera with confidence, the outfit moves in the breeze, passersby cross behind, slow tracking shot backward"
           }
         ]
       },
-      "coverKey": "public/templates/tpl_outfit_try_on/poster-7b2cd6ff3e.jpg",
-      "coverWebpKey": "public/templates/tpl_outfit_try_on/poster-7b2cd6ff3e.webp",
-      "coverAvifKey": "public/templates/tpl_outfit_try_on/poster-7b2cd6ff3e.avif",
-      "previewKey": "public/templates/tpl_outfit_try_on/preview-db565d35d6.mp4",
+      "coverKey": "public/templates/tpl_outfit_try_on/poster-69c6192bbe.jpg",
+      "coverWebpKey": "public/templates/tpl_outfit_try_on/poster-69c6192bbe.webp",
+      "coverAvifKey": "public/templates/tpl_outfit_try_on/poster-69c6192bbe.avif",
+      "previewKey": "public/templates/tpl_outfit_try_on/preview-232c427276.mp4",
       "coverWidth": 720,
-      "coverHeight": 1292,
-      "coverColor": "#8d7f78",
+      "coverHeight": 1260,
+      "coverColor": "#6e6359",
       "previewSec": 5,
-      "previewBytes": 949546
+      "previewBytes": 1376157
     },
     {
       "templateId": "tpl_unboxing_reel",
@@ -324,33 +330,33 @@
       "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
       "generated": {
         "environment": "staging",
-        "projectId": "prj_01M8BKNDPVH6HDSPM2XC7Z2CW5",
-        "runId": "run_01M8BKW9EJDP2ZFF42W3RT2QCG",
-        "runRef": "T-T2QCG",
+        "projectId": "prj_01M8BS18VYAVAB2302DEXG1AFN",
+        "runId": "run_01M8BSW2TRZJ20317MTPYRV6HZ",
+        "runRef": "T-RV6HZ",
         "outputs": [
           {
             "node": "reveal",
-            "assetId": "ast_01M8BKXC8XMG083MQAAN30KRWK",
-            "model": "bytedance/seedream-5.0-lite",
-            "prompt": null
+            "assetId": "ast_01M8BS3JKDWW3C57F53JMKPTTZ",
+            "model": "bytedance/seedream-5.5",
+            "prompt": "Lifestyle photo: a woman in her twenties sits cross-legged on a sunlit bedroom floor with a plain kraft box open on her lap, lifting the product out of tissue paper with a delighted smile, a rug, plants and an unmade bed behind, soft morning window light, 35mm lens, vertical framing, warm natural grade. Fictional adults only, no real people. No logos, no brand marks, no readable text."
           },
           {
             "node": "clip",
-            "assetId": "ast_01M8BM1829ABEYRQFS45528JRC",
-            "model": "bytedance/seedance-2.0-mini",
-            "prompt": null
+            "assetId": "ast_01M8BT01EYMRNEJM6RBRWB0SFK",
+            "model": "lumina/berry-1.0",
+            "prompt": "She lifts the product out of the box and turns it toward the camera with a delighted smile, tissue paper rustles, gentle handheld push-in. The product keeps its own look; no added labels, captions or text"
           }
         ]
       },
-      "coverKey": "public/templates/tpl_unboxing_reel/poster-9b8546ea79.jpg",
-      "coverWebpKey": "public/templates/tpl_unboxing_reel/poster-9b8546ea79.webp",
-      "coverAvifKey": "public/templates/tpl_unboxing_reel/poster-9b8546ea79.avif",
-      "previewKey": "public/templates/tpl_unboxing_reel/preview-9907a735cb.mp4",
+      "coverKey": "public/templates/tpl_unboxing_reel/poster-efd20b03b5.jpg",
+      "coverWebpKey": "public/templates/tpl_unboxing_reel/poster-efd20b03b5.webp",
+      "coverAvifKey": "public/templates/tpl_unboxing_reel/poster-efd20b03b5.avif",
+      "previewKey": "public/templates/tpl_unboxing_reel/preview-213f93af1c.mp4",
       "coverWidth": 720,
-      "coverHeight": 1280,
-      "coverColor": "#a07054",
-      "previewSec": 5,
-      "previewBytes": 712705
+      "coverHeight": 1260,
+      "coverColor": "#786b5e",
+      "previewSec": 2.21,
+      "previewBytes": 362167
     },
     {
       "templateId": "tpl_lifestyle_scene",
@@ -464,33 +470,33 @@
       "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
       "generated": {
         "environment": "staging",
-        "projectId": "prj_01M8BKNFTZVSJYTXRV4T19QWY4",
-        "runId": "run_01M8BM19MWAPP45KB5KS3FKH24",
-        "runRef": "T-FKH24",
+        "projectId": "prj_01M8BS16QP0H5CR22HVACCC4MJ",
+        "runId": "run_01M8BSE5FJ96GCPYNYW2EJSCAK",
+        "runRef": "T-JSCAK",
         "outputs": [
           {
             "node": "frame",
-            "assetId": "ast_01M8BM2G35HJA0T560J0XDXTWY",
-            "model": "bytedance/seedream-5.0-lite",
-            "prompt": null
+            "assetId": "ast_01M8BS3CZ4F64HNN5V38BDFQGX",
+            "model": "bytedance/seedream-5.5",
+            "prompt": "The presenter mid-sentence on a lit loft studio set, one hand gesturing: brick wall, warm practical lamps, shelves, plants and a camera on a tripod behind, softbox key light from the left, medium shot, 35mm lens, shallow depth of field, gentle film grade Fictional adults only, no real people. No logos, no brand marks, no readable text."
           },
           {
             "node": "speak",
-            "assetId": "ast_01M8BM5TRZ09J0HXBAQK78W76W",
-            "model": "bytedance/seedance-2.0-mini",
-            "prompt": null
+            "assetId": "ast_01M8BSH7DZKQ9VWBGJTM9CPS5A",
+            "model": "lumina/berry-1.0",
+            "prompt": "The presenter speaks to the camera mid-sentence with natural hand gestures, the camera eases in slowly: \"Hi, welcome to the channel.\""
           }
         ]
       },
-      "coverKey": "public/templates/tpl_presenter_intro/poster-c180da9730.jpg",
-      "coverWebpKey": "public/templates/tpl_presenter_intro/poster-c180da9730.webp",
-      "coverAvifKey": "public/templates/tpl_presenter_intro/poster-c180da9730.avif",
-      "previewKey": "public/templates/tpl_presenter_intro/preview-8256eeaf90.mp4",
+      "coverKey": "public/templates/tpl_presenter_intro/poster-daae4d1aee.jpg",
+      "coverWebpKey": "public/templates/tpl_presenter_intro/poster-daae4d1aee.webp",
+      "coverAvifKey": "public/templates/tpl_presenter_intro/poster-daae4d1aee.avif",
+      "previewKey": "public/templates/tpl_presenter_intro/preview-8098928d43.mp4",
       "coverWidth": 720,
-      "coverHeight": 406,
-      "coverColor": "#b4b3c0",
+      "coverHeight": 412,
+      "coverColor": "#402e25",
       "previewSec": 5,
-      "previewBytes": 557625
+      "previewBytes": 399774
     },
     {
       "templateId": "tpl_product_review",
@@ -1010,6 +1016,216 @@
       "coverColor": "#bda492",
       "previewSec": 5,
       "previewBytes": 893401
+    },
+    {
+      "templateId": "tpl_drama_dinner_party",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BS19GHY8RF68RYTE4Z78XA",
+        "runId": "run_01M8BSHJ44F44A8ZP5HBZ53ZP9",
+        "runRef": "T-53ZP9",
+        "outputs": [
+          {
+            "node": "k1",
+            "assetId": "ast_01M8BS3CEH5R2VK8ZEBH9X3AHG",
+            "model": "bytedance/seedream-5.5",
+            "prompt": "Cinematic film still: Wide shot of six friends around a long candlelit dinner table in a warm apartment, wine glasses, shared plates, string lights and plants behind, everyone mid-laugh, 35mm lens, warm amber grade Fictional adults only, no real people. No logos, no brand marks, no readable text."
+          },
+          {
+            "node": "v1",
+            "assetId": "ast_01M8BSMWZEDY8ZQXQ1DZRMQZ3N",
+            "model": "lumina/berry-1.0",
+            "prompt": "Slow push-in down the table as the friends laugh and pass dishes, candles flicker"
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_drama_dinner_party/poster-15b1aa1cc0.jpg",
+      "coverWebpKey": "public/templates/tpl_drama_dinner_party/poster-15b1aa1cc0.webp",
+      "coverAvifKey": "public/templates/tpl_drama_dinner_party/poster-15b1aa1cc0.avif",
+      "previewKey": "public/templates/tpl_drama_dinner_party/preview-52de962342.mp4",
+      "coverWidth": 720,
+      "coverHeight": 412,
+      "coverColor": "#40301e",
+      "previewSec": 5,
+      "previewBytes": 967832
+    },
+    {
+      "templateId": "tpl_drama_last_rehearsal",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BSNHJTCTG41GX2KX0YRMV2",
+        "runId": "run_01M8BSSP9SKB16C8ZCBBNH87ZJ",
+        "runRef": "T-H87ZJ",
+        "outputs": [
+          {
+            "node": "k1",
+            "assetId": "ast_01M8BSPDPEZ7QT0V20KQ9ZBZAR",
+            "model": "bytedance/seedream-5.5",
+            "prompt": "Cinematic film still: Upright vertical frame, camera level with the floor: wide shot of five dancers standing mid-routine in a sunlit rehearsal studio with a wooden floor and tall windows, dust in the light beams, the choreographer watching from a chair with crossed arms, 24mm lens, warm natural grade Fictional adults only, no real people. No logos, no brand marks, no readable text."
+          },
+          {
+            "node": "v1",
+            "assetId": "ast_01M8BSX9G9VSXP9K3HTMXVMHT6",
+            "model": "lumina/berry-1.0",
+            "prompt": "The dancers move in sync across the floor, the camera glides alongside"
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_drama_last_rehearsal/poster-c458f3b6eb.jpg",
+      "coverWebpKey": "public/templates/tpl_drama_last_rehearsal/poster-c458f3b6eb.webp",
+      "coverAvifKey": "public/templates/tpl_drama_last_rehearsal/poster-c458f3b6eb.avif",
+      "previewKey": "public/templates/tpl_drama_last_rehearsal/preview-b7edfe72b6.mp4",
+      "coverWidth": 720,
+      "coverHeight": 1260,
+      "coverColor": "#706556",
+      "previewSec": 5,
+      "previewBytes": 1345512
+    },
+    {
+      "templateId": "tpl_concert_vlog",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BS6PWSRBRPXPRJNHFHDPMR",
+        "runId": "run_01M8BSP7Y925NVPFBM17V5FEJG",
+        "runRef": "T-5FEJG",
+        "outputs": [
+          {
+            "node": "crowd",
+            "assetId": "ast_01M8BS85MJ17CQ0Y4WBPNC8D3E",
+            "model": "bytedance/seedream-5.5",
+            "prompt": "Vertical selfie-vlog frame seen from the front camera at arm’s length, no phone visible in the frame, at a packed outdoor concert at night: a woman in her twenties laughs into the lens, two friends beside her singing along, a crowd with raised hands behind, stage lights cutting through haze, confetti in the air, 24mm wide lens, saturated stage-light grade. Fictional adults only, no real people. No logos, no brand marks, no readable text."
+          },
+          {
+            "node": "clip",
+            "assetId": "ast_01M8BST32Q06YY8THCXE5X4G32",
+            "model": "lumina/berry-1.0",
+            "prompt": "The friends jump and sing along, confetti falls, stage lights sweep through the haze, handheld selfie movement"
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_concert_vlog/poster-ee1e002ddf.jpg",
+      "coverWebpKey": "public/templates/tpl_concert_vlog/poster-ee1e002ddf.webp",
+      "coverAvifKey": "public/templates/tpl_concert_vlog/poster-ee1e002ddf.avif",
+      "previewKey": "public/templates/tpl_concert_vlog/preview-88ff72d381.mp4",
+      "coverWidth": 720,
+      "coverHeight": 1260,
+      "coverColor": "#4c4648",
+      "previewSec": 5,
+      "previewBytes": 1428219
+    },
+    {
+      "templateId": "tpl_cooking_show",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BS1BR526037CFMD36RPPTZ",
+        "runId": "run_01M8BSHM8Y3WVMHV9NH9VCNWDS",
+        "runRef": "T-CNWDS",
+        "outputs": [
+          {
+            "node": "k1",
+            "assetId": "ast_01M8BS40ACJJ1DF43859VN3M4M",
+            "model": "bytedance/seedream-5.5",
+            "prompt": "Cooking show still on a bright TV kitchen set: a host in his forties with a navy apron tosses vegetables in a flaming pan at a marble island while a guest chef in her thirties laughs and adds herbs, copper pans, open shelves of jars and a crew light visible at the edge, softbox key light, 35mm lens, medium-wide shot, clean warm grade. Fictional adults only, no real people. No logos, no brand marks, no readable text."
+          },
+          {
+            "node": "v1",
+            "assetId": "ast_01M8BSN27ED3T31XXG64GYVRKA",
+            "model": "lumina/berry-1.0",
+            "prompt": "The host tosses the vegetables, flames flare up, the guest chef laughs and sprinkles herbs, slow dolly in"
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_cooking_show/poster-2e85f3144b.jpg",
+      "coverWebpKey": "public/templates/tpl_cooking_show/poster-2e85f3144b.webp",
+      "coverAvifKey": "public/templates/tpl_cooking_show/poster-2e85f3144b.avif",
+      "previewKey": "public/templates/tpl_cooking_show/preview-01110f5823.mp4",
+      "coverWidth": 720,
+      "coverHeight": 412,
+      "coverColor": "#614b3c",
+      "previewSec": 5,
+      "previewBytes": 1137336
+    },
+    {
+      "templateId": "tpl_wedding_toast",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BS1CCF9Q9X7CN208NSCK4R",
+        "runId": "run_01M8BSW767K30NRJF4KKRD4YFY",
+        "runRef": "T-D4YFY",
+        "outputs": [
+          {
+            "node": "frame",
+            "assetId": "ast_01M8BS41SZHMXF6FTJ75C58YZR",
+            "model": "bytedance/seedream-5.5",
+            "prompt": "The speaker mid-sentence at a wedding reception at night in a barn venue strung with warm lights: he stands in a navy suit holding a microphone and a raised champagne glass, guests at round tables laughing behind him, the couple soft at the head table, warm tungsten light, 50mm lens, shallow depth of field, warm film grade Fictional adults only, no real people. No logos, no brand marks, no readable text."
+          },
+          {
+            "node": "speak",
+            "assetId": "ast_01M8BT05CSGVE8BZDB2DWPPVW4",
+            "model": "lumina/berry-1.0",
+            "prompt": "He speaks into the microphone and lifts his glass, the guests laugh and raise theirs, slow push-in. No subtitles, captions or on-screen text"
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_wedding_toast/poster-c38c84cd96.jpg",
+      "coverWebpKey": "public/templates/tpl_wedding_toast/poster-c38c84cd96.webp",
+      "coverAvifKey": "public/templates/tpl_wedding_toast/poster-c38c84cd96.avif",
+      "previewKey": "public/templates/tpl_wedding_toast/preview-2073ed098c.mp4",
+      "coverWidth": 720,
+      "coverHeight": 412,
+      "coverColor": "#412b1b",
+      "previewSec": 5,
+      "previewBytes": 543655
+    },
+    {
+      "templateId": "tpl_market_handoff",
+      "source": "generated",
+      "sourceUrl": null,
+      "license": "first-party: generated on Rolling from the template itself (owned output, no third-party rights)",
+      "generated": {
+        "environment": "staging",
+        "projectId": "prj_01M8BSNJA7JSCCAN32ETS3B4KA",
+        "runId": "run_01M8BSYMPNH8CAF520TP28JC4V",
+        "runRef": "T-8JC4V",
+        "outputs": [
+          {
+            "node": "handoff",
+            "assetId": "ast_01M8BSV2BHT5R48PA3TZV1AC42",
+            "model": "bytedance/seedream-5.5",
+            "prompt": "Lifestyle photo at a busy open-air morning market: a stallholder in her fifties with a linen apron hands the product across a wooden table to a smiling customer in his thirties, crates of flowers and bread on the table, other shoppers browsing behind under plain cream canvas awnings, soft morning sun, 35mm lens, vertical framing, warm natural grade. Fictional adults only, no real people. No logos, no brand marks, no readable text."
+          },
+          {
+            "node": "clip",
+            "assetId": "ast_01M8BT2STYFJJXAKQZC8ZHXWEB",
+            "model": "lumina/berry-1.0",
+            "prompt": "She hands over the product with a smile, he turns it in his hands and laughs, shoppers pass behind, gentle handheld push-in"
+          }
+        ]
+      },
+      "coverKey": "public/templates/tpl_market_handoff/poster-9e4de5ddb0.jpg",
+      "coverWebpKey": "public/templates/tpl_market_handoff/poster-9e4de5ddb0.webp",
+      "coverAvifKey": "public/templates/tpl_market_handoff/poster-9e4de5ddb0.avif",
+      "previewKey": "public/templates/tpl_market_handoff/preview-ca61981f39.mp4",
+      "coverWidth": 720,
+      "coverHeight": 1260,
+      "coverColor": "#7a6b5e",
+      "previewSec": 5,
+      "previewBytes": 1206971
     }
   ]
 }

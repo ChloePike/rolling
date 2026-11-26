@@ -23,6 +23,11 @@ const IMAGE = 'bytedance/seedream-5.0-lite';
 const VIDEO = 'bytedance/seedance-2.5';
 const VIDEO_FAST = 'bytedance/seedance-2.0-mini';
 const LIP_SYNC = 'lumina/wan2.7-i2v-spicy';
+/** People-heavy scenes (faces, hands, crowds): Seedream 5.5 keyframes, Wan 3.0 motion; same Starter caps. */
+const IMAGE_PEOPLE = 'bytedance/seedream-5.5';
+const VIDEO_PEOPLE = 'lumina/berry-1.0';
+/** Appended to every people-scene still: fictional adults, nothing a viewer could read as a brand. */
+const PEOPLE_NOTE = 'Fictional adults only, no real people. No logos, no brand marks, no readable text.';
 
 type N = [id: string, kind: NodeKind, title: string, params: Record<string, unknown>, col: number, row: number];
 type E = [from: string, to: string, port: string];
@@ -65,6 +70,8 @@ function tpl(id: string, title: string, category: TemplateCategory, description:
 }
 
 const img = (prompt: string, ratio: string, extra: Record<string, unknown> = {}) => ({ model: IMAGE, prompt, ratio, resolution: '2K', ...extra });
+/** A people-scene keyframe (Seedream 5.5) with the fictional-adults, no-brands note. */
+const still = (prompt: string, ratio: string) => img(`${prompt} ${PEOPLE_NOTE}`, ratio, { model: IMAGE_PEOPLE });
 const vid = (prompt: string, ratio: string, length: number, model = VIDEO) => ({
   model,
   prompt,
@@ -74,7 +81,17 @@ const vid = (prompt: string, ratio: string, length: number, model = VIDEO) => ({
 });
 
 /** A presenter speaking to camera: portrait → framed still → speaking clip. */
-function talking(id: string, title: string, description: string, ratio: string, still: string, motion: string, tags: string[]): BuiltinTemplate {
+function talking(
+  id: string,
+  title: string,
+  description: string,
+  ratio: string,
+  framing: string,
+  motion: string,
+  tags: string[],
+  people = false,
+  photoTitle = 'Presenter photo',
+): BuiltinTemplate {
   return tpl(
     id,
     title,
@@ -82,9 +99,9 @@ function talking(id: string, title: string, description: string, ratio: string, 
     description,
     graph(
       [
-        ['photo', 'asset', 'Presenter photo', { media: 'image' }, 0, 0],
-        ['frame', 'image', 'Framing', img(still, ratio), 1, 0],
-        ['speak', 'video', 'Talking', vid(motion, ratio, 5, VIDEO_FAST), 2, 0],
+        ['photo', 'asset', photoTitle, { media: 'image' }, 0, 0],
+        ['frame', 'image', 'Framing', people ? still(framing, ratio) : img(framing, ratio), 1, 0],
+        ['speak', 'video', 'Talking', vid(motion, ratio, 5, people ? VIDEO_PEOPLE : VIDEO_FAST), 2, 0],
       ],
       [
         ['photo', 'frame', 'refs'],
@@ -96,7 +113,7 @@ function talking(id: string, title: string, description: string, ratio: string, 
 }
 
 /** A three-shot drama episode: cast description → three keyframes → three clips. */
-function drama(id: string, title: string, description: string, cast: string, shots: Array<[still: string, motion: string]>, ratio = '9:16'): BuiltinTemplate {
+function drama(id: string, title: string, description: string, cast: string, shots: Array<[still: string, motion: string]>, ratio = '9:16', people = false): BuiltinTemplate {
   const ids = shots.map((_, i) => i + 1);
   return tpl(
     id,
@@ -106,8 +123,8 @@ function drama(id: string, title: string, description: string, cast: string, sho
     graph(
       [
         ['cast', 'text', 'Cast', { text: cast }, 0, 1],
-        ...shots.map(([still], i): N => [`k${i + 1}`, 'image', `Keyframe ${i + 1}`, img(`Cinematic film still: ${still}`, ratio), 1, i]),
-        ...shots.map(([, motion], i): N => [`v${i + 1}`, 'video', `Shot ${i + 1}`, vid(motion, ratio, 5, VIDEO_FAST), 2, i]),
+        ...shots.map(([s], i): N => [`k${i + 1}`, 'image', `Keyframe ${i + 1}`, people ? still(`Cinematic film still: ${s}`, ratio) : img(`Cinematic film still: ${s}`, ratio), 1, i]),
+        ...shots.map(([, motion], i): N => [`v${i + 1}`, 'video', `Shot ${i + 1}`, vid(motion, ratio, 5, people ? VIDEO_PEOPLE : VIDEO_FAST), 2, i]),
       ],
       [...ids.map((i): E => ['cast', `k${i}`, 'prompt']), ...ids.map((i): E => [`k${i}`, `v${i}`, 'frame'])],
       [
@@ -144,7 +161,7 @@ export const BUILTIN_TEMPLATES: readonly BuiltinTemplate[] = [
     'tpl_tv_ad_15s',
     'TV ad, 15 seconds',
     'product',
-    'A three-shot 15-second ad for one product: script, keyframes from your product photo, then motion. Cut and export in the editor.',
+    'A three-shot 15-second ad where people use your product in a real place: script, keyframes from your product photo, then motion. Cut and export in the editor.',
     graph(
       [
         [
@@ -152,18 +169,42 @@ export const BUILTIN_TEMPLATES: readonly BuiltinTemplate[] = [
           'script',
           'Script',
           {
-            text: 'Shot 1: the product on a clean surface, morning light. Shot 2: a hand picks it up, close-up. Shot 3: the product with the brand line.',
+            text: 'Shot 1: a runner pauses on a city rooftop at golden hour and drinks from the product. Shot 2: close-up of her hand holding it, the skyline behind. Shot 3: the product on the ledge, friends laughing behind, room for the brand line.',
           },
           0,
           1,
         ],
         ['product', 'asset', 'Product photo', { media: 'image' }, 0, 0],
-        ['k1', 'image', 'Keyframe 1', img('The product on a clean surface in soft morning light, wide shot', '16:9'), 1, 0],
-        ['k2', 'image', 'Keyframe 2', img('A hand picks up the product, close-up, shallow depth of field', '16:9'), 1, 1],
-        ['k3', 'image', 'Keyframe 3', img('Hero shot of the product, centered, room for a brand line', '16:9'), 1, 2],
-        ['v1', 'video', 'Shot 1', vid('Slow push-in on the product', '16:9', 5), 2, 0],
-        ['v2', 'video', 'Shot 2', vid('The hand lifts the product toward the camera', '16:9', 5), 2, 1],
-        ['v3', 'video', 'Shot 3', vid('Gentle orbit around the product, ends still', '16:9', 5), 2, 2],
+        [
+          'k1',
+          'image',
+          'Keyframe 1',
+          still(
+            'Commercial film still at golden hour on a city rooftop: a woman in her thirties in running gear pauses mid-workout and drinks from the product, two friends stretching behind her, skyline and low sun behind, warm backlight with a soft lens flare, 35mm lens, medium-wide shot, shallow depth of field, warm teal-and-amber grade.',
+            '16:9',
+          ),
+          1,
+          0,
+        ],
+        [
+          'k2',
+          'image',
+          'Keyframe 2',
+          still('Commercial close-up: her hand grips the product, droplets on the surface, the skyline soft behind, golden rim light, 85mm lens at f/1.8, warm grade.', '16:9'),
+          1,
+          1,
+        ],
+        [
+          'k3',
+          'image',
+          'Keyframe 3',
+          still('Commercial hero shot: the product on a concrete rooftop ledge at sunset, friends laughing out of focus behind, open sky on the left for a brand line, 50mm lens, warm grade.', '16:9'),
+          1,
+          2,
+        ],
+        ['v1', 'video', 'Shot 1', vid('She lowers the product after a long drink and laughs with a friend, wind in her hair, slow handheld push-in, golden hour', '16:9', 5, VIDEO_PEOPLE), 2, 0],
+        ['v2', 'video', 'Shot 2', vid('Her hand lifts the product toward the camera, the skyline drifts behind, rack focus', '16:9', 5, VIDEO_PEOPLE), 2, 1],
+        ['v3', 'video', 'Shot 3', vid('Slow arc around the product on the ledge as the friends laugh behind, ends still', '16:9', 5, VIDEO_PEOPLE), 2, 2],
       ],
       [
         ['product', 'k1', 'refs'],
@@ -191,14 +232,24 @@ export const BUILTIN_TEMPLATES: readonly BuiltinTemplate[] = [
     'tpl_product_showcase',
     'Product showcase',
     'product',
-    'Two clean angles of one product turned into short loops for a product page or social post.',
+    'Your product in someone’s hands in a styled real place, plus a detail shot, turned into short square loops for a product page or social post.',
     graph(
       [
         ['product', 'asset', 'Product photo', { media: 'image' }, 0, 0],
-        ['front', 'image', 'Front angle', img('Studio product shot, front view, seamless light background', '1:1'), 1, 0],
-        ['detail', 'image', 'Detail', img('Macro detail of the product material and texture', '1:1'), 1, 1],
-        ['loop1', 'video', 'Turntable', vid('The product turns slowly on a turntable', '1:1', 5, VIDEO_FAST), 2, 0],
-        ['loop2', 'video', 'Detail move', vid('Slow slide across the detail', '1:1', 5, VIDEO_FAST), 2, 1],
+        [
+          'front',
+          'image',
+          'In hand',
+          still(
+            'Lifestyle product photo: a barista in her late twenties in a denim apron holds the product out across the wooden counter of a busy sunlit cafe, regulars chatting and an espresso machine soft behind, morning window light from the left, 50mm lens, shallow depth of field, warm film grade.',
+            '1:1',
+          ),
+          1,
+          0,
+        ],
+        ['detail', 'image', 'Detail', still('Macro detail of the product in her hands, its material and texture, warm window light, cafe bokeh behind, 100mm macro lens.', '1:1'), 1, 1],
+        ['loop1', 'video', 'Hand-off', vid('She turns the product in her hands, smiles and offers it to the camera, people move behind, slow push-in', '1:1', 5, VIDEO_PEOPLE), 2, 0],
+        ['loop2', 'video', 'Detail move', vid('Slow slide across the detail as her fingers turn the product', '1:1', 5, VIDEO_PEOPLE), 2, 1],
       ],
       [
         ['product', 'front', 'refs'],
@@ -207,7 +258,7 @@ export const BUILTIN_TEMPLATES: readonly BuiltinTemplate[] = [
         ['detail', 'loop2', 'frame'],
       ],
     ),
-    { tags: ['2 loops', 'Square', 'Product photo'] },
+    { tags: ['2 loops', 'Square', 'In hand'] },
   ),
   tpl(
     'tpl_talking_head',
@@ -307,6 +358,39 @@ export const BUILTIN_TEMPLATES: readonly BuiltinTemplate[] = [
     { tags: ['Turnaround', 'Expressions'] },
   ),
   tpl(
+    'tpl_cooking_show',
+    'Kitchen cooking show',
+    'explainer',
+    'A host and a guest chef cook together on a bright kitchen set: a wide two-shot and a plating close-up, for recipes and tutorials.',
+    graph(
+      [
+        ['recipe', 'text', 'Recipe', { text: 'Charred spring vegetables with herb butter: toss in a hot pan, finish with butter and herbs, plate on a stone dish.' }, 0, 1],
+        [
+          'k1',
+          'image',
+          'Wide two-shot',
+          still(
+            'Cooking show still on a bright TV kitchen set: a host in his forties with a navy apron tosses vegetables in a flaming pan at a marble island while a guest chef in her thirties laughs and adds herbs, copper pans, open shelves of jars and a crew light visible at the edge, softbox key light, 35mm lens, medium-wide shot, clean warm grade.',
+            '16:9',
+          ),
+          1,
+          0,
+        ],
+        ['k2', 'image', 'Plating close-up', still('Close-up of the guest chef’s hands plating the dish on a stone plate, the host leaning in behind out of focus, steam rising, warm key light, 85mm lens, shallow depth of field.', '16:9'), 1, 1],
+        ['v1', 'video', 'Cooking', vid('The host tosses the vegetables, flames flare up, the guest chef laughs and sprinkles herbs, slow dolly in', '16:9', 5, VIDEO_PEOPLE), 2, 0],
+        ['v2', 'video', 'Plating', vid('Her hands set the last herb on the plate, steam drifts, slow push-in', '16:9', 5, VIDEO_PEOPLE), 2, 1],
+      ],
+      [
+        ['recipe', 'k1', 'prompt'],
+        ['recipe', 'k2', 'prompt'],
+        ['k1', 'v1', 'frame'],
+        ['k2', 'v2', 'frame'],
+      ],
+      [{ id: 'grp_t1', title: 'Shots', nodeIds: ['k1', 'k2', 'v1', 'v2'] }],
+    ),
+    { tags: ['2 shots', '2 people', '10 seconds'] },
+  ),
+  tpl(
     'tpl_storyboard',
     'Storyboard, 6 shots',
     'explainer',
@@ -349,13 +433,23 @@ export const BUILTIN_TEMPLATES: readonly BuiltinTemplate[] = [
     'tpl_outfit_try_on',
     'Outfit try-on',
     'outfit',
-    'A model photo wearing an outfit you supply, then a short walk toward the camera.',
+    'Your model wears the outfit in an editorial street scene, then walks toward the camera through the crowd.',
     graph(
       [
         ['model', 'asset', 'Model photo', { media: 'image' }, 0, 0],
         ['outfit', 'asset', 'Outfit', { media: 'image' }, 0, 1],
-        ['look', 'image', 'Look', img('The person wears the outfit, full body, street background, natural light', '9:16'), 1, 0],
-        ['walk', 'video', 'Walk', vid('The person walks toward the camera and turns', '9:16', 5), 2, 0],
+        [
+          'look',
+          'image',
+          'Look',
+          still(
+            'Editorial street-fashion photo: the person wears the outfit, full body, mid-stride on a cobblestone street in an old city quarter at golden hour, cafe tables, passersby and a cyclist soft behind, warm light in shop windows, 85mm lens, shallow depth of field, Portra film grade.',
+            '9:16',
+          ),
+          1,
+          0,
+        ],
+        ['walk', 'video', 'Walk', vid('The person walks toward the camera with confidence, the outfit moves in the breeze, passersby cross behind, slow tracking shot backward', '9:16', 5, VIDEO_PEOPLE), 2, 0],
       ],
       [
         ['model', 'look', 'refs'],
@@ -363,7 +457,7 @@ export const BUILTIN_TEMPLATES: readonly BuiltinTemplate[] = [
         ['look', 'walk', 'frame'],
       ],
     ),
-    { tags: ['2 pictures', 'Vertical'] },
+    { tags: ['2 pictures', 'Vertical', 'Street scene'] },
   ),
 
   // Product picks (D-002 cheap defaults: Seedream 5.0 Lite keyframes, Seedance 2.0 Mini motion).
@@ -371,12 +465,22 @@ export const BUILTIN_TEMPLATES: readonly BuiltinTemplate[] = [
     'tpl_unboxing_reel',
     'Unboxing reel',
     'product',
-    'Hands open the box and reveal your product, in a vertical clip for stories and reels.',
+    'A creator opens the box at home and reveals your product, in a vertical clip for stories and reels.',
     graph(
       [
         ['product', 'asset', 'Product photo', { media: 'image' }, 0, 0],
-        ['reveal', 'image', 'Reveal', img('Top-down view of hands opening a plain kraft gift box on a wooden table, the product inside, soft daylight', '9:16'), 1, 0],
-        ['clip', 'video', 'Unboxing', vid('The hands lift the lid and the product is revealed, gentle camera push-in', '9:16', 5, VIDEO_FAST), 2, 0],
+        [
+          'reveal',
+          'image',
+          'Reveal',
+          still(
+            'Lifestyle photo: a woman in her twenties sits cross-legged on a sunlit bedroom floor with a plain kraft box open on her lap, lifting the product out of tissue paper with a delighted smile, a rug, plants and an unmade bed behind, soft morning window light, 35mm lens, vertical framing, warm natural grade.',
+            '9:16',
+          ),
+          1,
+          0,
+        ],
+        ['clip', 'video', 'Unboxing', vid('She lifts the product out of the box and turns it toward the camera with a delighted smile, tissue paper rustles, gentle handheld push-in. The product keeps its own look; no added labels, captions or text', '9:16', 5, VIDEO_PEOPLE), 2, 0],
       ],
       [
         ['product', 'reveal', 'refs'],
@@ -384,6 +488,34 @@ export const BUILTIN_TEMPLATES: readonly BuiltinTemplate[] = [
       ],
     ),
     { tags: ['Vertical', '5 seconds', 'Product photo'] },
+  ),
+  tpl(
+    'tpl_market_handoff',
+    'Market stall hand-off',
+    'product',
+    'A stallholder hands your product to a customer at a busy morning market, in a vertical clip for shops and makers.',
+    graph(
+      [
+        ['product', 'asset', 'Product photo', { media: 'image' }, 0, 0],
+        [
+          'handoff',
+          'image',
+          'Hand-off',
+          still(
+            'Lifestyle photo at a busy open-air morning market: a stallholder in her fifties with a linen apron hands the product across a wooden table to a smiling customer in his thirties, crates of flowers and bread on the table, other shoppers browsing behind under plain cream canvas awnings, soft morning sun, 35mm lens, vertical framing, warm natural grade.',
+            '9:16',
+          ),
+          1,
+          0,
+        ],
+        ['clip', 'video', 'Clip', vid('She hands over the product with a smile, he turns it in his hands and laughs, shoppers pass behind, gentle handheld push-in', '9:16', 5, VIDEO_PEOPLE), 2, 0],
+      ],
+      [
+        ['product', 'handoff', 'refs'],
+        ['handoff', 'clip', 'frame'],
+      ],
+    ),
+    { tags: ['Vertical', '5 seconds', 'In hand'] },
   ),
   tpl(
     'tpl_lifestyle_scene',
@@ -448,11 +580,12 @@ export const BUILTIN_TEMPLATES: readonly BuiltinTemplate[] = [
   talking(
     'tpl_presenter_intro',
     'Presenter intro',
-    'A host introduces your channel or brand to camera in a bright studio.',
+    'A host introduces your channel or brand to camera on a lit studio set.',
     '16:9',
-    'The presenter stands in a bright, minimal studio, medium shot, looking at the camera',
-    'The presenter smiles and speaks to the camera, natural hand gestures: "Hi, welcome to the channel."',
-    ['Presenter', '5 seconds', '1 character'],
+    'The presenter mid-sentence on a lit loft studio set, one hand gesturing: brick wall, warm practical lamps, shelves, plants and a camera on a tripod behind, softbox key light from the left, medium shot, 35mm lens, shallow depth of field, gentle film grade',
+    'The presenter speaks to the camera mid-sentence with natural hand gestures, the camera eases in slowly: "Hi, welcome to the channel."',
+    ['Presenter', '5 seconds', 'Studio set'],
+    true,
   ),
   talking(
     'tpl_product_review',
@@ -490,7 +623,50 @@ export const BUILTIN_TEMPLATES: readonly BuiltinTemplate[] = [
     'The presenter talks to the camera with enthusiasm, small handheld movement: "Honestly, it made my mornings easier."',
     ['Vertical', 'UGC', 'Presenter'],
   ),
+  talking(
+    'tpl_wedding_toast',
+    'Wedding toast',
+    'The best man raises a glass at the reception while the guests laugh around him.',
+    '16:9',
+    'The speaker mid-sentence at a wedding reception at night in a barn venue strung with warm lights: he stands in a navy suit holding a microphone and a raised champagne glass, guests at round tables laughing behind him, the couple soft at the head table, warm tungsten light, 50mm lens, shallow depth of field, warm film grade',
+    'He speaks into the microphone and lifts his glass, the guests laugh and raise theirs, slow push-in. No subtitles, captions or on-screen text',
+    ['Speech', 'Guests', '5 seconds'],
+    true,
+    'Speaker photo',
+  ),
   // Short drama: three-shot vertical episodes; the cast description feeds every keyframe.
+  drama(
+    'tpl_drama_dinner_party',
+    'Dinner party secret',
+    'Six friends at a candlelit dinner, and one toast lets a secret slip.',
+    'Six adult friends in their thirties at a dinner party: Nadia, long braids, emerald dress; Theo, short beard, white shirt; Lena, short blonde hair, black turtleneck; and three other guests.',
+    [
+      [
+        'Wide shot of six friends around a long candlelit dinner table in a warm apartment, wine glasses, shared plates, string lights and plants behind, everyone mid-laugh, 35mm lens, warm amber grade',
+        'Slow push-in down the table as the friends laugh and pass dishes, candles flicker',
+      ],
+      ['Medium shot of Nadia standing to give a toast, glass raised, the others looking up at her, candlelight on their faces, 50mm lens', 'Nadia raises her glass and starts to speak, the table goes quiet'],
+      ['Close-up of Theo, his smile freezing, candles flickering, guests soft behind him, 85mm lens', 'Theo’s smile fades and he slowly sets down his glass'],
+    ],
+    '16:9',
+    true,
+  ),
+  drama(
+    'tpl_drama_last_rehearsal',
+    'Last rehearsal',
+    'A dance crew’s final run-through before opening night, and the lift that has never worked.',
+    'Five adult dancers in their twenties in plain rehearsal clothes; the lead pair: Ines, tall, dark hair in a bun, grey leotard; Jonah, shaved head, loose white tee.',
+    [
+      [
+        'Upright vertical frame, camera level with the floor: wide shot of five dancers standing mid-routine in a sunlit rehearsal studio with a wooden floor and tall windows, dust in the light beams, the choreographer watching from a chair with crossed arms, 24mm lens, warm natural grade',
+        'The dancers move in sync across the floor, the camera glides alongside',
+      ],
+      ['Medium shot of Jonah lifting Ines overhead, both straining, the others watching and holding their breath, 35mm lens', 'Jonah lifts Ines and she holds the pose, the others start to cheer'],
+      ['Close-up of the choreographer finally smiling, sunlight on her face, 85mm lens', 'She smiles and starts clapping slowly'],
+    ],
+    '9:16',
+    true,
+  ),
   drama(
     'tpl_drama_rooftop',
     'Rooftop confession',
@@ -580,6 +756,31 @@ export const BUILTIN_TEMPLATES: readonly BuiltinTemplate[] = [
     'Fairy lights twinkle, slow push-in on the product',
     ['Vertical', 'Product photo', '5 seconds'],
     true,
+  ),
+  // Venues and events: crowds and places, no photo needed.
+  tpl(
+    'tpl_concert_vlog',
+    'Concert crowd vlog',
+    'venue',
+    'Friends film themselves in the crowd as the stage lights hit, for venue, festival and event promos.',
+    graph(
+      [
+        [
+          'crowd',
+          'image',
+          'In the crowd',
+          still(
+            'Vertical selfie-vlog frame seen from the front camera at arm’s length, no phone visible in the frame, at a packed outdoor concert at night: a woman in her twenties laughs into the lens, two friends beside her singing along, a crowd with raised hands behind, stage lights cutting through haze, confetti in the air, 24mm wide lens, saturated stage-light grade.',
+            '9:16',
+          ),
+          1,
+          0,
+        ],
+        ['clip', 'video', 'Vlog', vid('The friends jump and sing along, confetti falls, stage lights sweep through the haze, handheld selfie movement', '9:16', 5, VIDEO_PEOPLE), 2, 0],
+      ],
+      [['crowd', 'clip', 'frame']],
+    ),
+    { tags: ['Vertical', '5 seconds', 'Crowd'] },
   ),
 ];
 

@@ -4,7 +4,9 @@ import { expect, test, type Page, type Route } from '@playwright/test';
  * Home Inspiration with the real API client and every `/api` call stubbed: template
  * cards show their poster at once (no empty tone tiles), sized from the stored poster
  * dimensions, with the real duration badge (none for image-only templates), and the
- * preview clip loads nothing until hover.
+ * preview clip loads nothing until hover. At rest a card is the poster and the duration;
+ * hover or focus brings up a solid bar with the name and Use template; touch devices show
+ * the name below. Clicking a card opens the preview modal.
  */
 const PNG_1X1 = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAfbLI3wAAAABJRU5ErkJggg==', 'base64');
 
@@ -37,6 +39,23 @@ const TEMPLATES = [
   template('tpl_character_sheet', 'Character sheet', 'comic', 0, 720, 476, false),
 ];
 
+const GRAPH = {
+  nodes: [
+    { id: 'k1', kind: 'image', title: 'Keyframe 1', params: { model: 'bytedance/seedream-5.5' }, position: { x: 0, y: 0 }, groupId: null },
+    { id: 'v1', kind: 'video', title: 'Shot 1', params: { model: 'lumina/berry-1.0' }, position: { x: 0, y: 0 }, groupId: null },
+    { id: 'v2', kind: 'video', title: 'Shot 2', params: { model: 'lumina/berry-1.0' }, position: { x: 0, y: 0 }, groupId: null },
+  ],
+  edges: [],
+  groups: [],
+};
+const model = (id: string, kind: 'image' | 'video', name: string) => ({
+  id, kind, name, tags: [], default: false, placement: 'featured', auto: true, mature: false, matureOnly: false, requiresIdentitySafety: false,
+  operations: kind === 'image' ? ['t2i', 'edit'] : ['t2v', 'i2v'], seconds: kind === 'image' ? null : { min: 2, max: 15 }, defaultSeconds: kind === 'image' ? null : 5,
+  resolutions: kind === 'image' ? [] : ['720p'], defaultResolution: kind === 'image' ? null : '720p', ratios: ['9:16', '16:9', '1:1'], audio: false, lipSync: false,
+  credits: [{ resolution: kind === 'image' ? null : '720p', seconds: kind === 'image' ? null : 5, credits: kind === 'image' ? 11 : 150 }],
+});
+const MODELS = [model('bytedance/seedream-5.5', 'image', 'Seedream 5.5'), model('lumina/berry-1.0', 'video', 'Wan 3.0')];
+
 async function stubApi(page: Page, seen: string[]) {
   await page.addInitScript(() => {
     (globalThis as { __rollingApiMode?: string }).__rollingApiMode = 'real';
@@ -52,6 +71,11 @@ async function stubApi(page: Page, seen: string[]) {
     if (url.pathname === '/api/me') return json(ME);
     if (url.pathname === '/api/projects') return json({ items: [], nextCursor: null });
     if (url.pathname === '/api/templates') return json({ items: TEMPLATES, featured: [], total: TEMPLATES.length });
+    if (url.pathname.startsWith('/api/templates/')) {
+      const t = TEMPLATES.find((x) => url.pathname.endsWith(`/${x.id}`));
+      return t ? json({ template: { ...t, graph: GRAPH } }) : json({ error: { code: 'NOT_FOUND', message: 'stub' } }, 404);
+    }
+    if (url.pathname === '/api/models') return json({ models: MODELS });
     return json({ error: { code: 'NOT_FOUND', message: 'stub' } }, 404);
   });
 }
@@ -68,7 +92,7 @@ test('Home inspiration cards render template posters sized from the stored dimen
   const seen: string[] = [];
   await stubApi(page, seen);
   const section = await openInspiration(page);
-  const cards = section.getByRole('link');
+  const cards = section.locator('[data-template-card]');
   await expect(cards).toHaveCount(3);
   // Every card shows a loaded poster, not an empty tone tile.
   const posters = section.getByTestId('template-poster');
@@ -99,11 +123,105 @@ test('Reduced motion keeps the poster only', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await stubApi(page, seen);
   const section = await openInspiration(page);
-  const cards = section.getByRole('link');
+  const cards = section.locator('[data-template-card]');
   await expect(section.getByTestId('template-poster')).toHaveCount(3);
   await cards.nth(0).hover();
-  await cards.nth(1).focus();
+  await cards.nth(1).getByRole('button').focus();
   await page.waitForTimeout(500);
   await expect(cards.nth(0).getByTestId('template-preview')).toHaveAttribute('preload', 'none');
   expect(seen.some((p) => p.endsWith('.mp4'))).toBe(false);
 });
+
+test('At rest a card shows only the poster and the duration; hover or focus brings up the name and Use template on a solid bar', async ({ page }) => {
+  await stubApi(page, []);
+  const section = await openInspiration(page);
+  const card = section.locator('[data-template-card]').nth(1);
+  const bar = card.getByTestId('template-bar');
+  await expect(card.getByTestId('template-poster')).toBeVisible();
+  await expect(bar).toBeHidden();
+  await expect(card.getByTestId('template-caption')).toBeHidden();
+  await card.hover();
+  await expect(bar).toBeVisible();
+  await expect(bar).toContainText('TV ad, 15 seconds');
+  await expect(bar.getByRole('link', { name: 'Use template: TV ad, 15 seconds' })).toBeVisible();
+  // Solid, no gradient and no translucency.
+  const bg = await bar.evaluate((el) => getComputedStyle(el));
+  expect(bg.backgroundImage).toBe('none');
+  expect(bg.backgroundColor).toMatch(/^rgb\(/);
+  await page.mouse.move(2, 2);
+  await expect(bar).toBeHidden();
+  await card.getByRole('button', { name: 'Preview TV ad, 15 seconds' }).focus();
+  await expect(bar).toBeVisible();
+  await page.keyboard.press('Tab');
+  await expect(bar.getByRole('link')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/\/create\/quick\?template=tpl_tv_ad_15s$/);
+});
+
+test('Clicking a card opens the preview: clip, facts, models; arrows move through the tab; Esc and the backdrop close; Use template opens Quick Create', async ({ page }) => {
+  await stubApi(page, []);
+  const section = await openInspiration(page);
+  await section.locator('[data-template-card]').nth(1).getByRole('button', { name: 'Preview TV ad, 15 seconds' }).click();
+  const dialog = page.getByRole('dialog', { name: 'TV ad, 15 seconds' });
+  await expect(dialog).toBeVisible();
+  const video = dialog.getByTestId('template-preview-video');
+  await expect(video).toHaveAttribute('src', /tpl_tv_ad_15s\/preview-a\.mp4$/);
+  // The silent clip plays at once with the native controls (play/pause, scrub, fullscreen).
+  expect(await video.evaluate((v: HTMLVideoElement) => v.muted && v.autoplay && v.controls)).toBe(true);
+  expect(await video.getAttribute('controlslist')).not.toContain('nofullscreen');
+  await expect(dialog).toContainText('15s');
+  await expect(dialog).toContainText('9:16');
+  await expect(dialog).toContainText('2 shots');
+  await expect(dialog).toContainText('Seedream 5.5');
+  await expect(dialog).toContainText('Wan 3.0');
+  await page.keyboard.press('ArrowRight');
+  const next = page.getByRole('dialog', { name: 'Character sheet' });
+  await expect(next).toBeVisible();
+  // Image templates show the cover large, no clip.
+  await expect(next.getByTestId('template-preview-video')).toHaveCount(0);
+  await expect(next.getByRole('button', { name: 'Next template' })).toBeDisabled();
+  await next.getByRole('button', { name: 'Previous template' }).click();
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.getByRole('dialog', { name: 'Holiday greeting' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await section.locator('[data-template-card]').nth(0).getByRole('button').click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.mouse.click(4, 450);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await section.locator('[data-template-card]').nth(0).getByRole('button').click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Use template' }).click();
+  await expect(page).toHaveURL(/\/create\/quick\?template=tpl_holiday_greeting$/);
+});
+
+test('Reduced motion: the preview does not autoplay; a play button starts it', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await stubApi(page, []);
+  const section = await openInspiration(page);
+  await section.locator('[data-template-card]').nth(0).getByRole('button').click();
+  const dialog = page.getByRole('dialog', { name: 'Holiday greeting' });
+  const video = dialog.getByTestId('template-preview-video');
+  expect(await video.evaluate((v: HTMLVideoElement) => v.autoplay || !v.paused)).toBe(false);
+  await expect(video).toHaveAttribute('preload', 'none');
+  await dialog.getByRole('button', { name: 'Play preview' }).click();
+  await expect(video).toHaveAttribute('preload', 'auto');
+  await expect(dialog.getByRole('button', { name: 'Play preview' })).toHaveCount(0);
+});
+
+test.describe('touch devices', () => {
+  test.use({ hasTouch: true, isMobile: true });
+  test('the name sits below the card and the hover bar never shows', async ({ page }) => {
+    await stubApi(page, []);
+    const section = await openInspiration(page);
+    const card = section.locator('[data-template-card]').nth(0);
+    await expect(card.getByTestId('template-caption')).toBeVisible();
+    await expect(card.getByTestId('template-caption')).toHaveText('Holiday greeting');
+    const media = await card.locator('[data-testid="template-poster"]').boundingBox();
+    const caption = await card.getByTestId('template-caption').boundingBox();
+    expect(caption!.y).toBeGreaterThanOrEqual(media!.y + media!.height - 1);
+    await card.getByRole('button').tap();
+    await expect(page.getByRole('dialog', { name: 'Holiday greeting' })).toBeVisible();
+    await expect(card.getByTestId('template-bar')).toBeHidden();
+  });
+});
+

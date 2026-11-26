@@ -237,6 +237,8 @@ export function TemplatesPage() {
       </section>}
       <TemplatePreview
         template={preview}
+        items={preview && data.featured.some((x) => x.id === preview.id) && !items.some((x) => x.id === preview.id) ? data.featured : items}
+        onSelect={setPreview}
         tone={preview ? TONES[Math.max(0, data.items.findIndex((x) => x.id === preview.id)) % TONES.length]! : TONES[0]!}
         ratio={ratio}
         onClose={() => setPreview(null)}

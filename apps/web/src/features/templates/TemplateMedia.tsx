@@ -26,7 +26,8 @@ export function TemplateMedia({ t }: { t: Pick<TemplateSummary, 'cover' | 'previ
   const preview = t.previewUrl ?? null;
 
   useEffect(() => {
-    const card = ref.current?.parentElement;
+    // The card is the nearest `data-template-card` (it gets hover and focus), else the direct parent.
+    const card = ref.current?.closest<HTMLElement>('[data-template-card]') ?? ref.current?.parentElement;
     if (!card || !preview || !previewsAllowed()) return;
     if (window.matchMedia?.('(hover: hover)').matches) {
       const on = () => setActive(true);

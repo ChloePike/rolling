@@ -134,8 +134,14 @@ test.describe('templates interactions', () => {
     await page.getByRole('region', { name: 'All templates' }).getByRole('button', { name: /Breakfast vlog/ }).click();
     const preview = page.getByRole('dialog', { name: 'Breakfast vlog' });
     await expect(preview).toBeVisible();
-    await expect(preview).toContainText('1 role');
-    await expect(preview).toContainText('Dialogue');
+    await expect(preview).toContainText('Aspect ratio');
+    await expect(preview).toContainText('9:16');
+    // Arrow keys and the prev/next buttons move through the grid.
+    const dialog = page.getByRole('dialog');
+    await page.keyboard.press('ArrowRight');
+    await expect(dialog).not.toHaveAccessibleName('Breakfast vlog');
+    await dialog.getByRole('button', { name: 'Previous template' }).click();
+    await expect(page.getByRole('dialog', { name: 'Breakfast vlog' })).toBeVisible();
     await preview.getByRole('button', { name: 'Use template' }).click();
     await expect(page).toHaveURL(/\/create\/quick\?template=tpl_05&ratio=9%3A16$/);
   });

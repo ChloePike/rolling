@@ -63,7 +63,7 @@ describe("D1 migration", () => {
     const db = new DatabaseSync(":memory:");
     const dir = new URL("../migrations/d1/", import.meta.url);
     const files = readdirSync(dir).filter((f) => f.endsWith(".sql")).sort();
-    expect(files).toEqual(["0001_init.sql", "0002_models.sql", "0003_plan_names.sql", "0004_auth.sql", "0005_billing.sql", "0006_projects_assets.sql", "0007_runs.sql", "0008_agent.sql", "0009_safety.sql", "0010_uploads.sql", "0011_agent_allowance.sql", "0012_team.sql", "0013_account.sql", "0014_exports.sql", "0015_runs_templates.sql", "0016_seed_templates.sql", "0017_template_covers.sql", "0018_privacy.sql", "0019_seed_inspiration_templates.sql", "0020_template_media.sql", "0021_template_feed_order.sql"]);
+    expect(files).toEqual(["0001_init.sql", "0002_models.sql", "0003_plan_names.sql", "0004_auth.sql", "0005_billing.sql", "0006_projects_assets.sql", "0007_runs.sql", "0008_agent.sql", "0009_safety.sql", "0010_uploads.sql", "0011_agent_allowance.sql", "0012_team.sql", "0013_account.sql", "0014_exports.sql", "0015_runs_templates.sql", "0016_seed_templates.sql", "0017_template_covers.sql", "0018_privacy.sql", "0019_seed_inspiration_templates.sql", "0020_template_media.sql", "0021_template_feed_order.sql", "0022_public_items_asset_index.sql", "0023_inspiration_people.sql"]);
     for (const f of files) db.exec(readFileSync(new URL(f, dir), "utf8"));
     expectSchemaMatches(db, tablesOf(d1));
     // 0015: run requests and retries, template listing fields; 0016 seeds the built-in templates.
@@ -77,6 +77,10 @@ describe("D1 migration", () => {
     const covers = db
       .prepare("SELECT id, json_extract(meta, '$.coverKey') AS k, json_extract(meta, '$.coverWidth') AS w, json_extract(meta, '$.coverColor') AS c, json_extract(meta, '$.tags') AS tags FROM templates WHERE workspace_id IS NULL")
       .all() as Array<{ id: string; k: string; w: number; c: string; tags: string }>;
+    // 0023: people in complex scenes; the new built-ins arrive with their covers.
+    for (const id of ["tpl_drama_dinner_party", "tpl_drama_last_rehearsal", "tpl_concert_vlog", "tpl_cooking_show", "tpl_wedding_toast", "tpl_market_handoff"]) {
+      expect(covers.find((r) => r.id === id)?.k, id).toBeTruthy();
+    }
     for (const r of covers) {
       expect(r.k, r.id).toMatch(new RegExp(`^public/templates/${r.id}/poster-[0-9a-f]{10}\\.jpg$`));
       expect(r.w, r.id).toBe(720);

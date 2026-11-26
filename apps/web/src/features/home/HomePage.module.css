@@ -56,23 +56,38 @@
 }
 .cat:hover,.cat[aria-selected="true"]{color:var(--c-text-1)}
 .feed{columns:5 200px;column-gap:12px}
-.feedCard{
-  break-inside:avoid;margin-bottom:12px;border-radius:16px;overflow:hidden;position:relative;
-  display:flex;flex-direction:column;justify-content:space-between;padding:10px;box-sizing:border-box;
-}
-.feedDur{
-  align-self:flex-start;height:20px;padding:0 8px;border-radius:999px;background:var(--c-media-chip);
+.feedCard{break-inside:avoid;margin-bottom:12px;display:flex;flex-direction:column;gap:6px;border-radius:16px;color:var(--c-text-1)}
+.feedMedia{border-radius:16px;overflow:hidden;position:relative;padding:10px;box-sizing:border-box;display:flex;align-items:flex-start}
+/* Solid, theme-aware surfaces on the poster (no translucent chips, no gradients). */
+.feedMedia > .feedOpen{position:absolute;inset:0;z-index:1;border:0;padding:0;margin:0;background:transparent;cursor:pointer;border-radius:inherit}
+.feedMedia > .feedOpen:focus-visible{outline:none;box-shadow:inset 0 0 0 2px var(--c-accent)}
+.feedMedia > .feedDur{position:relative;z-index:2;pointer-events:none;
+  height:20px;padding:0 8px;border-radius:999px;background:var(--c-surface-float);color:var(--c-text-1);
   font-weight:600;font-size:11px;line-height:20px;
 }
-.feedFoot{display:flex;align-items:flex-end;justify-content:space-between;gap:8px}
-/* Solid chip (like the duration badge) so the name reads on any poster; no gradient scrim. */
-.feedName{flex:0 1 auto;min-width:0;padding:4px 9px;border-radius:10px;background:var(--c-media-chip);color:var(--c-text-1);font-size:13px;font-weight:600;line-height:18px}
-.useBtn{
-  height:28px;padding:0 10px;border-radius:999px;background:color-mix(in srgb,var(--c-text-1) 92%,transparent);color:var(--c-bg);
-  font-size:12px;font-weight:700;line-height:28px;white-space:nowrap;
+.feedMedia > .feedBar{
+  position:absolute;z-index:2;left:0;right:0;bottom:0;display:none;align-items:center;justify-content:space-between;gap:8px;
+  padding:8px 8px 8px 12px;background:var(--c-surface-float);border-top:1px solid var(--c-border);
 }
-.feedCard:hover .useBtn{background:var(--c-primary-hover)}
+.feedName{flex:1 1 auto;min-width:0;font-size:13px;font-weight:600;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.useBtn{
+  flex:none;height:28px;padding:0 12px;border-radius:999px;background:var(--c-text-1);color:var(--c-bg);text-decoration:none;
+  font-size:12px;font-weight:700;line-height:28px;white-space:nowrap;
+  transition:background-color var(--dur-fast) var(--ease-standard);
+}
+.useBtn:hover{background:var(--c-primary-hover)}
 .feedCard:active .useBtn{transform:scale(var(--m-press-scale))}
+.feedCaption{display:none;padding:0 2px;font-size:13px;font-weight:600;line-height:18px}
+@media (hover:hover){
+  .feedCard:hover .feedMedia > .feedBar,.feedCard:focus-within .feedMedia > .feedBar{display:flex;animation:feed-bar-in var(--dur-fast) var(--ease-standard)}
+}
+@media (hover:none){
+  .feedCaption{display:block}
+}
+@keyframes feed-bar-in{from{transform:translateY(100%)}to{transform:none}}
+@media (prefers-reduced-motion:reduce){
+  .feedCard:hover .feedMedia > .feedBar,.feedCard:focus-within .feedMedia > .feedBar{animation:none}
+}
 
 /* Option list for pills without a shared overlay. */
 .pillList{

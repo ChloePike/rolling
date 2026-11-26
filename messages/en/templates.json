@@ -37,9 +37,14 @@
   "templates.facet.duration.medium": "11–20s",
   "templates.facet.duration.long": "Over 20s",
   "templates.preview.close": "Close",
-  "templates.preview.cancel": "Close",
-  "templates.preview.used": "Popularity",
   "templates.preview.desc": "Shots, camera moves and pacing are set. Swap in your characters, lines and product.",
   "templates.preview.note": "Opens in Quick Create with this template. Nothing runs until you confirm the cost.",
-  "templates.none": "No templates yet. Save a selection on a canvas as a template and it shows up here."
+  "templates.none": "No templates yet. Save a selection on a canvas as a template and it shows up here.",
+  "templates.preview.shots": "Shots",
+  "templates.preview.shotCount": "{n, plural, one {# shot} other {# shots}}",
+  "templates.preview.models": "Models",
+  "templates.preview.prev": "Previous template",
+  "templates.preview.next": "Next template",
+  "templates.preview.play": "Play preview",
+  "templates.preview.open": "Preview {name}"
 }

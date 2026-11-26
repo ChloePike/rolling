@@ -2,7 +2,7 @@
  * Template covers and previews (D-008 public media): turns the outputs of each
  * built-in template's own run into the Home inspiration / Templates card media.
  *
- *   tsx scripts/templates/covers.mts --raw <dir> --provenance <file> [--upload] [--buckets a,b]
+ *   tsx scripts/templates/covers.mts --raw <dir> --provenance <file> [--upload] [--buckets a,b] [--migration <name>]
  *
  * Input: `<raw>/<templateId>/<node>.(jpg|png|webp|mp4)`, the outputs downloaded from the
  * content workspace, and a provenance file (`{ [templateId]: { projectId, runId, runRef,
@@ -16,7 +16,8 @@
  * API to every bucket in `--buckets` (default: the public and the media bucket of staging and
  * production); only `public/templates/*` keys in `rolling-*` buckets are ever written.
  * Writes `scripts/templates/covers.manifest.json` (source, license and provenance per item) and
- * the D1 migration that points the templates at the keys.
+ * the D1 migration that points the templates at the keys: every manifest item into 0020, or with
+ * `--migration <name>` only the templates made in this run (later, incremental cover updates).
  *
  * Token: `CLOUDFLARE_API_TOKEN` (R2 write); behind a proxy that injects it pass a placeholder
  * with `NODE_USE_ENV_PROXY=1`.
@@ -33,10 +34,10 @@ const PREVIEW_SEC = 5;
 const MAX_PREVIEW_BYTES = 1_450_000;
 const POSTER_WIDTH = 720;
 const GUTTER = '0x111113';
-const MIGRATION = '0020_template_media';
+const DEFAULT_MIGRATION = '0020_template_media';
 
-/** Which outputs make the card: a clip (video templates) or a grid of pictures. */
-type Layout = { clip: string } | { grid: string[]; cols: number };
+/** Which outputs make the card: a clip (video templates, `sec` to cut it shorter) or a grid of pictures. */
+type Layout = { clip: string; sec?: number } | { grid: string[]; cols: number };
 const LAYOUT: Record<string, Layout> = {
   tpl_tv_ad_15s: { clip: 'v1' },
   tpl_product_showcase: { clip: 'loop1' },
@@ -46,7 +47,8 @@ const LAYOUT: Record<string, Layout> = {
   tpl_storyboard: { grid: ['s1', 's2', 's3', 's4', 's5', 's6'], cols: 2 },
   tpl_holiday_greeting: { clip: 'clip' },
   tpl_outfit_try_on: { clip: 'walk' },
-  tpl_unboxing_reel: { clip: 'clip' },
+  // Cut before the model paints a made-up label on the product (from 2.4 s on).
+  tpl_unboxing_reel: { clip: 'clip', sec: 2.2 },
   tpl_lifestyle_scene: { clip: 'clip' },
   tpl_flat_lay_promo: { clip: 'clip' },
   tpl_feature_closeups: { clip: 'v1' },
@@ -66,6 +68,13 @@ const LAYOUT: Record<string, Layout> = {
   tpl_halloween_teaser: { clip: 'clip' },
   tpl_lunar_new_year: { clip: 'clip' },
   tpl_holiday_sale: { clip: 'clip' },
+  // People in complex scenes (migration 0023).
+  tpl_drama_dinner_party: { clip: 'v1' },
+  tpl_drama_last_rehearsal: { clip: 'v1' },
+  tpl_concert_vlog: { clip: 'clip' },
+  tpl_cooking_show: { clip: 'v1' },
+  tpl_wedding_toast: { clip: 'speak' },
+  tpl_market_handoff: { clip: 'clip' },
 };
 
 interface Output { node: string; kind: string; assetId: string; model: string | null; prompt: string | null; file: string }
@@ -104,11 +113,11 @@ function averageColor(file: string): string {
 }
 
 /** Trimmed, silent, faststart H.264 preview under the byte cap. */
-function encodePreview(src: string, out: string): number {
+function encodePreview(src: string, out: string, sec = PREVIEW_SEC): number {
   const [w, h] = probe(src, 'stream=width,height').split(',').map(Number) as [number, number];
   const scale = Math.min(w, h) > 720 ? (w < h ? 'scale=720:-2' : 'scale=-2:720') : 'scale=trunc(iw/2)*2:trunc(ih/2)*2';
   for (const crf of [24, 26, 28, 30, 32, 34]) {
-    ff(['-i', src, '-t', String(PREVIEW_SEC), '-an', '-vf', `${scale},fps=24`, '-c:v', 'libx264', '-profile:v', 'high', '-pix_fmt', 'yuv420p', '-preset', 'slow', '-crf', String(crf), '-movflags', '+faststart', out]);
+    ff(['-i', src, '-t', String(sec), '-an', '-vf', `${scale},fps=24`, '-c:v', 'libx264', '-profile:v', 'high', '-pix_fmt', 'yuv420p', '-preset', 'slow', '-crf', String(crf), '-movflags', '+faststart', out]);
     if (statSync(out).size <= MAX_PREVIEW_BYTES) return crf;
   }
   throw new Error(`${src}: preview stays above ${MAX_PREVIEW_BYTES} bytes`);
@@ -166,9 +175,9 @@ async function put(bucket: string, key: string, file: string, contentType: strin
 const sqlStr = (v: string) => `'${v.replace(/'/g, "''")}'`;
 
 /** The D1 migration that points each built-in at its cover and preview (json_set keeps the rest of `meta`). */
-export function coversMigrationSql(items: ManifestItem[]): string {
+export function coversMigrationSql(items: ManifestItem[], migration = DEFAULT_MIGRATION): string {
   const head = [
-    `-- Migration ${MIGRATION}: cover posters (AVIF/WebP/JPEG), preview clips, poster sizes and average colors of the`,
+    `-- Migration ${migration}: cover posters (AVIF/WebP/JPEG), preview clips, poster sizes and average colors of the`,
     '-- built-in templates, made from each template\'s own run (scripts/templates/covers.mts; provenance and licenses in',
     '-- scripts/templates/covers.manifest.json). Keys are on the public media bucket (D-008); the API builds the URLs.',
     '',
@@ -200,6 +209,7 @@ async function main(): Promise<void> {
   const manifestFile = join(root, 'scripts/templates/covers.manifest.json');
   const previous = existsSync(manifestFile) ? (JSON.parse(readFileSync(manifestFile, 'utf8')) as { items: ManifestItem[] }).items : [];
   const items = new Map(previous.map((m) => [m.templateId, m]));
+  const made: string[] = [];
 
   for (const [id, layout] of Object.entries(LAYOUT)) {
     const p = prov[id];
@@ -218,7 +228,7 @@ async function main(): Promise<void> {
     let previewFile: string | null = null;
     if ('clip' in layout) {
       previewFile = join(dir, 'preview.mp4');
-      encodePreview(src(layout.clip), previewFile);
+      encodePreview(src(layout.clip), previewFile, layout.sec);
       ff(['-i', previewFile, '-frames:v', '1', master]);
     } else grid(layout.grid.map(src), layout.cols, master);
     const pst = posters(master, dir);
@@ -249,12 +259,16 @@ async function main(): Promise<void> {
       }
     }
     items.set(id, item);
+    made.push(id);
     console.log(`${id}: ${pst.width}x${pst.height} ${item.coverColor}${previewFile ? ` preview ${item.previewSec}s ${item.previewBytes} B` : ''}${upload ? ` → ${buckets.length} buckets` : ''}`);
   }
   const ordered = Object.keys(LAYOUT).filter((id) => items.has(id)).map((id) => items.get(id)!);
   writeFileSync(manifestFile, JSON.stringify({ about: 'Cover and preview media of the built-in templates (scripts/templates/covers.mts). One item per template: source, license, provenance, keys.', items: ordered }, null, 2) + '\n');
-  writeFileSync(join(root, `packages/db/migrations/d1/${MIGRATION}.sql`), coversMigrationSql(ordered));
-  console.log(`wrote ${manifestFile} and migration ${MIGRATION} (${ordered.length} templates)`);
+  const migration = arg('migration');
+  const covered = migration ? ordered.filter((m) => made.includes(m.templateId)) : ordered;
+  const name = migration ?? DEFAULT_MIGRATION;
+  writeFileSync(join(root, `packages/db/migrations/d1/${name}.sql`), coversMigrationSql(covered, name));
+  console.log(`wrote ${manifestFile} and migration ${name} (${covered.length} templates)`);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) await main();
