@@ -1,18 +1,39 @@
 import { fileURLToPath } from 'node:url';
 import { tanstackRouter } from '@tanstack/router-plugin/vite';
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 /** Where dev and preview proxy `/api` (the local Worker by default; e.g. a staging Worker URL for a manual look). */
 const API_ORIGIN = process.env.ROLLING_API_ORIGIN ?? 'http://localhost:8787';
 
+/**
+ * Preloads the self-hosted Geist variable font from index.html, so it downloads alongside the
+ * entry script instead of after the stylesheet is parsed. The server turns this `<link>` into a
+ * `Link` header for 103 Early Hints (scripts/early-hints.mjs, apps/api/src/lib/r2Static.ts).
+ */
+function preloadMainFont(): Plugin {
+  return {
+    name: 'rolling:preload-main-font',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler(_html, ctx) {
+        const font = Object.keys(ctx.bundle ?? {}).find((f) => /(^|\/)Geist-Variable-[\w-]+\.woff2$/.test(f));
+        if (!font) return [];
+        return [{ tag: 'link', attrs: { rel: 'preload', href: `/${font}`, as: 'font', type: 'font/woff2', crossorigin: true }, injectTo: 'head' }];
+      },
+    },
+  };
+}
+
 export default defineConfig({
   plugins: [
     // Must run before the React plugin.
     tanstackRouter({ target: 'react', autoCodeSplitting: true }),
     react(),
+    preloadMainFont(),
     /*
      * PWA (handoff 8, PWA.dc.html). `injectManifest`, not `generateSW`: the
      * worker (src/sw.ts) is our own small file whose routes are explicit and

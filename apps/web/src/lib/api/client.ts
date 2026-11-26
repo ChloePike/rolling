@@ -9,6 +9,10 @@ import { ApiError, errorFromBody } from './errors';
  *   `?workspaceId=`); without one the server picks the personal workspace.
  * - Failures throw `ApiError` built from the error envelope; network failures
  *   throw `ApiError('NETWORK')`.
+ * - D1 read replication: every response may carry `x-d1-bookmark` (the database
+ *   version the request saw). The newest one is kept (shared by tabs) and sent
+ *   back on every request, so a read after a write never lands on a replica
+ *   that has not caught up (apps/api/src/lib/d1Session.ts).
  */
 
 const WORKSPACE_KEY = 'rolling.workspace';
@@ -45,6 +49,40 @@ export function setWorkspaceId(id: string | null): void {
 export function onWorkspaceChange(cb: (id: string | null) => void): () => void {
   listeners.add(cb);
   return () => listeners.delete(cb);
+}
+
+const BOOKMARK_KEY = 'rolling.d1b';
+export const BOOKMARK_HEADER = 'x-d1-bookmark';
+let memoryBookmark: string | null = null;
+
+/** The newest D1 bookmark this browser has seen (null before the first API response). */
+export function getBookmark(): string | null {
+  try {
+    const stored = window.localStorage.getItem(BOOKMARK_KEY);
+    if (stored && (!memoryBookmark || stored > memoryBookmark)) memoryBookmark = stored;
+  } catch {
+    /* Storage unavailable: memory only. */
+  }
+  return memoryBookmark;
+}
+
+/** Keeps `bookmark` when it is newer (bookmarks sort oldest → newest). */
+export function noteBookmark(bookmark: string | null | undefined): void {
+  if (!bookmark || bookmark.length > 256) return;
+  const current = getBookmark();
+  if (current && current >= bookmark) return;
+  memoryBookmark = bookmark;
+  try {
+    window.localStorage.setItem(BOOKMARK_KEY, bookmark);
+  } catch {
+    /* Storage unavailable: memory only. */
+  }
+}
+
+/** Headers for a raw `fetch` to `/api` outside this client (sends the bookmark). */
+export function bookmarkHeaders(): Record<string, string> {
+  const b = typeof window === 'undefined' ? null : getBookmark();
+  return b ? { [BOOKMARK_HEADER]: b } : {};
 }
 
 export interface RequestOptions {
@@ -98,7 +136,7 @@ export function apiUrl(path: string, query?: RequestOptions['query']): string {
 }
 
 export async function apiRequest<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-  const headers: Record<string, string> = { accept: 'application/json', ...opts.headers };
+  const headers: Record<string, string> = { accept: 'application/json', ...bookmarkHeaders(), ...opts.headers };
   if (opts.body !== undefined) headers['content-type'] = 'application/json';
   const ws = opts.workspaceId ?? (opts.noWorkspace ? null : getWorkspaceId());
   if (ws) headers['x-workspace-id'] = ws;
@@ -115,6 +153,7 @@ export async function apiRequest<T>(path: string, opts: RequestOptions = {}): Pr
     if ((e as { name?: string })?.name === 'AbortError') throw e;
     throw new ApiError('NETWORK', e instanceof Error ? e.message : 'Network error', 0);
   }
+  noteBookmark(res.headers?.get?.(BOOKMARK_HEADER));
   const text = await res.text();
   let body: unknown = null;
   if (text) {
