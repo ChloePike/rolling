@@ -390,6 +390,7 @@
   "account.settings.delete.sendCode": "Email me a code",
   "account.settings.delete.ownerOfTeam": "You own {names}, which still has other members. Make someone else an owner first, then delete your account.",
   "account.settings.delete.toTeam": "Go to Members",
+  "account.settings.delete.privacy": "What we delete and what we keep is in the <link>Privacy Policy</link>.",
   "account.settings.billing.cardExpires": "expires {date}",
   "account.settings.billing.updateInPortal": "Update in billing portal"
 }

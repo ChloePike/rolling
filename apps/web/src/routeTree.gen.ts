@@ -10,14 +10,19 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ShellRouteImport } from './routes/_shell'
+import { Route as AcceptableUseRouteImport } from './routes/acceptable-use'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as SignupRouteImport } from './routes/signup'
+import { Route as SubprocessorsRouteImport } from './routes/subprocessors'
+import { Route as TermsRouteImport } from './routes/terms'
 import { Route as ShellIndexRouteImport } from './routes/_shell/index'
 import { Route as ShellActivityRouteImport } from './routes/_shell/activity'
 import { Route as ShellTemplatesRouteImport } from './routes/_shell/templates'
 import { Route as ShellUpgradeRouteImport } from './routes/_shell/upgrade'
 import { Route as DevEditorRouteImport } from './routes/dev.editor'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
+import { Route as LegalDocRouteImport } from './routes/legal.$doc'
 import { Route as PProjectIdRouteImport } from './routes/p/$projectId'
 import { Route as PreviewOverlaysRouteImport } from './routes/preview.overlays'
 import { Route as ShareIdRouteImport } from './routes/share.$id'
@@ -35,14 +40,34 @@ const ShellRoute = ShellRouteImport.update({
   id: '/_shell',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AcceptableUseRoute = AcceptableUseRouteImport.update({
+  id: '/acceptable-use',
+  path: '/acceptable-use',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
   path: '/signup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SubprocessorsRoute = SubprocessorsRouteImport.update({
+  id: '/subprocessors',
+  path: '/subprocessors',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ShellIndexRoute = ShellIndexRouteImport.update({
@@ -73,6 +98,11 @@ const DevEditorRoute = DevEditorRouteImport.update({
 const InviteTokenRoute = InviteTokenRouteImport.update({
   id: '/invite/$token',
   path: '/invite/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LegalDocRoute = LegalDocRouteImport.update({
+  id: '/legal/$doc',
+  path: '/legal/$doc',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PProjectIdRoute = PProjectIdRouteImport.update({
@@ -138,13 +168,18 @@ const ShellUHandleRoute = ShellUHandleRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof ShellIndexRoute
+  '/acceptable-use': typeof AcceptableUseRoute
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
+  '/subprocessors': typeof SubprocessorsRoute
+  '/terms': typeof TermsRoute
   '/activity': typeof ShellActivityRoute
   '/templates': typeof ShellTemplatesRoute
   '/upgrade': typeof ShellUpgradeRoute
   '/dev/editor': typeof DevEditorRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/legal/$doc': typeof LegalDocRoute
   '/p/$projectId': typeof PProjectIdRoute
   '/preview/overlays': typeof PreviewOverlaysRoute
   '/share/$id': typeof ShareIdRoute
@@ -159,13 +194,18 @@ export interface FileRoutesByFullPath {
   '/settings/': typeof ShellSettingsIndexRoute
 }
 export interface FileRoutesByTo {
+  '/acceptable-use': typeof AcceptableUseRoute
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
+  '/subprocessors': typeof SubprocessorsRoute
+  '/terms': typeof TermsRoute
   '/activity': typeof ShellActivityRoute
   '/templates': typeof ShellTemplatesRoute
   '/upgrade': typeof ShellUpgradeRoute
   '/dev/editor': typeof DevEditorRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/legal/$doc': typeof LegalDocRoute
   '/p/$projectId': typeof PProjectIdRoute
   '/preview/overlays': typeof PreviewOverlaysRoute
   '/share/$id': typeof ShareIdRoute
@@ -183,13 +223,18 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_shell': typeof ShellRouteWithChildren
+  '/acceptable-use': typeof AcceptableUseRoute
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
+  '/subprocessors': typeof SubprocessorsRoute
+  '/terms': typeof TermsRoute
   '/_shell/activity': typeof ShellActivityRoute
   '/_shell/templates': typeof ShellTemplatesRoute
   '/_shell/upgrade': typeof ShellUpgradeRoute
   '/dev/editor': typeof DevEditorRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/legal/$doc': typeof LegalDocRoute
   '/p/$projectId': typeof PProjectIdRoute
   '/preview/overlays': typeof PreviewOverlaysRoute
   '/share/$id': typeof ShareIdRoute
@@ -208,13 +253,18 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/acceptable-use'
     | '/login'
+    | '/privacy'
     | '/signup'
+    | '/subprocessors'
+    | '/terms'
     | '/activity'
     | '/templates'
     | '/upgrade'
     | '/dev/editor'
     | '/invite/$token'
+    | '/legal/$doc'
     | '/p/$projectId'
     | '/preview/overlays'
     | '/share/$id'
@@ -229,13 +279,18 @@ export interface FileRouteTypes {
     | '/settings/'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/acceptable-use'
     | '/login'
+    | '/privacy'
     | '/signup'
+    | '/subprocessors'
+    | '/terms'
     | '/activity'
     | '/templates'
     | '/upgrade'
     | '/dev/editor'
     | '/invite/$token'
+    | '/legal/$doc'
     | '/p/$projectId'
     | '/preview/overlays'
     | '/share/$id'
@@ -252,13 +307,18 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_shell'
+    | '/acceptable-use'
     | '/login'
+    | '/privacy'
     | '/signup'
+    | '/subprocessors'
+    | '/terms'
     | '/_shell/activity'
     | '/_shell/templates'
     | '/_shell/upgrade'
     | '/dev/editor'
     | '/invite/$token'
+    | '/legal/$doc'
     | '/p/$projectId'
     | '/preview/overlays'
     | '/share/$id'
@@ -276,10 +336,15 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   ShellRoute: typeof ShellRouteWithChildren
+  AcceptableUseRoute: typeof AcceptableUseRoute
   LoginRoute: typeof LoginRoute
+  PrivacyRoute: typeof PrivacyRoute
   SignupRoute: typeof SignupRoute
+  SubprocessorsRoute: typeof SubprocessorsRoute
+  TermsRoute: typeof TermsRoute
   DevEditorRoute: typeof DevEditorRoute
   InviteTokenRoute: typeof InviteTokenRoute
+  LegalDocRoute: typeof LegalDocRoute
   PProjectIdRoute: typeof PProjectIdRoute
   PreviewOverlaysRoute: typeof PreviewOverlaysRoute
   ShareIdRoute: typeof ShareIdRoute
@@ -294,6 +359,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/acceptable-use': {
+      id: '/acceptable-use'
+      path: '/acceptable-use'
+      fullPath: '/acceptable-use'
+      preLoaderRoute: typeof AcceptableUseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -301,11 +373,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/signup': {
       id: '/signup'
       path: '/signup'
       fullPath: '/signup'
       preLoaderRoute: typeof SignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/subprocessors': {
+      id: '/subprocessors'
+      path: '/subprocessors'
+      fullPath: '/subprocessors'
+      preLoaderRoute: typeof SubprocessorsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_shell/': {
@@ -348,6 +441,13 @@ declare module '@tanstack/react-router' {
       path: '/invite/$token'
       fullPath: '/invite/$token'
       preLoaderRoute: typeof InviteTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/legal/$doc': {
+      id: '/legal/$doc'
+      path: '/legal/$doc'
+      fullPath: '/legal/$doc'
+      preLoaderRoute: typeof LegalDocRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/p/$projectId': {
@@ -473,10 +573,15 @@ const ShellRouteWithChildren = ShellRoute._addFileChildren(ShellRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   ShellRoute: ShellRouteWithChildren,
+  AcceptableUseRoute: AcceptableUseRoute,
   LoginRoute: LoginRoute,
+  PrivacyRoute: PrivacyRoute,
   SignupRoute: SignupRoute,
+  SubprocessorsRoute: SubprocessorsRoute,
+  TermsRoute: TermsRoute,
   DevEditorRoute: DevEditorRoute,
   InviteTokenRoute: InviteTokenRoute,
+  LegalDocRoute: LegalDocRoute,
   PProjectIdRoute: PProjectIdRoute,
   PreviewOverlaysRoute: PreviewOverlaysRoute,
   ShareIdRoute: ShareIdRoute,

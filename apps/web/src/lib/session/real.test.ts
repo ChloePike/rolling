@@ -36,8 +36,8 @@ describe('lib/session real mapping', () => {
 describe('lib/session guard', () => {
   it('public paths and safe redirects', async () => {
     const { isPublicPath, safeRedirect } = await import('./guard');
-    for (const p of ['/login', '/signup', '/share/shr_1', '/invite/abc', '/upgrade', '/u/ada']) expect(isPublicPath(p)).toBe(true);
-    for (const p of ['/', '/settings/billing', '/p/prj_1', '/share']) expect(isPublicPath(p)).toBe(false);
+    for (const p of ['/login', '/signup', '/share/shr_1', '/invite/abc', '/upgrade', '/u/ada', '/terms', '/privacy', '/acceptable-use', '/subprocessors', '/legal/privacy']) expect(isPublicPath(p)).toBe(true);
+    for (const p of ['/', '/settings/billing', '/p/prj_1', '/share', '/legal', '/terms/x']) expect(isPublicPath(p)).toBe(false);
     expect(safeRedirect('/settings/team?resume=invite')).toBe('/settings/team?resume=invite');
     expect(safeRedirect('//evil.example')).toBe('/');
     expect(safeRedirect('https://evil.example')).toBe('/');

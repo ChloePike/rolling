@@ -4,6 +4,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { useRef, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { GoogleOneTap } from '@/features/auth/GoogleOneTap';
+import { LegalLinks } from '@/features/legal/LegalLinks';
 import { isApiError } from '@/lib/api/errors';
 import { checkoutPlan, openBillingPortal, useSession } from '@/lib/session';
 import { motion, Segmented } from './shared';
@@ -171,6 +172,7 @@ export function UpgradePage({ initialPeriod = 'monthly' }: { initialPeriod?: Bil
       <p className={styles.foot}>
         <FormattedMessage id="account.upgrade.foot" />
       </p>
+      <LegalLinks docs={['terms', 'privacy', 'acceptable-use']} className={styles.footLinks} linkClassName={styles.footLink} />
     </div>
   );
 }

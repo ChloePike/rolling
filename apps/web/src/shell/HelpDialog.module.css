@@ -10,3 +10,6 @@
 .diag{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .diagText{font-size:var(--fs-meta);color:var(--c-text-3)}
 .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
+.legal{margin-top:2px;font-size:var(--fs-meta);color:var(--c-text-4)}
+.legalLink{color:var(--c-text-3);text-decoration:underline;text-underline-offset:2px}
+.legalLink:hover{color:var(--c-text-1)}

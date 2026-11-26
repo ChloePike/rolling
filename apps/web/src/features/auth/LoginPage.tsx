@@ -1,4 +1,4 @@
-import { Dialog, useToast } from '@rolling/ui';
+import { useToast } from '@rolling/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
@@ -19,8 +19,6 @@ const cx = (...c: Array<string | false | undefined>) => c.filter(Boolean).join('
 /** `/login` and `/signup` (Login.dc.html, LoginSignup, LoginCode). */
 export function LoginPage({ mode }: { mode: AuthMode }) {
   const [sent, setSent] = useState<SendCodeResult | null>(null);
-  const [legal, setLegal] = useState<'terms' | 'privacy' | null>(null);
-  const intl = useIntl();
   return (
     <div className={styles.page}>
       <main className={styles.main}>
@@ -44,38 +42,11 @@ export function LoginPage({ mode }: { mode: AuthMode }) {
           <FormattedMessage
             id="auth.legal"
             values={{
-              terms: (chunks) => (
-                <a
-                  href="/terms"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setLegal('terms');
-                  }}
-                >
-                  {chunks}
-                </a>
-              ),
-              privacy: (chunks) => (
-                <a
-                  href="/privacy"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setLegal('privacy');
-                  }}
-                >
-                  {chunks}
-                </a>
-              ),
+              terms: (chunks) => <Link to="/terms">{chunks}</Link>,
+              privacy: (chunks) => <Link to="/privacy">{chunks}</Link>,
             }}
           />
         </p>
-        <Dialog
-          open={legal !== null}
-          onOpenChange={(o) => !o && setLegal(null)}
-          title={legal ? intl.formatMessage({ id: `auth.legal.${legal}.title` }) : ''}
-          description={intl.formatMessage({ id: 'auth.legal.pending' })}
-          closeLabel={intl.formatMessage({ id: 'auth.close' })}
-        />
       </main>
       <aside aria-hidden="true" className={styles.aside}>
         <div className={styles.frames}>

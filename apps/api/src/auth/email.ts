@@ -96,7 +96,7 @@ export async function handleNotifyEmail(batch: MessageBatch<unknown>, env: Env):
       }
       let rendered;
       try {
-        rendered = renderEmail(template, data, env.APP_NAME || "Rolling");
+        rendered = renderEmail(template, data, env.APP_NAME || "Rolling", env.PUBLIC_APP_URL || undefined);
       } catch {
         console.warn(JSON.stringify({ queue: "notify-email", msg: "template data invalid, dropped", id: msg.id, template }));
         msg.ack();

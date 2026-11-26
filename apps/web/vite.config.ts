@@ -16,6 +16,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@messages': r('../../messages'),
+      '@legal': r('../../legal'),
       '@/': `${r('./src')}/`,
       // The geist package only exports Next.js helpers; point at its woff2 files to self-host them.
       '@geist-fonts': r('./node_modules/geist/dist/fonts/geist-sans'),

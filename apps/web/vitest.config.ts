@@ -8,6 +8,7 @@ export default defineConfig({
     alias: {
       '@/': `${r('./src')}/`,
       '@messages': r('../../messages'),
+      '@legal': r('../../legal'),
     },
   },
   test: {

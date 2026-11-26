@@ -105,15 +105,16 @@ test.describe('auth screens (Login.dc.html)', () => {
     await expect(page.getByText('Your account is ready.')).toBeVisible();
   });
 
-  test('Terms and Privacy links open a dialog; Escape closes it', async ({ page }) => {
+  test('Terms and Privacy links open the legal pages', async ({ page }) => {
     await openApp(page, '/login');
     await page.getByRole('link', { name: 'Terms' }).click();
-    await expect(page.getByRole('dialog', { name: 'Terms' })).toBeVisible();
-    await page.keyboard.press('Escape');
-    await expect(page.getByRole('dialog')).toHaveCount(0);
-    await page.getByRole('link', { name: 'Privacy Policy' }).click();
-    await expect(page.getByRole('dialog', { name: 'Privacy Policy' })).toBeVisible();
+    await expect(page).toHaveURL(/\/terms$/);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Terms of service');
+    await page.goBack();
     await expect(page).toHaveURL(/\/login$/);
+    await page.getByRole('link', { name: 'Privacy Policy' }).click();
+    await expect(page).toHaveURL(/\/privacy$/);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Privacy policy');
   });
 
   for (const s of [

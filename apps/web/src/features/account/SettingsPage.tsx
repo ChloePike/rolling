@@ -626,6 +626,18 @@ function DeleteDialog({ open, onClose, onDeleted }: { open: boolean; onClose: ()
         </>
       ) : step === 'intro' ? (
         <>
+          <p className={styles.rowHint} data-testid="delete-privacy">
+            <FormattedMessage
+              id="account.settings.delete.privacy"
+              values={{
+                link: (chunks) => (
+                  <Link to="/privacy" hash="when-you-delete-your-account" className={styles.inlineLink} onClick={onClose}>
+                    {chunks}
+                  </Link>
+                ),
+              }}
+            />
+          </p>
           {error && (
             <p role="alert" className={cx(styles.fieldError, motion.enter)}>
               {error}

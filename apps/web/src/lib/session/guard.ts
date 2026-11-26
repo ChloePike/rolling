@@ -5,9 +5,20 @@ import { ensureMe } from './real';
 /**
  * Route guard (real API): app routes need a session; signed-out visitors go to
  * `/login?redirect=<where they were going>`. Public: login and sign-up, share
- * links, invite landings, public profiles and the read-only plans page.
+ * links, invite landings, public profiles, the read-only plans page and the
+ * legal pages.
  */
-const PUBLIC: readonly RegExp[] = [/^\/login\/?$/, /^\/signup\/?$/, /^\/share\/[^/]+\/?$/, /^\/invite\/[^/]+\/?$/, /^\/upgrade\/?$/, /^\/u\/[^/]+\/?$/];
+const PUBLIC: readonly RegExp[] = [
+  /^\/login\/?$/,
+  /^\/signup\/?$/,
+  /^\/share\/[^/]+\/?$/,
+  /^\/invite\/[^/]+\/?$/,
+  /^\/upgrade\/?$/,
+  /^\/u\/[^/]+\/?$/,
+  // Legal pages (`/terms` and `/privacy` are registered with Google OAuth) and the old `/legal/<doc>` redirects.
+  /^\/(terms|privacy|acceptable-use|subprocessors)\/?$/,
+  /^\/legal\/[^/]+\/?$/,
+];
 
 export function isPublicPath(pathname: string): boolean {
   return PUBLIC.some((r) => r.test(pathname));

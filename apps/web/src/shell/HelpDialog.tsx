@@ -1,13 +1,14 @@
 import { Button, Dialog, SegmentedControl, Switch, useToast } from '@rolling/ui';
 import { useId, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
+import { LegalLinks } from '@/features/legal/LegalLinks';
 import { isApiError } from '@/lib/api/errors';
 import { sendFeedback, type FeedbackKind } from './api';
 import styles from './HelpDialog.module.css';
 
 /**
  * Help and feedback (account menu). Help pages come with launch; until then
- * the dialog says so and takes feedback (`POST /api/feedback { message, kind,
+ * the dialog says so, links the legal pages and takes feedback (`POST /api/feedback { message, kind,
  * page, includeDiagnostics }`; the current path goes along as `page`).
  */
 export function HelpDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
@@ -65,6 +66,7 @@ export function HelpDialog({ open, onOpenChange }: { open: boolean; onOpenChange
           </span>
           <Switch size="sm" checked={diagnostics} onCheckedChange={setDiagnostics} aria-labelledby={diagId} />
         </div>
+        <LegalLinks className={styles.legal} linkClassName={styles.legalLink} onNavigate={() => onOpenChange(false)} />
         <div className={styles.actions}>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             <FormattedMessage id="shell.help.cancel" />

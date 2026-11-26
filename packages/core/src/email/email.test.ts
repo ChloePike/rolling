@@ -35,6 +35,19 @@ describe('email templates', () => {
   });
 });
 
+describe('legal footer', () => {
+  it('links /terms and /privacy on user emails when the app URL is known; never on feedback', () => {
+    const e = renderEmail('sign-in-code', { code: '123456', expiresInMinutes: 10 }, 'Rolling', 'https://rolling.actor/');
+    expect(e.text).toContain('Terms: https://rolling.actor/terms · Privacy Policy: https://rolling.actor/privacy');
+    expect(e.html).toContain('<a href="https://rolling.actor/terms"');
+    expect(e.html).toContain('<a href="https://rolling.actor/privacy"');
+    expect(e.html.endsWith('</body></html>')).toBe(true);
+    expect(renderEmail('sign-in-code', { code: '123456', expiresInMinutes: 10 }).text).not.toContain('/terms');
+    const f = renderEmail('feedback', { id: 'fbk_1', kind: 'bug', message: 'x', page: null, userId: null, userEmail: null, diagnostics: null }, 'Rolling', 'https://rolling.actor');
+    expect(f.text).not.toContain('/terms');
+  });
+});
+
 describe('ResendEmailProvider', () => {
   it('maps errors to retryable or not', async () => {
     for (const [status, retryable] of [[429, true], [500, true], [422, false]] as const) {

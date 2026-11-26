@@ -1,0 +1,14 @@
+{
+  "legal.documentTitle": "{title} · {app}",
+  "legal.nav.label": "Legal",
+  "legal.nav.terms": "Terms",
+  "legal.nav.privacy": "Privacy",
+  "legal.nav.acceptable-use": "Acceptable use",
+  "legal.nav.subprocessors": "Subprocessors",
+  "legal.toc": "On this page",
+  "legal.links.label": "Legal",
+  "legal.link.terms": "Terms",
+  "legal.link.privacy": "Privacy Policy",
+  "legal.link.acceptable-use": "Acceptable use",
+  "legal.link.subprocessors": "Subprocessors"
+}

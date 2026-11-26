@@ -18,3 +18,6 @@
 
 .plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:14px;align-items:stretch;scroll-margin-top:96px}
 .foot{margin:0;text-align:center;font-size:12px;color:var(--c-text-4)}
+.footLinks{margin:-8px 0 0;text-align:center;font-size:12px;color:var(--c-text-4)}
+.footLink{color:var(--c-text-3);text-decoration:underline;text-underline-offset:2px}
+.footLink:hover{color:var(--c-text-1)}

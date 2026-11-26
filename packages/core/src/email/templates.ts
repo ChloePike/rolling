@@ -52,8 +52,26 @@ function html(paragraphs: string[]): string {
   return `<!doctype html><html><body style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.5;color:#111">${body}</body></html>`;
 }
 
-/** Renders a template. Throws a ZodError when `data` does not match the template's schema. */
-export function renderEmail<T extends EmailTemplateId>(template: T, data: unknown, appName = 'Rolling'): RenderedEmail {
+/**
+ * Renders a template. Throws a ZodError when `data` does not match the template's schema.
+ * With `appUrl` (the app's public origin, e.g. `https://rolling.actor`), emails to users end
+ * with links to the Terms and Privacy Policy (`/terms`, `/privacy`); internal ones (feedback) do not.
+ */
+export function renderEmail<T extends EmailTemplateId>(template: T, data: unknown, appName = 'Rolling', appUrl?: string): RenderedEmail {
+  const email = renderBody(template, data, appName);
+  const origin = appUrl?.replace(/\/+$/, '');
+  if (!origin || template === 'feedback') return email;
+  const terms = `${origin}/terms`;
+  const privacy = `${origin}/privacy`;
+  const footer = `<p style="margin:24px 0 0;font-size:12px;color:#666">${escapeHtml(appName)} · <a href="${escapeHtml(terms)}" style="color:#666">Terms</a> · <a href="${escapeHtml(privacy)}" style="color:#666">Privacy Policy</a></p>`;
+  return {
+    subject: email.subject,
+    text: `${email.text}\n\n--\n${appName} · Terms: ${terms} · Privacy Policy: ${privacy}`,
+    html: email.html.replace('</body></html>', `${footer}</body></html>`),
+  };
+}
+
+function renderBody<T extends EmailTemplateId>(template: T, data: unknown, appName: string): RenderedEmail {
   const app = escapeHtml(appName);
   switch (template) {
     case 'sign-in-code': {

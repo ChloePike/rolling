@@ -21,6 +21,21 @@ What the owner configures in Google Cloud Console → APIs & Services → Creden
 
 Worker config: `GOOGLE_CLIENT_ID` only (secret or var; it is public). Delete any `GOOGLE_CLIENT_SECRET` and `APPLE_*` secrets. `CLAUDE.md`, `PRD.md` and `milestones.md` still list Apple; this entry wins.
 
+## D-016 — Legal pages at fixed public URLs (2026-11-26)
+
+Owner decision. The drafts live in `legal/*.md` (repo root; “Draft for legal review — not yet in effect” until counsel signs off). They are bundled into the SPA at build time (`?raw` imports) and rendered by a small built-in Markdown parser (`apps/web/src/features/legal`, no new dependency).
+
+| Path | Document |
+|---|---|
+| `/terms` | `legal/terms-of-service.md` — registered with Google OAuth, must not move |
+| `/privacy` | `legal/privacy-policy.md` — registered with Google OAuth, must not move |
+| `/acceptable-use` | `legal/acceptable-use-policy.md` |
+| `/subprocessors` | `legal/subprocessors.md` |
+
+- Public: in the session guard's public list, no sign-in and no redirect away; the Worker's SPA fallback (`not_found_handling: single-page-application`, or the R2-served shell) answers direct loads with `index.html`. `/legal/<doc>` paths redirect to the canonical ones.
+- Linked from the log-in/sign-up consent line, the Help dialog, the plans page footer, the delete-account dialog (privacy, deletion section) and the footer of user emails (`renderEmail(…, appUrl)`).
+- Contacts: `privacy@`, `legal@`, `abuse@`, `support@rolling.actor` (D-015). Company name, address, governing law and effective date stay placeholders.
+
 ## D-015 — Domain: rolling.actor (2026-11-26)
 
 The product domain is `rolling.actor` (Cloudflare zone in the account; product name stays “Rolling” pending a rename).

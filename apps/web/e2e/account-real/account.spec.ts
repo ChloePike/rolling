@@ -49,6 +49,21 @@ test('/upgrade is public: signed out it shows Log in, and choosing a plan goes t
   await expect(page).toHaveURL(/\/signup\?redirect=%2Fupgrade$/);
 });
 
+test('/terms and /privacy load directly while signed out and stay put (registered with Google OAuth)', async ({ page }) => {
+  for (const [path, title] of [['/terms', 'Terms of service'], ['/privacy', 'Privacy policy']] as const) {
+    const meChecked = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/me');
+    const res = await page.goto(path);
+    expect(res?.status()).toBe(200);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(title);
+    // The session check (`GET /api/me` → signed out) must not send the visitor to /login.
+    await meChecked;
+    await page.waitForTimeout(500);
+    await expect(page).toHaveURL(new RegExp(`${path}$`));
+  }
+  await page.goto('/legal/privacy');
+  await expect(page).toHaveURL(/\/privacy$/);
+});
+
 test('preferences save to the server, survive a new session, and apply live in another tab', async ({ page, context }) => {
   const email = freshEmail('prefs');
   await signIn(page, email);
