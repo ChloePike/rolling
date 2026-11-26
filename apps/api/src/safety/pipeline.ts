@@ -158,3 +158,21 @@ export async function quoteSafety(
     }
   }
 }
+
+/**
+ * D-005 quote-time text classifier (`ExplicitCheck`) for a mature-allowed
+ * caller's text-only video the rules see nothing in: explicit → the planner
+ * chains it (keyframe → animation) before anything is held. Uses the same
+ * cached text check as `prepare`; any error or block counts as "not explicit"
+ * (the job's own pre-check still runs).
+ */
+/** The quote waits at most this long for the text classifier (live quotes follow typing; Auto uses the same budget). */
+export const QUOTE_EXPLICIT_TIMEOUT_MS = 4000;
+
+export function quoteExplicitCheck(env: Env): (prompt: string) => Promise<boolean> {
+  return async (prompt) => {
+    const deps = { ...(await safetyDeps(env)), textTimeoutMs: QUOTE_EXPLICIT_TIMEOUT_MS };
+    const verdict = await preCheck({ prompt, references: [], mature: false, matureAllowed: true }, deps);
+    return verdict.verdict === "allow" && verdict.needsMature === true;
+  };
+}

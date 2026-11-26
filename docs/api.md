@@ -357,6 +357,7 @@ type QuoteResponse = {
     lowestPlan?: 'starter' | 'plus' | 'pro' | null   // resolution_locked: plan that unlocks it
     autoVia?: 'classifier' | 'fallback' | 'single'
     dependsOn: string[]           // run rows: refs that must finish first
+    step?: 'keyframe' | 'animate' // D-005 mature text-to-video chain (see below); both rows are in `total`
   }>
   total: number; balance: number; balanceAfter: number
   expiresAt: number | null        // epoch ms (10 minutes)
@@ -376,7 +377,8 @@ type PromptSpec = {
              photoAssetId? /* avatar */, videoAssetId? /* remix */ }
 }
 // Items per kind (ref → what it makes); plan caps (D-006), mature routing and identity rules (D-005), safety pre-checks and Auto (D-009) apply per item:
-// - image | video → one item `spec`.
+// - image | video → one item `spec`. A mature text-only video that no text-to-video model takes (D-005) becomes two items:
+//   `keyframe` (image, `step: 'keyframe'`, title "<title> · First frame") then `spec` (`step: 'animate'`, `dependsOn: ['keyframe']`), see Rules.
 // - avatar → `avatar`: video on a lip-sync model (Auto → `lumina/wan2.7-i2v-spicy`, D-009; a model without lip sync → `unsupported`):
 //   the photo is the first frame, `audioAssetId` (an uploaded audio asset; TTS is open → `missing_input` “Upload a voice track.”) goes to `audio_url`,
 //   `audio: true`, seconds = the track length (clamped to the model range). Mature avatars take only platform pictures
@@ -399,7 +401,8 @@ type RunView = {
   credits: number                 // quoted while queued/running, charged after
   quoted; spent; refunded; error: string | null; createdAt; finishedAt
   items: Array<{ ref, nodeId, title, kind, model, modelName, status: 'pending'|'running'|'succeeded'|'failed'|'skipped'|'canceled',
-                 jobId, progress, credits, spent, refunded, assetId, error, errorCode }>
+                 jobId, progress, credits, spent, refunded, assetId, error, errorCode,
+                 step?: 'keyframe' | 'animate' }>   // D-005 chain step; `params` describes the animation, `progress` covers both
   request: { promptSpec: PromptSpec } | { scope, nodeIds? } | null   // the normalized request it was quoted from (null before migration 0015)
   tool: 'quick' | 'remix' | 'avatar' | 'character' | null           // tool runs (`quick` = image/video); null for canvas runs
   retryOf: string | null; characterId: string | null
@@ -414,6 +417,10 @@ Rules:
 - Plan caps (D-006) use the workspace plan; mature runs (D-005) need `matureAllowed` and route only to mature-capable models (identity-driven models only with platform assets). Auto (D-009) asks DeepSeek V4.1 Flash to pick among capable candidates (2 s timeout, members only) and falls back to the cheapest candidate.
 - Holds are per item: when a run starts, items whose inputs are ready are held (up to the plan's jobs at once); dependents are held and started when their inputs land. A dependent of a failed item is `skipped` (never charged). An item whose later hold fails (balance spent elsewhere) is `failed` with that code.
 - Charges: settle with the provider's reported cost through `creditsFor` (3× markup), never above the hold; no cost reported → the quoted credits. Failures release the hold (`refunded` = held credits). Auto items retry once on the next fallback model that fits under the same hold.
+- **Mature text-to-video chain (D-005).** No text-to-video model takes mature runs (Seedance, Wan/Berry, MiniMax, Grok are `matureRouting: never`); the spicy image-to-video models take them but need a picture made on Rolling. So when a mature video item has no input picture and no model takes it directly, the planner makes it in two steps of one run: (a) `keyframe` on the cheapest mature text-to-image model (`matureRouting: allowed`: the spicy image family, models with `moderation`) at the video's ratio (`adaptive`/none → 16:9) and a 1K pixel budget, with a still-frame direction ahead of the user's prompt; (b) the animation on the cheapest mature image-to-video model (`lumina/wan2.2-i2v-spicy`, `lumina/wan2.7-i2v-spicy`) with the keyframe as first frame (platform picture, so `platform_assets_only` takes it), the user's prompt, length and resolution — when no model takes those exactly, the nearest length and the highest resolution within the plan cap; no audio. Both go with `moderation: "low"`. Canvas runs do the same: the keyframe item is `<nodeId>:keyframe` (no node) and the node's item depends on it. Auto picks the chain only for mature text-only video; everything else is planned as before. For a mature-allowed caller's text-only video the rules see nothing in, the quote asks the text classifier (only while no text-to-video model takes mature runs) so an explicit prompt is chained before anything is held. No model for a step → `no_capable_model` at quote (“No picture model that takes mature content is available to make the first frame.” / “No model that takes mature content fits these settings.”).
+  - **Money:** one quote total (the two rows' credits). Both steps are held together when the keyframe starts (one hold call, two job holds; counts as two jobs at once); the animation starts on its hold when the keyframe lands. Each step settles on its own. The animation failing releases only its hold (the run ends `partial`, the keyframe stays an asset); the keyframe failing, or a cancel before the animation starts, releases the animation's hold too (recorded as a `canceled`, refunded job).
+  - **Safety:** both steps run the full pre/post checks (only hard limits block a mature-allowed caller); the keyframe output gets the vision check in its own `store` step and again as the animation's first frame in `prepare`.
+  - **Retry** of a chain whose animation failed quotes the animation alone from the kept keyframe (`priorAssets.keyframe`).
 - `options.forceFailure` (staging/development only, ignored in production): the listed items (or all with `true`) fail without calling the provider and are refunded — for testing the refund path end to end.
 
 ### Safety (D-005 hard limits)
@@ -431,7 +438,7 @@ Quote item codes (`action: 'blocked'`, `credits: 0`; the copy is neutral, intern
 Job error codes (run item / job `errorCode`, node `job.failed.reason`; the hold is always released, “No credits were charged.”):
 - `safety_blocked` — the `prepare` pre-check (rules → DeepSeek V4.1 Flash text classifier → on mature runs vision on image references and `lumina/face-detect` on uploaded photographs) or the `store` post-check (vision on image outputs / the video poster frame) hit a hard limit. A post-blocked output is deleted from R2 and never registered or versioned.
 - `mature_required` — a non-mature run of a caller without mature access classified explicit (prompt or output); the copy follows the caller's access as above. For a mature-allowed caller, `prepare` instead re-plans the item as a mature run (`moderation: "low"`; a model that can't take it falls back to a mature-capable one within the hold, stored on the run item), and explicit output only rates.
-- `no_mature_model` — that re-plan found no mature-capable model within the hold (“No model that takes mature content fits these settings.”).
+- `no_mature_model` — that re-plan found no mature-capable model within the hold (“No model that takes mature content fits these settings.”). Text-only videos are chained at quote instead (see Rules), so this is left for classifier outages at quote time.
 - `safety_unavailable` — a classifier failed or timed out on a mature run (fail closed). Non-mature runs continue when the rules pass; the outage is logged.
 - `safety_review` — mature job of a flagged workspace.
 

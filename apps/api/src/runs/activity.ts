@@ -35,6 +35,8 @@ export interface RunItemView {
   assetId: string | null;
   error: string | null;
   errorCode: string | null;
+  /** D-005 mature text-to-video chain step: `keyframe` (the first frame, an image) or `animate` (the video). */
+  step?: "keyframe" | "animate";
 }
 
 export interface RunView {
@@ -45,7 +47,7 @@ export interface RunView {
   source: string;
   projectId: string | null;
   projectTitle: string | null;
-  /** e.g. `Seedance 2.5 · 720p · 9:16 · 5s` (first item). */
+  /** e.g. `Seedance 2.5 · 720p · 9:16 · 5s` (first item; a chain's animation step). */
   params: string;
   status: ActivityStatus;
   /** 0..1 while running. */
@@ -156,6 +158,12 @@ function requestOf(raw: string | null): RunView["request"] {
 export function toRunView(r: RunRowWithProject, rows: RunItemRow[], jobs: ReadonlyMap<string, JobRow>): RunView {
   const its = rows.map((i): RunItemView => {
     const job = i.job_id ? jobs.get(i.job_id) : undefined;
+    let step: RunItemView["step"];
+    try {
+      step = itemSpec(i).chain?.step;
+    } catch {
+      step = undefined;
+    }
     return {
       ref: i.ref,
       nodeId: i.node_id,
@@ -172,11 +180,14 @@ export function toRunView(r: RunRowWithProject, rows: RunItemRow[], jobs: Readon
       assetId: job?.asset_id ?? null,
       error: job?.error_message ?? i.error_message,
       errorCode: job?.error_code ?? i.error_code,
+      ...(step && { step }),
     };
   });
   const status = activityStatus(r.status);
-  const firstRow = rows[0];
-  const first = its[0];
+  // A chain is one generation: its summary is the video (the animation step), not the keyframe.
+  const mainAt = Math.max(0, its.findIndex((i) => i.step !== "keyframe"));
+  const firstRow = rows[mainAt];
+  const first = its[mainAt];
   let settings = "";
   try {
     settings = firstRow ? paramsSummary(itemSpec(firstRow)) : "";

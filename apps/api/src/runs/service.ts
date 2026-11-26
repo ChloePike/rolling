@@ -9,7 +9,7 @@
  * The start route checks the balance for the whole run first.
  */
 import type { LedgerErrorCode } from "@rolling/core/credits";
-import { planPromptSpec, planRun, specAssetIds, specTitle, type PlanItem, type PromptSpec, type RunScope, type SpecAsset } from "@rolling/core/generation";
+import { planPromptSpec, planRun, specAssetIds, specTitle, type ChainStep, type PlanItem, type PromptSpec, type RunScope, type SpecAsset } from "@rolling/core/generation";
 import { newId } from "@rolling/core/ids";
 import type { ImageSource } from "@rolling/core";
 import { matureAccessOf, type MatureAccess } from "@rolling/core/safety";
@@ -19,7 +19,7 @@ import { isRoomError, roomFailure } from "../lib/room";
 import type { RoomCaller } from "../lib/access";
 import { loadCatalog } from "../models/catalog";
 import { autoClassifier, gatewayConfigured } from "./provider";
-import { quoteSafety } from "../safety/pipeline";
+import { quoteExplicitCheck, quoteSafety } from "../safety/pipeline";
 import { ports, quietly } from "./ports";
 import {
   getItems,
@@ -51,6 +51,8 @@ export interface QuoteResponseItem {
   matureAccess?: string;
   autoVia?: string;
   dependsOn: string[];
+  /** D-005 mature text-to-video chain: `keyframe` (the first frame) or `animate`; both are priced in `total`. */
+  step?: "keyframe" | "animate";
 }
 
 export interface QuoteResponse {
@@ -87,6 +89,7 @@ function toResponseItem(i: StoredQuoteItem): QuoteResponseItem {
     ...(i.matureAccess && { matureAccess: i.matureAccess }),
     ...(i.autoVia && { autoVia: i.autoVia }),
     dependsOn: i.dependsOn,
+    ...(i.spec?.chain && { step: i.spec.chain.step }),
   };
 }
 
@@ -169,6 +172,9 @@ export function callerMatureAccess(auth: Pick<AuthContext, "isMember" | "prefs" 
 export async function quoteRun(env: Env, auth: AuthContext, req: QuoteRequest): Promise<QuoteResponse> {
   const catalog = await loadCatalog(env);
   const classify = await autoClassifier(env, auth.isMember);
+  // D-005: mature-allowed callers' text-only videos get the text classifier at quote time (only asked when no text-to-video
+  // model takes mature runs), so an explicit one is planned as keyframe → animation before anything is held.
+  const explicit = gatewayConfigured(env) ? quoteExplicitCheck(env) : null;
   let items: PlanItem[];
   let projectId: string | null = null;
   let scope: string;
@@ -189,6 +195,7 @@ export async function quoteRun(env: Env, auth: AuthContext, req: QuoteRequest): 
         catalog,
         ctx: { plan: auth.plan, matureAllowed: auth.matureAllowed, matureAccess: callerMatureAccess(auth) },
         classify,
+        explicit,
         assetOrigins: origins,
         ...(req.onlyRefs && { onlyRefs: req.onlyRefs }),
         ...(req.priorAssets && { priorAssets: req.priorAssets }),
@@ -205,7 +212,7 @@ export async function quoteRun(env: Env, auth: AuthContext, req: QuoteRequest): 
     if (req.nodeIds?.some((id) => !graph.state.nodes.some((n) => n.id === id))) {
       throw new ApiError(404, "NOT_FOUND", "Node not found", { nodeIds: req.nodeIds });
     }
-    items = (await planRun({ graph: graph.state, structural: structural.items, catalog, ctx: { plan: auth.plan, matureAllowed: req.matureAllowed, matureAccess: callerMatureAccess(auth, req.matureAllowed) }, classify })).items;
+    items = (await planRun({ graph: graph.state, structural: structural.items, catalog, ctx: { plan: auth.plan, matureAllowed: req.matureAllowed, matureAccess: callerMatureAccess(auth, req.matureAllowed) }, classify, explicit })).items;
   }
 
   // D-005: deterministic hard-limit rules before anything is priced or held.
@@ -359,17 +366,32 @@ export async function advanceRun(env: Env, runId: string): Promise<AdvanceResult
         .run();
       status.set(item.ref, "skipped");
       changed = true;
+      // A chain's animation was held with its keyframe: that hold goes back now.
+      if (item.job_id) {
+        const b = await releasePrepaid(env, run, item, "upstream_failed");
+        if (b) await pushCredits(env, run, b);
+      }
       if (room && item.node_id) await quietly("markFailed", () => room.markFailed({ nodeId: item.node_id!, jobId: "", refunded: 0, reason: "An input failed." }));
       continue;
     }
     if (!deps.every((d) => status.get(d) === "succeeded")) continue;
 
+    // D-005 chain: the animation was held together with its keyframe (one hold for the run's one price); it starts on that hold.
+    if (item.job_id) {
+      await startJob(env, run, item, item.job_id, item.credits);
+      status.set(item.ref, "running");
+      out.started++;
+      changed = true;
+      continue;
+    }
+    const chain = chainOf(item);
+    const next = chain?.step === "keyframe" && status.get(chain.with) === "pending" ? chain.with : null;
     const held = await credits.hold({
       quoteId: run.quote_id,
       runId,
       userId: run.created_by,
       idemKey: `hold:${runId}:${item.ref}`,
-      refs: [item.ref],
+      refs: next ? [item.ref, next] : [item.ref],
       ...(limit?.monthly_credit_limit != null && { memberMonthlyLimit: limit.monthly_credit_limit }),
     });
     if (!held.ok) {
@@ -385,6 +407,13 @@ export async function advanceRun(env: Env, runId: string): Promise<AdvanceResult
     }
     const job = held.value.jobs.find((j) => j.ref === item.ref) ?? held.value.jobs[0];
     if (!job) continue;
+    const prepaid = next ? held.value.jobs.find((j) => j.ref === next) : undefined;
+    if (prepaid) {
+      // Recorded before the keyframe starts: the animation starts on this hold once the keyframe lands (or it is released).
+      await env.DB.prepare("UPDATE run_items SET job_id = ?, updated_at = ? WHERE run_id = ? AND ref = ? AND status = 'pending' AND job_id IS NULL")
+        .bind(prepaid.jobId, now(), runId, next)
+        .run();
+    }
     await startJob(env, run, item, job.jobId, job.credits);
     status.set(item.ref, "running");
     out.started++;
@@ -401,6 +430,34 @@ export async function advanceRun(env: Env, runId: string): Promise<AdvanceResult
   }
   if (changed) await quietly("activity", () => p.hub(run.created_by).broadcast("activity.updated", { runId }));
   return out;
+}
+
+/** The D-005 chain step of a run item, if any. */
+function chainOf(item: Pick<RunItemRow, "spec">): ChainStep | null {
+  try {
+    return itemSpec(item).chain ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Releases the hold of a chain animation that never started (its keyframe
+ * failed, or the run was canceled first) and records it as a refunded,
+ * canceled job so the run's totals show the refund. Idempotent.
+ */
+async function releasePrepaid(env: Env, run: RunRow, item: RunItemRow, reason: string): Promise<{ plan: number; purchased: number; held: number } | null> {
+  if (!item.job_id) return null;
+  const r = await ports(env).credits(run.workspace_id).release(item.job_id, reason, `release:${item.job_id}`);
+  if (!r.ok && r.error.code !== "JOB_CLOSED") return null;
+  const now = Date.now();
+  await env.DB.prepare(
+    "INSERT OR IGNORE INTO jobs (id, run_id, project_id, node_id, title, provider, model, params_summary, workflow_id, status, progress, cost_quote, refunded, idempotency_key, error_code, created_at, workspace_id, item_ref, created_by, attempt, finished_at, updated_at) VALUES (?, ?, ?, ?, ?, 'hyperouter', ?, ?, NULL, 'canceled', 0, ?, 1, ?, ?, ?, ?, ?, ?, 0, ?, ?)",
+  )
+    .bind(item.job_id, run.id, run.project_id, item.node_id, item.title, item.model, paramsSummary(itemSpec(item)), item.credits, item.job_id, reason, now, run.workspace_id, item.ref, run.created_by, now, now)
+    .run();
+  await refreshRun(env.DB, run.id, now);
+  return r.ok ? r.value.balance : null;
 }
 
 async function startJob(env: Env, run: RunRow, item: RunItemRow, jobId: string, credits: number): Promise<void> {
@@ -482,6 +539,15 @@ export async function cancelRun(env: Env, auth: AuthContext, runId: string): Pro
     if (item.status !== "pending" && item.status !== "running") continue;
     canceled++;
     let itemRefund = 0;
+    if (item.status === "pending" && item.job_id) {
+      // A chain animation held with its keyframe: its hold goes back too.
+      const b = await releasePrepaid(env, run, item, "canceled");
+      if (b) {
+        balance = b;
+        itemRefund = item.credits;
+        refunded += itemRefund;
+      }
+    }
     if (item.status === "running" && item.job_id) {
       try {
         await (await env.GENERATE.get(item.job_id)).terminate();
