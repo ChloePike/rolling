@@ -107,3 +107,16 @@ curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' https://www.rolling.act
   (`scripts/posewear/README.md` → Live state, refresh commands).
 - Stripe products/prices for production (`pnpm --filter @rolling/api stripe:sync`) once keys exist; webhook
   `https://rolling.actor/api/stripe/webhook`. Hyperouter webhook `https://rolling.actor/api/hooks/hyperouter`.
+
+## Workers Builds (Git-connected deploys)
+
+Both Workers deploy from `ChloePike/rolling` through Workers Builds, which builds the FFmpeg container image itself and uploads the SPA as Workers static assets (the R2 `_web/` path is only a fallback for deploys from sandboxes that cannot upload assets).
+
+| Worker | Branch | Root directory | Build command | Deploy command |
+|---|---|---|---|---|
+| `rolling-api` (production) | `main` | `/` | `pnpm run build:ci` | `pnpm --filter @rolling/api run deploy:production:ci` |
+| `rolling-api-staging` | `main` | `/` | `pnpm run build:ci` | `pnpm --filter @rolling/api run deploy:staging:ci` |
+
+- Non-production branch builds stay off: these Workers use Durable Objects and Containers, so preview versions cannot serve the full app.
+- The deploy commands apply pending D1 migrations first; the build token needs D1 Edit in addition to the default Workers permissions.
+- Secrets stay in each Worker's settings; nothing secret lives in the repository or the build variables.
