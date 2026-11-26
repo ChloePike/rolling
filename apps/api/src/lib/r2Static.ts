@@ -1,10 +1,10 @@
 /**
  * Serves the SPA from R2 when the Workers static-assets binding is absent.
  *
- * Used for staging deploys made from environments that cannot upload Workers
+ * Used for staging and production deploys made from environments that cannot upload Workers
  * assets (the asset upload JWT is rewritten by an auth-injecting proxy). The
  * build is uploaded to `<prefix>/` in the MEDIA bucket by `scripts/deploy/upload-web.mts`.
- * Production should use the `assets` binding from CI.
+ * (`scripts/deploy/staging-r2.sh`, `production-r2.sh`). A CI deploy can use the `assets` binding instead.
  */
 const CONTENT_TYPES: Record<string, string> = {
   html: "text/html; charset=utf-8",

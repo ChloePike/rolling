@@ -17,7 +17,7 @@ import { ApiError } from "../lib/errors";
 import { isRoomError, roomFailure } from "../lib/room";
 import type { RoomCaller } from "../lib/access";
 import { loadCatalog } from "../models/catalog";
-import { autoClassifier } from "./provider";
+import { autoClassifier, gatewayConfigured } from "./provider";
 import { quoteSafety } from "../safety/pipeline";
 import { ports, quietly } from "./ports";
 import {
@@ -254,6 +254,8 @@ export async function startRun(env: Env, auth: AuthContext, quoteId: string, raw
 
   const items = parseJson<StoredQuoteItem[]>(quote.items, []).filter((i) => i.action === "run" && i.spec && i.model);
   if (items.length === 0) throw new ApiError(409, "CONFLICT", "Nothing to run in this quote", { quoteId });
+  // No model gateway key (e.g. a fresh production before HYPEROUTER_API_KEY is set): refuse before any hold.
+  if (!gatewayConfigured(env)) throw new ApiError(503, "INTERNAL", "Generation is not available right now", { reason: "gateway_not_configured" });
   const total = items.reduce((s, i) => s + i.credits, 0);
   const credits = ports(env).credits(auth.workspaceId);
   const b = await credits.balance();

@@ -63,12 +63,13 @@ function session(env: Env, threadId: string): SessionApi {
   return env.AGENT.get(env.AGENT.idFromName(threadId)) as unknown as SessionApi;
 }
 
-const STATUS = { NOT_FOUND: 404, FORBIDDEN: 403, CONFLICT: 409, VALIDATION_FAILED: 422, AGENT_ALLOWANCE_EXHAUSTED: 429, RATE_LIMITED: 429 } as const;
+const STATUS = { NOT_FOUND: 404, FORBIDDEN: 403, CONFLICT: 409, VALIDATION_FAILED: 422, AGENT_ALLOWANCE_EXHAUSTED: 429, RATE_LIMITED: 429, UNAVAILABLE: 503 } as const;
 
 function ok<T>(res: T | AgentError): T {
   if (typeof res === "object" && res !== null && (res as { ok?: unknown }).ok === false) {
     const e = res as AgentError;
-    throw new ApiError(STATUS[e.code], e.code, e.message, e.data ?? {});
+    // UNAVAILABLE (no model gateway configured) goes out as 503 INTERNAL, like other unconfigured services.
+    throw new ApiError(STATUS[e.code], e.code === "UNAVAILABLE" ? "INTERNAL" : e.code, e.message, e.data ?? {});
   }
   return res as T;
 }

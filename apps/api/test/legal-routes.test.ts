@@ -24,3 +24,14 @@ describe("legal pages: SPA fallback for direct loads", () => {
     });
   }
 });
+
+describe("www redirect (D-015)", () => {
+  it("sends www.<app host> to the apex with a 301, keeping path and query", async () => {
+    const appHost = new URL(env.PUBLIC_APP_URL).host;
+    const res = await SELF.fetch(`http://www.${appHost}/privacy?x=1`, { redirect: "manual" });
+    expect(res.status).toBe(301);
+    expect(res.headers.get("location")).toBe(`${new URL(env.PUBLIC_APP_URL).origin}/privacy?x=1`);
+    const other = await SELF.fetch("https://www.example.com/terms", { redirect: "manual" });
+    expect(other.status).toBe(200);
+  });
+});

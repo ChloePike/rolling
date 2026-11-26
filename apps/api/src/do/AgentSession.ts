@@ -33,7 +33,7 @@ import { migrateDurableObject } from "@rolling/db/do/migrate";
 import { allowanceView } from "../agent/allowance";
 import { creditAccount } from "../billing/credits";
 import { projectRoom } from "../lib/access";
-import { hyperouterClient } from "../runs/provider";
+import { gatewayConfigured, hyperouterClient } from "../runs/provider";
 import { agentPorts, roomCallerOf, type AgentCaller } from "./agentPorts";
 import { canvasIdFor } from "./ProjectRoom";
 
@@ -101,7 +101,7 @@ export interface TurnSummary {
   llm: string;
 }
 
-export type AgentError = { ok: false; code: "NOT_FOUND" | "FORBIDDEN" | "CONFLICT" | "VALIDATION_FAILED" | "AGENT_ALLOWANCE_EXHAUSTED" | "RATE_LIMITED"; message: string; data?: Record<string, unknown> };
+export type AgentError = { ok: false; code: "NOT_FOUND" | "FORBIDDEN" | "CONFLICT" | "VALIDATION_FAILED" | "AGENT_ALLOWANCE_EXHAUSTED" | "RATE_LIMITED" | "UNAVAILABLE"; message: string; data?: Record<string, unknown> };
 
 /** CreditAccount agent-allowance RPCs (D-012), typed structurally. */
 interface AllowanceApi {
@@ -224,6 +224,10 @@ export class AgentSession extends DurableObject<Env> {
   }
 
   private async runOne(input: SendInput, controller: AbortController): Promise<TurnSummary | AgentError> {
+    // No model gateway key: a clear refusal before any slot or allowance hold.
+    if (!llmOverride && !gatewayConfigured(this.env)) {
+      return { ok: false, code: "UNAVAILABLE", message: "The agent is not available right now", data: { reason: "gateway_not_configured" } };
+    }
     const ports = portsOverride ? await portsOverride(input.caller) : await agentPorts(this.env, input.caller);
     const llmId = input.llm ?? this.meta("llm");
     // D-012: reserve the turn's estimate before the first LLM call. DeepSeek

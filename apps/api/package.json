@@ -7,7 +7,7 @@
     "deploy:staging": "wrangler deploy --env staging",
     "typecheck": "tsc -p .",
     "test": "vitest run",
-    "cf-typegen": "wrangler types",
+    "cf-typegen": "wrangler types --strict-vars=false",
     "db:migrate:local": "wrangler d1 migrations apply rolling-dev --local",
     "db:migrate:staging": "wrangler d1 migrations apply rolling-staging --remote --env staging",
     "stripe:sync": "tsx scripts/stripe-sync.ts",

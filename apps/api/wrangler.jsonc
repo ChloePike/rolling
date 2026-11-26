@@ -3,7 +3,7 @@
 // The Cloudflare account is shared with unrelated projects: every resource name starts with `rolling-`
 // (AE datasets: `rolling_<env>`). Top level = local development only (`wrangler dev`, tests); always
 // deploy with `--env staging` or `--env production`.
-// Placeholders: D1 `database_id` values (REPLACE_ME_*). Rate-limit `namespace_id`s are account-unique integers we
+// Placeholders: the dev D1 `database_id` (REPLACE_ME_D1_DEV; local dev and tests do not need it). Rate-limit `namespace_id`s are account-unique integers we
 // choose (1001.., 2001.., 3001..), not placeholders: keep them.
 // Bindings are not inherited by named environments, so each env repeats them.
 // Local dev: containers are disabled (`dev.enable_containers: false`); use `wrangler dev --enable-containers`
@@ -57,9 +57,10 @@
         // Direct browser uploads (D-011): S3 API endpoint of the MEDIA bucket. Secrets: R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY.
         "R2_ACCOUNT_ID": "e2ed20c61e6c1ce394300a753734eff9",
         "R2_BUCKET_NAME": "rolling-media-dev",
-        // Email sender for Resend, e.g. "Rolling <hello@<product-domain>>" (open: product domain, D-001).
+        // Email sender (default "Rolling <no-reply@rolling.actor>").
         "EMAIL_FROM": "",
-        // Email provider: "" (Resend when RESEND_API_KEY is set; development records), "resend", or
+        // Email provider: "" (Cloudflare when the EMAIL binding exists outside development, else Resend when
+        // RESEND_API_KEY is set, else development records), "cloudflare", "resend", or
         // "test-inbox" (staging e2e: GET /api/test/inbox; refused in production).
         "EMAIL_PROVIDER": ""
   },
@@ -226,11 +227,18 @@
         // Direct browser uploads (D-011): S3 API endpoint of the MEDIA bucket. Secrets: R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY.
         "R2_ACCOUNT_ID": "e2ed20c61e6c1ce394300a753734eff9",
         "R2_BUCKET_NAME": "rolling-media-staging",
-        // Placeholder sender until the product domain exists (D-001); the test inbox does not send mail.
-        "EMAIL_FROM": "Rolling <no-reply@rolling.local>",
+        // Sender for the EMAIL binding (Cloudflare Email Service, D-015); the test inbox does not send mail.
+        "EMAIL_FROM": "Rolling <no-reply@rolling.actor>",
         // Staging e2e reads sign-in codes from GET /api/test/inbox (admin token; refused in production).
+        // Set "cloudflare" (or "") to send real mail through the EMAIL binding.
         "EMAIL_PROVIDER": "test-inbox"
       },
+      // Cloudflare Email Service sending (no destination restriction; rolling.actor is onboarded for sending).
+      "send_email": [
+        {
+          "name": "EMAIL"
+        }
+      ],
       "d1_databases": [
         {
           "binding": "DB",
@@ -364,6 +372,19 @@
     },
     "production": {
       "name": "rolling-api",
+      // Custom domains (D-015). www redirects to the apex in the Worker (src/index.ts).
+      "routes": [
+        {
+          "pattern": "rolling.actor",
+          "custom_domain": true
+        },
+        {
+          "pattern": "www.rolling.actor",
+          "custom_domain": true
+        }
+      ],
+      // One canonical origin for sign-in: no workers.dev URL in production.
+      "workers_dev": false,
       "triggers": {
         "crons": [
           "0 */6 * * *",
@@ -374,23 +395,28 @@
       "vars": {
         "ENVIRONMENT": "production",
         "APP_NAME": "Rolling",
-        "PUBLIC_APP_URL": "https://rolling-api.swiftpayx.workers.dev",
+        "PUBLIC_APP_URL": "https://rolling.actor",
+        "EXTRA_TRUSTED_ORIGINS": "",
         "HYPEROUTER_BASE_URL": "https://api.hyperouter.app/v1",
         "PUBLIC_MEDIA_BASE_URL": "",
         // Direct browser uploads (D-011): S3 API endpoint of the MEDIA bucket. Secrets: R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY.
         "R2_ACCOUNT_ID": "e2ed20c61e6c1ce394300a753734eff9",
         "R2_BUCKET_NAME": "rolling-media-production",
-        // Email sender for Resend, e.g. "Rolling <hello@<product-domain>>" (open: product domain, D-001).
-        "EMAIL_FROM": "",
-        // Email provider: "" (Resend when RESEND_API_KEY is set; development records), "resend", or
-        // "test-inbox" (staging e2e: GET /api/test/inbox; refused in production).
-        "EMAIL_PROVIDER": ""
+        // Sign-in codes and notifications through Cloudflare Email Service (EMAIL binding, D-015).
+        "EMAIL_FROM": "Rolling <no-reply@rolling.actor>",
+        // "cloudflare" (EMAIL binding) or "resend" (fallback, needs RESEND_API_KEY); test-inbox is refused here.
+        "EMAIL_PROVIDER": "cloudflare"
       },
+      "send_email": [
+        {
+          "name": "EMAIL"
+        }
+      ],
       "d1_databases": [
         {
           "binding": "DB",
           "database_name": "rolling-production",
-          "database_id": "REPLACE_ME_D1_PRODUCTION",
+          "database_id": "2e3081cc-a516-4d5d-93dd-6dfc8748939a",
           "migrations_dir": "../../packages/db/migrations/d1"
         }
       ],

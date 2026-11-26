@@ -42,6 +42,18 @@ export { BillingWorkflow } from "./workflows/Billing";
 
 export const app = new Hono<AppEnv>();
 
+// `www.<app host>` (custom domain on this Worker) redirects to the apex app URL (D-015).
+app.use("*", async (c, next) => {
+  const url = new URL(c.req.url);
+  if (url.hostname.startsWith("www.") && c.env.PUBLIC_APP_URL) {
+    const app = new URL(c.env.PUBLIC_APP_URL);
+    if (url.hostname === `www.${app.hostname}`) {
+      return c.redirect(`${app.origin}${url.pathname}${url.search}`, 301);
+    }
+  }
+  await next();
+});
+
 const api = new Hono<AppEnv>()
   // One auth context per request (M1): c.get("auth"), requireUser / requireMember / requireRole.
   .use("*", authMiddleware)
