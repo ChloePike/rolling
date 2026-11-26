@@ -14,10 +14,10 @@ import type { GraphNode, GraphState } from '../graph/types';
 import { outputType } from '../graph/ports';
 import { hash64, stableStringify } from '../project/digest';
 import type { PlanItem as StructuralItem } from '../project/plan';
-import { lowestPlanFor, planAllowsResolution, type PlanId } from '../pricing/config';
-import { autoCandidates, chooseModel, fitRequest, matureCandidates, type Classify, familyFallbacks } from './auto';
+import { lowestPlanFor, planAllowsResolution, resolutionRank, type PlanId } from '../pricing/config';
+import { autoCandidates, chainVideoCandidates, chooseModel, fitRequest, matureCandidates, type Classify, familyFallbacks } from './auto';
 import { cleanPrompt, findModel, imageSizeFor, isAuto, modelRefOf, settingsOf, textOfNode, usesSize, type NodeSettings } from './spec';
-import type { BlockCode, GenInput, GenSpec, PlanContext, PlanItem, RunPlan } from './types';
+import type { BlockCode, ChainStep, GenInput, GenSpec, InputSource, PlanContext, PlanItem, RunPlan } from './types';
 import { explicitSignal } from '../safety/rules';
 import type { MatureAccess } from '../safety/types';
 
@@ -34,6 +34,15 @@ export class PlanInputError extends Error {
 
 export type Blocked = { code: BlockCode; reason: string; lowestPlan?: PlanItem['lowestPlan'] };
 
+/**
+ * D-005 quote-time text classifier for a mature-allowed caller's text-only
+ * video: true when the prompt is explicit although the deterministic rules
+ * found nothing. Asked only when no text-to-video model takes mature runs, so
+ * the item is planned as a chain before anything is held (a `prepare` re-plan
+ * could not add the keyframe step). Errors count as false.
+ */
+export type ExplicitCheck = (prompt: string) => Promise<boolean>;
+
 export interface BuildSpecInput {
   kind: 'image' | 'video';
   modelRef: string;
@@ -45,11 +54,34 @@ export interface BuildSpecInput {
   catalog: Catalog;
   ctx: PlanContext;
   classify?: Classify | null;
+  /**
+   * D-005 mature text-to-video chain: this item's ref and the ref its keyframe
+   * step gets. Without it a mature text-only video that no model takes is blocked.
+   */
+  chain?: ChainRefs;
+  explicit?: ExplicitCheck | null;
+}
+
+export interface ChainRefs {
+  ref: string;
+  keyframeRef: string;
+  /** Retry of the animation alone: the keyframe the earlier run made (asset id). */
+  priorKeyframe?: string;
+}
+
+/** The keyframe step of a chain (planned and priced as its own item, held together with the animation). */
+export interface KeyframeStep {
+  spec: GenSpec;
+  model: CatalogModel;
+  priceRequest: PriceRequest;
 }
 
 export type BuiltSpec =
-  | { ok: true; spec: GenSpec; model: CatalogModel; priceRequest: PriceRequest; autoVia?: PlanItem['autoVia'] }
+  | { ok: true; spec: GenSpec; model: CatalogModel; priceRequest: PriceRequest; autoVia?: PlanItem['autoVia']; keyframe?: KeyframeStep }
   | ({ ok: false; model?: CatalogModel } & Blocked);
+
+/** Internal: a failure caused by mature routing (the chain may still fit). */
+type Direct = BuiltSpec | ({ ok: false; model?: CatalogModel; matureBlocked: true } & Blocked);
 
 function modeOf(kind: 'image' | 'video', settings: NodeSettings, inputs: GenInput[]): GenerationMode {
   if (kind === 'image') return inputs.some((i) => i.role === 'edit') ? 'edit' : 't2i';
@@ -140,34 +172,97 @@ function matureCapable(catalog: Catalog, spec: GenSpec, ctx: PlanContext, imageO
 
 export const NO_MATURE_MODEL_REASON = 'No model that takes mature content fits these settings.';
 
-/** Builds and validates the spec for one item and resolves Auto (D-009). */
-export async function buildSpec(input: BuildSpecInput): Promise<BuiltSpec> {
+/** Keyframe pictures are drawn at a 1K pixel budget (720p and below match it; the animation step scales). */
+export const KEYFRAME_RESOLUTION = '1K';
+
+/** Still-picture direction for the keyframe step, ahead of the user's prompt. */
+export const KEYFRAME_DIRECTION = 'The opening frame of this video as one still picture, same subjects, setting, framing and lighting:';
+
+export const NO_MATURE_KEYFRAME_REASON = 'No picture model that takes mature content is available to make the first frame.';
+
+/** Ref of the keyframe step of a chain item. */
+export function keyframeRefOf(ref: string): string {
+  return ref === 'spec' ? 'keyframe' : `${ref}:keyframe`;
+}
+
+interface Prepared {
+  prompt: string;
+  matureAuto: boolean;
+  base: Omit<GenSpec, 'modelId' | 'auto' | 'fallbacks'>;
+}
+
+/** A text-only video of a chain-capable item. */
+function chainable(input: BuildSpecInput, base: Prepared['base']): boolean {
+  return input.chain !== undefined && base.kind === 'video' && base.mode === 't2v' && base.inputs.length === 0;
+}
+
+/** Some listed text-to-video model takes a mature run of these settings directly (no chain needed). */
+function directMatureVideo(input: BuildSpecInput, base: Prepared['base']): boolean {
+  return matureCandidates(input.catalog, autoRequestOf({ ...base, mature: true }), input.ctx.plan).length > 0;
+}
+
+async function prepareSpec(input: BuildSpecInput): Promise<Prepared> {
   const { kind, inputs, ctx } = input;
   const prompt = cleanPrompt(input.prompt);
-  if (input.settings.mature && !ctx.matureAllowed) {
-    return { ok: false, code: 'mature_not_allowed', reason: 'Mature content is off for this workspace.' };
-  }
   // D-005: a mature-allowed caller's explicit prompt runs as a mature run without asking (Quick Create, Home, tools and
   // canvas nodes never send the toggle on their own). Callers without access keep the flag off: the quote asks them.
-  const matureAuto = !input.settings.mature && ctx.matureAllowed && explicitSignal(prompt).length > 0;
-  const settings = matureAuto ? { ...input.settings, mature: true } : input.settings;
-  const mode = modeOf(kind, settings, inputs);
-  const base: Omit<GenSpec, 'modelId' | 'auto' | 'fallbacks'> = {
-    kind,
-    mode,
-    prompt,
-    ...(settings.negativePrompt !== undefined && { negativePrompt: settings.negativePrompt }),
-    ...(settings.seed !== undefined && { seed: settings.seed }),
-    ...(settings.seconds !== undefined && { seconds: settings.seconds }),
-    ...(settings.resolution !== undefined && { resolution: settings.resolution }),
-    ...(settings.ratio !== undefined && { ratio: settings.ratio }),
-    ...(settings.audio !== undefined && { audio: settings.audio }),
-    ...(settings.n !== undefined && { n: settings.n }),
-    mature: settings.mature,
-    matureAccess: matureAccessOfPlan(ctx),
-    ...(matureAuto && { matureAuto: true as const }),
-    inputs,
+  let matureAuto = !input.settings.mature && ctx.matureAllowed && explicitSignal(prompt).length > 0;
+  const baseOf = (mature: boolean): Prepared['base'] => {
+    const settings = mature ? { ...input.settings, mature: true } : input.settings;
+    return {
+      kind,
+      mode: modeOf(kind, settings, inputs),
+      prompt,
+      ...(settings.negativePrompt !== undefined && { negativePrompt: settings.negativePrompt }),
+      ...(settings.seed !== undefined && { seed: settings.seed }),
+      ...(settings.seconds !== undefined && { seconds: settings.seconds }),
+      ...(settings.resolution !== undefined && { resolution: settings.resolution }),
+      ...(settings.ratio !== undefined && { ratio: settings.ratio }),
+      ...(settings.audio !== undefined && { audio: settings.audio }),
+      ...(settings.n !== undefined && { n: settings.n }),
+      mature: settings.mature,
+      matureAccess: matureAccessOfPlan(ctx),
+      ...(matureAuto && { matureAuto: true as const }),
+      inputs,
+    };
   };
+  let base = baseOf(matureAuto);
+  // The rules see nothing, but the classifier may: for a text-only video that only a chain can make mature, ask now,
+  // so the quote prices both steps (a re-plan in `prepare` would fail after the hold).
+  if (!matureAuto && !input.settings.mature && ctx.matureAllowed && input.explicit && prompt !== '' && chainable(input, base) && !directMatureVideo(input, base)) {
+    let explicit = false;
+    try {
+      explicit = await input.explicit(prompt);
+    } catch {
+      explicit = false;
+    }
+    if (explicit) {
+      matureAuto = true;
+      base = baseOf(true);
+    }
+  }
+  return { prompt, matureAuto, base };
+}
+
+/** Builds and validates the spec for one item and resolves Auto (D-009); a mature text-only video no model takes becomes a chain (D-005). */
+export async function buildSpec(input: BuildSpecInput): Promise<BuiltSpec> {
+  if (input.settings.mature && !input.ctx.matureAllowed) {
+    return { ok: false, code: 'mature_not_allowed', reason: 'Mature content is off for this workspace.' };
+  }
+  const prep = await prepareSpec(input);
+  const direct = await buildDirect(input, prep);
+  if (!direct.ok && 'matureBlocked' in direct && chainable(input, prep.base)) return planChain(input, prep);
+  if (!direct.ok && 'matureBlocked' in direct) {
+    const { matureBlocked: _drop, ...rest } = direct;
+    return rest;
+  }
+  return direct;
+}
+
+async function buildDirect(input: BuildSpecInput, prep: Prepared): Promise<Direct> {
+  const { ctx } = input;
+  const { prompt, matureAuto, base } = prep;
+  const mode = base.mode;
   if (prompt === '' && (mode === 't2v' || mode === 't2i')) return { ok: false, code: 'empty_prompt', reason: 'Add a prompt first.' };
 
   let model: CatalogModel;
@@ -180,8 +275,11 @@ export async function buildSpec(input: BuildSpecInput): Promise<BuiltSpec> {
     );
     // No Auto-eligible model takes this mature run: any listed mature-capable one (D-005 routing).
     if (candidates.length === 0 && base.mature) candidates = matureCandidates(input.catalog, req, ctx.plan);
-    const chosen = await chooseModel({ request: req, candidates, classify: input.classify ?? null });
-    if (!chosen) return { ok: false, code: 'no_capable_model', reason: matureAuto ? NO_MATURE_MODEL_REASON : 'No model available on your plan fits these settings.' };
+    const chosen = await chooseModel({ request: req, candidates, classify: candidates.length > 0 ? (input.classify ?? null) : null });
+    if (!chosen) {
+      const reason = matureAuto ? NO_MATURE_MODEL_REASON : 'No model available on your plan fits these settings.';
+      return base.mature ? { ok: false, code: 'no_capable_model', reason, matureBlocked: true } : { ok: false, code: 'no_capable_model', reason };
+    }
     model = chosen.model;
     fallbacks = chosen.fallbacks.map((m) => m.id);
     autoVia = chosen.via;
@@ -198,13 +296,113 @@ export async function buildSpec(input: BuildSpecInput): Promise<BuiltSpec> {
   if (matureAuto && matureRunProblem(model, input.imageOrigins, input.imageOrigins.length) !== null) {
     // The chosen model can't take the mature run this prompt needs: a mature-capable one of the same family, else the cheapest.
     const capable = matureCapable(input.catalog, spec, ctx, input.imageOrigins, model);
-    if (capable.length === 0) return { ok: false, model, code: 'no_capable_model', reason: NO_MATURE_MODEL_REASON };
+    if (capable.length === 0) return { ok: false, model, code: 'no_capable_model', reason: NO_MATURE_MODEL_REASON, matureBlocked: true };
     model = capable[0]!;
     spec = { ...spec, modelId: model.id, fallbacks: capable.slice(1, 4).map((m) => m.id) };
   }
   const problem = modelProblem(model, spec, ctx, input.imageOrigins);
-  if (problem) return { ok: false, model, ...problem };
+  if (problem) {
+    const routing = base.mature && (problem.code === 'mature_not_allowed' || problem.code === 'identity_requires_platform_assets' || (problem.code === 'unsupported' && base.mode === 't2v'));
+    return routing ? { ok: false, model, ...problem, matureBlocked: true } : { ok: false, model, ...problem };
+  }
   return { ok: true, spec, model, priceRequest: priceRequestOf(spec, model), ...(autoVia && { autoVia }) };
+}
+
+/** `seconds` as `model` takes it: the nearest allowed length (ties go shorter), else clamped to its range. */
+function snapSeconds(model: CatalogModel, seconds: number | undefined): number | undefined {
+  if (!model.seconds) return undefined;
+  const want = seconds ?? model.defaultSeconds ?? model.seconds.min;
+  const { min, max, allowed } = model.seconds;
+  if (allowed && allowed.length > 0) return [...allowed].sort((a, b) => Math.abs(a - want) - Math.abs(b - want) || a - b)[0];
+  return Math.min(max, Math.max(min, want));
+}
+
+/** `resolution` as `model` takes it within the plan cap: the requested one, else the highest below it, else the lowest allowed. */
+function snapResolution(model: CatalogModel, resolution: string | undefined, plan: PlanId | null): string | undefined {
+  if (model.resolutions.length === 0) return undefined;
+  const allowed = model.resolutions.filter((r) => !plan || planAllowsResolution(plan, 'video', r));
+  if (allowed.length === 0) return undefined;
+  const want = resolution ?? model.defaultResolution ?? allowed[0]!;
+  if (allowed.includes(want)) return want;
+  const byRank = [...allowed].sort((a, b) => resolutionRank(a) - resolutionRank(b));
+  return [...byRank].reverse().find((r) => resolutionRank(r) <= resolutionRank(want)) ?? byRank[0];
+}
+
+/**
+ * D-005 mature text-to-video chain: (a) a keyframe from the cheapest
+ * mature-capable text-to-image model at the video's ratio, (b) the cheapest
+ * mature image-to-video model (spicy family; the keyframe is a platform
+ * picture) with that keyframe as the first frame and the user's prompt,
+ * length and resolution (snapped to what the model takes, within the plan
+ * cap). Either step without a model → blocked at quote with a clear reason.
+ */
+function planChain(input: BuildSpecInput, prep: Prepared): BuiltSpec {
+  const { ctx, catalog } = input;
+  const chain = input.chain!;
+  const { base } = prep;
+  const common = {
+    mature: true,
+    matureAccess: base.matureAccess ?? matureAccessOfPlan(ctx),
+    ...(base.matureAuto && { matureAuto: true as const }),
+  };
+
+  let keyframe: KeyframeStep | undefined;
+  let frameFrom: InputSource;
+  if (chain.priorKeyframe) frameFrom = { assetId: chain.priorKeyframe, origin: 'generated' };
+  else {
+    const ratio = base.ratio && base.ratio !== 'adaptive' ? base.ratio : '16:9';
+    const kf: Omit<GenSpec, 'modelId' | 'auto' | 'fallbacks'> = {
+      kind: 'image',
+      mode: 't2i',
+      prompt: `${KEYFRAME_DIRECTION} ${prep.prompt}`,
+      ...(base.negativePrompt !== undefined && { negativePrompt: base.negativePrompt }),
+      resolution: KEYFRAME_RESOLUTION,
+      ratio,
+      ...common,
+      inputs: [],
+      chain: { step: 'keyframe', with: chain.ref },
+    };
+    const pool = matureCandidates(catalog, autoRequestOf(kf), ctx.plan).filter((m) => modelProblem(m, { ...kf, modelId: m.id, auto: true, fallbacks: [] }, ctx, []) === null);
+    const m = pool[0];
+    if (!m) return { ok: false, code: 'no_capable_model', reason: NO_MATURE_KEYFRAME_REASON };
+    const spec: GenSpec = { ...kf, modelId: m.id, auto: true, fallbacks: pool.slice(1, 4).map((x) => x.id) };
+    keyframe = { spec, model: m, priceRequest: priceRequestOf(spec, m) };
+    frameFrom = { item: chain.keyframeRef };
+  }
+
+  const origins: ImageSource[] = ['generated'];
+  const { audio: _audio, ...rest } = base;
+  const video: Omit<GenSpec, 'modelId' | 'auto' | 'fallbacks'> = {
+    ...rest,
+    mode: 'i2v',
+    ...common,
+    inputs: [{ role: 'frame', media: 'image', from: frameFrom }],
+    chain: { step: 'animate', with: chain.keyframeRef } satisfies ChainStep,
+  };
+  const fits = (m: CatalogModel, s: typeof video) => matureRunProblem(m, origins, 1) === null && modelProblem(m, { ...s, modelId: m.id, auto: false, fallbacks: [] }, ctx, origins) === null;
+  // The user's length and resolution when a model takes them, else the nearest each model takes.
+  let pool = chainVideoCandidates(catalog, autoRequestOf(video), ctx.plan).filter((m) => fits(m, video));
+  let spec: typeof video = video;
+  if (pool.length === 0) {
+    const snapped = chainVideoCandidates(catalog, { kind: 'video', mode: 'i2v' }, ctx.plan)
+      .map((m) => {
+        const seconds = snapSeconds(m, base.seconds);
+        const resolution = snapResolution(m, base.resolution, ctx.plan);
+        const s = { ...video, ...(seconds !== undefined ? { seconds } : {}), ...(resolution !== undefined ? { resolution } : {}) };
+        if (seconds === undefined) delete s.seconds;
+        if (resolution === undefined) delete s.resolution;
+        return { m, s };
+      })
+      .filter(({ m, s }) => fits(m, s));
+    if (snapped[0]) {
+      spec = snapped[0].s;
+      pool = snapped.filter((x) => x.s.seconds === spec.seconds && x.s.resolution === spec.resolution).map((x) => x.m);
+    }
+  }
+  const model = pool[0];
+  if (!model) return { ok: false, code: 'no_capable_model', reason: NO_MATURE_MODEL_REASON };
+  const full: GenSpec = { ...spec, modelId: model.id, auto: isAuto(input.modelRef), fallbacks: pool.slice(1, 4).map((m) => m.id) };
+  return { ok: true, spec: full, model, priceRequest: priceRequestOf(full, model), ...(keyframe && { keyframe }) };
 }
 
 export interface PlanGraphInput {
@@ -219,6 +417,8 @@ export interface PlanGraphInput {
   catalog: Catalog;
   ctx: PlanContext;
   classify?: Classify | null;
+  /** D-005 quote-time text classifier for mature-allowed callers' text-only videos (see `ExplicitCheck`). */
+  explicit?: ExplicitCheck | null;
 }
 
 function assetOrigin(node: GraphNode): ImageSource {
@@ -340,6 +540,7 @@ export async function planRun(input: PlanGraphInput): Promise<RunPlan> {
       catalog,
       ctx,
       classify: input.classify ?? null,
+      ...(kind === 'video' && { chain: { ref: s.nodeId, keyframeRef: keyframeRefOf(s.nodeId) }, explicit: input.explicit ?? null }),
     });
     if (!built.ok) {
       block(built.code, built.reason, {
@@ -348,13 +549,29 @@ export async function planRun(input: PlanGraphInput): Promise<RunPlan> {
       });
       continue;
     }
+    // D-005 chain: the keyframe step runs first as its own item (no node); the node's item animates it.
+    const keyframeRef = keyframeRefOf(s.nodeId);
+    if (built.keyframe) {
+      items.set(keyframeRef, {
+        ref: keyframeRef,
+        nodeId: null,
+        title: `${s.title} · First frame`,
+        kind: 'image',
+        action: 'run',
+        dependsOn: [],
+        model: built.keyframe.model.id,
+        modelName: built.keyframe.model.displayName,
+        spec: built.keyframe.spec,
+        priceRequest: built.keyframe.priceRequest,
+      });
+    }
     items.set(s.nodeId, {
       ...base,
       action: 'run',
       model: built.model.id,
       modelName: built.model.displayName,
       ...(built.autoVia && { autoVia: built.autoVia }),
-      dependsOn: [...s.dependsOn],
+      dependsOn: [...s.dependsOn, ...(built.keyframe ? [keyframeRef] : [])],
       paramsHash: paramsHash(node),
       spec: built.spec,
       priceRequest: built.priceRequest,

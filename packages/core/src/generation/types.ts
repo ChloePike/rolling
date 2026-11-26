@@ -52,6 +52,20 @@ export interface GenInput {
   from: InputSource;
 }
 
+/**
+ * D-005 mature text-to-video chain: no text-to-video model takes mature runs,
+ * so the item is made in two steps of one run. `keyframe`: a mature-capable
+ * text-to-image model draws the first frame at the video's ratio; `animate`:
+ * a mature image-to-video model (the spicy family, platform pictures only)
+ * animates it. `with` is the other step's item ref.
+ */
+export interface ChainStep {
+  step: 'keyframe' | 'animate';
+  with: string;
+}
+
+export type ChainStepName = ChainStep['step'];
+
 /** Everything a job needs to build its provider request, frozen at quote time. */
 export interface GenSpec {
   kind: 'image' | 'video';
@@ -89,6 +103,8 @@ export interface GenSpec {
    * probed length and fails (refunded) when the file is clearly longer.
    */
   declaredDurations?: Record<string, number>;
+  /** Step of a mature text-to-video chain (D-005): the keyframe is held together with the animation and settled on its own. */
+  chain?: ChainStep;
 }
 
 export interface PlanItem {

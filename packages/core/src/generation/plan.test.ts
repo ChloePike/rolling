@@ -171,6 +171,27 @@ describe('planRun', () => {
     expect(off.items[0]!.spec).toMatchObject({ mature: false });
   });
 
+  it('D-005: an explicit text-only video node becomes a keyframe item (no node) the node item depends on; downstream waits on the node', async () => {
+    const g = graphOf(
+      [node('shot', 'video', { model: 'Seedance 2.0 Mini', prompt: 'nsfw scene between two consenting adults', ratio: '16:9', resolution: '480p', length: 5 }), node('next', 'video', { model: 'Seedance 2.0 Mini', prompt: 'continue', resolution: '480p', length: 5 })],
+      [edge('shot', 'next', 'refs')],
+    );
+    const on = await planRun({ graph: g, active: new Map(), scope: 'all', catalog: fixtureCatalog, ctx: { plan: 'plus', matureAllowed: true } });
+    expect(on.items.map((i) => [i.ref, i.nodeId, i.action])).toEqual([
+      ['shot:keyframe', null, 'run'],
+      ['shot', 'shot', 'run'],
+      ['next', 'next', 'run'],
+    ]);
+    const items = byRef(on.items);
+    expect(items['shot:keyframe']!.spec).toMatchObject({ kind: 'image', ratio: '16:9', chain: { step: 'keyframe', with: 'shot' } });
+    expect(items.shot).toMatchObject({ dependsOn: ['shot:keyframe'], model: 'lumina/wan2.2-i2v-spicy' });
+    expect(items.shot!.spec!.inputs).toEqual([{ role: 'frame', media: 'image', from: { item: 'shot:keyframe' } }]);
+    expect(items.next!.dependsOn).toEqual(['shot']);
+    // Without access: one ordinary item.
+    const off = await planRun({ graph: g, active: new Map(), scope: 'node', nodeIds: ['shot'], catalog: fixtureCatalog, ctx: PLUS });
+    expect(off.items.map((i) => i.ref)).toEqual(['shot']);
+  });
+
   it('lets identity-driven models take mature runs only with platform assets', async () => {
     const photo = (source: string) => node('photo', 'asset', { assetId: 'ast_p', source, media: 'image' });
     const vid = node('vid', 'video', { model: 'lumina/wan2.2-i2v-spicy', prompt: 'move', mature: true, resolution: '480p', length: 5 });

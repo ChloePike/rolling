@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { fixtureCatalog } from '../models/__fixtures__/catalog';
+import { Catalog } from '../models/catalog';
+import { creditsFor, creditsForAll } from '../pricing/config';
 import { moderationFor, validateRequest } from '../models/capabilities';
 import { replanMature } from './plan';
 import { buildGenerateRequest, type ResolvedInput } from './request';
@@ -259,9 +261,12 @@ describe('D-005: explicit prompts of mature-allowed callers run mature automatic
     expect(item.spec!.mature).toBe(true);
   });
 
-  it('fails with a clear reason when no mature-capable model fits (text-to-video in the fixture catalog)', async () => {
+  it('a text-only video no model takes as a mature run becomes the keyframe → animation chain (see the chain tests)', async () => {
     const plan = await planPromptSpec({ spec: spec({ kind: 'video', model: 'lumina/berry-1.0', prompt: EXPLICIT }), catalog: fixtureCatalog, ctx: MATURE, assetOrigins: assets });
-    expect(plan.items[0]).toMatchObject({ action: 'blocked', code: 'no_capable_model', reason: 'No model that takes mature content fits these settings.' });
+    expect(plan.items.map((i) => [i.ref, i.action])).toEqual([
+      ['keyframe', 'run'],
+      ['spec', 'run'],
+    ]);
   });
 
   it('a non-explicit prompt stays a normal run; callers without access keep the flag off with their access snapshot', async () => {
@@ -291,5 +296,102 @@ describe('D-005: explicit prompts of mature-allowed callers run mature automatic
     const capable = fixtureCatalog.get('qwen/qwen-image-2.0')!;
     const kept = replanMature({ spec: { ...item.spec!, modelId: capable.id }, model: capable, catalog: fixtureCatalog, plan: 'plus', fits: () => true });
     expect(kept.ok && kept.model.id).toBe('qwen/qwen-image-2.0');
+  });
+});
+
+describe('D-005: mature text-to-video as a keyframe → animation chain', () => {
+  const EXPLICIT = 'nsfw scene between two consenting adults in a hotel room';
+  const video = (extra: Record<string, unknown> = {}) => spec({ kind: 'video', model: 'auto', prompt: EXPLICIT, seconds: 5, resolution: '480p', ratio: '9:16', audio: true, ...extra });
+
+  it('plans a mature keyframe at the video ratio, then the spicy image-to-video with it as the first frame; prices sum', async () => {
+    const plan = await planPromptSpec({ spec: video(), catalog: fixtureCatalog, ctx: MATURE, assetOrigins: assets });
+    const [kf, anim] = plan.items as [PlanItem, PlanItem];
+    expect(plan.items).toHaveLength(2);
+    expect(kf).toMatchObject({ ref: 'keyframe', kind: 'image', action: 'run', nodeId: null, dependsOn: [], title: 'Video · First frame' });
+    expect(kf.spec).toMatchObject({ kind: 'image', mode: 't2i', mature: true, matureAuto: true, ratio: '9:16', resolution: '1K', inputs: [], chain: { step: 'keyframe', with: 'spec' } });
+    expect(kf.spec!.prompt).toContain(EXPLICIT);
+    // The cheapest mature text-to-image model.
+    expect(kf.model).toBe('lumina/z-image-spicy');
+    expect(kf.priceRequest).toMatchObject({ size: '768x1344' });
+
+    expect(anim).toMatchObject({ ref: 'spec', kind: 'video', action: 'run', dependsOn: ['keyframe'], title: 'Video' });
+    expect(anim.spec).toMatchObject({ mode: 'i2v', mature: true, seconds: 5, resolution: '480p', prompt: EXPLICIT, chain: { step: 'animate', with: 'keyframe' } });
+    expect(anim.spec!.inputs).toEqual([{ role: 'frame', media: 'image', from: { item: 'keyframe' } }]);
+    expect(anim.spec!.audio).toBeUndefined();
+    expect(anim.model).toBe('lumina/wan2.2-i2v-spicy');
+
+    // Both requests fit their models and go out with moderation low (the keyframe is a platform picture).
+    for (const item of [kf, anim]) {
+      const { req, problems } = request(item);
+      expect(problems, item.ref).toEqual([]);
+      expect(moderationFor(fixtureCatalog.get(item.model!)!, req.mature, req)).toBe('low');
+    }
+    // One price for the run: the two steps' credits.
+    const credits = plan.items.map((i) => creditsFor(fixtureCatalog.get(i.model!)!, i.priceRequest!));
+    expect(credits.every((c) => c > 0)).toBe(true);
+    expect(creditsForAll(plan.items.map((i) => ({ model: fixtureCatalog.get(i.model!)!, request: i.priceRequest! })))).toBe(credits[0]! + credits[1]!);
+  });
+
+  it('keeps the requested length and resolution when a model takes them, else snaps to the nearest within the plan', async () => {
+    const long = await planPromptSpec({ spec: video({ seconds: 10, resolution: '720p' }), catalog: fixtureCatalog, ctx: MATURE, assetOrigins: assets });
+    const anim = long.items[1]!;
+    expect(anim.model).toBe('lumina/wan2.7-i2v-spicy');
+    expect(anim.spec).toMatchObject({ seconds: 10, resolution: '720p' });
+    expect(request(anim).problems).toEqual([]);
+    // Nothing takes 1080p on Plus (720p cap): the highest it allows.
+    const capped = await planPromptSpec({ spec: video({ seconds: 5, resolution: '4K' }), catalog: fixtureCatalog, ctx: MATURE, assetOrigins: assets });
+    expect(capped.items[1]).toMatchObject({ action: 'run' });
+    expect(capped.items[1]!.spec!.resolution).not.toBe('4K');
+    expect(request(capped.items[1]!).problems).toEqual([]);
+  });
+
+  it('Auto prefers the chain only for mature text-only video: plain videos, pictures and images are unchanged', async () => {
+    const plain = await planPromptSpec({ spec: video({ prompt: 'a cat on a sunny porch' }), catalog: fixtureCatalog, ctx: MATURE, assetOrigins: assets });
+    expect(plain.items).toHaveLength(1);
+    expect(plain.items[0]).toMatchObject({ ref: 'spec', action: 'run' });
+    expect(plain.items[0]!.spec).toMatchObject({ mature: false, mode: 't2v' });
+    expect(plain.items[0]!.spec!.chain).toBeUndefined();
+    const guest = await planPromptSpec({ spec: video(), catalog: fixtureCatalog, ctx: { ...PLUS, matureAccess: 'preference_off' }, assetOrigins: assets });
+    expect(guest.items).toHaveLength(1);
+    expect(guest.items[0]!.spec).toMatchObject({ mature: false });
+    const image = await planPromptSpec({ spec: spec({ kind: 'image', model: 'auto', prompt: EXPLICIT }), catalog: fixtureCatalog, ctx: MATURE, assetOrigins: assets });
+    expect(image.items).toHaveLength(1);
+    // A platform picture as the first frame: one item (no keyframe step).
+    const framed = await planPromptSpec({ spec: video({ inputs: { firstFrameAssetId: 'ast_gen' } }), catalog: fixtureCatalog, ctx: MATURE, assetOrigins: assets });
+    expect(framed.items.map((i) => i.ref)).toEqual(['spec']);
+  });
+
+  it('asks the quote-time classifier only for text-only videos the rules see nothing in, and chains when it says explicit', async () => {
+    const asked: string[] = [];
+    const explicit = async (p: string) => (asked.push(p), true);
+    const plan = await planPromptSpec({ spec: video({ prompt: 'two adults, an adult category the rules cannot see' }), catalog: fixtureCatalog, ctx: MATURE, assetOrigins: assets, explicit });
+    expect(asked).toEqual(['two adults, an adult category the rules cannot see']);
+    expect(plan.items.map((i) => i.ref)).toEqual(['keyframe', 'spec']);
+    expect(plan.items[1]!.spec).toMatchObject({ mature: true, matureAuto: true });
+    // Rules already explicit, an image, or a caller without access: not asked.
+    asked.length = 0;
+    await planPromptSpec({ spec: video(), catalog: fixtureCatalog, ctx: MATURE, assetOrigins: assets, explicit });
+    await planPromptSpec({ spec: spec({ kind: 'image', model: 'auto', prompt: 'two adults' }), catalog: fixtureCatalog, ctx: MATURE, assetOrigins: assets, explicit });
+    await planPromptSpec({ spec: video({ prompt: 'two adults' }), catalog: fixtureCatalog, ctx: PLUS, assetOrigins: assets, explicit });
+    expect(asked).toEqual([]);
+    // A classifier error plans the ordinary run.
+    const err = await planPromptSpec({ spec: video({ prompt: 'two adults' }), catalog: fixtureCatalog, ctx: MATURE, assetOrigins: assets, explicit: async () => { throw new Error('down'); } });
+    expect(err.items.map((i) => i.ref)).toEqual(['spec']);
+  });
+
+  it('fails at quote with a clear reason when a step has no model', async () => {
+    const noImage = new Catalog(fixtureCatalog.models.filter((m) => !(m.kind === 'image' && m.matureRouting === 'allowed')));
+    const a = await planPromptSpec({ spec: video(), catalog: noImage, ctx: MATURE, assetOrigins: assets });
+    expect(a.items).toEqual([expect.objectContaining({ ref: 'spec', action: 'blocked', code: 'no_capable_model', reason: 'No picture model that takes mature content is available to make the first frame.' })]);
+    const noSpicy = new Catalog(fixtureCatalog.models.filter((m) => !/-spicy/.test(m.id) || m.kind === 'image'));
+    const b = await planPromptSpec({ spec: video(), catalog: noSpicy, ctx: MATURE, assetOrigins: assets });
+    expect(b.items).toEqual([expect.objectContaining({ ref: 'spec', action: 'blocked', code: 'no_capable_model', reason: 'No model that takes mature content fits these settings.' })]);
+  });
+
+  it('a retry of the animation alone reuses the earlier keyframe as a platform picture', async () => {
+    const plan = await planPromptSpec({ spec: video(), catalog: fixtureCatalog, ctx: MATURE, assetOrigins: assets, onlyRefs: ['spec'], priorAssets: { keyframe: 'ast_kf' } });
+    expect(plan.items).toHaveLength(1);
+    expect(plan.items[0]).toMatchObject({ ref: 'spec', action: 'run', dependsOn: [] });
+    expect(plan.items[0]!.spec!.inputs).toEqual([{ role: 'frame', media: 'image', from: { assetId: 'ast_kf', origin: 'generated' } }]);
   });
 });

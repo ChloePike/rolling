@@ -9,6 +9,7 @@ import { z } from 'zod';
 import type { Catalog } from '../models/catalog';
 import { estimateUsd, unmetCapability, type AutoRequest } from '../models/capabilities';
 import { resolveChatModel } from '../models/chat';
+import { isSwapModel } from '../models/overlay';
 import type { CatalogModel, ChatMessage, LlmProvider } from '../models/types';
 import { planAllowsResolution, type PlanId } from '../pricing/config';
 
@@ -123,6 +124,18 @@ export function autoCandidates(catalog: Catalog | readonly CatalogModel[], req: 
 export function matureCandidates(catalog: Catalog | readonly CatalogModel[], req: AutoRequest, plan: PlanId | null): CatalogModel[] {
   const models = 'models' in catalog ? catalog.models : catalog;
   return capableCandidates(models, { ...req, mature: true }, plan, (m) => !m.hidden && !m.requiresIdentitySafety && m.matureRouting === 'allowed');
+}
+
+/**
+ * Animation step of a D-005 mature text-to-video chain: listed video models of
+ * the mature family that take the request (image-to-video), including the
+ * identity-driven spicy ones (`platform_assets_only`: the keyframe is a
+ * platform picture), cheapest first. Face/head swap never qualifies; the
+ * caller still checks `matureRunProblem` with the keyframe's provenance.
+ */
+export function chainVideoCandidates(catalog: Catalog | readonly CatalogModel[], req: AutoRequest, plan: PlanId | null): CatalogModel[] {
+  const models = 'models' in catalog ? catalog.models : catalog;
+  return capableCandidates(models, { ...req, mature: false }, plan, (m) => m.kind === 'video' && !m.hidden && !isSwapModel(m) && m.matureRouting !== 'never');
 }
 
 /** `bytedance/seedream-5.0-lite` → `bytedance/seedream`: the vendor and model family. */

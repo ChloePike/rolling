@@ -19,7 +19,7 @@
 import type { Catalog } from '../models/catalog';
 import type { CatalogModel, ImageSource } from '../models/types';
 import type { Classify } from './auto';
-import { buildSpec, imageOriginsOf, type Blocked } from './plan';
+import { buildSpec, imageOriginsOf, keyframeRefOf, type Blocked, type ChainRefs, type ExplicitCheck } from './plan';
 import { findModel, isAuto, type NodeSettings, type PromptSpec } from './spec';
 import type { GenInput, PlanContext, PlanItem, RunPlan } from './types';
 
@@ -87,6 +87,8 @@ export interface PlanSpecInput {
   catalog: Catalog;
   ctx: PlanContext;
   classify?: Classify | null;
+  /** D-005 quote-time text classifier for mature-allowed callers' text-only videos (see `ExplicitCheck`). */
+  explicit?: ExplicitCheck | null;
   /** Source of every input asset (D-005 provenance). Unknown assets block the item. */
   assetOrigins: ReadonlyMap<string, SpecAsset>;
   /** Retry: plan only these item refs (others are left out). */
@@ -139,6 +141,25 @@ async function planOne(
   inputs: GenInput[],
   extra: { inputVideoMs?: number; declaredDurations?: Record<string, number> } = {},
 ): Promise<PlanItem> {
+  return (await planSteps(input, base, kind, modelRef, prompt, settings, inputs, extra))[0]!;
+}
+
+/**
+ * Plans one item; with `chain`, a mature text-only video that no model takes
+ * becomes two items (D-005): the keyframe step first, then the animation, which
+ * depends on it. The animation keeps `base.ref` and title.
+ */
+async function planSteps(
+  input: PlanSpecInput,
+  base: Base,
+  kind: 'image' | 'video',
+  modelRef: string,
+  prompt: string,
+  settings: NodeSettings,
+  inputs: GenInput[],
+  extra: { inputVideoMs?: number; declaredDurations?: Record<string, number> } = {},
+  chain?: ChainRefs,
+): Promise<PlanItem[]> {
   const built = await buildSpec({
     kind,
     modelRef,
@@ -149,23 +170,26 @@ async function planOne(
     catalog: input.catalog,
     ctx: input.ctx,
     classify: input.classify ?? null,
+    ...(chain && { chain, explicit: input.explicit ?? null }),
   });
   if (!built.ok) {
-    return {
-      ...base,
-      ...(built.model && { model: built.model.id, modelName: built.model.displayName }),
-      action: 'blocked',
-      code: built.code,
-      reason: built.reason,
-      ...(built.lowestPlan !== undefined && { lowestPlan: built.lowestPlan }),
-    };
+    return [
+      {
+        ...base,
+        ...(built.model && { model: built.model.id, modelName: built.model.displayName }),
+        action: 'blocked',
+        code: built.code,
+        reason: built.reason,
+        ...(built.lowestPlan !== undefined && { lowestPlan: built.lowestPlan }),
+      },
+    ];
   }
   const spec = {
     ...built.spec,
     ...(extra.inputVideoMs !== undefined && { inputVideoMs: extra.inputVideoMs }),
     ...(extra.declaredDurations && Object.keys(extra.declaredDurations).length > 0 && { declaredDurations: extra.declaredDurations }),
   };
-  return {
+  const main: PlanItem = {
     ...base,
     action: 'run',
     model: built.model.id,
@@ -174,6 +198,21 @@ async function planOne(
     spec,
     priceRequest: extra.inputVideoMs !== undefined && built.priceRequest.referenceVideos ? { ...built.priceRequest, inputVideoMs: extra.inputVideoMs } : built.priceRequest,
   };
+  if (!built.keyframe || !chain) return [main];
+  const k = built.keyframe;
+  const first: PlanItem = {
+    ref: chain.keyframeRef,
+    nodeId: null,
+    title: `${base.title} · First frame`,
+    kind: 'image',
+    dependsOn: [],
+    action: 'run',
+    model: k.model.id,
+    modelName: k.model.displayName,
+    spec: k.spec,
+    priceRequest: k.priceRequest,
+  };
+  return [first, { ...main, dependsOn: [...main.dependsOn, chain.keyframeRef] }];
 }
 
 const blockedItem = (base: Base, b: Blocked): PlanItem => ({ ...base, action: 'blocked', ...b });
@@ -212,7 +251,12 @@ async function planSingle(input: PlanSpecInput): Promise<RunPlan> {
     add(i.audioAssetId, 'audio'),
   ].filter((p): p is Blocked => p !== null);
   if (problems[0]) return { items: [blockedItem(base, problems[0])] };
-  return { items: [await planOne(input, base, kind, spec.model, spec.prompt, settingsOfSpec(spec), inputs)] };
+  // D-005: a mature text-only video no model takes runs as keyframe → animation. A retry of the animation alone
+  // reuses the earlier keyframe.
+  const keyframeRef = keyframeRefOf(base.ref);
+  const prior = input.onlyRefs && !input.onlyRefs.includes(keyframeRef) ? input.priorAssets?.[keyframeRef] : undefined;
+  const chain: ChainRefs | undefined = kind === 'video' ? { ref: base.ref, keyframeRef, ...(prior && { priorKeyframe: prior }) } : undefined;
+  return { items: await planSteps(input, base, kind, spec.model, spec.prompt, settingsOfSpec(spec), inputs, {}, chain) };
 }
 
 /** The lip-sync model an Avatar run uses: the requested one, or the default (Auto never picks identity models). */
