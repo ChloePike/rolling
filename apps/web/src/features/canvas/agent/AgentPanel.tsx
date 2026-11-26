@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AUTO_MODEL, ModelPicker, Paywall, catalogToOptions } from '@/features/overlays';
 import { mockData } from '@/lib/api/mode';
 import { ReferencePicker, useSkills, type RefItem } from '@/features/prompt';
-import { checkoutPlan } from '@/lib/session';
+import { UpgradeGate } from '@/lib/upgrade/store';
 import { useAgentAllowance } from '@/lib/session/agentAllowance';
 import { pickerModels, useModels } from '@/lib/models';
 import { ModelIcon, modelIcon } from '@/lib/modelIcons';
@@ -486,17 +486,15 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
           </div>
         </div>
       </div>
-      <Paywall
+      {/* No plan (D-007): the shared upgrade modal; the kept draft sends once the plan is active. */}
+      <UpgradeGate
         open={paywall}
-        onOpenChange={setPaywall}
-        variant="join"
-        onContinue={(option) => {
-          void checkoutPlan(option.id).then(() => {
-            setPaywall(false);
-            takePendingAction('canvas.agent');
-            const text = draft.trim();
-            if (text) deliver(text);
-          });
+        reason={{ kind: 'agent' }}
+        onClose={() => setPaywall(false)}
+        onJoined={() => {
+          takePendingAction('canvas.agent');
+          const text = draft.trim();
+          if (text) deliver(text);
         }}
       />
     </aside>

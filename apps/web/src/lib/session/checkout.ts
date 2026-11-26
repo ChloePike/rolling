@@ -107,6 +107,47 @@ export async function realCheckoutTopUp(amountUsd: number, opts: CheckoutOptions
   return leaving();
 }
 
+/**
+ * Starts a checkout without leaving the page (the upgrade modal opens the URL
+ * in a popup): `POST /api/billing/checkout`. A personal plan switching to Team
+ * in place resolves `{ switched: true }` after the session refetches. The
+ * pending action (if any) is bound to the Stripe session, as on a redirect.
+ */
+export async function startCheckout(
+  body: { kind: 'plan'; planId: PlanId; period: 'monthly' | 'yearly'; seats?: number } | { kind: 'topUp'; amountUsd: number },
+  returnTo: string,
+): Promise<{ switched: true } | { switched: false; url: string; sessionId: string }> {
+  let r: CheckoutStarted;
+  try {
+    r = await api.post<CheckoutStarted>(
+      '/billing/checkout',
+      body.kind === 'plan'
+        ? { kind: 'plan', planId: body.planId, interval: toInterval(body.period), ...(body.planId === 'team' ? { seats: body.seats ?? 1 } : {}), returnTo }
+        : { kind: 'topUp', amountCents: Math.round(body.amountUsd * 100), returnTo },
+      // The modal that called this handles plan errors itself.
+      { planGate: false },
+    );
+  } catch (e) {
+    flowError(e);
+  }
+  if (r.switched) {
+    await refetchMe();
+    return { switched: true };
+  }
+  if (!r.url) throw new FlowError('INTERNAL', 'Checkout did not return a URL');
+  bindPendingToCheckout(r.sessionId);
+  return { switched: false, url: r.url, sessionId: r.sessionId ?? '' };
+}
+
+/** `POST /api/billing/portal` without leaving the page: the portal URL (plan changes for members). */
+export async function startPortal(returnTo: string): Promise<string> {
+  try {
+    return (await api.post<{ url: string }>('/billing/portal', { returnTo }, { planGate: false })).url;
+  } catch (e) {
+    flowError(e);
+  }
+}
+
 /** `PATCH /api/billing/seats` (Team owners, D-013). */
 export async function realChangeSeats(seats: number, idempotencyKey?: string): Promise<SeatsChanged> {
   try {

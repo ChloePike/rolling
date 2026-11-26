@@ -1,5 +1,6 @@
 import { Skeleton, useToast } from '@rolling/ui';
-import { Paywall, useRunFlow } from '@/features/overlays';
+import { useRunFlow } from '@/features/overlays';
+import { UpgradeGate } from '@/lib/upgrade/store';
 import { checkoutPlan, getSession, useCheckoutResume } from '@/lib/session';
 import { useModels } from '@/lib/models';
 import { MenuPopover, type MenuEntry } from '../layers/Menu';
@@ -152,14 +153,18 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
   const runFlow = useRunFlow();
   const { data: catalog } = useModels('video');
 
-  /** Credits for a shot: the synced catalog at its model, resolution and length (D-006), or the mock price. */
+  /**
+   * Credits for a shot: the synced catalog at its model, resolution and length (D-006), or the shot's quoted price.
+   * 0 means not priced yet: labels then show no number (a run never costs 0); the run flow quotes it for real.
+   */
   const shotCredits = useCallback(
     (nodeId: string | undefined) => {
       const shot = nodeId ? project.shots[nodeId] : undefined;
       if (!shot) return 0;
       const node = { kind: 'video', params: { model: shot.model, resolution: shot.resolution, length: shot.seconds } } as unknown as GraphNode;
       const model = findModel(catalog, node);
-      return (model && catalogCredits(model, node)) ?? shot.credits;
+      const priced = model ? catalogCredits(model, node) : null;
+      return priced && priced > 0 ? priced : shot.credits > 0 ? shot.credits : 0;
     },
     [catalog, project.shots],
   );
@@ -756,21 +761,8 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
         onDone={() => toast.show({ message: t('editor.export.toast') })}
       />
       {runFlow.element}
-      <Paywall
-        open={joinOpen}
-        onOpenChange={(o) => !o && setJoinOpen(false)}
-        variant="join"
-        onContinue={(option) =>
-          void checkoutPlan(option.id).then(
-            () => {
-              // Mock, or an in-place switch: no redirect, ask now.
-              setJoinOpen(false);
-              resumeAsk();
-            },
-            () => toast.show({ message: t('editor.proposal.failed') }),
-          )
-        }
-      />
+      {/* No plan (D-007): the shared upgrade modal; the kept ask continues once the plan is active. */}
+      <UpgradeGate open={joinOpen} reason={{ kind: 'agent' }} onJoined={resumeAsk} onClose={() => setJoinOpen(false)} />
     </section>
   );
 }

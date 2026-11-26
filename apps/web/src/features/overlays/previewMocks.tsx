@@ -50,7 +50,8 @@ export function MockOverlayPreview({ c = 'modelPicker', kind, variant, as = 'pan
     };
     body = as === 'dialog' ? <RunConfirm {...props} open={open} onOpenChange={setOpen} /> : <RunConfirmPanel {...props} onCancel={() => undefined} />;
   } else if (c === 'paywall') {
-    body = <PaywallPanel variant={variant === 'credits' ? 'credits' : 'join'} onContinue={() => undefined} onClose={() => undefined} />;
+    // The design's sample card (preview only; real hosts pass the account's card or none).
+    body = <PaywallPanel variant={variant === 'credits' ? 'credits' : 'join'} paymentMethod={variant === 'credits' ? 'Visa ending 4242' : undefined} onContinue={() => undefined} onClose={() => undefined} />;
   } else if (c === 'viewer') {
     body = (
       <ResultViewer

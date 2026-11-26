@@ -135,7 +135,9 @@ test.describe('Quick Create /create/quick', () => {
     await expect(page.locator('main aside [data-group="res"] [aria-pressed="true"]')).toHaveText('720p');
     await expect(page.locator('[data-pill="res"]')).toHaveText('720p');
     await locked.click();
-    await expect(page).toHaveURL(/\/upgrade$/);
+    // The upgrade modal in place; the URL stays.
+    await expect(page.getByRole('dialog', { name: '1080p needs Plus' })).toBeVisible();
+    await expect(page).toHaveURL(/\/create\/quick$/);
   });
 
   test('non-members (D-007): Generate and Refine open the join paywall and keep the typed brief', async ({ page }) => {

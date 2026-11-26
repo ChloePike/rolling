@@ -14,10 +14,11 @@ import {
   type PromptMode,
   type RefItem,
 } from '@/features/prompt';
-import { Paywall, useRunFlow, type RunRequest } from '@/features/overlays';
+import { useRunFlow, type RunRequest } from '@/features/overlays';
+import { UpgradeGate } from '@/lib/upgrade/store';
 import { uploadReferences } from '@/features/prompt';
 import { useTemplates } from '@/features/templates/api';
-import { checkoutPlan, useCheckoutResume, useSession } from '@/lib/session';
+import { useCheckoutResume, useSession } from '@/lib/session';
 import { useQueryClient } from '@tanstack/react-query';
 import { agentFailure, applyProposal, createThread, rememberThread, sendTurn, skillId } from '@/features/overlays/agent';
 import { isMockApi, savePendingAction, takePendingAction } from '@/features/overlays/backend';
@@ -344,28 +345,17 @@ export function HomePage() {
           ))}
         </nav>
       </section>
-      <Paywall
+      {/* No plan (D-007): the shared upgrade modal; the kept brief goes to the agent once the plan is active. */}
+      <UpgradeGate
         open={paywall}
-        onOpenChange={(o) => !paying && setPaywall(o)}
-        variant="join"
-        busy={paying}
-        onContinue={(option) => {
-          setPaying(true);
-          checkoutPlan(option.id).then(
-            () => {
-              setPaying(false);
-              setPaywall(false);
-              if (isMockApi()) void start();
-              else {
-                takePendingAction('home.agent');
-                void askAgent(text.trim(), refs, skill?.name ?? null);
-              }
-            },
-            () => {
-              setPaying(false);
-              toast.show({ message: t('overlays.run.paymentFailed') });
-            },
-          );
+        reason={{ kind: 'agent' }}
+        onClose={() => setPaywall(false)}
+        onJoined={() => {
+          if (isMockApi()) void start();
+          else {
+            takePendingAction('home.agent');
+            void askAgent(text.trim(), refs, skill?.name ?? null);
+          }
         }}
       />
       {flow.element}

@@ -33,6 +33,10 @@ export interface ModelOption {
   /** Not selectable; show `disabledReason` as the tooltip. */
   disabled?: boolean;
   disabledReason?: string;
+  /** Output resolutions the model offers (catalog); its smallest decides the plan it needs (D-006). */
+  resolutions?: string[];
+  /** Output kind, for the plan cap that applies. */
+  media?: 'video' | 'image';
 }
 
 export type VideoAspect = 'Auto' | '9:16' | '16:9' | '1:1' | '4:3' | '3:4';

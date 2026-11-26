@@ -292,7 +292,10 @@ test.describe('header popovers', () => {
     await page.getByRole('button', { name: /Credit balance/ }).click();
     const credits = page.getByRole('dialog', { name: 'Credits' });
     await expect(credits.getByRole('radio')).toHaveCount(0);
-    await expect(credits.getByRole('link', { name: 'Pick a plan to top up' })).toHaveAttribute('href', '/upgrade');
+    // Opens the upgrade modal in place, not the plans page.
+    await credits.getByRole('button', { name: 'Pick a plan to top up' }).click();
+    await expect(page.getByRole('dialog', { name: 'Top-ups need a plan' })).toBeVisible();
+    await expect(page).not.toHaveURL(/\/upgrade$/);
   });
 
   test('account menu: arrow keys move focus, workspace switch, Escape returns focus', async ({ page }) => {

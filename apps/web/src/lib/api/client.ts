@@ -58,6 +58,28 @@ export interface RequestOptions {
   noWorkspace?: boolean;
   /** Override the workspace for this request. */
   workspaceId?: string;
+  /**
+   * Plan errors (`NO_PLAN`, `PLAN_REQUIRED`, `RESOLUTION_LOCKED`, `TEAM_REQUIRED`)
+   * on commands open the upgrade modal (`onPlanError`). Pass false when the
+   * caller handles them without it. GET requests never open it.
+   */
+  planGate?: boolean;
+}
+
+/** A plan error from a command, handed to the upgrade modal (lib/upgrade). */
+export interface PlanErrorEvent {
+  error: ApiError;
+  method: string;
+  path: string;
+  body: unknown;
+}
+
+const PLAN_CODES = new Set(['NO_PLAN', 'PLAN_REQUIRED', 'RESOLUTION_LOCKED', 'TEAM_REQUIRED']);
+let planErrorHandler: ((e: PlanErrorEvent) => void) | null = null;
+
+/** The shared API error handler for plan errors (set once by lib/upgrade). */
+export function onPlanError(handler: ((e: PlanErrorEvent) => void) | null): void {
+  planErrorHandler = handler;
 }
 
 /** Test seam: replace the transport (unit tests). */
@@ -102,7 +124,18 @@ export async function apiRequest<T>(path: string, opts: RequestOptions = {}): Pr
       body = null;
     }
   }
-  if (!res.ok) throw errorFromBody(res.status, body);
+  if (!res.ok) {
+    const error = errorFromBody(res.status, body);
+    const method = opts.method ?? (opts.body !== undefined ? 'POST' : 'GET');
+    if (method !== 'GET' && opts.planGate !== false && PLAN_CODES.has(error.code) && planErrorHandler) {
+      try {
+        planErrorHandler({ error, method, path: apiUrl(path), body: opts.body });
+      } catch {
+        /* The modal never breaks the request's own error handling. */
+      }
+    }
+    throw error;
+  }
   return body as T;
 }
 

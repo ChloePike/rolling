@@ -185,12 +185,14 @@ test.describe('overlay behavior and states', () => {
   test('param popover: plan caps lock resolutions with the unlocking plan (video on Starter, image on Plus)', async ({ page }) => {
     await openPreview(page, 'c=params&kind=video&plan=starter');
     const video = page.getByRole('dialog', { name: 'Video settings' });
-    await expect(video.getByRole('radio', { name: '1080p, Available on Plus' })).toBeDisabled();
+    // Locked options stay clickable: they open the upgrade modal (upgrade-modal.spec.ts).
+    await expect(video.getByRole('radio', { name: '1080p, Available on Plus' })).toBeEnabled();
+    await expect(video.locator('[data-plan-lock]')).toHaveText(['Plus']);
     await expect(video.getByRole('radio', { name: '720p' })).toBeEnabled();
     await openPreview(page, 'c=params&kind=image&plan=plus');
     const image = page.getByRole('dialog', { name: 'Image settings' });
     await image.getByRole('radio', { name: 'High quality' }).click();
-    await expect(image.getByRole('radio', { name: '4K, Available on Pro' })).toBeDisabled();
+    await expect(image.getByRole('radio', { name: '4K, Available on Pro' })).toBeEnabled();
     await expect(image.locator('[data-plan-lock]')).toHaveText(['Pro']);
   });
 

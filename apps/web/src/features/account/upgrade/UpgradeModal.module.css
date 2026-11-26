@@ -1,0 +1,79 @@
+/* The shared upgrade modal: built on the join paywall (Paywall.dc.html) with the reason headline, the period toggle,
+   the plan perks and the Team variant. Tokens only (both themes); motion comes from the Dialog (fade only under reduced motion). */
+.panel{
+  width:520px;max-width:calc(100vw - 32px);max-height:calc(100vh - 48px);overflow:auto;box-sizing:border-box;border-radius:20px;
+  background:var(--c-surface-float);color:var(--c-text-1);padding:24px;display:flex;flex-direction:column;gap:16px;
+  box-shadow:var(--shadow-modal);font-variant-numeric:tabular-nums;
+}
+.head{display:flex;align-items:flex-start;gap:12px}
+.headText{flex:1;display:flex;flex-direction:column;gap:6px}
+.title{margin:0;font-size:20px;font-weight:700}
+.sub{margin:0;font-size:14px;line-height:1.55;color:var(--c-text-3)}
+.close{
+  width:32px;height:32px;flex:none;border-radius:8px;border:0;background:none;color:var(--c-text-3);cursor:pointer;padding:0;
+  display:flex;align-items:center;justify-content:center;
+  transition:background-color var(--dur-fast) var(--ease-standard),color var(--dur-fast) var(--ease-standard);
+}
+.close:hover{background:var(--c-surface-5);color:var(--c-text-1)}
+.doneIcon{
+  flex:none;width:32px;height:32px;border-radius:999px;background:var(--c-success-soft);color:var(--c-success);
+  display:flex;align-items:center;justify-content:center;
+}
+
+.seg{display:flex;gap:2px;padding:3px;border-radius:9px;background:var(--c-surface-4);align-self:flex-start}
+.segOption{
+  height:28px;padding:0 12px;border-radius:7px;border:0;background:transparent;color:var(--c-text-3);
+  font:inherit;font-size:13px;font-weight:600;line-height:28px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;
+  transition:color var(--dur-fast) var(--ease-standard);
+}
+.segOption:hover,.segOption[aria-checked="true"]{color:var(--c-text-1)}
+.segFill{inset:0;border-radius:7px;background:var(--c-surface-6)}
+.save{font-size:11px;font-weight:600;color:var(--c-success)}
+
+.options{display:flex;flex-direction:column;gap:8px}
+.option{
+  border-radius:12px;border:0;background:var(--c-surface-2);padding:14px 16px;color:var(--c-text-1);font:inherit;text-align:left;cursor:pointer;
+  display:flex;align-items:center;gap:12px;
+  transition:box-shadow var(--dur-fast) var(--ease-standard),background-color var(--dur-fast) var(--ease-standard);
+}
+.option:hover:not([aria-checked="true"]){background:var(--c-surface-3)}
+.option[aria-checked="true"]{box-shadow:inset 0 0 0 1.5px var(--c-text-1)}
+.option:focus-visible{box-shadow:var(--focus-ring)}
+.dot{flex:none;width:18px;height:18px;border-radius:999px;box-shadow:inset 0 0 0 1.5px var(--c-text-1);transition:box-shadow var(--dur-instant) var(--ease-standard)}
+.option[aria-checked="true"] .dot{box-shadow:inset 0 0 0 5px var(--c-text-1)}
+.optText{flex:1;display:flex;flex-direction:column;gap:3px}
+.optName{font-size:14px;font-weight:700}
+.optMeta{font-size:12px;color:var(--c-text-3)}
+.optPrice{font-size:14px;font-weight:700}
+
+.perks{display:flex;flex-direction:column;gap:8px}
+.perksKey{font-size:12px;font-weight:600;color:var(--c-text-3)}
+.perkList{margin:0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 12px}
+.perk{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--c-text-2)}
+.perk svg{flex:none;color:var(--c-text-3)}
+
+.note{margin:0;font-size:13px;color:var(--c-text-2)}
+.small{margin:0;font-size:12px;line-height:1.5;color:var(--c-text-4)}
+.error{margin:0;font-size:13px;color:var(--c-danger)}
+
+.cta{height:44px;border-radius:10px;border:0;background:var(--c-text-1);color:var(--c-bg);font:inherit;font-size:14px;font-weight:700;cursor:pointer}
+.cta:hover{background:var(--c-primary-hover)}
+.cta:disabled{background:var(--c-surface-5);color:var(--c-text-4);cursor:default}
+.ctaQuiet{background:var(--c-surface-4);color:var(--c-text-1)}
+.ctaQuiet:hover{background:var(--c-surface-5)}
+
+.actions{display:flex;justify-content:flex-end;gap:8px}
+.btn{
+  height:36px;padding:0 14px;border-radius:10px;border:0;font:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;
+  background:var(--c-surface-4);color:var(--c-text-1);
+}
+.btn:hover{background:var(--c-surface-5)}
+.btn:disabled{cursor:default;opacity:.55}
+.btnPrimary{background:var(--c-text-1);color:var(--c-bg)}
+.btnPrimary:hover{background:var(--c-primary-hover);color:var(--c-bg)}
+
+.foot{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:12px;color:var(--c-text-4)}
+.link{color:var(--c-text-2)}
+.link:hover{color:var(--c-text-1)}
+
+@media (max-width:560px){.perkList{grid-template-columns:1fr}}

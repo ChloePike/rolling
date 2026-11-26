@@ -32,6 +32,7 @@ interface PendingToolRun {
   spec: PromptSpec;
 }
 import { resolveAssetId } from '@/lib/transfers';
+import { openUpgrade } from '@/lib/upgrade/store';
 import { useSendToCanvas } from '@/features/canvas/target';
 
 export type ToolOverlay = 'model' | 'params' | 'confirm' | 'viewer' | 'paywall';
@@ -131,8 +132,6 @@ export function ToolLayout(p: ToolLayoutProps) {
   // The live quote of what Generate would run (real mode); mock mode shows the mock adapter's estimate.
   const liveQuote = useToolQuote(real && p.spec ? p.spec(p.composer.text) : null, p.confirm.cost);
   const confirmMeta = p.run.tags.join(' · ');
-  /** D-006: a locked resolution opens the upgrade page. */
-  const upgrade = () => void navigate({ to: '/upgrade' });
   const runs = useRuns(p.feed, {
     onDone: (run) =>
       toast.show({
@@ -205,7 +204,7 @@ export function ToolLayout(p: ToolLayoutProps) {
 
   const runFailed = (e: unknown, prompt: string) => {
     if (isApiError(e, 'NO_PLAN')) return setOverlay('paywall');
-    if (isApiError(e, 'INSUFFICIENT_CREDITS')) return void toast.show({ message: t('tools.toast.noCredits'), action: { label: t('tools.toast.topUp'), onAction: () => void navigate({ to: '/upgrade' }) } });
+    if (isApiError(e, 'INSUFFICIENT_CREDITS')) return void toast.show({ message: t('tools.toast.noCredits'), action: { label: t('tools.toast.topUp'), onAction: () => void openUpgrade({ kind: 'top-up', ...(e.data as { needed?: number; balance?: number }) }) } });
     if (isApiError(e, 'QUOTE_EXPIRED')) return void spendReal(prompt);
     if (isApiError(e, 'CONCURRENCY_LIMIT')) return void toast.show({ message: t('tools.toast.concurrency') });
     if (isApiError(e, 'MEMBER_LIMIT_REACHED')) return void toast.show({ message: t('tools.toast.memberLimit') });
@@ -494,7 +493,6 @@ export function ToolLayout(p: ToolLayoutProps) {
           onReset={p.settings.onReset}
           cost={liveQuote.loading ? null : liveQuote.credits}
           plan={p.plan}
-          onLockedPick={upgrade}
           onClose={close}
           anchorClassName={styles.anchor}
           anchorRef={pillsRef}

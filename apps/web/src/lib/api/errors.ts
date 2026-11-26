@@ -16,6 +16,8 @@ export type ApiErrorCode =
   | 'CODE_EXPIRED'
   | 'TOO_MANY_ATTEMPTS'
   | 'NO_PLAN'
+  | 'PLAN_REQUIRED'
+  | 'RESOLUTION_LOCKED'
   | 'INSUFFICIENT_CREDITS'
   | 'QUOTE_EXPIRED'
   | 'MEMBER_LIMIT_REACHED'
@@ -42,6 +44,8 @@ export type ApiErrorCode =
 /** Typed `data` for the codes the UI acts on. */
 export interface ApiErrorData {
   NO_PLAN: { workspaceId?: string };
+  PLAN_REQUIRED: { plan?: string; currentPlan?: string | null };
+  RESOLUTION_LOCKED: { resolution?: string; kind?: 'video' | 'image'; lowestPlan?: string | null };
   INSUFFICIENT_CREDITS: { needed: number; balance: number };
   TEAM_REQUIRED: { currentPlan: string | null };
   SEATS_REQUIRED: { seats: number; used: number; needed: number };
@@ -66,7 +70,7 @@ export type DataFor<C extends ApiErrorCode> = C extends keyof ApiErrorData ? Api
 
 const KNOWN = new Set<string>([
   'BAD_REQUEST', 'VALIDATION_FAILED', 'UNAUTHENTICATED', 'FORBIDDEN', 'NOT_FOUND', 'CONFLICT', 'RATE_LIMITED', 'INVALID_CODE',
-  'CODE_EXPIRED', 'TOO_MANY_ATTEMPTS', 'NO_PLAN', 'INSUFFICIENT_CREDITS', 'QUOTE_EXPIRED', 'MEMBER_LIMIT_REACHED',
+  'CODE_EXPIRED', 'TOO_MANY_ATTEMPTS', 'NO_PLAN', 'PLAN_REQUIRED', 'RESOLUTION_LOCKED', 'INSUFFICIENT_CREDITS', 'QUOTE_EXPIRED', 'MEMBER_LIMIT_REACHED',
   'CONCURRENCY_LIMIT', 'SEAT_LIMIT_REACHED', 'TEAM_REQUIRED', 'SEATS_REQUIRED', 'SEATS_IN_USE', 'PAYMENT_FAILED',
   'AGENT_ALLOWANCE_EXHAUSTED', 'HANDLE_TAKEN', 'OWNER_OF_TEAM', 'AVATAR_REJECTED', 'SAFETY_UNAVAILABLE', 'NOT_IMPLEMENTED', 'INTERNAL',
 ]);

@@ -255,15 +255,15 @@ test.describe('home interactions', () => {
     await expect(page.getByRole('textbox', { name: 'Search references' })).toBeFocused();
   });
 
-  test('agent is members-only (D-007): a non-member’s send opens the join paywall and keeps the brief; checkout resumes it', async ({ page }) => {
+  test('agent is members-only (D-007): a non-member’s send opens the upgrade modal and keeps the brief; checkout resumes it', async ({ page }) => {
     await asPlan(page, null);
     await openApp(page);
     const ta = page.locator('textarea');
     await ta.fill('A 15s ad for a sparkling water');
     await page.getByRole('button', { name: 'Start' }).click();
-    const paywall = page.getByRole('dialog', { name: 'Pick a plan to generate' });
+    const paywall = page.getByRole('dialog', { name: 'The agent needs a plan' });
     await expect(paywall).toBeVisible();
-    await expect(paywall.getByRole('radio')).toHaveText([/Starter/, /Plus/, /Pro/]);
+    await expect(paywall.getByRole('radiogroup', { name: 'Plans' }).getByRole('radio')).toHaveText([/Starter/, /Plus/, /Pro/]);
     await expect(ta).toHaveValue('A 15s ad for a sparkling water');
     await expect(page).toHaveURL(/\/$/);
     await paywall.getByRole('button', { name: /^Continue with/ }).click();
@@ -614,6 +614,7 @@ test.describe('home flows', () => {
     await page.locator('textarea').fill('Product turntable');
     await page.getByRole('button', { name: 'Start' }).click();
     const paywall = page.getByRole('dialog', { name: 'Pick a plan to generate' });
+    await paywall.getByRole('radio', { name: /^Plus/ }).click();
     await paywall.getByRole('button', { name: 'Continue with Plus' }).click();
     await expect(paywall).toHaveCount(0);
     await expect(page.getByRole('status')).toContainText('Generate video is ready');
@@ -630,6 +631,7 @@ test.describe('home flows', () => {
     await page.getByRole('button', { name: 'Start' }).click();
     const paywall = page.getByRole('dialog', { name: 'Pick a plan to generate' });
     const left = page.waitForURL(/checkout=success&session_id=cs_mock_/);
+    await paywall.getByRole('radio', { name: /^Plus/ }).click();
     await paywall.getByRole('button', { name: 'Continue with Plus' }).click();
     await left;
     // Back from checkout: the return params are stripped, the brief and mode are restored and the run continues.

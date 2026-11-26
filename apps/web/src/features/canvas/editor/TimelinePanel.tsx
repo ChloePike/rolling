@@ -208,7 +208,7 @@ export function TimelinePanel(props: TimelinePanelProps) {
             onGenerate={props.onGenerate}
             creditsFor={props.generateCredits}
             onTextTool={props.onTextTool}
-            generateLabel={(count) => t('editor.timeline.generate', { count })}
+            generateLabel={(count) => (count > 0 ? t('editor.timeline.generate', { count }) : t('editor.timeline.generatePlain'))}
             clipName={props.clipName}
             clipListLabel={(clip, track) =>
               t('editor.timeline.clip', {

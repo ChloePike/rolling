@@ -9,6 +9,11 @@ import { catalogToOptions } from './catalog';
 import styles from './ModelPicker.module.css';
 import { AUTO_MODEL, type ModelKind, type ModelOption } from './types';
 import { useDismiss } from './useDismiss';
+import { PlanLock } from './PlanLock';
+import { useSession } from '@/lib/session';
+import { lowestPlanForModel, planRank } from '@/lib/upgrade/reasons';
+import { openUpgrade } from '@/lib/upgrade/store';
+import { PLANS, type PlanId } from '@rolling/core/pricing/config';
 
 export interface ModelPickerProps {
   /** Catalog to show: video models, image models, or lip-sync methods. */
@@ -34,6 +39,13 @@ export interface ModelPickerProps {
   /** Trigger element, ignored by the outside-click dismissal so it can toggle. */
   anchorRef?: RefObject<HTMLElement | null>;
   dismissOnOutside?: boolean;
+  /**
+   * The workspace's plan for model locks (D-006): a model whose smallest
+   * resolution is above the plan's cap shows the plan that unlocks it, and
+   * picking it opens the upgrade modal (the model is selected once the plan is
+   * active). Default: the session's plan; `null` shows no locks.
+   */
+  plan?: PlanId | null;
   /** "Compare all models ›" link target. */
   compareHref?: string;
   className?: string;
@@ -59,10 +71,19 @@ export function ModelPicker({
   anchorRef,
   dismissOnOutside = true,
   compareHref = '/upgrade',
+  plan: planProp,
   className,
   style,
 }: ModelPickerProps) {
   const intl = useIntl();
+  const session = useSession();
+  const plan = planProp === undefined ? session.planId : planProp;
+  /** Plan that unlocks `m`, or null when the current plan (Starter for non-members) covers it. */
+  const lockOf = (m: ModelOption): PlanId | null => {
+    if (planProp === null || !m.resolutions?.length) return null;
+    const need = lowestPlanForModel({ resolutions: m.resolutions, media: m.media });
+    return planRank(need) > planRank(plan ?? 'starter') ? need : null;
+  };
   const presence = usePresence(open);
   const panelRef = useRef<HTMLDivElement>(null);
   const searchId = useId();
@@ -167,16 +188,23 @@ export function ModelPicker({
       </div>
       {filtered.map((m, i) => {
         const on = value === m.id;
+        const lock = m.disabled ? null : lockOf(m);
         return (
           <button
             key={m.id}
             type="button"
             aria-pressed={on}
             disabled={m.disabled}
-            title={m.disabled ? m.disabledReason : undefined}
+            title={m.disabled ? m.disabledReason : lock ? intl.formatMessage({ id: 'overlays.planLock.reason' }, { plan: PLANS[lock].label }) : undefined}
+            data-locked={lock ? 'true' : undefined}
             className={cx('rl-stagger', styles.model)}
             style={staggerStyle(i + 1)}
-            onClick={() => !m.disabled && onValueChange(m.id)}
+            onClick={() => {
+              if (m.disabled) return;
+              // A locked model opens the upgrade modal in place; it is selected once the plan is active.
+              if (lock) return void openUpgrade({ kind: 'model', id: m.id, name: m.name, plan: lock }, { onResume: () => onValueChange(m.id) });
+              onValueChange(m.id);
+            }}
           >
             {modelIcon(m.id) ? (
               <span className={cx(styles.mark, styles.markIcon)} data-model-icon={modelIcon(m.id)!.brand}>
@@ -190,6 +218,7 @@ export function ModelPicker({
             <span className={styles.body}>
               <span className={styles.nameRow}>
                 <span className={styles.name}>{m.name}</span>
+                {lock ? <PlanLock plan={lock} /> : null}
                 {m.badge ? (
                   <span className={cx(styles.badge, styles[`badge_${m.badge}`])}>
                     <FormattedMessage id={`overlays.modelPicker.badge.${m.badge}`} />

@@ -1,6 +1,10 @@
 import { PERSONAL_PLAN_ORDER, PLANS, TOP_UP, type PlanId } from '@rolling/core/pricing/config';
 import { cx, Dialog, staggerStyle } from '@rolling/ui';
+import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
+import { api } from '@/lib/api/client';
+import { isMockApi } from '@/lib/api/mode';
+import type { PaymentMethodView } from '@/lib/api/types';
 import { useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { FormattedMessage, FormattedNumber, useIntl, type IntlShape } from 'react-intl';
 import { formatPrice, getPrefs, usePref } from '@/lib/prefs';
@@ -23,7 +27,7 @@ export interface PaywallPanelProps {
   balance?: number;
   /** Credits variant: plan whose top-up bonus applies. Defaults to the session's plan. */
   plan?: PlanId | null;
-  /** Credits variant: card label in the footer, e.g. "Visa ending 4242". */
+  /** Credits variant: the card on file (from the API), e.g. "Visa ending 4242". Without one the footer names Stripe only, never a sample card. */
   paymentMethod?: string;
   /** Credits variant: auto top-up checkbox. */
   autoTopUp?: boolean;
@@ -99,10 +103,32 @@ export function Paywall({ open, onOpenChange, ...panel }: PaywallProps) {
   );
 }
 
+/**
+ * The card on file for the credits footer: real mode reads `GET /api/billing/payment-method`
+ * (owners; same cache as Settings). Null when there is none: the footer then shows no card.
+ */
+function useCardLabel(enabled: boolean): string | null {
+  const intl = useIntl();
+  const session = useSession();
+  const q = useQuery({
+    queryKey: ['billing', 'payment-method', session.workspace?.id ?? null],
+    queryFn: async () => (await api.get<{ paymentMethod: PaymentMethodView | null }>('/billing/payment-method', { planGate: false })).paymentMethod,
+    enabled: enabled && !isMockApi() && session.isMember && session.role === 'owner',
+    staleTime: 60_000,
+    retry: false,
+  });
+  const c = q.data;
+  if (!c?.last4) return null;
+  const brand = c.brand ? c.brand.charAt(0).toUpperCase() + c.brand.slice(1) : c.type;
+  return intl.formatMessage({ id: 'overlays.paywall.card' }, { brand, last4: c.last4 });
+}
+
 /** The dialog's panel without the modal layer. */
 export function PaywallPanel(props: PaywallPanelProps & { titleId?: string }) {
   const { variant, onClose, plansHref = '/upgrade', className, titleId } = props;
   const intl = useIntl();
+  const fetchedCard = useCardLabel(variant === 'credits' && props.paymentMethod === undefined);
+  const card = props.paymentMethod ?? fetchedCard;
   usePref('currency'); // Re-render prices when the currency preference changes.
   const credits = variant === 'credits';
   const m = (id: string) => intl.formatMessage({ id: `overlays.paywall.${variant}.${id}` });
@@ -121,7 +147,7 @@ export function PaywallPanel(props: PaywallPanelProps & { titleId?: string }) {
       </div>
       {credits ? <TopUpBody {...props} /> : <JoinBody {...props} />}
       <div className={styles.foot}>
-        <span>{credits ? intl.formatMessage({ id: 'overlays.paywall.credits.foot' }, { card: props.paymentMethod ?? 'Visa ending 4242' }) : m('foot')}</span>
+        <span>{credits ? (card ? intl.formatMessage({ id: 'overlays.paywall.credits.foot' }, { card }) : intl.formatMessage({ id: 'overlays.paywall.credits.footStripe' })) : m('foot')}</span>
         <Link to={plansHref as never} className={styles.link} onClick={onClose}>
           {m('link')}
         </Link>

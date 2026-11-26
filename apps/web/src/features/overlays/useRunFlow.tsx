@@ -1,11 +1,11 @@
-import { PLANS } from '@rolling/core/pricing/config';
 import { useToast } from '@rolling/ui';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useIntl } from 'react-intl';
 import { getPrefs } from '@/lib/prefs';
 import { noteFinishedVideo } from '@/lib/pwa/install';
-import { checkoutPlan, checkoutTopUp, getCredits, getSession, MockFlowError, onCheckoutResume, savePendingAction, startMockRun, takePendingAction, useCredits, type MockRun } from '@/lib/session';
+import { checkoutTopUp, getCredits, getSession, MockFlowError, onCheckoutResume, savePendingAction, startMockRun, takePendingAction, useCredits, type MockRun } from '@/lib/session';
 import { Paywall } from './Paywall';
+import { openUpgrade } from '@/lib/upgrade/store';
 import { RunConfirm } from './RunConfirm';
 import type { RunRowKind } from './types';
 import { isApiError, isMockApi, userEvents } from './backend';
@@ -116,7 +116,7 @@ function waitForRun(runId: string, projectId?: string): Promise<RunView> {
 
 /**
  * The gate every paid run goes through (CLAUDE.md non-negotiables, D-006,
- * D-007): no plan → join paywall (checkout, then resume); not enough credits
+ * D-007): no plan → the shared upgrade modal (checkout, then resume); not enough credits
  * → top-up paywall (checkout, then resume); at or over the "Confirm before
  * running" threshold → RunConfirm; otherwise run at once. Runs go through the
  * mock quote → hold → settle in lib/session and toast their outcome (a failure
@@ -135,9 +135,14 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
   const t = (id: string, v?: Record<string, string | number>) => intl.formatMessage({ id }, v);
 
   /** A paywall opens for `run`: keep it for after the checkout (also across the Stripe redirect). */
-  const toPaywall = (run: RunRequest, kind: 'join' | 'credits') => {
+  const toPaywall = (run: RunRequest, given: 'join' | 'credits') => {
+    // D-007: without a plan the answer is always a plan first, never a top-up (non-members cannot buy credits).
+    const kind = given === 'credits' && getSession().status === 'signedIn' && !getSession().isMember ? 'join' : given;
     if (run.resume) savePendingAction(run.resume.kind, run.resume.data);
-    setStep({ kind });
+    if (kind === 'credits') return setStep({ kind });
+    // No plan: the shared upgrade modal. Its checkout resume continues the run (`onCheckoutResume` below).
+    setStep({ kind: 'idle' });
+    openUpgrade({ kind: 'generate' }, { onDismiss: () => (pending.current = null) });
   };
   /** The checkout finished in this tab: the run continues here, so its stored copy is dropped. */
   const continueAfterCheckout = () => {
@@ -293,27 +298,6 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
 
   const element = (
     <>
-      <Paywall
-        open={step.kind === 'join'}
-        onOpenChange={(o) => !o && !busy && close()}
-        variant="join"
-        busy={busy}
-        onContinue={(option) => {
-          setBusy(true);
-          checkoutPlan(option.id).then(
-            (s) => {
-              setBusy(false);
-              const plan = s.planId ? PLANS[s.planId] : null;
-              if (plan) toast.show({ message: t('overlays.run.planActive', { plan: plan.label, credits: plan.monthlyCredits }) });
-              continueAfterCheckout();
-            },
-            () => {
-              setBusy(false);
-              paymentFailed();
-            },
-          );
-        }}
-      />
       <Paywall
         open={step.kind === 'credits'}
         onOpenChange={(o) => !o && !busy && close()}

@@ -9,6 +9,7 @@ import styles from './ParamPopover.module.css';
 import { PlanLock, planLockInfo } from './PlanLock';
 import type { ImageParams, VideoAspect, VideoParams } from './types';
 import { useDismiss } from './useDismiss';
+import { openUpgrade } from '@/lib/upgrade/store';
 
 interface ParamPopoverCommon {
   /**
@@ -36,11 +37,12 @@ interface ParamPopoverCommon {
    */
   plan?: PlanId;
   /**
-   * A locked resolution was picked (D-006). When given, locked options stay
-   * clickable (lock badge kept) and call this with the plan that unlocks them,
-   * e.g. to open the upgrade page; otherwise they are disabled.
+   * A locked resolution was picked (D-006). Locked options stay clickable (lock
+   * badge kept). By default the shared upgrade modal opens ("1080p needs Plus")
+   * and the pick is applied once the plan is active; pass this to handle it
+   * yourself (called with the plan that unlocks it and the option).
    */
-  onLockedPick?: (plan: PlanId) => void;
+  onLockedPick?: (plan: PlanId, value: string) => void;
   /**
    * Options from the selected model's capabilities (catalog). A list replaces
    * the design's options; an empty list (or `counts: null`, `quality: false`)
@@ -129,7 +131,7 @@ export function ParamPopover(props: ParamPopoverProps) {
       if (!lock) return o;
       return {
         ...o,
-        disabled: !props.onLockedPick,
+        disabled: false,
         disabledReason: lock.reason,
         ariaLabel: lock.label,
         label: (
@@ -144,8 +146,10 @@ export function ParamPopover(props: ParamPopoverProps) {
   /** Picking a locked option asks for the upgrade instead of selecting it. */
   const unlessLocked = <T extends string>(kind: 'video' | 'image', pick: (value: T) => void) => (value: T) => {
     const lock = props.plan ? planLockInfo(intl, props.plan, kind, value) : null;
-    if (lock) props.onLockedPick?.(lock.plan);
-    else pick(value);
+    if (!lock) return pick(value);
+    if (props.onLockedPick) return props.onLockedPick(lock.plan, value);
+    // One way in: the upgrade modal, then the picked option applies (owner request: no page change).
+    openUpgrade({ kind: 'resolution', value, media: kind }, { onResume: () => pick(value) });
   };
   const opt = props.options ?? {};
   const shown = <T extends string>(design: readonly T[], list: readonly string[] | undefined): T[] => (list ? (list as T[]) : [...design]);

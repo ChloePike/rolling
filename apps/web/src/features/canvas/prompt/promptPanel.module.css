@@ -67,8 +67,7 @@
 }
 .resItem:hover{background:var(--c-surface-5)}
 .resItem[aria-checked="true"]{background:var(--c-surface-6)}
-.resItem[aria-disabled="true"]{color:var(--c-text-4);cursor:default}
-.resItem[aria-disabled="true"]:hover{background:none}
+.resItem[data-locked="true"]{color:var(--c-text-3)}
 
 /* Model picker and settings popover, under the panel. */
 .layer{position:absolute;left:12px;top:calc(100% + 8px);z-index:6}

@@ -78,7 +78,7 @@ export function CharacterPage({ initialOverlay, models: modelsOverride, plan: pl
         ] satisfies SettingsGroupDef[])
       : []),
     ...(caps.resolutions.length
-      ? [{ kind: 'seg', id: 'res', title: t('tools.adv.resolution'), icon: 'res', options: resolutionOptions(intl, plan, 'image', caps.resolutions), value: s.resolution, onChange: (v: string) => settings.set({ ...s, resolution: v }), onLocked: () => void navigate({ to: '/upgrade' }) } satisfies SettingsGroupDef]
+      ? [{ kind: 'seg', id: 'res', title: t('tools.adv.resolution'), icon: 'res', options: resolutionOptions(intl, plan, 'image', caps.resolutions), value: s.resolution, onChange: (v: string) => settings.set({ ...s, resolution: v }), lockMedia: 'image' } satisfies SettingsGroupDef]
       : []),
     { kind: 'input', id: 'hairCustom', title: t('tools.character.adv.hair'), icon: 'person', value: p.hairCustom, placeholder: t('tools.character.adv.hair.placeholder'), onChange: (v) => set('hairCustom', v) },
     { kind: 'text', id: 'bodyCustom', title: t('tools.character.adv.body'), icon: 'body', value: p.bodyCustom, placeholder: t('tools.character.adv.body.placeholder'), onChange: (v) => set('bodyCustom', v) },

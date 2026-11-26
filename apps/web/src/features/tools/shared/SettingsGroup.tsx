@@ -2,6 +2,7 @@ import type { PlanId } from '@rolling/core/pricing/config';
 import type { CSSProperties } from 'react';
 import { useIntl } from 'react-intl';
 import { PlanLock } from '@/features/overlays';
+import { openUpgrade } from '@/lib/upgrade/store';
 import layout from './ToolLayout.module.css';
 import styles from './SettingsGroup.module.css';
 import { ToolIcon, type ToolIconName } from './icons';
@@ -29,8 +30,13 @@ export type SettingsGroupDef =
       options: SegOption[];
       value: string;
       onChange: (v: string) => void;
-      /** A plan-locked option was clicked (D-006): e.g. open the upgrade page. */
-      onLocked?: (plan: PlanId) => void;
+      /**
+       * A plan-locked option was clicked (D-006). Default: the shared upgrade
+       * modal opens ("1080p needs Plus") and the option applies once the plan is active.
+       */
+      onLocked?: (plan: PlanId, value: string) => void;
+      /** What a locked option unlocks: resolutions (default) as video or image output. */
+      lockMedia?: 'video' | 'image';
     })
   | (Base & {
       kind: 'slider';
@@ -58,6 +64,12 @@ export type SettingsGroupDef =
       shots: Array<{ id: string; time: string; desc: string; fields: Array<{ label: string; state: 'open' | 'edit' | 'lock' }> }>;
     });
 
+/** A locked option: the host's handler, else the upgrade modal and the option once the plan is active. */
+function locked(def: Extract<SettingsGroupDef, { kind: 'seg' }>, plan: PlanId, value: string) {
+  if (def.onLocked) return def.onLocked(plan, value);
+  openUpgrade({ kind: 'resolution', value, ...(def.lockMedia ? { media: def.lockMedia } : {}) }, { onResume: () => def.onChange(value) });
+}
+
 /** One card of the Advanced settings panel. */
 export function SettingsGroup({ def, className, style }: { def: SettingsGroupDef; className?: string; style?: CSSProperties }) {
   const intl = useIntl();
@@ -77,12 +89,12 @@ export function SettingsGroup({ def, className, style }: { def: SettingsGroupDef
               type="button"
               className={styles.seg}
               aria-pressed={def.value === o.value}
-              // Plan-locked options stay clickable when the host offers the upgrade.
-              disabled={o.disabled && !(o.lockedBy && def.onLocked)}
+              // Plan-locked options stay clickable: they open the upgrade modal.
+              disabled={o.disabled && !o.lockedBy}
               title={o.disabled ? (o.reason ?? intl.formatMessage({ id: 'tools.adv.unavailable' })) : undefined}
               aria-label={o.lockedBy ? intl.formatMessage({ id: 'overlays.planLock.label' }, { option: o.label, reason: o.reason ?? '' }) : undefined}
               data-locked={o.lockedBy ? 'true' : undefined}
-              onClick={() => (o.lockedBy ? def.onLocked?.(o.lockedBy) : def.onChange(o.value))}
+              onClick={() => (o.lockedBy ? locked(def, o.lockedBy, o.value) : def.onChange(o.value))}
             >
               {o.label}
               {o.lockedBy && <PlanLock plan={o.lockedBy} />}

@@ -153,10 +153,11 @@ M2. All amounts in credits are integers (1 credit = $0.01 retail, D-006); money 
   "teamSeat": { "prices": { "month": 2500, "year": 24000 }, "monthlyCredits": 500, "concurrentJobs": 2, "maxConcurrentJobs": 30, "agentAllowanceUsd": 3, "minSeats": 1, "maxSeats": 200 },
   "topUp": { "minCents": 1000, "maxCents": 1000000, "tiers": [{ "minCents": 1000, "bonus": 0 }, { "minCents": 2500, "bonus": 0.04 }, { "minCents": 5000, "bonus": 0.1 }, { "minCents": 10000, "bonus": 0.15 }], "presetsCents": [1000, 2500, 5000, 10000, 25000] },
   "autoTopUp": { "thresholdCredits": 200, "amountCents": 1000 },
+  "paymentsEnabled": true,
   "current": { "plan": "plus", "isMember": true }
 }
 ```
-`current` is `null` when signed out. Top-up credits for an amount: `quoteTopUp(amountCents, plan)` in `@rolling/core/pricing/config` (the client may use it for the live preview; the server recomputes).
+`current` is `null` when signed out. `paymentsEnabled` is `false` while Stripe is not configured (checkout answers `503`); the upgrade modal then shows its “Payments aren’t available yet” state. Top-up credits for an amount: `quoteTopUp(amountCents, plan)` in `@rolling/core/pricing/config` (the client may use it for the live preview; the server recomputes).
 
 `GET /api/billing` (same as GraphQL `billing`):
 

@@ -1,5 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { createRootRouteWithContext, Outlet } from '@tanstack/react-router';
+import { UpgradeHost } from '@/features/account/upgrade/UpgradeModal';
 import { InstallCard, OfflinePage, UpdatePrompt, useOfflineGate } from '@/features/pwa';
 import { TransfersDock } from '@/features/transfers';
 import { guardRoute } from '@/lib/session/guard';
@@ -27,6 +28,7 @@ function Root() {
     <>
       {offline ? <OfflinePage onRetry={retry} /> : <Outlet />}
       <SessionRuntime />
+      <UpgradeHost />
       <TransfersDock />
       <UpdatePrompt />
       <InstallCard />

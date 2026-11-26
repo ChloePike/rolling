@@ -13,7 +13,7 @@ import type { AppEnv } from "../env";
 import { billingCaller } from "../billing/context";
 import { creditAccount, unwrapLedger } from "../billing/credits";
 import { billingSummary, listLedger } from "../billing/read";
-import { ensureCustomer, idOf, isLive, latestSubscription, planPriceId, readSubscription, seatsInUse, stripeFor, teamSeatPriceId, upsertSubscription, workspaceBilling } from "../billing/stripe";
+import { ensureCustomer, idOf, isLive, latestSubscription, planPriceId, readSubscription, seatsInUse, stripeConfigured, stripeFor, teamSeatPriceId, upsertSubscription, workspaceBilling } from "../billing/stripe";
 import { ApiError } from "../lib/errors";
 import { validate } from "../lib/validate";
 import { WORKSPACE_NAME_MAX } from "../auth/workspace";
@@ -77,10 +77,13 @@ function amountError(e: unknown): never {
 }
 
 export const billing = new Hono<AppEnv>()
-  /** Plans, top-up rules and the caller's current plan (public; `current` only when signed in). */
+  /**
+   * Plans, top-up rules and the caller's current plan (public; `current` only when signed in).
+   * `paymentsEnabled` is false until Stripe is configured: the upgrade modal shows "Payments aren't available yet".
+   */
   .get("/plans", async (c) => {
     const auth = c.get("auth");
-    return c.json({ ...publicPlanCatalog(), current: auth ? { plan: auth.plan, isMember: auth.isMember } : null });
+    return c.json({ ...publicPlanCatalog(), paymentsEnabled: stripeConfigured(c.env), current: auth ? { plan: auth.plan, isMember: auth.isMember } : null });
   })
 
   /** Plan, status, renewal, balance split and auto top-up of the current workspace. */

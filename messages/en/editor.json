@@ -140,5 +140,6 @@
   "editor.proposal.stale": "The cut changed since this proposal. Ask again.",
   "editor.export.join": "Exports are part of every plan. Join to export this cut.",
   "editor.export.offline": "Can’t reach the server. Check your connection and try again.",
-  "editor.export.unknown": "The renderer stopped."
+  "editor.export.unknown": "The renderer stopped.",
+  "editor.timeline.generatePlain": "Generate"
 }

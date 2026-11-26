@@ -222,7 +222,7 @@ function MediaPanel(props: InspectorProps & { clip: MediaClip; track: Track }) {
               onClick={() => onRun(clip.id)}
             >
               <span>{t(clip.assetId === null ? 'editor.inspector.generate' : 'editor.inspector.regenerate')}</span>
-              <span className={styles.regenerateCost}>{t('editor.inspector.credits', { count: credits(shot.nodeId) })}</span>
+              {credits(shot.nodeId) > 0 ? <span className={styles.regenerateCost}>{t('editor.inspector.credits', { count: credits(shot.nodeId) })}</span> : null}
             </button>
             <button type="button" className={`${styles.btn} ${styles.openCanvas}`} onClick={() => onOpenOnCanvas(shot.nodeId)}>
               {t('editor.inspector.openOnCanvas')}

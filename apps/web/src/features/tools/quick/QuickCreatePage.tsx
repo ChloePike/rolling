@@ -148,7 +148,7 @@ export function QuickCreatePage({ initialOverlay, models: modelsOverride, plan: 
         ] satisfies SettingsGroupDef[])
       : []),
     ...(caps.resolutions.length
-      ? [{ kind: 'seg', id: 'res', title: t('tools.adv.resolution'), icon: 'res', options: resolutionOptions(intl, plan, 'video', caps.resolutions), value: s.resolution, onChange: (v: string) => settings.set({ ...s, resolution: v }), onLocked: () => void navigate({ to: '/upgrade' }) } satisfies SettingsGroupDef]
+      ? [{ kind: 'seg', id: 'res', title: t('tools.adv.resolution'), icon: 'res', options: resolutionOptions(intl, plan, 'video', caps.resolutions), value: s.resolution, onChange: (v: string) => settings.set({ ...s, resolution: v }) } satisfies SettingsGroupDef]
       : []),
     ...(caps.design
       ? ([

@@ -10,7 +10,11 @@ import { queryClient } from '@/lib/api/queryClient';
 import { loadMockData } from '@/lib/api/mode';
 import { startInstallWatch } from '@/lib/pwa/install';
 import { registerServiceWorker } from '@/lib/pwa/register';
+import { handlePopupReturn } from '@/lib/upgrade/popup';
 import '@/styles/app.css';
+
+// The checkout popup's return page tells the opener and closes (lib/upgrade/popup.ts); it runs before the router reads the URL.
+handlePopupReturn();
 
 const router = createRouter({
   routeTree,

@@ -56,6 +56,8 @@ export function catalogToOptions(models: CatalogModel[], kind: ModelKind, opts: 
       more: kind !== 'avatar' && m.placement === 'more',
       disabled: m.disabled === true,
       disabledReason: typeof m.disabledReason === 'string' ? m.disabledReason : undefined,
+      resolutions: m.resolutions,
+      media: m.kind === 'image' ? 'image' : 'video',
     } satisfies ModelOption;
   });
 }

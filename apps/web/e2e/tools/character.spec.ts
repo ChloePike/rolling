@@ -38,7 +38,8 @@ test.describe('Characters /create/character', () => {
     await expect(locked.locator('[data-plan-lock="pro"]')).toHaveText('Pro');
     await expect(dialog.getByRole('radio', { name: '2K' })).toBeEnabled();
     await locked.click();
-    await expect(page).toHaveURL(/\/upgrade$/);
+    await expect(page.getByRole('dialog', { name: '4K needs Pro' })).toBeVisible();
+    await expect(page).toHaveURL(/\/create\/character$/);
   });
 
   test('plan caps (D-006): on Starter, 4K images are locked, name Pro and open the upgrade', async ({ page }) => {
@@ -50,6 +51,7 @@ test.describe('Characters /create/character', () => {
     await expect(locked).toContainText('4K');
     await expect(locked).toContainText('Pro');
     await locked.click();
-    await expect(page).toHaveURL(/\/upgrade$/);
+    await expect(page.getByRole('dialog', { name: '4K needs Pro' })).toBeVisible();
+    await expect(page).toHaveURL(/\/create\/character$/);
   });
 });

@@ -6,6 +6,7 @@
  * the designs' sample content through the mock adapter (`mockData()`).
  */
 import { useState, type RefObject } from 'react';
+import { useUpgradeGate } from '@/lib/upgrade/store';
 import { useIntl } from 'react-intl';
 import {
   AUTO_MODEL,
@@ -298,16 +299,11 @@ interface PaywallAdapterProps {
 }
 
 /**
- * Join paywall for non-members (D-007): opens from Generate and from the agent
- * path; the composer keeps what was typed so the run resumes after checkout.
+ * No plan (D-007): the shared upgrade modal, from Generate and from the agent
+ * path; the composer keeps what was typed and a pending `tools.run` resumes
+ * after checkout (ToolLayout's `useCheckoutResume`).
  */
 export function ToolPaywall({ open, onClose }: PaywallAdapterProps) {
-  return (
-    <Paywall
-      open={open}
-      onOpenChange={(o) => !o && onClose()}
-      variant="join"
-      onContinue={(option) => void checkoutPlan(option.id).then(onClose)}
-    />
-  );
+  useUpgradeGate(open, { kind: 'generate' }, { onClose });
+  return null;
 }

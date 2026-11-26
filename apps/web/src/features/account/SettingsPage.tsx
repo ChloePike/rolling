@@ -68,7 +68,8 @@ import {
 } from './api';
 import { setNotifyPref, useNotifyPrefs, type NotifyKey } from './notifyPrefs';
 import type { Invoice, Me, Member, Role } from './types';
-import { SeatsDialog, StartTeamDialog } from './team/TeamDialogs';
+import { SeatsDialog } from './team/TeamDialogs';
+import { openUpgrade } from '@/lib/upgrade/store';
 import styles from './Settings.module.css';
 
 const cx = (...c: Array<string | false | undefined>) => c.filter(Boolean).join(' ');
@@ -796,8 +797,10 @@ function PreferencesSection() {
   const models = featured.length ? featured.map((m) => ({ id: m.id, name: m.name })) : FALLBACK_VIDEO_MODELS;
   const modelOptions = [{ value: 'auto', label: t('account.settings.prefs.model.auto') }, ...models.map((m) => ({ value: m.id, label: m.name }))];
   if (!modelOptions.some((o) => o.value === prefs.defaultModel)) modelOptions.push({ value: prefs.defaultModel, label: prefs.defaultModel });
-  // D-005: the mature preference exists only for workspaces with an active plan that allow it.
-  const showMature = useSession().matureAllowed;
+  // D-005: the mature preference needs an active plan and a workspace that allows it. Without a plan the
+  // switch is shown off and opens the upgrade modal (it turns on once the plan is active).
+  const session = useSession();
+  const showMature = session.matureAllowed || (!session.isMember && session.workspaceMatureAllowed);
   const language = languageOption(prefs.language ?? intl.locale) ?? LANGUAGE_OPTIONS[0]!;
   const currencyName = (c: string) => {
     try {
@@ -876,8 +879,8 @@ function PreferencesSection() {
         <SwitchRow
           label={t('account.settings.prefs.mature')}
           hint={t('account.settings.prefs.mature.hint')}
-          checked={prefs.matureContent}
-          onChange={(v) => setPref('matureContent', v)}
+          checked={session.isMember && prefs.matureContent}
+          onChange={(v) => (v && !session.isMember ? void openUpgrade({ kind: 'mature' }, { onResume: () => setPref('matureContent', true) }) : setPref('matureContent', v))}
         />
       )}
     </>
@@ -910,7 +913,9 @@ function BillingSection({ me }: { me: Me }) {
       await openBillingPortal('/settings/billing');
     } catch (e) {
       setPortal(false);
-      toast.show({ message: t(isApiError(e, 'NO_PLAN') ? 'account.settings.billing.portal.noCustomer' : 'account.settings.billing.portal.failed') });
+      // No billing account yet: the shared API error handler opened the upgrade modal.
+      if (isApiError(e, 'NO_PLAN')) return;
+      toast.show({ message: t('account.settings.billing.portal.failed') });
     }
   }
   // Live balance shared with the header (lib/session).
@@ -947,7 +952,8 @@ function BillingSection({ me }: { me: Me }) {
       toast.show({ message: t('account.topUps.bought', { n: r.credits }) });
     } catch (e) {
       const code = errorCode(e);
-      toast.show({ message: t(code === 'NO_PLAN' ? 'account.topUps.membersOnly' : code === 'VALIDATION_FAILED' ? 'account.topUps.invalidAmount' : 'account.topUps.failed') });
+      if (code === 'NO_PLAN') return void openUpgrade({ kind: 'top-up' });
+      toast.show({ message: t(code === 'VALIDATION_FAILED' ? 'account.topUps.invalidAmount' : 'account.topUps.failed') });
     }
   }
 
@@ -992,9 +998,16 @@ function BillingSection({ me }: { me: Me }) {
             )}
           </span>
           <div className={styles.cardActions}>
-            <Link to="/upgrade" className={cx(styles.btn, styles.btnPrimary, motion.press)}>
-              <FormattedMessage id={plan ? 'account.settings.billing.changePlan' : 'account.settings.billing.pickPlan'} />
-            </Link>
+            {plan ? (
+              <Link to="/upgrade" className={cx(styles.btn, styles.btnPrimary, motion.press)}>
+                <FormattedMessage id="account.settings.billing.changePlan" />
+              </Link>
+            ) : (
+              // No plan yet: the upgrade modal in place.
+              <button type="button" className={cx(styles.btn, styles.btnPrimary, motion.press)} onClick={() => void openUpgrade({ kind: 'plan' })}>
+                <FormattedMessage id="account.settings.billing.pickPlan" />
+              </button>
+            )}
             {plan &&
               isOwner &&
               (me.cancelAtPeriodEnd ? (
@@ -1100,10 +1113,11 @@ function BillingSection({ me }: { me: Me }) {
         <button
           type="button"
           className={cx(styles.btn, styles.btnPrimary, motion.press)}
-          disabled={!plan || !topUp || buy.isPending}
+          disabled={(plan && !topUp) || buy.isPending}
           title={!plan ? t('account.topUps.membersOnly') : undefined}
           aria-busy={buy.isPending || undefined}
-          onClick={() => void purchase()}
+          // Top-ups are for members (D-007): without a plan the upgrade modal opens.
+          onClick={() => (plan ? void purchase() : void openUpgrade({ kind: 'top-up' }))}
         >
           {buy.isPending ? (
             <FormattedMessage id="account.topUps.buying" />
@@ -1118,11 +1132,12 @@ function BillingSection({ me }: { me: Me }) {
         label={t('account.settings.billing.autoTopUp')}
         hint={t(isOwner ? 'account.settings.billing.autoTopUp.hint' : 'account.settings.billing.ownerOnly', { below: me.autoTopUp.below, buy: auto.credits, price: money(auto.amountUsd) })}
         checked={me.autoTopUp.enabled}
-        disabled={!isOwner || (!plan && !me.autoTopUp.enabled)}
+        disabled={!isOwner}
         onChange={(v) =>
-          autoTopUp.mutate(v, {
+          // Without a plan, auto top-up opens the upgrade modal and turns on once the plan is active.
+          v && !plan ? void openUpgrade({ kind: 'auto-top-up' }, { onResume: () => autoTopUp.mutate(true) }) : autoTopUp.mutate(v, {
             onSuccess: () => toast.show({ message: t(v ? 'account.settings.billing.autoOn' : 'account.settings.billing.autoOff') }),
-            onError: (e) => toast.show({ message: t(errorCode(e) === 'NO_PLAN' ? 'account.topUps.membersOnly' : 'account.settings.billing.autoFailed') }),
+            onError: (e) => (errorCode(e) === 'NO_PLAN' ? void openUpgrade({ kind: 'auto-top-up' }) : toast.show({ message: t('account.settings.billing.autoFailed') })),
           })
         }
       />
@@ -1363,18 +1378,19 @@ function TeamSection({ me }: { me: Me }) {
   const date = useShortDate();
   // D-013: personal plans → "Start Team"; Team without a free seat → "Add seats"; then the invite resumes
   // (with the email typed so far, also when the server refuses: TEAM_REQUIRED / SEATS_REQUIRED).
-  const [startOpen, setStartOpen] = useState(0);
+  /** Inviting without Team (D-013): the upgrade modal's Team variant; the invite resumes with the draft. */
+  const startTeam = () => openUpgrade({ kind: 'team-invite', minSeats: used }, { onResume: () => setInviteOpen(true) });
   const [seatsFor, setSeatsFor] = useState<{ n: number; initial?: number; resume: boolean } | null>(null);
   const [draft, setDraft] = useState<{ email: string; role: Role } | null>(null);
   function invite() {
-    if (!session.isTeam) return setStartOpen((n) => n + 1);
+    if (!session.isTeam) return void startTeam();
     if (used >= seats) return setSeatsFor((s) => ({ n: (s?.n ?? 0) + 1, initial: used + 1, resume: true }));
     setInviteOpen(true);
   }
   function blocked(code: 'TEAM_REQUIRED' | 'SEATS_REQUIRED', needed: number | undefined, d: { email: string; role: Role }) {
     setDraft(d);
     setInviteOpen(false);
-    if (code === 'TEAM_REQUIRED') setStartOpen((n) => n + 1);
+    if (code === 'TEAM_REQUIRED') startTeam();
     else setSeatsFor((s) => ({ n: (s?.n ?? 0) + 1, initial: Math.max(needed ?? used + 1, used + 1), resume: true }));
   }
   // Back from a Team checkout started here (`/settings/team?resume=invite`): continue the invite.
@@ -1493,18 +1509,6 @@ function TeamSection({ me }: { me: Me }) {
         }}
         onBlocked={blocked}
       />
-      {startOpen > 0 && (
-        <StartTeamDialog
-          key={`start-${startOpen}`}
-          open
-          used={used}
-          onClose={() => setStartOpen(0)}
-          onStarted={() => {
-            setStartOpen(0);
-            setInviteOpen(true);
-          }}
-        />
-      )}
       {seatsFor && (
         <SeatsDialog
           key={`seats-${seatsFor.n}`}

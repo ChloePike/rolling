@@ -155,6 +155,7 @@ describe("GET /api/billing/plans", () => {
     ]);
     expect(pub.body.topUp).toMatchObject({ minCents: 1000, maxCents: 1_000_000, presetsCents: [1000, 2500, 5000, 10000, 25000] });
     expect(pub.body.current).toBeNull();
+    expect(typeof pub.body.paymentsEnabled).toBe("boolean");
     const { userId } = newUser();
     expect((await api(userId, "GET", "/api/billing/plans")).body.current).toEqual({ plan: null, isMember: false });
   });

@@ -8,6 +8,7 @@ import { isMockApi } from '@/lib/api/mode';
 import { checkoutTopUp, useCredits, useSession, type CreditsBreakdown } from '@/lib/session';
 import { topUpPresets } from '@/lib/topUp';
 import styles from './CreditsPopover.module.css';
+import { openUpgrade } from '@/lib/upgrade/store';
 
 export type { CreditsBreakdown } from '@/lib/session';
 
@@ -170,9 +171,17 @@ export function CreditsPopoverContent({
             </button>
           </>
         ) : (
-          <Link to="/upgrade" className={cx('rl-press', styles.topUpButton, styles.joinButton)} onClick={onNavigate}>
+          // Top-ups are for members (D-007): the upgrade modal in place, not the plans page.
+          <button
+            type="button"
+            className={cx('rl-press', styles.topUpButton, styles.joinButton)}
+            onClick={() => {
+              onNavigate?.();
+              openUpgrade({ kind: 'top-up' });
+            }}
+          >
             <FormattedMessage id="shell.credits.join" />
-          </Link>
+          </button>
         )}
         <span className={styles.note}>
           <FormattedMessage id="shell.credits.note" />

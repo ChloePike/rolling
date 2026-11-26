@@ -26,6 +26,7 @@ import type { PromptRef } from '../mocks';
 import { MODES, QUICK_OPTIONS } from './options';
 import { isMockApi, mockData } from '@/lib/api/mode';
 import { Skeleton } from '@rolling/ui';
+import { openUpgrade } from '@/lib/upgrade/store';
 import styles from './promptPanel.module.css';
 
 interface PromptPanelProps {
@@ -323,6 +324,11 @@ export function PromptPanel({ node, left, top, state, refs, pickerOpen, onOpenPi
                     onUpdate(node.id, { resolution: r });
                     setOpen(null);
                   }}
+                  onLocked={(r) => {
+                    setOpen(null);
+                    // The upgrade modal in place; the resolution applies once the plan is active.
+                    openUpgrade({ kind: 'resolution', value: r, media: video ? 'video' : 'image' }, { onResume: () => onUpdate(node.id, { resolution: r }) });
+                  }}
                 />
               ) : null}
             </span>
@@ -415,11 +421,13 @@ interface ResolutionMenuProps {
   current: string;
   options: Array<{ value: string; lock: PlanLockInfo | null }>;
   onPick: (resolution: string) => void;
+  /** A locked option was picked: the upgrade modal opens. */
+  onLocked: (resolution: string) => void;
   onClose: () => void;
 }
 
 /** Output resolution with plan caps (D-006): options above the plan are locked and name the plan that unlocks them. */
-function ResolutionMenu({ state, current, options, onPick, onClose }: ResolutionMenuProps) {
+function ResolutionMenu({ state, current, options, onPick, onLocked, onClose }: ResolutionMenuProps) {
   const intl = useIntl();
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -461,11 +469,11 @@ function ResolutionMenu({ state, current, options, onPick, onClose }: Resolution
           type="button"
           role="menuitemradio"
           aria-checked={o.value === current}
-          aria-disabled={o.lock ? true : undefined}
+          data-locked={o.lock ? 'true' : undefined}
           aria-label={o.lock ? o.lock.label : o.value}
           title={o.lock?.reason}
           className={styles.resItem}
-          onClick={() => !o.lock && onPick(o.value)}
+          onClick={() => (o.lock ? onLocked(o.value) : onPick(o.value))}
         >
           <span>{o.value}</span>
           {o.lock ? <PlanLock plan={o.lock.plan} /> : null}

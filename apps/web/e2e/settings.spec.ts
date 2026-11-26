@@ -92,11 +92,17 @@ test.describe('settings (Settings.dc.html)', () => {
     await expect(page.getByRole('radio', { name: 'Simple', exact: true })).toHaveAttribute('aria-checked', 'true');
   });
 
-  test('preferences: no mature-content switch without an active plan or when the workspace turned it off', async ({ page }) => {
+  test('preferences: without an active plan the mature-content switch stays off and opens the upgrade modal', async ({ page }) => {
     await withMe(page, { plan: null });
     await openApp(page, '/settings/preferences');
     await expect(page.getByRole('heading', { level: 2 })).toHaveText('Preferences');
-    await expect(page.getByRole('switch', { name: 'Mature content' })).toHaveCount(0);
+    const sw = page.getByRole('switch', { name: 'Mature content' });
+    await expect(sw).toHaveAttribute('aria-checked', 'false');
+    await sw.click();
+    await expect(page.getByRole('dialog', { name: 'Mature content needs a plan' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(sw).toHaveAttribute('aria-checked', 'false');
+    await expect(page).toHaveURL(/\/settings\/preferences$/);
   });
 
   test('preferences: hidden when the workspace disallows mature content', async ({ page }) => {

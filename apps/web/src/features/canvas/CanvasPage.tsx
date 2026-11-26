@@ -17,6 +17,7 @@ import '@xyflow/react/dist/base.css';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { ReferencePicker, type RefItem } from '@/features/prompt';
+import { UpgradeGate } from '@/lib/upgrade/store';
 import { Paywall, ResultViewer, RunConfirm, type PaywallOption, type ResultActionId, type RunPlanRow, type RunRowKind } from '@/features/overlays';
 import { AgentPanel, type AgentPlan } from './agent/AgentPanel';
 import {
@@ -1752,18 +1753,16 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
         actionLabel={intl.formatMessage({ id: 'canvas.run.action' })}
         onConfirm={() => gate?.type === 'confirm' && executeRun(gate.quote, gate.request)}
       />
-      <Paywall
+      {/* No plan (D-007): the shared upgrade modal; the kept run resumes once the plan is active. */}
+      <UpgradeGate
         open={gate?.type === 'join'}
-        onOpenChange={(o) => !o && setGate(null)}
-        variant="join"
-        onContinue={(option: PaywallOption) => {
+        reason={{ kind: 'generate' }}
+        onClose={() => setGate((g) => (g?.type === 'join' ? null : g))}
+        onJoined={() => {
           const request = gate?.type === 'join' ? gate.request : null;
-          void checkoutPlan(option.id).then(() => {
-            setGate(null);
-            takePendingAction('canvas.run');
-            // The run resumes after checkout: re-quoted (prices may have changed) and confirmed per threshold.
-            if (request) window.setTimeout(() => runRequestRef.current(request), 0);
-          });
+          takePendingAction('canvas.run');
+          // The run resumes after checkout: re-quoted (prices may have changed) and confirmed per threshold.
+          if (request) window.setTimeout(() => runRequestRef.current(request), 0);
         }}
       />
       <Paywall

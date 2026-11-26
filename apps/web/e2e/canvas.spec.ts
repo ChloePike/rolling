@@ -373,13 +373,17 @@ test.describe('canvas behavior', () => {
     await page.getByRole('button', { name: '9:16 · 720p · 5s' }).click();
     const menu = page.getByRole('menu', { name: 'Resolution' });
     await expect(menu.getByRole('menuitemradio', { name: '720p' })).toHaveAttribute('aria-checked', 'true');
-    await expect(menu.getByRole('menuitemradio', { name: '1080p, Available on Plus' })).toHaveAttribute('aria-disabled', 'true');
-    await expect(menu.getByRole('menuitemradio', { name: '4K, Available on Pro' })).toHaveAttribute('aria-disabled', 'true');
+    await expect(menu.getByRole('menuitemradio', { name: '1080p, Available on Plus' })).toHaveAttribute('data-locked', 'true');
+    await expect(menu.getByRole('menuitemradio', { name: '4K, Available on Pro' })).toHaveAttribute('data-locked', 'true');
     await page.waitForTimeout(300);
     await page.screenshot({ path: `${OUT}resolution-locked-app.png` });
-    await menu.getByRole('menuitemradio', { name: '1080p, Available on Plus' }).click({ force: true });
-    await expect(menu).toBeVisible();
-    await menu.getByRole('menuitemradio', { name: '480p' }).click();
+    // A locked option opens the upgrade modal in place (Esc keeps everything as it was).
+    await menu.getByRole('menuitemradio', { name: '1080p, Available on Plus' }).click();
+    await expect(page.getByRole('dialog', { name: '1080p needs Plus' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog', { name: '1080p needs Plus' })).toHaveCount(0);
+    await page.getByRole('button', { name: '9:16 · 720p · 5s' }).click();
+    await page.getByRole('menu', { name: 'Resolution' }).getByRole('menuitemradio', { name: '480p' }).click();
     await expect(page.getByRole('button', { name: '9:16 · 480p · 5s' })).toBeVisible();
     await expect(page.getByTestId('sync-status')).toHaveText('Saved');
   });
@@ -391,7 +395,7 @@ test.describe('canvas behavior', () => {
     const ask = page.getByLabel('Tell the agent');
     await ask.fill('Make shot 2 slower.');
     await page.getByRole('button', { name: 'Send' }).click();
-    const paywall = page.getByRole('dialog', { name: 'Pick a plan to generate' });
+    const paywall = page.getByRole('dialog', { name: 'The agent needs a plan' });
     await expect(paywall).toBeVisible();
     await expect(ask).toHaveValue('Make shot 2 slower.');
     await page.waitForTimeout(400);

@@ -132,7 +132,7 @@ export function RemixPage({ initialOverlay, models: modelsOverride, plan: planPr
   const advGroups: SettingsGroupDef[] = [
     { kind: 'seg', id: 'model', title: t('tools.adv.model'), icon: 'cube', options: segOptions.map((m) => ({ value: m, label: m === 'Auto' ? t('tools.adv.auto') : m })), value: p.model, onChange: (v) => set('model', v) },
     ...(caps.resolutions.length
-      ? [{ kind: 'seg', id: 'res', title: t('tools.adv.resolution'), icon: 'res', options: resolutionOptions(intl, plan, 'video', caps.resolutions), value: s.resolution, onChange: (v: string) => settings.set({ ...s, resolution: v }), onLocked: () => void navigate({ to: '/upgrade' }) } satisfies SettingsGroupDef]
+      ? [{ kind: 'seg', id: 'res', title: t('tools.adv.resolution'), icon: 'res', options: resolutionOptions(intl, plan, 'video', caps.resolutions), value: s.resolution, onChange: (v: string) => settings.set({ ...s, resolution: v }) } satisfies SettingsGroupDef]
       : []),
     ...(caps.design
       ? ([

@@ -57,7 +57,9 @@ test('Remix: resolution is capped by the plan (Starter 720p); a locked option op
   const res = params(page).getByRole('radiogroup', { name: 'Resolution' });
   await expect(res.getByRole('radio')).toHaveCount(3);
   await res.getByRole('radio', { name: /1080p/ }).click();
-  await expect(page).toHaveURL(/\/upgrade$/);
+  // The upgrade modal in place, never a page change.
+  await expect(page.getByRole('dialog', { name: '1080p needs Plus' })).toBeVisible();
+  await expect(page).toHaveURL(/\/create\/remix$/);
 });
 
 test('Remix Advanced: model chips are catalog names fit for the tool; settings without a run parameter are gone', async ({ page, context }) => {

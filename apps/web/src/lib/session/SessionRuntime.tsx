@@ -8,6 +8,7 @@ import { isMockApi } from '@/lib/api/mode';
 import { queryClient } from '@/lib/api/queryClient';
 import { PREFS_ERROR_EVENT, type PrefsErrorDetail } from '@/lib/prefs';
 import { useUserSocketEvent } from '@/lib/realtime';
+import { POPUP_PARAM } from '@/lib/upgrade/popup';
 import { emitCheckoutResume, pollCheckout, RETURN_PARAMS } from './checkout';
 import { isPublicPath } from './guard';
 import { refetchMe } from './real';
@@ -56,8 +57,9 @@ function Runtime() {
   useEffect(() => {
     const onError = (e: Event) => {
       const { error, patch } = (e as CustomEvent<PrefsErrorDetail>).detail;
-      const id = isApiError(error, 'NO_PLAN') && 'matureContent' in patch ? 'shell.prefs.matureNeedsPlan' : 'shell.prefs.saveFailed';
-      toast.show({ message: intl.formatMessage({ id }) });
+      // No plan for mature content: the shared API error handler opened the upgrade modal instead.
+      if (isApiError(error, 'NO_PLAN') && 'matureContent' in patch) return;
+      toast.show({ message: intl.formatMessage({ id: 'shell.prefs.saveFailed' }) });
     };
     window.addEventListener(PREFS_ERROR_EVENT, onError);
     return () => window.removeEventListener(PREFS_ERROR_EVENT, onError);
@@ -84,6 +86,8 @@ function useCheckoutReturn() {
     const sessionId = q.get('session_id');
     const portal = q.get('portal');
     if (!checkout && !portal) return;
+    // The checkout popup's own return page: the opener handles it (lib/upgrade/popup.ts).
+    if (q.get(POPUP_PARAM) === '1') return;
     const key = `${checkout}:${sessionId}:${portal}`;
     if (handled.current.has(key)) return;
     handled.current.add(key);

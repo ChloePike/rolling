@@ -147,7 +147,7 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
     { kind: 'seg', id: 'bg', title: t('tools.avatar.adv.setting'), icon: 'scene', options: [{ value: 'background', label: t('tools.avatar.adv.setting.background') }, { value: 'reference', label: t('tools.avatar.adv.setting.reference') }], value: p.bg, onChange: (v) => set('bg', v) },
     { kind: 'text', id: 'camText', title: t('tools.avatar.adv.camera'), icon: 'cam', value: p.camText, placeholder: t('tools.avatar.adv.camera.placeholder'), onChange: (v) => set('camText', v) },
     ...(caps.resolutions.length
-      ? [{ kind: 'seg', id: 'res', title: t('tools.adv.resolution'), icon: 'res', options: resolutionOptions(intl, plan, 'video', caps.resolutions), value: s.resolution, onChange: (v: string) => settings.set({ ...s, resolution: v }), onLocked: () => void navigate({ to: '/upgrade' }) } satisfies SettingsGroupDef]
+      ? [{ kind: 'seg', id: 'res', title: t('tools.adv.resolution'), icon: 'res', options: resolutionOptions(intl, plan, 'video', caps.resolutions), value: s.resolution, onChange: (v: string) => settings.set({ ...s, resolution: v }) } satisfies SettingsGroupDef]
       : []),
     ...(caps.design
       ? ([{ kind: 'seg', id: 'count', title: t('tools.adv.count'), icon: 'count', options: ['1', '2'].map((v) => ({ value: v, label: v })), value: p.count, onChange: (v) => set('count', v) }] satisfies SettingsGroupDef[])

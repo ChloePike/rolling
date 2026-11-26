@@ -37,6 +37,8 @@ declare global {
        * on return (resume-after-checkout flows, D-007).
        */
       checkoutRedirect?: boolean;
+      /** `off`: payments are not configured (the upgrade modal shows "Payments aren't available yet"). */
+      payments?: 'on' | 'off';
     };
   }
 }

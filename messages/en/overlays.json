@@ -140,5 +140,7 @@
   "overlays.run.concurrency": "{limit, plural, one {# job} other {# jobs}} already running for your plan. Wait for one to finish, or upgrade.",
   "overlays.run.startFailed": "{label} couldn’t start. Nothing was charged.",
   "overlays.run.unavailable": "This can’t be generated here yet.",
-  "overlays.params.costOnly": "~ <b>{cost, number}</b> credits"
+  "overlays.params.costOnly": "~ <b>{cost, number}</b> credits",
+  "overlays.paywall.credits.footStripe": "Payments by Stripe.",
+  "overlays.paywall.card": "{brand} ending {last4}"
 }
