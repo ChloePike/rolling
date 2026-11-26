@@ -145,5 +145,11 @@
   "home.run.noResult": "This run has no result to open yet.",
   "home.cost.quoting": "Pricing…",
   "home.run.mockError": "The model didn’t return a result.",
-  "home.run.chargedPart": "{n, plural, one {# credit} other {# credits}} charged · {released, plural, one {# held credit} other {# held credits}} released"
+  "home.run.chargedPart": "{n, plural, one {# credit} other {# credits}} charged · {released, plural, one {# held credit} other {# held credits}} released",
+  "home.run.step.keyframe": "Making the first frame",
+  "home.run.step.keyframeProgress": "Making the first frame · {pct}%",
+  "home.run.step.animate": "Animating",
+  "home.run.step.animateProgress": "Animating · {pct}%",
+  "home.run.steps": "Making the first frame → Animating",
+  "home.run.keyframeKept": "The first frame is kept in your library."
 }

@@ -225,10 +225,12 @@ export function HomePage() {
 
   const resultFromCard = (c: HomeRunCard): HomeResultState => {
     const id = c.runId ?? c.key;
+    // A mature chain whose animation failed (D-005): the first frame is the result to open.
+    const keyframe = c.status === 'failed' ? (c.chain?.keyframeAssetId ?? null) : null;
     return {
       title: c.title,
       prompt: c.prompt,
-      kind: c.kind,
+      kind: keyframe ? 'image' : c.kind,
       aspect: c.aspect,
       modelName: c.modelName,
       params: c.params,
@@ -238,7 +240,7 @@ export function HomePage() {
       createdAt: new Date(c.createdAt),
       cost: c.credits,
       ...(c.spec ? { spec: c.spec } : {}),
-      assets: { [id]: c.assetIds[0] ?? null },
+      assets: { [id]: keyframe ?? c.assetIds[0] ?? null },
     };
   };
 

@@ -22,7 +22,7 @@ import { useToolQuote } from './useToolQuote';
 import { assetMediaUrl, isApiError, isMockApi } from '@/features/overlays/backend';
 import { agentFailure, applyProposal, sendTurn, threadFor, type AgentTool } from '@/features/overlays/agent';
 import { downloadAsset } from '@/features/overlays/media';
-import { listRuns, quoteSpec, resolveSpecAssets, retryRun, startQuote, type PromptSpec, type SpecQuote } from '@/features/overlays/runs';
+import { listRuns, quoteSpec, resolveSpecAssets, resultItems, retryRun, isFailedRun, startQuote, type PromptSpec, type SpecQuote } from '@/features/overlays/runs';
 import { savePendingAction, takePendingAction, useCheckoutResume } from '@/lib/session';
 
 /** A tool run waiting for checkout (`savePendingAction('tools.run', …)`). */
@@ -171,7 +171,8 @@ export function ToolLayout(p: ToolLayoutProps) {
         runs.setItems((cur) => [
           ...cur.filter((it) => it.kind === 'media' && it.runId),
           ...mine.map((r): MediaRun => {
-            const asset = r.items.find((i) => i.assetId)?.assetId ?? null;
+            const result = resultItems(r).find((i) => i.assetId) ?? null;
+            const asset = result?.assetId ?? null;
             return {
               kind: 'media',
               id: r.id,
@@ -181,10 +182,10 @@ export function ToolLayout(p: ToolLayoutProps) {
               tiles: [{ tone: 'var(--c-tone-blank)', ...(asset ? { src: assetMediaUrl(asset) } : {}) }],
               prompt: r.name,
               tags: r.params.split(' · ').slice(1),
-              video: r.items[0]?.kind !== 'image',
+              video: (result ?? resultItems(r)[0])?.kind !== 'image',
               actions: p.actions,
               finishedAgoMin: Math.round((Date.now() - (r.finishedAt ?? r.createdAt)) / 60_000),
-              ...(r.status === 'failed' || (r.status === 'canceled' && !asset) ? { failed: { refunded: r.refunded } } : {}),
+              ...(r.status === 'failed' || (r.status === 'canceled' && !asset) || (r.status === 'partial' && isFailedRun(r)) ? { failed: { refunded: r.refunded } } : {}),
             };
           }),
         ]);
@@ -202,7 +203,10 @@ export function ToolLayout(p: ToolLayoutProps) {
   const beginReal = (prompt: string, quote: SpecQuote) => {
     void startQuote(quote.quoteId!).then(
       ({ runId }) => {
-        runs.startReal({ ...p.run, prompt, cost: quote.total, actions: p.actions }, runId);
+        const chain = quote.items.some((i) => i.step === 'keyframe')
+          ? { chainLabels: { keyframe: t('tools.feed.step.keyframe'), animate: (pct: number) => intl.formatMessage({ id: 'tools.feed.step.animate' }, { pct }) } }
+          : {};
+        runs.startReal({ ...p.run, prompt, cost: quote.total, actions: p.actions, ...chain }, runId);
         setFilter((f) => (f === 'saved' ? 'all' : f));
         toast.show({ message: t('tools.toast.started', { n: quote.total }) });
       },

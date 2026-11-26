@@ -80,5 +80,9 @@
   "activity.retryError.NOTHING_TO_RUN": "Nothing to run again: the nodes are up to date or gone.",
   "activity.retryError.other": "Couldn’t run it again. Nothing was charged.",
   "activity.retryEta": "~2 min",
-  "activity.none": "No runs yet. Images and videos you generate show up here."
+  "activity.none": "No runs yet. Images and videos you generate show up here.",
+  "activity.steps": "Making the first frame → Animating",
+  "activity.step.keyframe": "Making the first frame",
+  "activity.step.animate": "Animating",
+  "activity.keyframeKept": "The first frame is kept."
 }

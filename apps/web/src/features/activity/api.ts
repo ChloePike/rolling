@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { isMockApi, userEvents } from '@/features/overlays/backend';
-import { listRuns, type RunView } from '@/features/overlays/runs';
+import { chainOf, listRuns, resultItems, type RunView } from '@/features/overlays/runs';
 import { mockData } from '@/lib/api/mode';
 import type { ActivityData, RunRow } from './types';
 
@@ -14,7 +14,9 @@ import type { ActivityData, RunRow } from './types';
 const KEY = ['activity'] as const;
 
 function rowFrom(r: RunView, now: number): RunRow {
-  const first = r.items.find((i) => i.assetId) ?? r.items[0];
+  const results = resultItems(r);
+  const first = results.find((i) => i.assetId) ?? results[0];
+  const chain = chainOf(r);
   return {
     id: r.id,
     ref: r.ref,
@@ -32,6 +34,7 @@ function rowFrom(r: RunView, now: number): RunRow {
     assetId: first?.assetId ?? null,
     mediaKind: first?.kind === 'image' ? 'image' : 'video',
     failedNodeIds: r.items.filter((i) => (i.status === 'failed' || i.status === 'canceled' || i.status === 'skipped') && i.nodeId).map((i) => i.nodeId!),
+    ...(chain && { chain: { step: chain.current, failed: chain.failed } }),
   };
 }
 

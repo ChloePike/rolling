@@ -1,4 +1,4 @@
-import type { PromptSpec, RunView } from '@/features/overlays/runs';
+import { chainOf, isFailedRun, type ChainStepName, type PromptSpec, type RunView } from '@/features/overlays/runs';
 
 /**
  * Home run cards: one card per generation sent from the Home prompt box
@@ -39,6 +39,12 @@ export interface HomeRunCard {
   error: string | null;
   /** The server says the failed or canceled items can be quoted again. */
   retryable: boolean;
+  /**
+   * D-005 mature text-to-video chain: one generation in two steps. `step` is
+   * the one running (null once it ended); `keyframeAssetId` the first frame,
+   * shown when the animation failed.
+   */
+  chain?: { step: ChainStepName | null; keyframeAssetId: string | null };
 }
 
 /** Cards kept per user and workspace in this browser (newest first). */
@@ -67,8 +73,14 @@ export function cardStatus(s: RunView['status']): CardStatus {
 
 /** The card after a fresh `GET /api/runs/:id`. */
 export function applyRunView(card: HomeRunCard, view: RunView): HomeRunCard {
-  const status = cardStatus(view.status);
-  const assetIds = view.items.map((i) => i.assetId).filter((id): id is string => !!id);
+  const chain = chainOf(view);
+  // A chain whose animation failed is a failed card (the first frame stays visible on it).
+  const status = isFailedRun(view) && view.status === 'partial' ? 'failed' : cardStatus(view.status);
+  // A chain's first frame is never the card's result (it shows on a failed card through `chain.keyframeAssetId`).
+  const assetIds = view.items
+    .filter((i) => i.step !== 'keyframe')
+    .map((i) => i.assetId)
+    .filter((id): id is string => !!id);
   const failedItem = view.items.find((i) => i.status === 'failed' && i.error);
   const progress = status === 'running' ? (view.progress ?? card.progress) : status === 'done' ? 1 : null;
   return {
@@ -83,6 +95,7 @@ export function applyRunView(card: HomeRunCard, view: RunView): HomeRunCard {
     error: status === 'failed' ? (failedItem?.error ?? view.error ?? card.error) : null,
     finishedAt: view.finishedAt ?? (isActive({ status }) ? null : (card.finishedAt ?? Date.now())),
     retryable: view.retryable ?? (status === 'failed' || status === 'canceled'),
+    ...(chain && { chain: { step: chain.current, keyframeAssetId: chain.keyframeAssetId } }),
   };
 }
 

@@ -26,6 +26,12 @@ export interface RunRow {
   assetId?: string | null;
   mediaKind?: 'video' | 'image';
   failedNodeIds?: string[];
+  /**
+   * D-005 mature text-to-video chain: one generation in two steps (first frame
+   * → animating). `step` is the one running, null once it ended; `failed` when
+   * the animation failed (the first frame is kept).
+   */
+  chain?: { step: 'keyframe' | 'animate' | null; failed: boolean };
 }
 
 export interface ActivityStats {

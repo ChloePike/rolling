@@ -195,14 +195,15 @@ export function ToolRunConfirm({ open, cost, label, views, quote, meta, onClose,
         .filter((i) => i.action !== 'none')
         .map((i) => ({
           id: i.ref,
-          name: i.title,
-          meta: [i.modelName, meta].filter(Boolean).join(' · '),
+          // D-005 chain: one generation in two steps, both priced in the total.
+          name: i.step ? intl.formatMessage({ id: `tools.confirm.step.${i.step}` }) : i.title,
+          meta: i.step === 'keyframe' ? (i.modelName ?? '') : [i.modelName, meta].filter(Boolean).join(' · '),
           kind: i.kind === 'image' ? 'image' : 'video',
           state: i.action === 'run' ? 'run' : i.action === 'reuse' ? 'reuse' : i.action === 'blocked' ? 'blocked' : 'free',
           cost: i.credits,
         }))
     : [{ id: 'run_this', name: intl.formatMessage({ id: views ? 'tools.confirm.rowViews' : 'tools.confirm.row' }), meta: demo?.meta ?? meta, kind, state: 'run', cost }];
-  const routed = quote?.items.find((i) => i.action === 'run')?.modelName;
+  const routed = quote?.items.find((i) => i.action === 'run' && i.step !== 'keyframe')?.modelName;
   return (
     <RunConfirm
       open={open}

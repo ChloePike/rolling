@@ -112,3 +112,53 @@ describe('home run cards', () => {
     expect(parseStored(JSON.stringify([card({ key: 'x', status: 'starting' }), { nope: 1 }, card({ key: 'y', status: 'done' })])).map((c) => c.key)).toEqual(['y']);
   });
 });
+
+describe('home run cards: mature text-to-video chain (D-005)', () => {
+  const item = (over: Partial<RunView['items'][number]>): RunView['items'][number] => ({
+    ref: 'spec',
+    nodeId: null,
+    title: 'A lamp',
+    kind: 'video',
+    model: 'lumina/wan2.2-i2v-spicy',
+    modelName: 'Wan 2.2 I2V Spicy',
+    status: 'pending',
+    jobId: null,
+    progress: null,
+    credits: 100,
+    spent: null,
+    refunded: 0,
+    assetId: null,
+    error: null,
+    errorCode: null,
+    step: 'animate',
+    ...over,
+  });
+  const keyframe = (over: Partial<RunView['items'][number]> = {}) => item({ ref: 'keyframe', kind: 'image', step: 'keyframe', title: 'A lamp · First frame', credits: 5, ...over });
+
+  it('is one card that says which step runs', () => {
+    const first = applyRunView(card(), view({ items: [keyframe({ status: 'running' }), item({})] }));
+    expect(first.chain).toEqual({ step: 'keyframe', keyframeAssetId: null });
+    const second = applyRunView(card(), view({ items: [keyframe({ status: 'succeeded', assetId: 'ast_kf' }), item({ status: 'running' })] }));
+    expect(second.chain).toEqual({ step: 'animate', keyframeAssetId: 'ast_kf' });
+    expect(second.assetIds).toEqual([]);
+  });
+
+  it('done: the video is the result, not the first frame', () => {
+    const done = applyRunView(card(), view({ status: 'done', items: [keyframe({ status: 'succeeded', assetId: 'ast_kf' }), item({ status: 'succeeded', assetId: 'ast_vid' })] }));
+    expect(done.status).toBe('done');
+    expect(done.assetIds).toEqual(['ast_vid']);
+    expect(done.chain?.step).toBeNull();
+  });
+
+  it('the animation failed: a failed card with the refund and the first frame kept', () => {
+    const failed = applyRunView(
+      card(),
+      view({ status: 'partial', refunded: 100, items: [keyframe({ status: 'succeeded', assetId: 'ast_kf' }), item({ status: 'failed', error: 'The provider rejected the content.' })] }),
+    );
+    expect(failed.status).toBe('failed');
+    expect(failed.error).toBe('The provider rejected the content.');
+    expect(failed.refunded).toBe(100);
+    expect(failed.assetIds).toEqual([]);
+    expect(failed.chain?.keyframeAssetId).toBe('ast_kf');
+  });
+});

@@ -9,7 +9,7 @@ import { openUpgrade } from '@/lib/upgrade/store';
 import { RunConfirm } from './RunConfirm';
 import type { RunRowKind } from './types';
 import { isApiError, isMockApi, userEvents } from './backend';
-import { findRun, quoteSpec, runFinished, startQuote, type PromptSpec, type RunView, type SpecQuote } from './runs';
+import { findRun, quoteSpec, resultItems, isFailedRun, runFinished, startQuote, type PromptSpec, type RunView, type SpecQuote } from './runs';
 import { resolveAssetId } from '@/lib/transfers';
 
 /** What a finished run hands back: the mock run, or the real run with its first result asset. */
@@ -191,11 +191,12 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
         waitForRun(runId, run.projectId).then(
           (r) => {
             setRunning((n) => n - 1);
-            if (r.status === 'failed' || r.status === 'canceled') {
+            // A mature chain whose animation failed counts as failed (its refund is the animation's); the first frame stays in the library.
+            if (isFailedRun(r)) {
               run.onFailed?.();
               return failed(run, r.refunded);
             }
-            const assetId = r.items.find((i) => i.assetId)?.assetId ?? null;
+            const assetId = resultItems(r).find((i) => i.assetId)?.assetId ?? null;
             const finished: FinishedRun = { id: runId, cost: r.spent, assetId, run: r };
             run.onDone?.(finished);
             if (r.items.some((i) => i.kind === 'video' && i.status === 'succeeded')) noteFinishedVideo();

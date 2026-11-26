@@ -24,6 +24,49 @@ export interface RunItemView {
   assetId: string | null;
   error: string | null;
   errorCode: string | null;
+  /** D-005 mature text-to-video chain step: `keyframe` (the first frame, a picture) or `animate` (the video). */
+  step?: ChainStepName;
+}
+
+/** Steps of a mature text-to-video chain (D-005): one generation made as "first frame → animating". */
+export type ChainStepName = 'keyframe' | 'animate';
+
+export interface ChainState {
+  /** The step running now (or waiting to run), null once the chain ended. */
+  current: ChainStepName | null;
+  /** The animation failed, was canceled or skipped: the run counts as failed; the first frame may still be there. */
+  failed: boolean;
+  /** The first frame the chain made, when it succeeded. */
+  keyframeAssetId: string | null;
+}
+
+/** The chain state of a run, or null for ordinary runs. */
+export function chainOf(view: Pick<RunView, 'items'>): ChainState | null {
+  const kf = view.items.find((i) => i.step === 'keyframe');
+  const anim = view.items.find((i) => i.step === 'animate');
+  if (!kf && !anim) return null;
+  const open = (s: RunItemView['status'] | undefined) => s === 'pending' || s === 'running';
+  const current: ChainStepName | null = kf && open(kf.status) ? 'keyframe' : anim && open(anim.status) ? 'animate' : null;
+  return {
+    current,
+    failed: !!anim && (anim.status === 'failed' || anim.status === 'canceled' || anim.status === 'skipped'),
+    keyframeAssetId: kf?.status === 'succeeded' ? kf.assetId : null,
+  };
+}
+
+/**
+ * Items whose outputs are the run's results. A chain's first frame is a step,
+ * not a result, while the video exists; when the animation did not make one,
+ * the first frame is what the user keeps.
+ */
+export function resultItems(view: Pick<RunView, 'items'>): RunItemView[] {
+  const animated = view.items.some((i) => i.step === 'animate' && i.status === 'succeeded');
+  return view.items.filter((i) => i.step !== 'keyframe' || !animated);
+}
+
+/** A finished run that counts as failed for its owner: failed, canceled, or a chain whose animation failed. */
+export function isFailedRun(view: Pick<RunView, 'status' | 'items'>): boolean {
+  return view.status === 'failed' || view.status === 'canceled' || (view.status === 'partial' && !!chainOf(view)?.failed);
 }
 
 export interface RunView {
@@ -163,6 +206,8 @@ export interface SpecQuote {
     /** `MATURE_REQUIRED`: why the caller has no mature access (D-005); `no_plan` opens the upgrade modal with reason `mature`. */
     matureAccess?: 'no_plan' | 'preference_off' | 'workspace_off';
     autoVia?: 'classifier' | 'fallback' | 'single';
+    /** D-005 mature text-to-video chain step; both steps are in `total`. */
+    step?: ChainStepName;
   }>;
   total: number;
   balance: number;

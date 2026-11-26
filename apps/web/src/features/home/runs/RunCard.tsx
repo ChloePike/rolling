@@ -58,6 +58,11 @@ export function RunCard({ card, actions, index }: { card: HomeRunCard; actions: 
       case 'queued':
         return intl.formatMessage({ id: 'home.run.status.queued' });
       case 'running':
+        // A chain (D-005) says which step it is on; the percentage covers both steps.
+        if (card.chain?.step) {
+          const step = card.chain.step;
+          return pct !== null ? intl.formatMessage({ id: `home.run.step.${step}Progress` }, { pct }) : intl.formatMessage({ id: `home.run.step.${step}` });
+        }
         return pct !== null ? intl.formatMessage({ id: 'home.run.status.progress' }, { pct }) : intl.formatMessage({ id: 'home.run.status.running' });
       case 'done':
         return intl.formatMessage({ id: 'home.run.status.done' });
@@ -118,6 +123,11 @@ export function RunCard({ card, actions, index }: { card: HomeRunCard; actions: 
           <button type="button" className={styles.placeholder} onClick={() => actions.onView(card)} aria-label={intl.formatMessage({ id: 'home.run.open' }, { prompt: card.title })}>
             <PromptIcon name={card.kind === 'video' ? 'video' : 'image'} size={20} />
           </button>
+        ) : card.status === 'failed' && card.chain?.keyframeAssetId && !mock ? (
+          // The animation failed: the first frame it was made from is still a result.
+          <button type="button" className={styles.imageBtn} onClick={() => actions.onView(card)} aria-label={intl.formatMessage({ id: 'home.run.open' }, { prompt: card.title })}>
+            <img className={cx(styles.image, 'rl-reveal')} src={assetMediaUrl(card.chain.keyframeAssetId)} alt="" loading="lazy" data-testid="home-run-keyframe" />
+          </button>
         ) : (
           <div className={cx(styles.placeholder, (card.status === 'failed' || card.status === 'canceled') && styles.placeholderOff)} aria-hidden="true">
             {active ? <span className={styles.pct}>{pct !== null ? `${pct}%` : clock(elapsed)}</span> : <PromptIcon name={card.kind === 'video' ? 'video' : 'image'} size={20} />}
@@ -149,6 +159,11 @@ export function RunCard({ card, actions, index }: { card: HomeRunCard; actions: 
         </div>
         <p className={styles.prompt}>{card.prompt || card.title}</p>
         <p className={styles.meta}>{card.meta}</p>
+        {card.chain ? (
+          <p className={styles.meta} data-testid="home-run-steps">
+            <FormattedMessage id="home.run.steps" />
+          </p>
+        ) : null}
         {active ? (
           <div
             className={cx('rl-progress', styles.progress)}
@@ -164,6 +179,11 @@ export function RunCard({ card, actions, index }: { card: HomeRunCard; actions: 
         {card.status === 'failed' && card.error ? (
           <p className={styles.error} data-testid="home-run-error">
             {card.error}
+          </p>
+        ) : null}
+        {card.status === 'failed' && card.chain?.keyframeAssetId ? (
+          <p className={styles.meta}>
+            <FormattedMessage id="home.run.keyframeKept" />
           </p>
         ) : null}
         {costLine ? (

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FeedItem, MediaRun, MediaTile } from '../types';
 import { assetMediaUrl, userEvents } from '@/features/overlays/backend';
-import { findRun, runFinished, type RunView } from '@/features/overlays/runs';
+import { chainOf, findRun, resultItems, isFailedRun, runFinished, type RunView } from '@/features/overlays/runs';
 
 /**
  * Tool runs on mock data (`POST /api/runs` → job progress over the user
@@ -25,6 +25,8 @@ export interface RunSpec {
   durationSec?: number;
   cost: number;
   actions: MediaRun['actions'];
+  /** Step labels of a mature text-to-video chain (D-005): the first frame, then the animation (`{pct}` while it runs). */
+  chainLabels?: { keyframe: string; animate: (pct: number) => string };
 }
 
 interface Mocks {
@@ -124,7 +126,16 @@ export function useRuns(seed: FeedItem[], events: RunEvents = {}) {
       if (finished) return;
       if (!runFinished(r)) {
         const pct = Math.round((r.progress ?? 0) * 100);
-        update(id, (cur) => ({ ...cur, progress: pct, steps: steps(pct) }));
+        const chain = chainOf(r);
+        // A chain is one generation in two steps; the progress covers both.
+        const shown =
+          chain && spec.chainLabels
+            ? [
+                { label: spec.chainLabels.keyframe, state: chain.current === 'keyframe' ? ('now' as const) : ('done' as const) },
+                { label: spec.chainLabels.animate(pct), state: chain.current === 'animate' ? ('now' as const) : ('todo' as const) },
+              ]
+            : steps(pct);
+        update(id, (cur) => ({ ...cur, progress: pct, steps: shown }));
         return;
       }
       finished = true;
@@ -132,13 +143,22 @@ export function useRuns(seed: FeedItem[], events: RunEvents = {}) {
       off();
       const cur = itemsRef.current.find((it): it is MediaRun => it.id === id && it.kind === 'media');
       if (!cur) return;
-      if (r.status === 'failed' || r.status === 'canceled') {
-        const failed: MediaRun = { ...cur, progress: undefined, steps: undefined, failed: { refunded: r.refunded }, finishedAgoMin: 0 };
+      if (isFailedRun(r)) {
+        // A chain whose animation failed keeps its first frame on the card.
+        const kf = chainOf(r)?.keyframeAssetId ?? null;
+        const failed: MediaRun = {
+          ...cur,
+          progress: undefined,
+          steps: undefined,
+          failed: { refunded: r.refunded },
+          finishedAgoMin: 0,
+          ...(kf && { assetId: kf, video: false, tiles: [{ ...(cur.tiles[0] ?? { tone: 'var(--c-tone-blank)' }), src: assetMediaUrl(kf) }] }),
+        };
         setItems((all) => all.map((it) => (it.id === id ? failed : it)));
         ev.current.onFail?.(failed);
         return;
       }
-      const assets = r.items.map((i) => i.assetId).filter((x): x is string => !!x);
+      const assets = resultItems(r).map((i) => i.assetId).filter((x): x is string => !!x);
       const done: MediaRun = {
         ...cur,
         progress: undefined,

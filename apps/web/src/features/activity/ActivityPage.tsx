@@ -493,6 +493,15 @@ function Row({ run, index, onAction }: { run: RunRow; index: number; onAction: (
         </span>
         <span className={styles.params} role="cell">
           {run.params}
+          {run.chain ? (
+            <span className={styles.steps} data-testid="activity-steps">
+              {(run.status === 'running' || run.status === 'queued') && run.chain.step ? (
+                <FormattedMessage id={`activity.step.${run.chain.step}`} />
+              ) : (
+                <FormattedMessage id="activity.steps" />
+              )}
+            </span>
+          ) : null}
         </span>
         <span className={styles.status} role="cell">
           <span className={styles.badge} style={{ background: st.bg, color: st.fg }}>
@@ -537,10 +546,18 @@ function Row({ run, index, onAction }: { run: RunRow; index: number; onAction: (
           ))}
         </span>
       </div>
-      {run.status === 'failed' && run.error && (
+      {(run.status === 'failed' || (run.status === 'partial' && run.chain?.failed)) && run.error && (
         <div className={styles.error} role="note">
           <PathIcon d={paths.alert} size={15} />
-          <span className={styles.errorText}>{run.error}</span>
+          <span className={styles.errorText}>
+            {run.error}
+            {run.chain?.failed && run.status === 'partial' ? (
+              <>
+                {' '}
+                <FormattedMessage id="activity.keyframeKept" />
+              </>
+            ) : null}
+          </span>
           <span className={styles.refund}>
             <FormattedMessage id="activity.refunded" values={{ n: run.refunded }} />
           </span>
