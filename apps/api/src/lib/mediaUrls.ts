@@ -1,8 +1,10 @@
 /**
  * Media URLs for API responses (D-008). Private media gets short-lived signed
- * URLs on the media host (`PRIVATE_MEDIA_BASE_URL`, empty = this Worker's
- * `/media/*` route until the media hostname exists). Non-mature public-library
- * objects use the public media base. Mature media is only signed for viewers
+ * URLs on the private media host (`PRIVATE_MEDIA_BASE_URL`, e.g.
+ * `https://cdn-private.rolling.actor`, a hostname routed to this Worker; empty =
+ * the app host's `/media/*` route, local dev). Non-mature public-library objects
+ * use the public media base (`PUBLIC_MEDIA_BASE_URL`, the public bucket's custom
+ * domain); mature public-library objects exist only in the private bucket and are signed. Mature media is only signed for viewers
  * allowed to see it (D-005); everyone else gets `null`.
  */
 import { SHARED_MEDIA_WS, keyBelongsTo, signMediaKey } from "@rolling/core/media";
@@ -11,6 +13,8 @@ import { publicMediaUrl } from "../routes/media";
 /** Used only when ENVIRONMENT=development and no secret is set (local dev, tests). */
 const DEV_SIGNING_KEY = "rolling-dev-media-signing-key";
 export const DEFAULT_MEDIA_TTL_SECONDS = 3600;
+/** Display URLs expire on hour boundaries so repeat requests get the same, cacheable URL. */
+export const MEDIA_URL_ALIGN_SECONDS = 3600;
 
 export function mediaSigningKey(env: Env): string {
   if (env.MEDIA_SIGNING_KEY) return env.MEDIA_SIGNING_KEY;
@@ -21,7 +25,7 @@ export function mediaSigningKey(env: Env): string {
 export async function signMediaUrl(
   env: Env,
   key: string,
-  opts: { workspaceId: string; expiresIn?: number; absolute?: boolean },
+  opts: { workspaceId: string; expiresIn?: number; absolute?: boolean; alignSeconds?: number },
 ): Promise<string> {
   const base = env.PRIVATE_MEDIA_BASE_URL || (opts.absolute ? env.PUBLIC_APP_URL : "");
   return signMediaKey(key, {
@@ -29,6 +33,7 @@ export async function signMediaUrl(
     expiresIn: opts.expiresIn ?? DEFAULT_MEDIA_TTL_SECONDS,
     secret: mediaSigningKey(env),
     baseUrl: base,
+    alignSeconds: opts.alignSeconds,
   });
 }
 
@@ -44,7 +49,7 @@ export async function mediaUrlFor(env: Env, ref: MediaRef, viewer: { mayViewMatu
   if (ref.key.startsWith("public/") && !ref.mature) return publicMediaUrl(ref.key, env.PUBLIC_MEDIA_BASE_URL);
   const ws = ref.workspaceId && keyBelongsTo(ref.key, ref.workspaceId) ? ref.workspaceId : SHARED_MEDIA_WS;
   if (!keyBelongsTo(ref.key, ws)) return null;
-  return signMediaUrl(env, ref.key, { workspaceId: ws, expiresIn });
+  return signMediaUrl(env, ref.key, { workspaceId: ws, expiresIn, alignSeconds: MEDIA_URL_ALIGN_SECONDS });
 }
 
 export interface AssetRow {

@@ -5,8 +5,10 @@
 //
 // Usage: tsx scripts/posewear/emit-sql.ts [--include-mature] [--category pose,outfit] [--chunk 400]
 //
-// Mature items (D-005) are skipped by default; with --include-mature they are written with mature = 1
-// column yet, and the public library is a public surface.
+// Mature items (D-005) are skipped by default; with --include-mature they are written with
+// public_items.mature = 1 and assets.mature = 1, so public queries exclude them and their images
+// are only signed for viewers allowed to see them. Staging and production both use --include-mature
+// (the full set, CharaDB-hosted items included, D-004).
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -19,6 +21,7 @@ import { OUT_DIR, SNAPSHOT_PATH, parseArgs, readJson } from './lib.ts';
 
 const args = parseArgs(process.argv.slice(2));
 const includeMature = args.has('include-mature');
+// D-004 (2026-11-26): CharaDB-hosted images are imported too; `--exclude-attribution <name,...>` can still leave a source out.
 const excludeAttribution = typeof args.get('exclude-attribution') === 'string' ? new Set(String(args.get('exclude-attribution')).split(',').map((s) => s.toLowerCase())) : undefined;
 const categoryFilter = typeof args.get('category') === 'string' ? new Set(String(args.get('category')).split(',')) : undefined;
 const CHUNK = Number(args.get('chunk') ?? 400);
@@ -60,7 +63,7 @@ function statementsFor(batch: LibraryD1Rows[]): string[] {
   const items = batch.map((b) => b.publicItem);
   const search = batch.map((b) => b.search);
   return [
-    ...insertStatements('assets', assets, upsert(['kind', 'source', 'name', 'r2_key', 'meta', 'license'])),
+    ...insertStatements('assets', assets, upsert(['kind', 'source', 'name', 'r2_key', 'meta', 'license', 'mature'])),
     ...insertStatements(
       'public_items',
       items,

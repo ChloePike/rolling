@@ -13,6 +13,8 @@ resources named `rolling-*` (Analytics Engine: `rolling_<env>`).
 | R2 (MEDIA, SPA under `_web/`) | `rolling-media-staging` | `rolling-media-production` (CORS: `https://rolling.actor`, PUT/GET/HEAD) |
 | Queues (+ `-dlq`) | `rolling-staging-{media-process,ledger-mirror,notify-email}` | `rolling-production-{media-process,ledger-mirror,notify-email}` |
 | Workflows | `rolling-staging-{generate,export,billing}` | `rolling-production-{generate,export,billing}` |
+| Public media (D-008) | `rolling-public-staging` on https://media-staging.rolling.actor | `rolling-public-production` on https://media.rolling.actor |
+| Private media (D-008) | https://cdn-private-staging.rolling.actor (Worker custom domain, signed URLs only) | https://cdn-private.rolling.actor |
 | Container app | `rolling-api-ffmpegrenderer-staging` | `rolling-api-ffmpegrenderer-production` (max 20) |
 | Email | `EMAIL` binding; `EMAIL_PROVIDER=test-inbox` (e2e reads codes from `/api/test/inbox`) | `EMAIL` binding; `EMAIL_PROVIDER=cloudflare` |
 
@@ -72,6 +74,23 @@ Generate server secrets without printing them: `openssl rand -base64 48 | tr -d 
 - Sender `Rolling <no-reply@rolling.actor>` (`EMAIL_FROM`), reply-to `support@rolling.actor`.
 - Account quota at onboarding: 1,000 messages/day, arbitrary recipients.
 
+## Media hosts (D-008)
+
+- Public: R2 buckets `rolling-public-<env>` with R2 custom domains (API
+  `POST /accounts/{id}/r2/buckets/{bucket}/domains/custom {"domain","zoneId","enabled":true,"minTLS":"1.2"}`) and CORS
+  (`PUT .../cors`, GET/HEAD from the app origins, exposes Content-Range/ETag). Objects carry
+  `Cache-Control: public, max-age=31536000, immutable`. Only non-mature library images and template covers go there.
+- Private: `cdn-private[-staging].rolling.actor` are `routes` (custom domains) of the env's Worker; created by
+  `wrangler deploy`. Only signed `/media/<key>?exp=&ws=&sig=` URLs are answered.
+- `rolling-media-<env>` CORS also allows the app origin for direct uploads (staging: `https://staging.rolling.actor`).
+
+```sh
+K=public/pose/pw_pose_full_single_P001/front.webp
+curl -sI https://media.rolling.actor/$K                     # 200, cache-control: public, max-age=31536000, immutable
+curl -s -o /dev/null -w '%{http_code}\n' https://cdn-private.rolling.actor/media/$K   # 403 (unsigned)
+curl -s -o /dev/null -w '%{http_code}\n' https://cdn-private.rolling.actor/          # 404
+```
+
 ## Verify after a deploy
 
 ```sh
@@ -84,10 +103,7 @@ curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' https://www.rolling.act
 
 ## Follow-ups
 
-- Public library (PoseWear, D-004) is not imported into production: `scripts/posewear/README.md` lists
-  unresolved licence conflicts, and the D1 part is a manual `wrangler d1 execute --file`. After the owner
-  resolves them: `R2_BUCKET=rolling-media-production tsx scripts/posewear/copy-to-r2.ts ...`, then
-  `wrangler d1 execute rolling-production --remote --env production --file scripts/posewear/out/sql/import-*.sql`.
-- `media.rolling.actor` / `cdn-private.rolling.actor` (D-008) are not set up; media is served by the Worker.
+- Public library (PoseWear, D-004) is imported in both envs (same counts); CharaDB images are not copied yet
+  (`scripts/posewear/README.md` → Live state, refresh commands).
 - Stripe products/prices for production (`pnpm --filter @rolling/api stripe:sync`) once keys exist; webhook
   `https://rolling.actor/api/stripe/webhook`. Hyperouter webhook `https://rolling.actor/api/hooks/hyperouter`.

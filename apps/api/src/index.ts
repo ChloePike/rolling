@@ -6,6 +6,7 @@ import { ApiError, errorResponse } from "./lib/errors";
 import { isWebSocketUpgrade, refuseWebSocket } from "./lib/wsRefusal";
 import { authMiddleware } from "./auth/context";
 import { serveSpaFromR2 } from "./lib/r2Static";
+import { isPrivateMediaHost, mediaPreflight, withMediaCors } from "./lib/privateMediaHost";
 import { handleQueue } from "./queues";
 import { handleScheduled } from "./scheduled";
 import { authRoutes } from "./routes/auth";
@@ -57,6 +58,17 @@ app.use("*", async (c, next) => {
   await next();
 });
 
+// The private media hostname (D-008) answers only signed media URLs; nothing else is reachable there.
+app.use("*", async (c, next) => {
+  if (!isPrivateMediaHost(c.env, new URL(c.req.url))) return next();
+  const origin = c.req.header("origin");
+  if (c.req.method === "OPTIONS") return mediaPreflight(c.env, origin);
+  if ((c.req.method === "GET" || c.req.method === "HEAD") && c.req.path.startsWith("/media/")) {
+    return withMediaCors(c.env, origin, await signedMedia.fetch(c.req.raw, c.env, c.executionCtx));
+  }
+  return errorResponse(c, 404, "NOT_FOUND", "Not found");
+});
+
 const api = new Hono<AppEnv>()
   // One auth context per request (M1): c.get("auth"), requireUser / requireMember / requireRole.
   .use("*", authMiddleware)
@@ -95,7 +107,7 @@ const api = new Hono<AppEnv>()
   );
 
 app.route("/api", api);
-// Signed private media (D-008); moves to the media hostname once it exists.
+// Signed private media (D-008) on the app host: local dev and URLs issued before PRIVATE_MEDIA_BASE_URL was set.
 app.route("/", signedMedia);
 
 app.notFound((c) => {

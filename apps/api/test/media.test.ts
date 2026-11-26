@@ -1,5 +1,8 @@
-import { env, SELF } from "cloudflare:test";
+import { createExecutionContext, env, SELF, waitOnExecutionContext } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
+import { signMediaKey } from "@rolling/core/media";
+import { app } from "../src/index";
+import { mediaSigningKey, mediaUrlFor } from "../src/lib/mediaUrls";
 
 async function gql(query: string, variables: Record<string, unknown> = {}) {
   const res = await SELF.fetch("https://example.com/api/graphql", {
@@ -73,5 +76,63 @@ describe("public-library media and GraphQL image fields", () => {
       { key: "casual", count: 2 },
       { key: "formal", count: 1 },
     ]);
+  });
+});
+
+describe("private media host (D-008)", () => {
+  const HOST = "https://cdn-private.example.com";
+  const mediaEnv = () => ({ ...env, PRIVATE_MEDIA_BASE_URL: HOST, PUBLIC_MEDIA_BASE_URL: "https://media.example.com" }) as Env;
+  const key = "ws/ws_media/uploads/ast_1/clip.mp4";
+  const bytes = new Uint8Array(Array.from({ length: 100 }, (_, i) => i));
+
+  async function call(path: string, init: RequestInit = {}) {
+    const ctx = createExecutionContext();
+    const res = await app.fetch(new Request(`${HOST}${path}`, init), mediaEnv(), ctx);
+    await waitOnExecutionContext(ctx);
+    return res;
+  }
+
+  beforeAll(async () => {
+    await env.MEDIA.put(key, bytes, { httpMetadata: { contentType: "video/mp4" } });
+  });
+
+  it("answers only signed URLs: unsigned 403, signed 200 with long cache, Range 206", async () => {
+    const unsigned = await call(`/media/${key}`);
+    expect(unsigned.status).toBe(403);
+    await unsigned.arrayBuffer();
+
+    const signed = await signMediaKey(key, { workspaceId: "ws_media", expiresIn: 3600, alignSeconds: 3600, secret: mediaSigningKey(env), baseUrl: HOST });
+    const path = signed.slice(HOST.length);
+    const ok = await call(path, { headers: { origin: "http://localhost:8787" } });
+    expect(ok.status).toBe(200);
+    expect(ok.headers.get("cache-control")).toMatch(/^private, max-age=\d+, immutable$/);
+    expect(Number(/max-age=(\d+)/.exec(ok.headers.get("cache-control")!)![1])).toBeGreaterThanOrEqual(3500);
+    expect(ok.headers.get("access-control-allow-origin")).toBe("http://localhost:8787");
+    expect(new Uint8Array(await ok.arrayBuffer())).toEqual(bytes);
+
+    const ranged = await call(path, { headers: { range: "bytes=10-19" } });
+    expect(ranged.status).toBe(206);
+    expect(ranged.headers.get("content-range")).toBe("bytes 10-19/100");
+    expect(new Uint8Array(await ranged.arrayBuffer())).toEqual(bytes.slice(10, 20));
+  });
+
+  it("serves nothing else on that host", async () => {
+    for (const path of ["/", "/api/health", "/login", `/api/media/public/outfit/pw_m1/front.webp`]) {
+      const res = await call(path);
+      expect(res.status, path).toBe(404);
+      await res.arrayBuffer();
+    }
+    const preflight = await call(`/media/${key}`, { method: "OPTIONS", headers: { origin: "https://evil.example" } });
+    expect(preflight.status).toBe(403);
+  });
+
+  it("signs mature public-library objects instead of linking the public bucket", async () => {
+    const viewer = { mayViewMature: true };
+    expect(await mediaUrlFor(mediaEnv(), { key: "public/outfit/pw_m1/front.webp", workspaceId: null, mature: false }, viewer)).toBe(
+      "https://media.example.com/public/outfit/pw_m1/front.webp",
+    );
+    const mature = await mediaUrlFor(mediaEnv(), { key: "public/outfit/pw_m4/front.webp", workspaceId: null, mature: true }, viewer);
+    expect(mature).toMatch(/^https:\/\/cdn-private\.example\.com\/media\/public\/outfit\/pw_m4\/front\.webp\?exp=\d+&ws=_&sig=/);
+    expect(await mediaUrlFor(mediaEnv(), { key: "public/outfit/pw_m4/front.webp", workspaceId: null, mature: true }, { mayViewMature: false })).toBeNull();
   });
 });

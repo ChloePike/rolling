@@ -1,0 +1,17 @@
+// Temporary copy Worker (see index.ts). Delete after use (see index.ts).
+{
+  "name": "rolling-media-copy",
+  "account_id": "e2ed20c61e6c1ce394300a753734eff9",
+  "main": "index.ts",
+  "compatibility_date": "2026-08-01",
+  "workers_dev": true,
+  "r2_buckets": [
+    { "binding": "SOURCE", "bucket_name": "rolling-media-staging" },
+    { "binding": "PUBLIC_STAGING", "bucket_name": "rolling-public-staging" },
+    { "binding": "PUBLIC_PRODUCTION", "bucket_name": "rolling-public-production" },
+    { "binding": "MEDIA_PRODUCTION", "bucket_name": "rolling-media-production" }
+  ],
+  "d1_databases": [
+    { "binding": "CATALOG", "database_name": "rolling-staging", "database_id": "0d7b541a-0b51-4976-9c58-da51b4347682" }
+  ]
+}

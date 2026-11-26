@@ -311,7 +311,7 @@ function Details({ cat, item, tone, onCopy }: { cat: CategoryView; item: PublicI
                 </span>
                 <span className={styles.factValue}>
                   <a href={item.source} target="_blank" rel="noreferrer">
-                    <FormattedMessage id="library.public.sourceValue" values={{ name: cat.def.attribution.name }} />
+                    <FormattedMessage id="library.public.sourceValue" values={{ name: item.attribution?.name ?? cat.def.attribution.name }} />
                   </a>
                 </span>
               </div>
@@ -320,7 +320,7 @@ function Details({ cat, item, tone, onCopy }: { cat: CategoryView; item: PublicI
                   <FormattedMessage id="library.public.license" />
                 </span>
                 <span className={styles.factValue}>
-                  <FormattedMessage id={`library.licenseNote.${cat.key}`} />
+                  <FormattedMessage id={item.attribution?.name === 'CharaDB' ? 'library.licenseNote.charadb' : `library.licenseNote.${cat.key}`} />
                 </span>
               </div>
             </div>

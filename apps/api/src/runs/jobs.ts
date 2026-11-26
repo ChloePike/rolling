@@ -95,8 +95,9 @@ async function modelFor(env: Env, modelId: string): Promise<CatalogModel> {
 const SIGNED_INPUT_TTL = 6 * 3600;
 
 async function assetUrl(env: Env, ctx: JobContext, assetId: string): Promise<{ url: string; origin: ImageSource; key: string; name: string } | null> {
-  const row = await env.DB.prepare("SELECT r2_key, workspace_id, source, status, name FROM assets WHERE id = ?").bind(assetId).first<{
+  const row = await env.DB.prepare("SELECT r2_key, workspace_id, source, status, name, mature FROM assets WHERE id = ?").bind(assetId).first<{
     r2_key: string;
+    mature: number | null;
     workspace_id: string | null;
     source: string;
     status: string;
@@ -105,7 +106,8 @@ async function assetUrl(env: Env, ctx: JobContext, assetId: string): Promise<{ u
   // `processing` uploads are usable: the object is complete in R2, probing only adds metadata.
   if (!row || (row.status !== "ready" && row.status !== "processing") || (row.workspace_id !== null && row.workspace_id !== ctx.workspaceId)) return null;
   const origin: ImageSource = row.source === "generated" || row.source === "public" || row.source === "builtin" ? row.source : row.source === "team" ? "team" : "upload";
-  if (row.r2_key.startsWith("public/") && env.PUBLIC_MEDIA_BASE_URL) return { url: publicMediaUrl(row.r2_key, env.PUBLIC_MEDIA_BASE_URL), origin, key: row.r2_key, name: row.name };
+  // Mature public-library objects are not in the public bucket (D-008): they are signed below.
+  if (row.r2_key.startsWith("public/") && !row.mature && env.PUBLIC_MEDIA_BASE_URL) return { url: publicMediaUrl(row.r2_key, env.PUBLIC_MEDIA_BASE_URL), origin, key: row.r2_key, name: row.name };
   const ws = row.workspace_id && keyBelongsTo(row.r2_key, row.workspace_id) ? row.workspace_id : "_";
   if (!keyBelongsTo(row.r2_key, ws)) return null;
   const url = await signMediaUrl(env, row.r2_key, { workspaceId: ws, expiresIn: SIGNED_INPUT_TTL, absolute: true });

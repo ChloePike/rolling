@@ -48,6 +48,12 @@ export interface SignOptions {
   secret: string;
   /** Origin of the media host, e.g. `https://media.example.com`; empty for the API Worker's `/media` route. */
   baseUrl?: string;
+  /**
+   * Round the expiry up to a multiple of this many seconds, so every URL issued for a key
+   * inside one window is identical and browser/edge caches can reuse it. The lifetime is
+   * then between `expiresIn` and `expiresIn + alignSeconds` (still capped).
+   */
+  alignSeconds?: number;
   now?: number;
 }
 
@@ -55,7 +61,10 @@ export interface SignOptions {
 export async function signMediaKey(key: string, opts: SignOptions): Promise<string> {
   if (!keyBelongsTo(key, opts.workspaceId)) throw new Error('Media key does not belong to the workspace');
   const ttl = Math.max(1, Math.min(Math.floor(opts.expiresIn), MAX_SIGNED_TTL_SECONDS));
-  const exp = Math.floor((opts.now ?? Date.now()) / 1000) + ttl;
+  const nowSec = Math.floor((opts.now ?? Date.now()) / 1000);
+  let exp = nowSec + ttl;
+  const align = Math.floor(opts.alignSeconds ?? 0);
+  if (align > 1) exp = Math.min(Math.ceil(exp / align) * align, nowSec + MAX_SIGNED_TTL_SECONDS);
   const sig = await hmac(opts.secret, payload(key, exp, opts.workspaceId));
   const base = (opts.baseUrl ?? '').replace(/\/+$/, '');
   const qs = new URLSearchParams({ exp: String(exp), ws: opts.workspaceId, sig });

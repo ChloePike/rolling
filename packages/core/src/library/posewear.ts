@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { getLibraryCategory, type LibraryCategory } from './categories';
+import { CHARADB_ATTRIBUTION, getLibraryCategory, type LibraryCategory } from './categories';
 import {
   PublicLibraryItemSchema,
   type LibraryAngle,
@@ -177,7 +177,6 @@ export function shortTitleFromPrompt(en: string, maxLength = 80): string {
   return capitalize(s);
 }
 
-const CHARADB_ATTRIBUTION = { name: 'CharaDB', url: 'https://charadb-2fi.pages.dev/' };
 
 /** True for items whose images are hosted by CharaDB rather than PoseWear. */
 export function isCharaDbHosted(raw: PoseWearRawItem): boolean {

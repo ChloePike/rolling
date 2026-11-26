@@ -253,3 +253,15 @@ export function categoryForPoseWearTab(tab: string): LibraryCategory | undefined
 export function categoriesInGroup(group: LibraryGroupKey): LibraryCategory[] {
   return LIBRARY_CATEGORIES.filter((c) => c.group === group);
 }
+
+/** CharaDB, the host of all hairstyles and some anime outfits (ids `charadb-*`). */
+export const CHARADB_ATTRIBUTION: LibraryAttribution = { name: 'CharaDB', url: 'https://charadb-2fi.pages.dev/' };
+
+/**
+ * Attribution of one imported item (D-004): CharaDB for CharaDB-hosted items
+ * (public item id `pw_<category>_charadb-*`, or any hairstyle), else the category's source.
+ */
+export function libraryItemAttribution(category: LibraryCategoryKey, itemId: string): LibraryAttribution {
+  if (category === 'hairstyle' || itemId.startsWith(`pw_${category}_charadb-`)) return CHARADB_ATTRIBUTION;
+  return getLibraryCategory(category).attribution;
+}

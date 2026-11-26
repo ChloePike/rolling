@@ -5,6 +5,8 @@
 import { createSchema, createYoga } from "graphql-yoga";
 import { GraphQLError } from "graphql";
 import type { PublicItem } from "@rolling/db/d1";
+import { LIBRARY_CATEGORIES, libraryItemAttribution } from "@rolling/core/library/categories";
+import type { LibraryCategoryKey } from "@rolling/core/library/types";
 import { encodeCursor, listPublicCategoryCounts, listPublicItems, listPublicSubs } from "@rolling/db/queries/publicItems";
 import { publicMediaUrl } from "../routes/media";
 import type { SessionUser } from "../lib/session";
@@ -107,11 +109,18 @@ const typeDefs = /* GraphQL */ `
     assetId: ID!
     license: License!
     source: String!
+    "Where the item comes from (D-004), e.g. CharaDB for CharaDB-hosted items."
+    attribution: Attribution!
     "Cover image URL (first angle)."
     thumbUrl: String
     "Depth map URL of the cover angle, for pose items."
     depthUrl: String
     angles: [PublicAngle!]!
+  }
+
+  type Attribution {
+    name: String!
+    url: String
   }
 
   type PublicAngle {
@@ -140,6 +149,8 @@ const typeDefs = /* GraphQL */ `
     pageInfo: PageInfo!
   }
 `;
+
+const LIBRARY_CATEGORY_KEYS = new Set<string>(LIBRARY_CATEGORIES.map((c) => c.key));
 
 const licenseEnum = { "first-party": "FIRST_PARTY", cc0: "CC0", mit: "MIT" } as const;
 
@@ -208,6 +219,11 @@ const resolvers = {
   PublicItem: {
     license: (item: PublicItem) => licenseEnum[item.license],
     tags: (item: PublicItem) => parseTags(item.tags),
+    attribution: (item: PublicItem) => {
+      const known = LIBRARY_CATEGORY_KEYS.has(item.category);
+      const a = known ? libraryItemAttribution(item.category as LibraryCategoryKey, item.id) : { name: "PoseWear", url: undefined };
+      return { name: a.name, url: a.url ?? null };
+    },
     angles: (item: PublicItem, _: unknown, ctx: GraphQLContext) => parseAngles(item.angles, ctx.env.PUBLIC_MEDIA_BASE_URL),
     thumbUrl: (item: PublicItem, _: unknown, ctx: GraphQLContext) =>
       parseAngles(item.angles, ctx.env.PUBLIC_MEDIA_BASE_URL)[0]?.url ?? null,

@@ -220,6 +220,18 @@
   "env": {
     "staging": {
       "name": "rolling-api-staging",
+      // Custom domains (D-015); the workers.dev URL stays on. cdn-private-staging serves signed media only (D-008).
+      "routes": [
+        {
+          "pattern": "staging.rolling.actor",
+          "custom_domain": true
+        },
+        {
+          "pattern": "cdn-private-staging.rolling.actor",
+          "custom_domain": true
+        }
+      ],
+      "workers_dev": true,
       "triggers": {
         "crons": [
           "0 */6 * * *",
@@ -234,7 +246,10 @@
         // The workers.dev URL keeps working for sign-in (Better Auth trustedOrigins, Google login_uri).
         "EXTRA_TRUSTED_ORIGINS": "https://rolling-api-staging.swiftpayx.workers.dev",
         "HYPEROUTER_BASE_URL": "https://api.hyperouter.app/v1",
-        "PUBLIC_MEDIA_BASE_URL": "",
+        // Media hosts (D-008): public bucket rolling-public-staging on its R2 custom domain; signed private
+        // media answered by this Worker on its own hostname (src/lib/privateMediaHost.ts).
+        "PUBLIC_MEDIA_BASE_URL": "https://media-staging.rolling.actor",
+        "PRIVATE_MEDIA_BASE_URL": "https://cdn-private-staging.rolling.actor",
         // Direct browser uploads (D-011): S3 API endpoint of the MEDIA bucket. Secrets: R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY.
         "R2_ACCOUNT_ID": "e2ed20c61e6c1ce394300a753734eff9",
         "R2_BUCKET_NAME": "rolling-media-staging",
@@ -402,6 +417,11 @@
         {
           "pattern": "www.rolling.actor",
           "custom_domain": true
+        },
+        // Signed private media only (D-008); every other path answers 404 there.
+        {
+          "pattern": "cdn-private.rolling.actor",
+          "custom_domain": true
         }
       ],
       // One canonical origin for sign-in: no workers.dev URL in production.
@@ -419,7 +439,10 @@
         "PUBLIC_APP_URL": "https://rolling.actor",
         "EXTRA_TRUSTED_ORIGINS": "",
         "HYPEROUTER_BASE_URL": "https://api.hyperouter.app/v1",
-        "PUBLIC_MEDIA_BASE_URL": "",
+        // Media hosts (D-008): public bucket rolling-public-production on its R2 custom domain; signed private
+        // media answered by this Worker on its own hostname (src/lib/privateMediaHost.ts).
+        "PUBLIC_MEDIA_BASE_URL": "https://media.rolling.actor",
+        "PRIVATE_MEDIA_BASE_URL": "https://cdn-private.rolling.actor",
         // Direct browser uploads (D-011): S3 API endpoint of the MEDIA bucket. Secrets: R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY.
         "R2_ACCOUNT_ID": "e2ed20c61e6c1ce394300a753734eff9",
         "R2_BUCKET_NAME": "rolling-media-production",

@@ -103,17 +103,47 @@ production should read `r2Key`. Depth images on pwimg want `Referrer-Policy: no-
 | expression | ICT-FaceKit head model, (c) USC ICT, MIT | MIT | `mit` |
 | historical, scene, lighting, prop, furniture | CC0 1.0 (Shisei, wquguru) | CC0 | `cc0` |
 
-Conflicts to resolve before the real copy:
+Rights notes (status 2026-11-26):
 
-1. D-004 records PoseWear as first-party. PoseWear's own footer and the upstream galleries name
-   @giaaibusi as the rights holder and forbid bulk download and redistribution. If the owner is
-   also that author, this is fine. If not, `copy-to-r2.ts` for those four categories goes
-   against the stated terms.
-2. Hairstyles and the 440 CharaDB anime outfits: CharaDB itself says the images are reference only.
-   "CC0" applies to tags and prompts, not clearly to the images.
+1. ~~First-party vs @giaaibusi's terms~~ Resolved: the owner holds authorization from @giaaibusi
+   for the pose, depth-pose, outfit and anime-outfit galleries (D-004).
+2. ~~CharaDB images (hairstyles, 440 anime outfits)~~ Resolved by owner decision (D-004, 2026-11-26):
+   they are imported too, with license `cc0` and attribution CharaDB (`assets.meta.attribution`,
+   GraphQL `PublicItem.attribution`, the details panel shows "CharaDB"). The 4 minor-coded items stay excluded.
+   **Not yet copied:** fetching them from charadb-2fi.pages.dev was not run (it needs an explicit go-ahead
+   for the bulk download), so staging and production still hold the set without CharaDB (see Live state).
 3. Portraits: CC0, but the author asks not to redistribute the images. Copying them to R2 and
-   serving them publicly is legal under CC0 but goes against that request.
+   serving them publicly is legal under CC0 but goes against that request (owner accepted under D-004).
 4. pwimg.0vo.pro `robots.txt` sets `Content-Signal: search=yes, ai-train=no, use=reference`.
+
+## Live state (2026-11-26)
+
+Staging and production hold the same set: 5,141 items (all categories except hairstyle and the 436
+CharaDB anime outfits), 8,074 assets (2,575 mature), 5,141 search rows.
+
+| Bucket | Contents |
+|---|---|
+| `rolling-public-<env>` (media[-staging].rolling.actor) | 5,499 non-mature library images + 8 template covers |
+| `rolling-media-staging` | all 8,074 library images (the copy source) |
+| `rolling-media-production` | 2,575 mature library images (signed URLs only) |
+
+Refresh both environments (idempotent):
+
+```sh
+T=packages/core/node_modules/.bin/tsx
+$T scripts/posewear/emit-sql.ts --include-mature                 # add --exclude-attribution charadb until CharaDB images are in R2
+# CharaDB backfill (source CDN -> staging private bucket), when approved:
+$T scripts/posewear/copy-to-r2.ts --env staging --target private --include-mature --category hairstyle,outfit_anime
+# Public buckets and production private bucket, copied from staging through the copy Worker (copy-worker/):
+$T scripts/posewear/copy-to-r2.ts --env staging    --target public  --from-bucket rolling-media-staging --extra-prefix public/templates/ --via-worker $W
+$T scripts/posewear/copy-to-r2.ts --env production --target public  --from-bucket rolling-media-staging --extra-prefix public/templates/ --via-worker $W
+$T scripts/posewear/copy-to-r2.ts --env production --target private --mature-only --from-bucket rolling-media-staging --via-worker $W
+scripts/posewear/apply-d1.sh staging && scripts/posewear/apply-d1.sh production
+```
+
+The REST API allows about 4 requests/s for the account, so bulk copies between buckets go through the
+temporary `rolling-media-copy` Worker (R2 bindings; deploy, copy, delete). Its public targets refuse
+keys the staging catalog marks mature.
 
 ## Counts (snapshot 2026-11-25)
 
@@ -155,7 +185,8 @@ labels in `labels.json` are written to be neutral.
 school swimsuits (`charadb-O013`, `O209`, `O210`, `O436`). D-005 hard limit: no sexual content
 that is coded as involving minors. Rule: mature, and the text matches school/student/child/teen terms.
 
-`emit-sql.ts` and `copy-to-r2.ts` skip mature items unless `--include-mature` is passed.
+`emit-sql.ts` and `copy-to-r2.ts` skip mature items unless `--include-mature` is passed. Mature rows get
+`public_items.mature = 1` and `assets.mature = 1`; their images live only in the private bucket.
 
 ## D1 import
 
@@ -182,4 +213,5 @@ HEAD on an object returns 405, so for resume the script lists each `public/<cate
 Each image is held in memory only (no disk) and uploaded with an explicit Content-Type.
 Uploads run 4 at a time by default. Failed requests are retried with exponential backoff on 429 and 5xx.
 Progress prints every 25 objects, and a report is written to `out/r2-copy-report.json`.
-Not yet run against Cloudflare. The bucket `rolling-media-staging` does not exist yet.
+`--env <env> --target public|private` picks `rolling-public-<env>` or `rolling-media-<env>`; public targets
+never receive mature objects. Uploads set `Cache-Control: public, max-age=31536000, immutable`.

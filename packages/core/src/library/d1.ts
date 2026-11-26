@@ -19,6 +19,8 @@ export interface LibraryAssetRow {
   project_id: null;
   created_by: null;
   created_at: number;
+  /** 0/1 (`assets.mature`): mature library images are only signed for viewers allowed to see them (D-005, D-008). */
+  mature: number;
 }
 
 export interface LibraryPublicItemRow {
@@ -83,11 +85,13 @@ export function toLibraryD1Rows(
       sourceUrl: angle.fullUrl,
       sourceThumbUrl: angle.thumbUrl,
       mature: item.mature,
+      attribution: item.attribution,
     }),
     license: item.license,
     project_id: null,
     created_by: null,
     created_at: opts.importedAt,
+    mature: item.mature ? 1 : 0,
   }));
 
   const angles: LibraryAngleRecord[] = item.angles.map((angle) => {

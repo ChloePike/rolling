@@ -29,6 +29,8 @@ export interface PublicItem {
   license: LibraryLicense;
   /** Link back to the item on PoseWear. */
   source: string;
+  /** Where the item comes from (D-004): CharaDB for CharaDB-hosted items, else the category's source. */
+  attribution?: { name: string; url: string | null } | null;
   /** Cover image (first angle), or null when the item has no image in R2 (e.g. CharaDB items, D-004). */
   thumbUrl: string | null;
   /** Depth map of the cover angle (pose items). */
@@ -53,7 +55,7 @@ export const PAGE_SIZE = 24;
 const ITEMS_QUERY = /* GraphQL */ `
   query PublicItems($category: String, $sub: String, $q: String, $first: Int, $after: String) {
     publicItems(category: $category, sub: $sub, q: $q, first: $first, after: $after) {
-      edges { node { id category sub title promptEn tags assetId license source thumbUrl depthUrl angles { name url depthUrl } } }
+      edges { node { id category sub title promptEn tags assetId license source attribution { name url } thumbUrl depthUrl angles { name url depthUrl } } }
       pageInfo { hasNextPage endCursor }
     }
   }

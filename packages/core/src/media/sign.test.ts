@@ -24,6 +24,17 @@ describe('signed media URLs', () => {
     expect(await verifyMediaSignature(key, q, 'other', now)).toEqual({ ok: false, reason: 'invalid' });
   });
 
+  it('aligns the expiry so URLs are stable inside a window', async () => {
+    const t = 1_700_000_000_000;
+    const a = await signMediaKey('public/pose/x/front.webp', { workspaceId: '_', expiresIn: 3600, alignSeconds: 3600, secret, now: t });
+    const b = await signMediaKey('public/pose/x/front.webp', { workspaceId: '_', expiresIn: 3600, alignSeconds: 3600, secret, now: t + 60_000 });
+    expect(a).toBe(b);
+    const exp = Number(parse(a).q.exp);
+    expect(exp % 3600).toBe(0);
+    expect(exp - t / 1000).toBeGreaterThanOrEqual(3600);
+    expect(exp - t / 1000).toBeLessThanOrEqual(7200);
+  });
+
   it('refuses to sign keys of another workspace', async () => {
     await expect(signMediaKey('ws/ws_B/x.png', { workspaceId: 'ws_A', expiresIn: 60, secret })).rejects.toThrow();
   });
