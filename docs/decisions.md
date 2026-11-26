@@ -2,6 +2,25 @@
 
 Decisions made after the original spec. Where this file disagrees with `PRD.md`, `architecture.md`, `api.md` or `harness.md`, this file wins. Newest first.
 
+## D-017 — Google sign-in uses popups / One Tap (ID tokens); redirect is the fallback; no Apple (2026-11-26)
+
+Owner decision. Social sign-in does not leave the page, Google is the only social provider (Apple is removed: button, SDK, provider, client-secret signing, env, copy) and Google needs **only the public Client ID** (no `GOOGLE_CLIENT_SECRET`, no OAuth code exchange).
+
+- **In place:** the login and sign-up pages load Google Identity Services (`https://accounts.google.com/gsi/client`) lazily and render the official button (popup, theme follows light/dark, width of the design button) and One Tap (`use_fedcm_for_prompt: true`, `auto_select: false`, `cancel_on_tap_outside: true`) for signed-out visitors; the plans page (`/upgrade`) shows One Tap to signed-out visitors. Each attempt uses a nonce from `GET /api/auth/nonce` (single use, 5 min, stored hashed). The ID token goes to Better Auth's ID-token sign-in (`POST /api/auth/sign-in/social` with `idToken`), which verifies it against Google's JWKS (`aud`, `iss`, `exp`); we add the nonce and `email_verified` checks.
+- **Fallbacks:** a closed or blocked popup (and the installed app) switches GIS to redirect mode (`ux_mode: 'redirect'`, `login_uri` = `<origin>/api/auth/google/credential`; Google posts `credential` + `g_csrf_token`, checked double-submit). When the script cannot load at all, the design's own button goes to `GET /api/auth/google/start` (OIDC `response_type=id_token`, `response_mode=form_post` to the same endpoint, `state` cookie double-submit). Settings links Google through the same start route. Better Auth's `/callback/*` and `/link-social` are closed.
+- **No CSP** is set by the Worker today; if one is added, allow `https://accounts.google.com` (script, frame, connect, and `https://accounts.google.com/gsi/style` for styles) on the auth and plans pages.
+- **Origins:** `PUBLIC_APP_URL` plus the comma-separated `EXTRA_TRUSTED_ORIGINS` var (staging: `https://rolling-api-staging.swiftpayx.workers.dev` next to `https://staging.rolling.actor`). Better Auth trusts both; `login_uri` / `redirect_uri` follow the origin the user is on.
+
+What the owner configures in Google Cloud Console → APIs & Services → Credentials → OAuth client (Web application):
+
+| Field | Values |
+|---|---|
+| Authorized JavaScript origins | `https://rolling.actor`, `https://staging.rolling.actor`, `https://rolling-api-staging.swiftpayx.workers.dev`, `http://localhost:5173` (dev SPA), `http://localhost` (GIS also asks for this when testing on localhost) |
+| Authorized redirect URIs | Needed for the fallbacks (GIS redirect mode requires `login_uri` to be listed here; the OIDC form post uses it as `redirect_uri`): `https://rolling.actor/api/auth/google/credential`, `https://staging.rolling.actor/api/auth/google/credential`, `https://rolling-api-staging.swiftpayx.workers.dev/api/auth/google/credential`, `http://localhost:8787/api/auth/google/credential` (local Worker). The old `/api/auth/callback/google` entries can be deleted. |
+| OAuth consent screen | App name, support email, the `/terms` and `/privacy` URLs (D-016), authorized domain `rolling.actor` |
+
+Worker config: `GOOGLE_CLIENT_ID` only (secret or var; it is public). Delete any `GOOGLE_CLIENT_SECRET` and `APPLE_*` secrets. `CLAUDE.md`, `PRD.md` and `milestones.md` still list Apple; this entry wins.
+
 ## D-015 — Domain: rolling.actor (2026-11-26)
 
 The product domain is `rolling.actor` (Cloudflare zone in the account; product name stays “Rolling” pending a rename).
@@ -14,7 +33,7 @@ The product domain is `rolling.actor` (Cloudflare zone in the account; product n
 | `cdn-private.rolling.actor` | Signed private media (D-008); `PRIVATE_MEDIA_BASE_URL` (staging: `media-staging.` / `cdn-private-staging.`) |
 
 - **Email (Cloudflare Email Service):** send from `no-reply@rolling.actor` (sign-in codes, invites, receipts); Email Preview off (sign-in codes); DMARC starts at `p=none` while sending is verified, then tightens. Inbound via Email Routing: `support@`, `privacy@`, `legal@`, `abuse@` forward to the owner.
-- **OAuth redirect URIs:** `https://rolling.actor/api/auth/callback/{google,apple}` (production) and `https://staging.rolling.actor/api/auth/callback/{google,apple}` (staging).
+- **Google sign-in URIs:** superseded by D-017 (no OAuth callback; Google posts to `/api/auth/google/credential`). Apple sign-in is dropped.
 - **Stripe webhooks:** `https://rolling.actor/api/stripe/webhook`, staging equivalent. **Hyperouter webhook:** `https://rolling.actor/api/hooks/hyperouter` (and staging).
 
 ## D-014 — One global WebSocket per browser, multiplexed by channel (2026-11-25)
