@@ -82,7 +82,7 @@ Sources: **PRD** = `docs/PRD.md`, **M*n*** = `docs/milestones.md`, **CF*n*** = `
 | Feature | Acceptance checks | Source | Tests |
 |---|---|---|---|
 | Model picker | Auto first. Every non-tool catalog model of the mode is listed; Berry appears as “Wan 3.0”. No face/head swap, LoRA, animate or face detect, and no models of the other kind. The panel fits the viewport. | D-009 | PROMPT-1 |
-| Params from capabilities | The resolution options are exactly the model’s, and the duration note shows the model’s max | HO, D-002 | PROMPT-2 |
+| Params from capabilities | Home and canvas settings come from the selected model, not the mode: the resolution options are exactly the model’s (Seedance 2.0 Mini: no 1080p), the duration note shows the model’s max, image count follows `imagesPerRequest` (Seedream 5.0 Flash: 1), unsupported values refit to the closest one, plan locks still apply, and a blocked quote shows its reason instead of a number | HO, D-002, D-006 | PROMPT-2 |
 | `@` references | Tabs All / My assets / Characters / Voices / Public library. A public item becomes a chip with a source label. | HO, M5 | PROMPT-3 |
 | Enter / IME | Enter sends. Shift+Enter adds a new line. Enter during IME composition does not send. | owner | PROMPT-4 |
 | `/` palette | Skills / Create / Settings groups, filtering, an empty state, Esc closes | HO | PROMPT-5 |

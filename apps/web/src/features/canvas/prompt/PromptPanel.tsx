@@ -15,7 +15,7 @@ import {
   type VideoAspect,
   type VideoParams,
 } from '@/features/overlays';
-import { catalogToOptions } from '@/features/overlays';
+import { catalogToOptions, costBlock, fitImage, fitVideo, imageToSettings, maxSeconds, modelCaps, paramOptions, videoToSettings } from '@/features/overlays';
 import { findModel, formatLabel, mediaKind, resolutionOptions } from '../pricing';
 import { runCost } from '../nodes/NodeCard';
 import { useIntl } from 'react-intl';
@@ -75,8 +75,9 @@ function videoValue(node: GraphNode): VideoParams {
   const res = str(p.resolution);
   return {
     aspectRatio: RATIOS.includes(str(p.ratio) as VideoAspect) ? (str(p.ratio) as VideoAspect) : defaultVideoParams.aspectRatio,
-    resolution: (['480p', '720p', '1080p'].includes(res) ? res : defaultVideoParams.resolution) as VideoParams['resolution'],
-    duration: (['5s', '10s', '15s', '30s'].includes(`${p.length}s`) ? `${p.length}s` : defaultVideoParams.duration) as VideoParams['duration'],
+    // Any value the node holds (the model's own options, PROMPT-2); the design defaults only when unset.
+    resolution: (res || defaultVideoParams.resolution) as VideoParams['resolution'],
+    duration: (typeof p.length === 'number' && p.length > 0 ? `${p.length}s` : defaultVideoParams.duration) as VideoParams['duration'],
     count: (['1', '2', '4'].includes(String(p.count ?? 1)) ? String(p.count ?? 1) : '1') as VideoParams['count'],
     audio: p.audio === undefined ? !/Audio off/.test(str(p.extra)) : p.audio === true,
   };
@@ -87,7 +88,7 @@ function imageValue(node: GraphNode): ImageParams {
   return {
     aspectRatio: RATIOS.includes(str(p.ratio) as VideoAspect) ? (str(p.ratio) as VideoAspect) : defaultImageParams.aspectRatio,
     quality: p.quality === 'high' ? 'high' : 'standard',
-    size: (['1K', '2K', '4K'].includes(str(p.resolution)) ? str(p.resolution) : defaultImageParams.size) as ImageParams['size'],
+    size: (str(p.resolution) || defaultImageParams.size) as ImageParams['size'],
     count: (['1', '2', '4'].includes(String(p.count ?? 1)) ? String(p.count ?? 1) : '1') as ImageParams['count'],
   };
 }
@@ -141,7 +142,23 @@ export function PromptPanel({ node, left, top, state, refs, pickerOpen, onOpenPi
   ];
   /** The node's price from the catalog (usePricedNodes); unknown until the catalog answers. */
   const cost = runCost(node) ?? null;
-  const resolutions = resolutionOptions(intl, findModel(models, node), kind, plan);
+  const catalogModel = findModel(models, node);
+  const resolutions = resolutionOptions(intl, catalogModel, kind, plan);
+  // PROMPT-2: the settings popover offers the model's own options; the cost shows a reason when it can't quote.
+  // Mock mode keeps the approved design's option rows (as the tool pages do with DESIGN_CAPS).
+  const caps = isMockApi() ? null : modelCaps(catalogModel, video ? 'video' : 'image');
+  const costBlocked = costBlock(intl, video ? 'video' : 'image', catalogModel, caps, video ? videoToSettings(videoValue(node)) : imageToSettings(imageValue(node)), plan);
+  /** Node params fitted to another model's caps (a model change keeps only what the new model takes). */
+  const fittedFor = (m: CatalogModel | undefined): Record<string, unknown> => {
+    const c = isMockApi() ? null : modelCaps(m, video ? 'video' : 'image');
+    if (!c) return {};
+    if (video) {
+      const v = fitVideo(videoValue(node), c, m);
+      return { ratio: v.aspectRatio, resolution: v.resolution, length: parseInt(v.duration, 10), audio: v.audio };
+    }
+    const v = fitImage(imageValue(node), c, m);
+    return { ratio: v.aspectRatio, resolution: v.size, count: Number(v.count) };
+  };
   const running = node.status === 'generating' || node.status === 'queued';
   const toggle = (k: PillKey) => setOpen((o) => (o === k ? null : k));
 
@@ -335,7 +352,11 @@ export function PromptPanel({ node, left, top, state, refs, pickerOpen, onOpenPi
           );
         })}
         <span className={styles.spacer} />
-        {cost === null ? (
+        {costBlocked ? (
+          <span className={styles.costBlocked} title={costBlocked} data-testid="prompt-cost-blocked">
+            {costBlocked}
+          </span>
+        ) : cost === null ? (
           <span className={styles.cost} aria-busy="true">
             <Skeleton width={36} height={12} />
           </span>
@@ -366,7 +387,7 @@ export function PromptPanel({ node, left, top, state, refs, pickerOpen, onOpenPi
         onClose={() => setOpen(null)}
         onValueChange={(id) => {
           const opt = options.find((o) => o.id === id);
-          if (opt) onUpdate(node.id, { model: opt.name, modelId: opt.id, runCost: estimate(opt, {}) ?? node.params.runCost });
+          if (opt) onUpdate(node.id, { model: opt.name, modelId: opt.id, ...fittedFor(models?.find((m) => m.id === opt.id)), runCost: estimate(opt, {}) ?? node.params.runCost });
           setOpen(null);
         }}
       />
@@ -377,11 +398,16 @@ export function PromptPanel({ node, left, top, state, refs, pickerOpen, onOpenPi
           value={videoValue(node)}
           plan={plan}
           cost={cost}
+          costBlocked={costBlocked}
+          options={paramOptions(caps)}
+          audioSupported={caps ? caps.audio : undefined}
+          durationNote={caps ? (maxSeconds(caps, catalogModel) ? intl.formatMessage({ id: 'canvas.prompt.maxSeconds' }, { n: maxSeconds(caps, catalogModel) }) : null) : undefined}
           anchorRef={extraRef}
           placement="below"
           className={styles.layer}
           onClose={() => setOpen(null)}
-          onValueChange={(v) => {
+          onValueChange={(raw) => {
+            const v = fitVideo(raw, caps, catalogModel);
             const seconds = parseInt(v.duration, 10);
             const n = Number(v.count);
             onUpdate(node.id, {
@@ -402,11 +428,14 @@ export function PromptPanel({ node, left, top, state, refs, pickerOpen, onOpenPi
           value={imageValue(node)}
           plan={plan}
           cost={cost}
+          costBlocked={costBlocked}
+          options={caps ? { ...paramOptions(caps), quality: true } : undefined}
           anchorRef={extraRef}
           placement="below"
           className={styles.layer}
           onClose={() => setOpen(null)}
-          onValueChange={(v) => {
+          onValueChange={(raw) => {
+            const v = fitImage(raw, caps, catalogModel);
             const n = Number(v.count);
             onUpdate(node.id, { ratio: v.aspectRatio, resolution: v.size, quality: v.quality, count: n, runCost: estimate(currentModel, { count: n }) ?? node.params.runCost });
           }}

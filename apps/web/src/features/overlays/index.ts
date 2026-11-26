@@ -20,4 +20,5 @@ export { ResultViewer, ResultViewerContent, formatAgo, type ResultViewerProps, t
 export { useRunFlow, type RunRequest } from './useRunFlow';
 export * from './types';
 export { catalogToOptions, unitCredits } from './catalog';
+export { costBlock, fitImage, fitVideo, imageToSettings, maxSeconds, modelCaps, paramOptions, strictCredits, videoToSettings } from './modelSettings';
 export { defaultVideoParams, defaultImageParams, RESULT_ACTIONS, resultActions } from './params';

@@ -18,6 +18,8 @@ interface ParamPopoverCommon {
    * uses the design's estimator; real mode shows the skeleton.
    */
   cost?: number | null;
+  /** Why these settings can't be quoted (plan lock, unsupported, unpriced): shown instead of any number. */
+  costBlocked?: string | null;
   /** Typical wait, e.g. "2 min". Mock mode defaults like the design (video 2–3 min, image 15s); real mode omits it unless given. */
   eta?: string;
   /** Reset to defaults; when omitted the popover resets to the design defaults via `onValueChange`. */
@@ -305,7 +307,9 @@ export function ParamPopover(props: ParamPopoverProps) {
       <div className={styles.cost}>
         <span className={styles.dot} />
         <span className={styles.costText}>
-          {cost === null ? (
+          {props.costBlocked ? (
+            <span data-testid="params-cost-blocked">{props.costBlocked}</span>
+          ) : cost === null ? (
             <Skeleton width={96} height={13} />
           ) : (
             <FormattedMessage id={eta ? 'overlays.params.cost' : 'overlays.params.costOnly'} values={{ cost, eta, b: (c) => <b className={styles.costNum}>{c}</b> }} />

@@ -90,7 +90,7 @@ export function HomePage() {
   const { data: skills } = useSkills();
   // Real mode, Avatar: the voice pill uploads a voice track; it joins the `@` references.
   const voiceInput = useRef<HTMLInputElement>(null);
-  const { pills, renderPillPopover, credits, run } = useHomePills(mode, { onUploadVoice: () => voiceInput.current?.click() });
+  const { pills, renderPillPopover, credits, blocked, run } = useHomePills(mode, { onUploadVoice: () => voiceInput.current?.click() });
   const allowance = useAgentAllowance();
   // Settings commands open the pill they name; a mode without that pill does not list them.
   const pillIds = {
@@ -325,6 +325,9 @@ export function HomePage() {
           cost={
             mode === 'agent' ? (
               <CostLine label={intl.formatMessage({ id: 'home.cost.planningFree' })} />
+            ) : blocked ? (
+              // Never a number when the quote is blocked: the reason instead (PROMPT-2).
+              <CostLine label={blocked} />
             ) : credits !== null ? (
               <CostLine credits={credits} />
             ) : null

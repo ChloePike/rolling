@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useIntl } from 'react-intl';
 import type { PromptSpec } from '@/features/overlays/runs';
 import { isMockApi } from '@/features/overlays/backend';
@@ -8,8 +8,17 @@ import { useSession } from '@/lib/session';
 import { useAgentAllowance } from '@/lib/session/agentAllowance';
 import {
   AUTO_MODEL,
+  costBlock,
+  fitImage,
+  fitVideo,
+  imageToSettings,
+  maxSeconds,
+  modelCaps,
   ModelPicker,
   ParamPopover,
+  paramOptions,
+  strictCredits,
+  videoToSettings,
   type ImageParams,
   type ModelKind as PickerKind,
   type VideoParams,
@@ -60,6 +69,8 @@ export function useHomePills(
   pills: PromptPill[];
   renderPillPopover: (pill: PromptPill, state: PillPopoverState) => ReactNode;
   credits: number | null;
+  /** Why the cost line can't show a number (plan lock, unsupported, unpriced); the line shows this instead. */
+  blocked: string | null;
   run: HomeRunSpec | null;
 } {
   const intl = useIntl();
@@ -92,6 +103,22 @@ export function useHomePills(
   const [voice, setVoice] = useState(0);
 
   const pick = (list: CatalogModel[] | undefined, id: string | null) => (id ? list?.find((m) => m.id === id) : undefined) ?? defaultModel(list);
+
+  // PROMPT-2: options follow the selected model's catalog capabilities, not the mode. A value the model
+  // lacks refits to the closest one it takes (e.g. Seedance 2.0 Mini offers no 1080p; Seedream 5.0 Flash
+  // makes one image per run).
+  const videoM = pick(videos, videoModel);
+  const agentM = pick(videos, agentModel === AUTO_MODEL ? null : agentModel);
+  const imageM = pick(images, imageModel);
+  // Mock mode keeps the approved design's option rows (as the tool pages do with DESIGN_CAPS).
+  const mockMode = isMockApi();
+  const videoCaps = useMemo(() => (mockMode ? null : modelCaps(videoM, 'video')), [videoM, mockMode]);
+  const agentCaps = useMemo(() => (mockMode ? null : modelCaps(agentM, 'video')), [agentM, mockMode]);
+  const imageCaps = useMemo(() => (mockMode ? null : modelCaps(imageM, 'image')), [imageM, mockMode]);
+  useEffect(() => setVideo((v) => fitVideo(v, videoCaps, videoM)), [videoCaps, videoM]);
+  useEffect(() => setAgentVideo((v) => fitVideo(v, agentCaps, agentM)), [agentCaps, agentM]);
+  useEffect(() => setImage((v) => fitImage(v, imageCaps, imageM)), [imageCaps, imageM]);
+  const durationNote = (caps: typeof videoCaps, model?: CatalogModel) => (caps && maxSeconds(caps, model) ? t('home.params.maxSeconds', { n: maxSeconds(caps, model) }) : caps ? null : undefined);
   const nameOf = (list: CatalogModel[] | undefined, id: string | null) =>
     id === AUTO_MODEL ? t('home.pill.autoModel') : (pick(list, id)?.name ?? '');
 
@@ -123,15 +150,19 @@ export function useHomePills(
       />
     );
 
-  const videoParams = (value: VideoParams, set: (v: VideoParams) => void, cost: number | null) => (s: PillPopoverState) => (
+  const videoParams = (value: VideoParams, set: (v: VideoParams) => void, cost: number | null, caps: typeof videoCaps, model: CatalogModel | undefined, costBlocked: string | null) => (s: PillPopoverState) => (
     <ParamPopover
       kind="video"
       open={s.open}
       placement={s.placement}
       anchorRef={s.anchorRef}
       value={value}
-      onValueChange={set}
+      onValueChange={(v) => set(fitVideo(v, caps, model))}
       cost={cost ?? undefined}
+      costBlocked={costBlocked}
+      options={paramOptions(caps)}
+      audioSupported={caps ? caps.audio : undefined}
+      durationNote={durationNote(caps, model)}
       plan={plan}
       onClose={s.close}
     />
@@ -148,13 +179,16 @@ export function useHomePills(
   );
 
   const secs = (d: VideoParams['duration']) => formatSeconds(intl, parseInt(d, 10));
-  const videoQuote = (m: CatalogModel | undefined, v: VideoParams) => {
-    const c = quoteCredits(m, { resolution: v.resolution, seconds: parseInt(v.duration, 10) });
+  const videoQuote = (m: CatalogModel | undefined, v: VideoParams, blockedNow: string | null) => {
+    if (blockedNow) return null;
+    // The catalog's own price for these settings; never a guess from another resolution.
+    const c = m && !mockMode ? strictCredits(m, { resolution: v.resolution, seconds: parseInt(v.duration, 10) }) : quoteCredits(m, { resolution: v.resolution, seconds: parseInt(v.duration, 10) });
     return c === null ? null : c * Number(v.count);
   };
 
   let specs: PillSpec[] = [];
   let credits: number | null = null;
+  let blocked: string | null = null;
   let run: HomeRunSpec | null = null;
   const cssRatio = (r: string) => (r === 'Auto' ? '9/16' : r.replace(':', '/'));
 
@@ -164,7 +198,7 @@ export function useHomePills(
     const ratio: PromptPill = { id: 'ratio', kind: 'param', icon: 'ratio', label: agentVideo.aspectRatio };
     const duration: PromptPill = { id: 'duration', kind: 'param', icon: 'clock', label: secs(agentVideo.duration) };
     const chatNames = (chat ?? []).map((m) => m.name);
-    const params = videoParams(agentVideo, setAgentVideo, null);
+    const params = videoParams(agentVideo, setAgentVideo, null, agentCaps, agentM, null);
     specs = [
       {
         pill: llm,
@@ -185,7 +219,7 @@ export function useHomePills(
       { pill: duration, render: params },
     ];
   } else if (mode === 'image') {
-    const m = pick(images, imageModel);
+    const m = imageM;
     const ratio: PromptPill = { id: 'ratio', kind: 'param', icon: 'wide', label: image.aspectRatio };
     const size: PromptPill = {
       id: 'size',
@@ -193,7 +227,9 @@ export function useHomePills(
       icon: 'res',
       label: t('home.pill.imageSize', { res: image.size, n: Number(image.count) }),
     };
-    credits = quoteCredits(m, { resolution: image.size, count: Number(image.count) });
+    blocked = costBlock(intl, 'image', m, imageCaps, imageToSettings(image), plan);
+    credits = blocked ? null : m && imageCaps ? strictCredits(m, { resolution: image.size, count: Number(image.count) }) : quoteCredits(m, { resolution: image.size, count: Number(image.count) });
+    const imageBlocked = blocked;
     const params = (s: PillPopoverState) => (
       <ParamPopover
         kind="image"
@@ -201,8 +237,10 @@ export function useHomePills(
         placement={s.placement}
         anchorRef={s.anchorRef}
         value={image}
-        onValueChange={setImage}
+        onValueChange={(v) => setImage(fitImage(v, imageCaps, m))}
         cost={credits ?? undefined}
+        costBlocked={imageBlocked}
+        options={paramOptions(imageCaps)}
         plan={plan}
         onClose={s.close}
       />
@@ -226,8 +264,9 @@ export function useHomePills(
       { pill: size, render: params },
     ];
   } else if (mode === 'video') {
-    const m = pick(videos, videoModel);
-    credits = videoQuote(m, video);
+    const m = videoM;
+    blocked = costBlock(intl, 'video', m, videoCaps, videoToSettings(video), plan);
+    credits = videoQuote(m, video, blocked);
     const frames: PromptPill = { id: 'frames', kind: 'param', icon: 'frame', label: t(`home.pill.${FRAME_MODES[frame]}`) };
     const ratio: PromptPill = {
       id: 'ratio',
@@ -251,7 +290,7 @@ export function useHomePills(
     specs = [
       { pill: modelPill('model', nameOf(videos, videoModel), idOf(videos, videoModel)), render: modelPicker('video', videos, videoModel, setVideoModel) },
       { pill: frames, render: list(frames, FRAME_MODES.map((f) => t(`home.pill.${f}`)), frame, setFrame) },
-      { pill: ratio, render: videoParams(video, setVideo, credits) },
+      { pill: ratio, render: videoParams(video, setVideo, credits, videoCaps, m, blocked) },
     ];
   } else {
     const m = pick(lipSync, avatarModel);
@@ -277,6 +316,7 @@ export function useHomePills(
         pills: specs.map((s) => s.pill),
         renderPillPopover: (pill, state) => specs.find((s) => s.pill.id === pill.id)?.render(state) ?? null,
         credits,
+        blocked,
         run,
       };
     }
@@ -302,6 +342,7 @@ export function useHomePills(
     pills: specs.map((s) => s.pill),
     renderPillPopover: (pill, state) => specs.find((s) => s.pill.id === pill.id)?.render(state) ?? null,
     credits,
+    blocked,
     run,
   };
 }

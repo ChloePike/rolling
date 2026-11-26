@@ -31,6 +31,7 @@
   "home.project.kind.character": "Character",
   "home.project.nodes": "{n, plural, one {# node} other {# nodes}}",
   "home.project.meta": "{detail} · {when}",
+  "home.params.maxSeconds": "Max {n, number}s on this model",
   "home.project.menu": "Project actions: {title}",
   "home.project.rename": "Rename",
   "home.project.delete": "Delete",

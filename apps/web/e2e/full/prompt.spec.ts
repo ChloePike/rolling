@@ -75,9 +75,51 @@ test('PROMPT-2 params follow the chosen model’s capabilities (resolutions, dur
       expect(disabled, `${m.name}: ${r} is not selectable`).toBe(true);
     }
     await expect(pop).toContainText(`Max ${m.seconds!.max}s`);
+    // Seedance 2.0 Mini has no 1080p at all: not offered (not even locked).
+    if (id === 'bytedance/seedance-2.0-mini') await expect(pop.getByRole('radio', { name: /^1080p/ })).toHaveCount(0);
     await shot(page, testInfo, `params-${id.replace('/', '_')}`);
     await page.keyboard.press('Escape');
   }
+});
+
+test('PROMPT-2 image count follows the model (Seedream 5.0 Flash = 1); plan locks still apply and a blocked quote shows its reason, not a number', async ({ page, context, baseURL }, testInfo) => {
+  await account(context, baseURL, 'paramslock', 'starter');
+  const { models } = await getJson<{ models: Array<CatalogModel & { limits?: { imagesPerRequest?: number } }> }>(page.request, '/api/models');
+  await page.goto('/');
+  // Image: Seedream 5.0 Flash makes one image per run, so the count group is gone and the pill says 1.
+  await page.getByRole('tab', { name: 'Image', exact: true }).click();
+  const flash = models.find((x) => x.id === 'bytedance/seedream-5.0-flash')!;
+  let picker = await openPicker(page);
+  await picker.getByText(flash.name, { exact: true }).first().click();
+  const sizePill = page.getByRole('button', { name: /×\s?1\b|1 image/ }).first();
+  await expect(sizePill).toBeVisible();
+  await sizePill.click();
+  const imgPop = page.getByRole('dialog', { name: /Image settings/ });
+  await expect(imgPop).toBeVisible();
+  await expect(imgPop.getByRole('radiogroup', { name: 'Images' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+
+  // Video on Starter (720p cap, D-006): a model with 1080p shows it locked; picking it opens the upgrade instead,
+  // and the cost line never shows a number for a blocked quote.
+  await page.getByRole('tab', { name: 'Video', exact: true }).click();
+  const hd = models.find((x) => x.kind === 'video' && x.placement !== 'tool' && x.resolutions?.includes('1080p'));
+  test.skip(!hd, 'no 1080p video model in the catalog');
+  picker = await openPicker(page);
+  await picker.getByText(hd!.name, { exact: true }).first().click();
+  const pill = page.getByRole('button', { name: new RegExp(`(${hd!.resolutions!.join('|')})`) }).first();
+  await pill.click();
+  const pop = page.getByRole('dialog', { name: /Video settings/ });
+  await expect(pop.getByRole('radio', { name: /^1080p.*Available on/ })).toBeVisible();
+  const cost = page.getByTestId('prompt-cost');
+  if (/1080p/.test(await pill.innerText())) {
+    // The model's default is above the plan: the quote is blocked, so the line names the reason.
+    await expect(cost).toContainText('isn’t on your plan');
+    await expect(cost).not.toContainText(/\d+ credits/);
+  } else {
+    await expect(cost).toContainText(/\d/);
+  }
+  await page.keyboard.press('Escape');
+  await shot(page, testInfo, 'params-locked');
 });
 
 test('PROMPT-3 @ opens the reference picker with every source; a public item becomes a chip', async ({ page, context, baseURL }, testInfo) => {

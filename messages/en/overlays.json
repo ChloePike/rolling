@@ -141,6 +141,9 @@
   "overlays.run.startFailed": "{label} couldn’t start. Nothing was charged.",
   "overlays.run.unavailable": "This can’t be generated here yet.",
   "overlays.params.costOnly": "~ <b>{cost, number}</b> credits",
+  "overlays.cost.blocked.plan": "{option} isn’t on your plan. {reason}",
+  "overlays.cost.blocked.unsupported": "{model} can’t use these settings",
+  "overlays.cost.blocked.unpriced": "No price for these settings yet",
   "overlays.paywall.credits.footStripe": "Payments by Stripe.",
   "overlays.paywall.card": "{brand} ending {last4}"
 }

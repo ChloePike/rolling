@@ -221,6 +221,7 @@
   "canvas.project.rename": "Rename",
   "canvas.project.renameLabel": "Project name",
   "canvas.project.delete": "Delete",
+  "canvas.prompt.maxSeconds": "Max {n, number}s on this model",
   "canvas.deleteProject.title": "Delete “{title}”?",
   "canvas.deleteProject.body": "This deletes the canvas, its nodes, timeline and history for everyone in the workspace, and its share links stop working. Generated files stay in Assets. This can’t be undone.",
   "canvas.deleteProject.confirm": "Delete project",

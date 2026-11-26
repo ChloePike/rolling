@@ -39,9 +39,14 @@ const D010_THEME_ROW: ReadonlyArray<readonly [string, string]> = [
   [NOTIFY_ROW, `${NOTIFY_ROW}\n        <div style="display:flex;align-items:center;font-size:13px"><span style="flex:1;color:#C8C8CC">Theme</span><span style="color:#9A9AA0">System ›</span></div>`],
 ];
 
+/** D-019: prices are USD only, so the settings popover has no Currency row. */
+const D019_NO_CURRENCY: ReadonlyArray<readonly [string, string]> = [
+  ['\n        <div style="display:flex;align-items:center;font-size:13px"><span style="flex:1;color:#C8C8CC">Currency</span><span style="color:#9A9AA0">USD ›</span></div>', ''],
+];
+
 async function openDesign(page: Page, width: number, props: Record<string, unknown> = {}) {
   await page.setViewportSize({ width, height: 900 });
-  await page.setContent(buildDesignPage('Main.dc.html', props, [...D006_TOP_UPS, ...D010_THEME_ROW]));
+  await page.setContent(buildDesignPage('Main.dc.html', props, [...D006_TOP_UPS, ...D010_THEME_ROW, ...D019_NO_CURRENCY]));
   await page.waitForFunction(() => (window as unknown as { __DC_READY__?: boolean }).__DC_READY__ === true);
   await page.evaluate(() => document.fonts.ready);
 }
