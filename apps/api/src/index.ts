@@ -6,6 +6,8 @@ import { ApiError, errorResponse } from "./lib/errors";
 import { isWebSocketUpgrade, refuseWebSocket } from "./lib/wsRefusal";
 import { authMiddleware } from "./auth/context";
 import { serveSpaFromR2 } from "./lib/r2Static";
+import { d1SessionMiddleware } from "./lib/d1Session";
+import { withPublicGraphqlCache } from "./lib/publicGraphqlCache";
 import { robotsPolicy } from "./lib/robots";
 import { isPrivateMediaHost, mediaPreflight, withMediaCors } from "./lib/privateMediaHost";
 import { handleQueue } from "./queues";
@@ -49,6 +51,15 @@ export { DataExportWorkflow } from "./workflows/DataExport";
 
 export const app = new Hono<AppEnv>();
 
+/** The request's ExecutionContext, or undefined (`app.request()` in tests has none). */
+function executionCtxOf(c: { executionCtx: { waitUntil(p: Promise<unknown>): void } }): Pick<ExecutionContext, "waitUntil"> | undefined {
+  try {
+    return c.executionCtx;
+  } catch {
+    return undefined;
+  }
+}
+
 // Only production is indexed: elsewhere robots.txt disallows all, no sitemap, X-Robots-Tag on every response (LEGAL-3).
 app.use("*", robotsPolicy);
 
@@ -74,6 +85,9 @@ app.use("*", async (c, next) => {
   }
   return errorResponse(c, 404, "NOT_FOUND", "Not found");
 });
+
+// D1 read replication (Sessions API): one session per API request, bookmark in/out, Server-Timing (lib/d1Session.ts).
+app.use("/api/*", d1SessionMiddleware);
 
 const api = new Hono<AppEnv>()
   // One auth context per request (M1): c.get("auth"), requireUser / requireMember / requireRole.
@@ -111,7 +125,8 @@ const api = new Hono<AppEnv>()
   .route("/hooks", hooks)
   .route("/", realtime)
   .on(["GET", "POST"], "/graphql", async (c) =>
-    yoga.fetch(c.req.raw, { env: c.env, user: c.get("user"), auth: c.get("auth") }),
+    // Public-library-only operations are the same for every caller: edge-cached (lib/publicGraphqlCache.ts).
+    withPublicGraphqlCache(c.req.raw, executionCtxOf(c), async () => yoga.fetch(c.req.raw, { env: c.env, user: c.get("user"), auth: c.get("auth") })),
   );
 
 app.route("/api", api);
@@ -126,7 +141,7 @@ app.notFound((c) => {
   // requests routed here anyway (e.g. tests, `run_worker_first` changes).
   const assets = (c.env as { ASSETS?: Fetcher }).ASSETS;
   if (assets) return assets.fetch(c.req.raw);
-  return serveSpaFromR2(c.env.MEDIA, c.req.raw);
+  return serveSpaFromR2(c.env.MEDIA, c.req.raw, executionCtxOf(c));
 });
 
 app.onError((err, c) => {

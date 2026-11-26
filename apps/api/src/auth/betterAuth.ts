@@ -187,6 +187,8 @@ async function buildAuth(env: Env) {
           return kind ? newId(kind) : crypto.randomUUID();
         },
         validateSchema: false,
+        // Session lookups read the session and its user in one joined query (one D1 round trip, not two).
+        joins: true,
       },
       backgroundTasks: { handler: (p) => waitUntil(p) },
     },

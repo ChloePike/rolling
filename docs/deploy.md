@@ -101,6 +101,59 @@ curl -s -o /dev/null -w '%{http_code}\n' https://rolling.actor/api/test/inbox   
 curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' https://www.rolling.actor/terms   # 301 → apex
 ```
 
+## Performance setup
+
+D1's primary (`rolling-staging`, `rolling-production`) runs in ENAM and R2 sits near North America, so
+without the pieces below every request from Asia crossed the Pacific (Workers Observability, Nov 2026:
+SIN p50 wall time 740 ms for `/api/*`, 540 ms for SPA files served from R2).
+
+- **D1 read replication** is on for both databases (`read_replication.mode = "auto"`, set through
+  `PUT /accounts/{id}/d1/database/{uuid}`; check with `GET` on the same path). Replicas only serve reads
+  made through the Sessions API: `apps/api/src/lib/d1Session.ts` opens one session per `/api` request
+  (`x-d1-bookmark` header or `rolling.d1b` cookie, else `first-unconstrained` for reads and
+  `first-primary` for mutations) and routes `c.env.DB` through it, so routes, Better Auth and GraphQL
+  need no changes. Responses return `x-d1-bookmark`; the web client (`apps/web/src/lib/api/client.ts`)
+  keeps the newest one and sends it back (read-your-writes). Workflows, queues, crons and Durable Objects
+  use the raw binding, which always reads the primary. Credits stay in the CreditAccount DO.
+- **Server-Timing** on every API response: `d1;dur=<ms>;desc="n=<queries> <region> primary|replica", total;dur=<ms>`.
+  `GET /api/health?timing=1` adds a breakdown from the answering colo (D1 read with serving region, R2 HEAD,
+  edge-cache lookup).
+- **Round trips:** Better Auth reads the session and user in one joined query (`advanced.database.joins`),
+  memberships and prefs come in one batch, so a signed-in request spends 2 sequential D1 round trips on
+  auth. `/api/templates` reads page and total in one batch.
+- **Edge cache (Cache API, per colo)** for responses that are the same for everyone: anonymous `/api/models`
+  (5 min), `/api/showcase` (5 min), GraphQL operations that only select `publicItems` / `publicSubCategories`
+  / `publicCategories` (60 s, `lib/publicGraphqlCache.ts`). Per-user responses are never edge-cached.
+- **SPA files.** Workers static assets (the `ASSETS` binding, Workers Builds deploys) are served from
+  Cloudflare's edge with `apps/web/public/_headers` (hashed `/assets/*` immutable for a year; `index.html`,
+  `sw.js`, the manifest `no-cache` + ETag). The R2 fallback (`lib/r2Static.ts`, `scripts/deploy/*-r2.sh`)
+  serves through the Cache API: `/assets/*` a year, `sw.js` 10 s, everything else 60 s, browsers still
+  revalidate by ETag (`x-edge-cache: HIT|MISS|BYPASS`, `Server-Timing: edge, r2, total`). Requests with
+  `Cache-Control: no-cache` (Workbox precache, hard reload) bypass the edge copy, so a new `sw.js` never
+  precaches a stale `index.html`; old hashed files stay in the bucket, so the upload order
+  (assets → index.html → sw.js) stays safe.
+- **Early Hints** are on for the `rolling.actor` zone. `apps/web/scripts/early-hints.mjs` (last build step)
+  adds a `Link` header (entry module, stylesheet, Geist font) for app documents to `dist/_headers`; the R2
+  path derives the same header from each HTML file. index.html preloads the self-hosted Geist woff2
+  (`font-display: swap`); there are no third-party render-blocking requests (no Google Fonts; CJK text uses
+  system fonts; Google Identity Services loads only on sign-in pages).
+- **Smart Placement stays off.** It moves the Worker next to its busiest back end (the D1 primary in ENAM),
+  which helps only when a request makes many sequential primary round trips. With replicas, reads are
+  served near the colo, so keeping the Worker at the edge is faster for Asia; writes pay one Pacific
+  round trip either way. Re-evaluate only if `Server-Timing` shows many sequential primary calls per request.
+- **R2 location.** Buckets were not moved. The private media bucket (`rolling-media-<env>`, uploads,
+  results, exports) is read through the Worker (`cdn-private.*`) with an edge copy per signed URL; once
+  Asian users are a large share, a new bucket with an APAC location hint (or a Pacific-region bucket for
+  new objects plus a copy job) would cut first-view latency there. Public media is CDN-cached already.
+
+Check after a deploy (replace the host for staging):
+
+```sh
+curl -s https://rolling.actor/api/health?timing=1                       # d1.region / d1.primary, r2.ms, colo
+curl -sI https://rolling.actor/api/models | grep -i 'server-timing\|x-d1-bookmark'
+curl -sI https://rolling.actor/ | grep -i 'cf-cache-status\|link\|etag'  # ASSETS: cf-cache-status; Link for Early Hints
+```
+
 ## Follow-ups
 
 - Public library (PoseWear, D-004) is imported in both envs (same counts); CharaDB images are not copied yet

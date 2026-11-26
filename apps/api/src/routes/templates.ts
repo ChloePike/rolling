@@ -190,14 +190,13 @@ export async function listTemplates(env: Env, workspaceId: string, query: z.infe
     where.push("(title LIKE ? OR description LIKE ? OR category LIKE ?)");
     binds.push(like, like, like);
   }
-  const rows = (
-    await env.DB.prepare(`SELECT * FROM templates WHERE ${where.join(" AND ")} ORDER BY uses DESC, workspace_id IS NULL, created_at DESC, id LIMIT ?`)
-      .bind(...binds, query.first)
-      .all<TemplateRow>()
-  ).results;
-  const total = await env.DB.prepare(`SELECT COUNT(*) AS n FROM templates WHERE ${where.join(" AND ")}`)
-    .bind(...binds)
-    .first<{ n: number }>();
+  // Page and total in one D1 round trip.
+  const [page, count] = await env.DB.batch<unknown>([
+    env.DB.prepare(`SELECT * FROM templates WHERE ${where.join(" AND ")} ORDER BY uses DESC, workspace_id IS NULL, created_at DESC, id LIMIT ?`).bind(...binds, query.first),
+    env.DB.prepare(`SELECT COUNT(*) AS n FROM templates WHERE ${where.join(" AND ")}`).bind(...binds),
+  ]);
+  const rows = (page?.results ?? []) as TemplateRow[];
+  const total = (count?.results?.[0] ?? null) as { n: number } | null;
   const items = await Promise.all(rows.map((r) => templateSummary(env, r)));
   return { items, featured: items.filter((t) => t.featured), total: total?.n ?? items.length };
 }
