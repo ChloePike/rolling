@@ -33,12 +33,12 @@ export function originOf(baseURL: string | undefined): string {
 }
 
 /** Latest sign-in code sent to `email` at or after `after` (test inbox). */
-export async function codeFor(request: APIRequestContext, email: string, after: number): Promise<string> {
+export async function codeFor(request: APIRequestContext, email: string, after: number, template = 'sign-in-code'): Promise<string> {
   for (let i = 0; i < 40; i++) {
     const r = await request.get(`/api/test/inbox?to=${encodeURIComponent(email)}&limit=5`, { headers: { authorization: `Bearer ${env.inboxToken}` } });
     expect(r.status(), 'test inbox reachable (EMAIL_PROVIDER=test-inbox, TEST_INBOX_TOKEN)').toBe(200);
-    const body = (await r.json()) as { messages: Array<{ code: string | null; sentAt: number }> };
-    const m = body.messages.find((x) => x.code && x.sentAt >= after - 5_000);
+    const body = (await r.json()) as { messages: Array<{ code: string | null; sentAt: number; template: string }> };
+    const m = body.messages.find((x) => x.code && x.template === template && x.sentAt >= after - 5_000);
     if (m?.code) return m.code;
     await new Promise((res) => setTimeout(res, 1000));
   }
@@ -154,11 +154,11 @@ export async function seedProject(request: APIRequestContext, baseURL: string | 
   return { id: project.id, revision: body.revision, idMap: body.idMap ?? {} };
 }
 
-/** The small graph most canvas specs use: script → keyframe (cheap image) → video (cheap, short, 480p). */
+/** The small graph most canvas specs use: script → keyframe (cheap image) → video (cheapest i2v model, 480p, 1 s; the Lite model is t2v only). */
 export const SAMPLE_OPS = [
   { op: 'addNode', tempId: 's', kind: 'script', title: 'Script', position: { x: 0, y: 0 }, params: { rows: [{ n: 1, title: 'Bottle', visual: 'A glass bottle on a mossy rock at dawn', seconds: 5 }] } },
   { op: 'addNode', tempId: 'k', kind: 'image', title: 'Keyframe', position: { x: 420, y: 0 }, params: { prompt: 'A glass bottle on a mossy rock at dawn, soft light', model: 'bytedance/seedream-5.0-flash', ratio: '9:16' } },
-  { op: 'addNode', tempId: 'v', kind: 'video', title: 'Shot A', position: { x: 840, y: 0 }, params: { prompt: 'Slow push-in on the bottle', model: 'x-ai/grok-imagine-video-1.5-lite', ratio: '9:16', resolution: '480p', length: 2 } },
+  { op: 'addNode', tempId: 'v', kind: 'video', title: 'Shot A', position: { x: 840, y: 0 }, params: { prompt: 'Slow push-in on the bottle', model: 'x-ai/grok-imagine-video-1.5', ratio: '9:16', resolution: '480p', length: 1 } },
   { op: 'connect', from: { node: 's', port: 'out' }, to: { node: 'k', port: 'prompt' } },
   { op: 'connect', from: { node: 'k', port: 'out' }, to: { node: 'v', port: 'frame' } },
 ];
@@ -172,7 +172,7 @@ export async function openCanvas(page: Page, id: string, query = '') {
 /** Records page errors, console errors and 5xx responses; `assertClean()` fails on any. */
 export function watchErrors(page: Page, opts: { ignore?: RegExp[] } = {}) {
   const errors: string[] = [];
-  const ignore = [/favicon/i, /Failed to load resource: the server responded with a status of 4\d\d/, /accounts\.google\.com/, /gsi/i, ...(opts.ignore ?? [])];
+  const ignore = [/favicon/i, /Error retrieving a token/ /* FedCM One Tap without a Google session (headless) */, /Failed to load resource: the server responded with a status of 4\d\d/, /accounts\.google\.com/, /gsi/i, ...(opts.ignore ?? [])];
   const skip = (t: string) => ignore.some((r) => r.test(t));
   page.on('pageerror', (e) => {
     if (!skip(e.message)) errors.push(`pageerror: ${e.message}`);

@@ -13,7 +13,10 @@ test('SHARE-1 share link: create from the Share dialog, opens signed out as a re
   const dialog = page.getByRole('dialog').filter({ hasText: /Share|link/i }).first();
   await expect(dialog).toBeVisible();
   await shot(page, testInfo, 'share-dialog');
-  await dialog.getByRole('button', { name: /Publish|Create link|Update snapshot/ }).first().click();
+  // First share of a never-shared canvas: the dialog should not talk about an “old link”.
+  const firstNote = await dialog.getByRole('status').first().innerText();
+  testInfo.annotations.push({ type: 'first-share-note', description: firstNote });
+  await dialog.getByRole('button', { name: /Share again|Publish new snapshot|Publish|Create link/ }).first().click();
   await expect(dialog.getByRole('button', { name: 'Copy link' })).toBeEnabled({ timeout: 20_000 });
   await expect(dialog.getByTestId('share-link')).toBeVisible({ timeout: 20_000 });
   const share = await getJson<{ enabled: boolean; shareId: string; url: string }>(page.request, `/api/projects/${p.id}/share`);
@@ -34,6 +37,7 @@ test('SHARE-1 share link: create from the Share dialog, opens signed out as a re
   expect((await api(page.request, baseURL, 'DELETE', `/api/projects/${p.id}/share`)).status()).toBe(200);
   await ap.reload();
   await expect(ap.getByTestId('share-missing')).toBeVisible({ timeout: 30_000 });
+  expect(firstNote, 'a canvas that was never shared does not say “The old link no longer opens”').not.toMatch(/old link/);
   expect((await anon.request.get(`/api/share/${share.shareId}`)).status()).toBe(404);
   await anon.close();
 });

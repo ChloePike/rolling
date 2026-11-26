@@ -73,11 +73,14 @@ test('EDIT-3 editor UI: opens with the assembled cut, monitor and timeline; trim
   await expect(page.getByTestId('monitor-timecode')).toBeVisible();
   await shot(page, testInfo, 'editor');
   // Placeholder clips show Generate (not generated yet).
-  await expect(page.getByTestId('editor-placeholder').or(page.getByRole('button', { name: 'Generate' })).first()).toBeVisible();
+  const gen = page.getByRole('button', { name: /^Generate/ }).first();
+  await expect(gen).toBeVisible();
+  // Each shot costs credits (Grok Imagine Video 1.5 Lite, 480p, 1 s ≈ 6): the placeholder must quote it, not “0 credits”.
+  await expect(gen).not.toHaveText(/·\s*0 credits/);
   // Select the first clip on the canvas-drawn timeline and nudge its out point with the keyboard trim.
   const tl = page.getByTestId('timeline-canvas');
   const box = (await tl.boundingBox())!;
-  await page.mouse.click(box.x + 60, box.y + box.height * 0.5);
+  await page.mouse.click(box.x + 120, box.y + box.height * 0.35);
   const canvasId = (await getJson<{ snapshot: { canvases: Array<{ id: string }> } }>(page.request, `/api/projects/${p.id}`)).snapshot.canvases[0]!.id;
   const before = await timeline(page.request, canvasId);
   const speed = page.getByRole('combobox', { name: /Speed/ }).or(page.getByRole('button', { name: /Speed/ })).first();

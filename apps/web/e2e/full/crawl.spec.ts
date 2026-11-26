@@ -133,7 +133,20 @@ test('X-3 reduced motion: popovers, dialogs and toasts use opacity only (no tran
       const bad: string[] = [];
       for (const a of document.getAnimations()) {
         const kf = (a.effect as KeyframeEffect | null)?.getKeyframes?.() ?? [];
-        if (kf.some((k) => 'transform' in k || 'translate' in k || 'scale' in k)) bad.push(`animation on ${((a.effect as KeyframeEffect).target as Element | null)?.className ?? '?'}`);
+        // Keyframes built on the motion tokens keep a transform that resolves to zero movement under reduced motion.
+        const moves = (v: unknown) => {
+          const t = String(v ?? 'none');
+          if (t === 'none') return false;
+          const target = (a.effect as KeyframeEffect).target as Element | null;
+          const probe = document.createElement('div');
+          (target?.parentElement ?? document.body).appendChild(probe);
+          probe.style.transform = t;
+          const m = getComputedStyle(probe).transform;
+          probe.remove();
+          return m !== 'none' && m !== 'matrix(1, 0, 0, 1, 0, 0)';
+        };
+        if (kf.some((k) => moves((k as Record<string, unknown>).transform) || moves((k as Record<string, unknown>).translate ? `translate(${String((k as Record<string, unknown>).translate)})` : undefined)))
+          bad.push(`moving animation on ${((a.effect as KeyframeEffect).target as Element | null)?.className ?? '?'}`);
       }
       for (const el of document.querySelectorAll('[role="dialog"], [role="menu"], [role="status"], [role="listbox"]')) {
         const cs = getComputedStyle(el);
@@ -154,7 +167,12 @@ test('X-3 reduced motion: popovers, dialogs and toasts use opacity only (no tran
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   const c = await moving();
   await shot(page, testInfo, 'reduced-motion');
-  expect([...a, ...b, ...c]).toEqual([]);
+  const tokens = await page.evaluate(() => {
+    const cs = getComputedStyle(document.documentElement);
+    return ['--m-move-popover', '--m-move-toast', '--m-scale-min', '--m-stagger'].map((v) => `${v}=${cs.getPropertyValue(v).trim()}`);
+  });
+  expect(tokens).toEqual(['--m-move-popover=0px', '--m-move-toast=0px', '--m-scale-min=1', '--m-stagger=0ms']);
+  expect([...new Set([...a, ...b, ...c])]).toEqual([]);
 });
 
 test('X-4 focus rings only on :focus-visible — none after a mouse click in the Settings nav, one after Tab', async ({ page, context, baseURL }, testInfo) => {
@@ -206,9 +224,9 @@ test('X-5 accessibility smoke (axe-core): no critical violations on the main pag
     await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => undefined);
     await page.addScriptTag({ content: source });
     const res = await page.evaluate(async () => {
-      const axe = (window as unknown as { axe: { run: (ctx: Document, opts: unknown) => Promise<{ violations: Array<{ id: string; impact: string; nodes: unknown[]; help: string }> }> } }).axe;
+      const axe = (window as unknown as { axe: { run: (ctx: Document, opts: unknown) => Promise<{ violations: Array<{ id: string; impact: string; nodes: Array<{ target: string[] }>; help: string }> }> } }).axe;
       const r = await axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa'] } });
-      return r.violations.map((v) => ({ id: v.id, impact: v.impact, n: v.nodes.length, help: v.help }));
+      return r.violations.map((v) => ({ id: v.id, impact: v.impact, n: v.nodes.length, help: `${v.help} [${v.nodes.slice(0, 3).map((x) => x.target.join(' ')).join(' | ')}]` }));
     });
     for (const v of res) {
       const line = `${path} ${v.id} (${v.n}): ${v.help}`;

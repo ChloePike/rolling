@@ -67,8 +67,12 @@ test('PROMPT-2 params follow the chosen model’s capabilities (resolutions, dur
     const pop = page.getByRole('dialog', { name: /Video settings/ });
     await expect(pop).toBeVisible();
     for (const r of m.resolutions!) await expect(pop.getByRole('radio', { name: new RegExp(`^${r}`) }).or(pop.getByRole('button', { name: new RegExp(`^${r}`) })).first()).toBeVisible();
+    // Resolutions the model lacks are absent, or shown disabled with a reason — never selectable.
     for (const r of ['480p', '720p', '1080p', '4K', '768p', '2K'].filter((x) => !m.resolutions!.includes(x))) {
-      await expect(pop.getByRole('radio', { name: new RegExp(`^${r}\\b`) })).toHaveCount(0);
+      const opt = pop.getByRole('radio', { name: new RegExp(`^${r}\\b`) });
+      if ((await opt.count()) === 0) continue;
+      const disabled = (await opt.first().isDisabled()) || (await opt.first().getAttribute('aria-disabled')) === 'true';
+      expect(disabled, `${m.name}: ${r} is not selectable`).toBe(true);
     }
     await expect(pop).toContainText(`Max ${m.seconds!.max}s`);
     await shot(page, testInfo, `params-${id.replace('/', '_')}`);

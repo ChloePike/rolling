@@ -19,7 +19,7 @@ test('SET-1 account profile: name, handle and bio save and survive a reload; bad
   else await page.locator('#acc-bio').press('Tab');
   await expect.poll(async () => (await getJson<{ user: { name: string; handle: string; bio: string } }>(page.request, '/api/me')).user, { timeout: 15_000 }).toMatchObject({ name: 'Full Test', handle, bio: 'Short videos' });
   await page.reload();
-  await expect(page.locator('#acc-handle')).toHaveValue(handle);
+  await expect(page.locator('#acc-handle')).toHaveValue(new RegExp(`^@?${handle}$`));
   const bad = await api(page.request, baseURL, 'PATCH', '/api/me/profile', { handle: 'a b' });
   expect(bad.status()).toBe(400);
   await shot(page, testInfo, 'account');
@@ -162,7 +162,7 @@ test('SET-10 account deletion: code by email, wrong code refused, right code del
   await expect(dialog.getByTestId('delete-privacy').or(dialog.getByRole('link', { name: /Privacy/ })).first()).toBeVisible();
   const sentAt = Date.now();
   await dialog.getByRole('button', { name: /Send code|Email me a code|Continue/ }).first().click();
-  const code = await codeFor(page.request, a.email, sentAt);
+  const code = await codeFor(page.request, a.email, sentAt, 'delete-account-code');
   const wrong = await api(page.request, baseURL, 'POST', '/api/me/delete', { code: code === '000000' ? '111111' : '000000' });
   expect(wrong.status()).toBe(400);
   expect(await errorCode(wrong)).toBe('INVALID_CODE');

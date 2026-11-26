@@ -44,7 +44,7 @@ test('CANVAS-2 add nodes from the Add node menu; they persist', async ({ page, c
   const p = await seedProject(page.request, baseURL, 'Add nodes', []);
   await openCanvas(page, p.id);
   for (const kind of ['Text', 'Image', 'Video']) {
-    await page.getByRole('button', { name: 'Add node' }).first().click();
+    await page.getByRole('button', { name: 'Add node', exact: true }).first().click();
     const menu = page.getByRole('dialog', { name: 'Add node' }).or(page.getByRole('menu', { name: 'Add node' })).first();
     await expect(menu).toBeVisible();
     await menu.getByRole('button', { name: new RegExp(`^${kind}`) }).or(menu.getByRole('menuitem', { name: new RegExp(`^${kind}`) })).first().click();
@@ -52,7 +52,7 @@ test('CANVAS-2 add nodes from the Add node menu; they persist', async ({ page, c
   }
   await expect(page.locator('[data-node-kind]')).toHaveCount(3);
   // Director / Auto edit are designed “Coming soon” items, disabled with a reason.
-  await page.getByRole('button', { name: 'Add node' }).first().click();
+  await page.getByRole('button', { name: 'Add node', exact: true }).first().click();
   await expect(page.getByText('Coming soon').first()).toBeVisible();
   await page.keyboard.press('Escape');
   await page.reload();
@@ -143,7 +143,7 @@ test('CANVAS-5 run up to / from here and Run all quote the right rows (dialog on
   expect(await rows({ scope: 'upTo', nodeIds: [v.id] })).toEqual([k.id, v.id].sort());
   expect(await rows({ scope: 'upTo', nodeIds: [k.id] })).toEqual([k.id]);
   expect(await rows({ scope: 'from', nodeIds: [k.id] })).toEqual([k.id, v.id].sort());
-  expect(await rows({ scope: 'node', nodeIds: [v.id] })).toEqual([v.id]);
+  expect(await rows({ scope: 'node', nodeIds: [k.id] })).toEqual([k.id]);
   expect(await rows({ scope: 'all' })).toEqual([k.id, v.id].sort());
 
   await openCanvas(page, p.id);
