@@ -1,4 +1,4 @@
-import { cx, OptionList, Popover, staggerStyle } from '@rolling/ui';
+import { cx, OptionList, Popover, Skeleton, staggerStyle } from '@rolling/ui';
 import { useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { FormattedMessage, useIntl, type IntlShape } from 'react-intl';
@@ -9,6 +9,7 @@ import { TemplatePreview } from './TemplatePreview';
 import styles from './TemplatesPage.module.css';
 import type { TemplateCategory, TemplateSummary } from './types';
 import { coverStyle } from './cover';
+import { LoadError } from '@/lib/loading';
 
 const CATS: Array<'all' | TemplateCategory> = ['all', 'product', 'explainer', 'drama', 'holiday', 'venue', 'outfit', 'comic'];
 const TONES = ['var(--c-tone-plum)', 'var(--c-tone-teal)', 'var(--c-tone-indigo)', 'var(--c-tone-sand)', 'var(--c-tone-neutral)', 'var(--c-tone-moss)', 'var(--c-tone-clay)', 'var(--c-tone-slate)'];
@@ -43,7 +44,9 @@ const seconds = (intl: IntlShape, s: number) => intl.formatNumber(s, { style: 'u
 /** Templates (Templates.dc.html): search, categories, facets, featured picks and the grid. */
 export function TemplatesPage() {
   const intl = useIntl();
-  const { data } = useTemplates();
+  const list = useTemplates();
+  const { data } = list;
+  const loading = list.isPending && !list.isError;
   const [cat, setCat] = useState<(typeof CATS)[number]>('all');
   const [q, setQ] = useState('');
   const defaultRatio = usePref('defaultAspectRatio');
@@ -133,11 +136,14 @@ export function TemplatesPage() {
         })}
         <span className={styles.flex1} />
         <span className={styles.total}>
-          <FormattedMessage id="templates.total" values={{ n: data.total }} />
+          {loading ? <Skeleton text width={150} height={12} /> : <FormattedMessage id="templates.total" values={{ n: data.total }} />}
         </span>
       </div>
 
-      {showFeatured ? (
+      {loading ? <TemplatesSkeleton /> : null}
+      {list.isError && list.data === undefined ? <LoadError onRetry={() => list.refetch()} retrying={list.isFetching} /> : null}
+
+      {showFeatured && !loading ? (
         <section aria-label={intl.formatMessage({ id: 'templates.featured' })} className={styles.featured}>
           {data.featured.map((t, i) => (
             <button
@@ -189,7 +195,7 @@ export function TemplatesPage() {
         </section>
       ) : null}
 
-      <section key={`${cat}:${query}`} aria-label={intl.formatMessage({ id: 'templates.all' })} className={styles.grid}>
+      {loading || list.isError ? null : <section key={`${cat}:${query}`} aria-label={intl.formatMessage({ id: 'templates.all' })} className={styles.grid}>
         {items.map((t, i) => (
           <button
             key={t.id}
@@ -224,11 +230,11 @@ export function TemplatesPage() {
           </button>
         ))}
         {items.length === 0 ? (
-          <p className={styles.empty}>
-            <FormattedMessage id="templates.empty" values={{ q }} />
+          <p className={styles.empty} data-empty="">
+            {data.items.length === 0 ? <FormattedMessage id="templates.none" /> : <FormattedMessage id="templates.empty" values={{ q }} />}
           </p>
         ) : null}
-      </section>
+      </section>}
       <TemplatePreview
         template={preview}
         tone={preview ? TONES[Math.max(0, data.items.findIndex((x) => x.id === preview.id)) % TONES.length]! : TONES[0]!}
@@ -240,5 +246,35 @@ export function TemplatesPage() {
         }}
       />
     </div>
+  );
+}
+
+/** Featured picks and the grid while the list loads, shaped like the cards. */
+function TemplatesSkeleton() {
+  return (
+    <>
+      <section className={styles.featured} aria-busy="true" data-testid="templates-skeleton">
+        {[0, 1].map((i) => (
+          <div key={i} className={styles.feat}>
+            <Skeleton className={styles.featCover} height="auto" radius={12} />
+            <div className={styles.featBody}>
+              <Skeleton width={84} height={20} round />
+              <Skeleton text width="70%" height={20} />
+              <Skeleton text width="90%" height={14} />
+              <Skeleton text width="60%" height={14} />
+            </div>
+          </div>
+        ))}
+      </section>
+      <section className={styles.grid} aria-busy="true">
+        {[0, 1, 2, 3, 4, 5].map((i) => (
+          <div key={i} className={styles.card}>
+            <Skeleton className={styles.cover} height="auto" radius={16} />
+            <Skeleton text width="70%" height={16} />
+            <Skeleton text width="50%" height={14} />
+          </div>
+        ))}
+      </section>
+    </>
   );
 }

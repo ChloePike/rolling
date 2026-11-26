@@ -1,4 +1,4 @@
-import { useToast } from '@rolling/ui';
+import { Skeleton, useToast } from '@rolling/ui';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useState, type CSSProperties } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
@@ -31,7 +31,26 @@ export function ProfilePage({ handle }: { handle: string }) {
   const [tab, setTab] = useState<ProfileTab>('published');
   const [viewing, setViewing] = useState<{ title: string; durationSec: number } | null>(null);
   const navigate = useNavigate();
-  if (isPending) return null;
+  if (isPending) {
+    // Head and grid placeholders while `GET /api/profiles/:handle` loads.
+    return (
+      <div className={styles.page} aria-busy="true" data-testid="profile-skeleton">
+        <section className={styles.head}>
+          <Skeleton width={88} height={88} round />
+          <div className={styles.who}>
+            <Skeleton width={220} height={30} />
+            <Skeleton width={120} height={14} />
+            <Skeleton width="60%" height={14} />
+          </div>
+        </section>
+        <div className={styles.grid}>
+          {[0, 1, 2, 3].map((i) => (
+            <Skeleton key={i} height="auto" radius={12} style={{ aspectRatio: '9/16' }} />
+          ))}
+        </div>
+      </div>
+    );
+  }
   if (!profile) {
     return (
       <div className={styles.page}>

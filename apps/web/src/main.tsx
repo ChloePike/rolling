@@ -7,6 +7,7 @@ import { useIntl } from 'react-intl';
 import { I18nProvider } from '@/i18n/I18nProvider';
 import { routeTree } from '@/routeTree.gen';
 import { queryClient } from '@/lib/api/queryClient';
+import { loadMockData } from '@/lib/api/mode';
 import { startInstallWatch } from '@/lib/pwa/install';
 import { registerServiceWorker } from '@/lib/pwa/register';
 import '@/styles/app.css';
@@ -37,14 +38,17 @@ else window.addEventListener('load', registerServiceWorker, { once: true });
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root');
 
-createRoot(root).render(
-  <StrictMode>
-    <I18nProvider>
-      <QueryClientProvider client={queryClient}>
-        <Toasts>
-          <RouterProvider router={router} />
-        </Toasts>
-      </QueryClientProvider>
-    </I18nProvider>
-  </StrictMode>,
+// Mock builds load their data first (a no-op that ships nothing in real builds, lib/api/mode.ts).
+void loadMockData().then(() =>
+  createRoot(root).render(
+    <StrictMode>
+      <I18nProvider>
+        <QueryClientProvider client={queryClient}>
+          <Toasts>
+            <RouterProvider router={router} />
+          </Toasts>
+        </QueryClientProvider>
+      </I18nProvider>
+    </StrictMode>,
+  ),
 );

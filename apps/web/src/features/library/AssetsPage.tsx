@@ -1,4 +1,5 @@
-import { Dialog, useToast } from '@rolling/ui';
+import { Dialog, Skeleton, useToast } from '@rolling/ui';
+import { LoadError } from '@/lib/loading';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
@@ -46,6 +47,9 @@ function compactDate(iso: string, locale: string) {
   const get = (t: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === t)?.value ?? '';
   return `${get('month')}-${get('day')} ${get('hour')}:${get('minute')}`;
 }
+
+/** File tiles while the list loads (the design's mix of shapes). */
+const FILE_SKELETON = ['1/1', '16/10', '3/4', '1/1', '16/10', '1/1', '3/4', '16/10'];
 
 /** `/assets` (Assets.dc.html): files, Characters and Voices folders. */
 export function AssetsPage({ folder = 'all' }: { folder?: AssetFolder }) {
@@ -138,7 +142,7 @@ export function AssetsPage({ folder = 'all' }: { folder?: AssetFolder }) {
           >
             <PathIcon d={FOLDER_ICONS[f.kind]} size={16} />
             <span className={styles.folderLabel}>{folderLabel(f, intl)}</span>
-            <span className={styles.folderCount}>{intl.formatNumber(f.count)}</span>
+            <span className={styles.folderCount}>{f.count === null ? <Skeleton width={18} height={11} /> : intl.formatNumber(f.count)}</span>
           </Link>
         ))}
         {storage && (
@@ -209,7 +213,8 @@ function Files({
   uploads: Array<{ id: string; file: File; progress: number }>;
 }) {
   const intl = useIntl();
-  const { data: assets = [] } = useAssets();
+  const assetsQ = useAssets();
+  const { data: assets = [] } = assetsQ;
   const { data: upload } = useUpload();
   const queue = useTransfers();
   const progressOf = (u: { id: string; progress: number }) => {
@@ -273,12 +278,22 @@ function Files({
         </div>
       ))}
       <div key={type} className={styles.files}>
+        {assetsQ.data === undefined && !assetsQ.isError
+          ? FILE_SKELETON.map((ar, k) => (
+              <div key={k} className={styles.file} aria-hidden="true" data-testid="asset-skeleton">
+                <Skeleton className={styles.fileThumb} height="auto" radius={10} style={{ aspectRatio: ar }} />
+                <Skeleton text width="70%" height={13} />
+                <Skeleton text width="40%" height={11} />
+              </div>
+            ))
+          : null}
+        {assetsQ.isError && assetsQ.data === undefined ? <LoadError onRetry={() => assetsQ.refetch()} retrying={assetsQ.isFetching} /> : null}
         {visible.map(({ a, i }, n) => (
           <FileCard key={a.id} asset={a} index={i} order={n} on={selId === a.id} onPick={() => setSel(a.id)} />
         ))}
-        {visible.length === 0 && (
-          <p className={styles.empty}>
-            <FormattedMessage id="library.assets.empty" />
+        {assetsQ.data !== undefined && visible.length === 0 && (
+          <p className={styles.empty} data-empty="">
+            <FormattedMessage id={assets.length === 0 ? 'library.assets.none' : 'library.assets.empty'} />
           </p>
         )}
       </div>
@@ -492,11 +507,14 @@ function FileDetailSlot({ sel, onDeleted }: { sel: string | null; onDeleted: () 
 
 function Characters({ query }: { query: string }) {
   const intl = useIntl();
-  const { data: chars = [] } = useCharacters();
+  const charsQ = useCharacters();
+  const { data: chars = [] } = charsQ;
   const toCanvas = useSendToCanvas();
   const visible = chars.filter((c) => c.name.toLowerCase().includes(query.trim().toLowerCase()));
   return (
-    <div className={styles.chars}>
+    <div className={styles.chars} aria-busy={charsQ.isPending || undefined}>
+      {charsQ.isPending && !charsQ.isError ? [0, 1, 2].map((k) => <Skeleton key={k} height={232} radius={18} />) : null}
+      {charsQ.isError && !charsQ.data ? <LoadError onRetry={() => charsQ.refetch()} retrying={charsQ.isFetching} /> : null}
       {visible.map((c, i) => (
         <div key={c.id} className={cx(styles.char, motion.stagger)} style={{ '--i': i } as CSSProperties} data-character={c.id}>
           <div className={styles.charViews} aria-hidden="true">
@@ -544,10 +562,19 @@ function Voices({ query }: { query: string }) {
   const [playing, setPlaying] = useState<string | null>(null);
   const timer = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(timer.current), []);
-  const { data: voices = [] } = useVoices();
+  const voicesQ = useVoices();
+  const { data: voices = [] } = voicesQ;
   const visible = voices.filter((v) => v.name.toLowerCase().includes(query.trim().toLowerCase()));
+  const voicesLoading = voicesQ.isPending && !voicesQ.isError;
   return (
-    <div className={styles.voices}>
+    <div className={styles.voices} aria-busy={voicesLoading || undefined}>
+      {voicesLoading ? [0, 1, 2, 3].map((k) => <Skeleton key={k} height={64} radius={16} />) : null}
+      {voicesQ.isError && !voicesQ.data ? <LoadError onRetry={() => voicesQ.refetch()} retrying={voicesQ.isFetching} /> : null}
+      {voicesQ.data && voices.length === 0 ? (
+        <p className={styles.empty} data-empty="">
+          <FormattedMessage id="library.assets.voices.none" />
+        </p>
+      ) : null}
       {visible.map((v, i) => {
         const st = VOICE_STYLE[v.state];
         return (

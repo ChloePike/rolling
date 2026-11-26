@@ -1,5 +1,10 @@
-import { mockVersions, ResultViewer, type ResultAction, type ResultActionId, type ResultParam } from '@/features/overlays';
+import { ResultViewer, type ResultAction, type ResultActionId, type ResultParam, type ResultVersion } from '@/features/overlays';
 import { useState } from 'react';
+import { isMockApi, mockData } from '@/lib/api/mode';
+import { useSession } from '@/lib/session';
+
+/** Real results open on their one version (the run's output); mock mode shows the design's v1–v4. */
+const ONE_VERSION: ResultVersion[] = [{ id: 'v1', label: 'v1', tone: 'var(--c-tone-blank)' }];
 
 export interface ResultModalItem {
   title: string;
@@ -28,17 +33,19 @@ export function ResultModal({
   onAction: (id: ResultActionId) => void;
   actions?: ResultAction[];
 }) {
-  const [version, setVersion] = useState(mockVersions[mockVersions.length - 1]!.id);
+  const versions = isMockApi() ? mockData().overlays.mockVersions : ONE_VERSION;
+  const [version, setVersion] = useState(versions[versions.length - 1]!.id);
+  const { user } = useSession();
   return (
     <ResultViewer
       open={!!item}
       onOpenChange={(o) => !o && onClose()}
       title={item?.title ?? ''}
-      author="Alex"
+      author={isMockApi() ? 'Alex' : (user?.name ?? '')}
       createdAt={new Date(Date.now() - (item?.minutesAgo ?? 0) * 60_000)}
       aspectRatio={item?.aspect ?? '16/9'}
       mediaKind={item?.kind ?? 'video'}
-      versions={mockVersions}
+      versions={versions}
       versionId={version}
       onVersionChange={setVersion}
       durationSec={item?.durationSec ?? 5}

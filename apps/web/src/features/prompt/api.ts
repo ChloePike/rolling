@@ -2,7 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { uploadFiles } from '@/lib/transfers';
 import { apiFetch, isMockApi } from '@/features/overlays/backend';
 import { fetchAssets, type GqlAsset } from '@/features/library/assetsApi';
-import { MOCK_REFERENCES, MOCK_SKILLS } from './mocks';
+import { mockData } from '@/lib/api/mode';
+import { BUILTIN_SKILLS } from './skills';
 import type { PromptCommand, RefItem } from './types';
 
 /**
@@ -44,11 +45,11 @@ async function fetchRealReferences(): Promise<RefItem[]> {
 }
 
 export async function fetchReferences(): Promise<RefItem[]> {
-  return isMockApi() ? MOCK_REFERENCES : fetchRealReferences();
+  return isMockApi() ? mockData().prompt.MOCK_REFERENCES : fetchRealReferences();
 }
 
 export async function fetchSkills(): Promise<PromptCommand[]> {
-  return MOCK_SKILLS;
+  return BUILTIN_SKILLS;
 }
 
 export const promptKeys = {
@@ -59,13 +60,14 @@ export const promptKeys = {
 /** Everything the `@` picker can reference: assets, characters, voices and the public library. */
 export function useReferences() {
   const mock = isMockApi();
-  const q = useQuery({ queryKey: promptKeys.references, queryFn: fetchReferences, ...(mock ? { initialData: MOCK_REFERENCES } : { staleTime: 15_000 }) });
+  const q = useQuery({ queryKey: promptKeys.references, queryFn: fetchReferences, ...(mock ? { initialData: () => mockData().prompt.MOCK_REFERENCES } : { staleTime: 15_000 }) });
   return { ...q, data: q.data ?? [] };
 }
 
 /** Built-in and custom skills for the `/` palette and the `+` menu. */
 export function useSkills() {
-  return useQuery({ queryKey: promptKeys.skills, queryFn: fetchSkills, initialData: MOCK_SKILLS });
+  // The built-in list ships with the app (not demo data), so it is there from the first render.
+  return useQuery({ queryKey: promptKeys.skills, queryFn: fetchSkills, initialData: BUILTIN_SKILLS });
 }
 
 /** What an uploaded file becomes in the picker. */

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, gql, isMockApi } from '@/features/overlays/backend';
-import { assetsMock, charactersMock, foldersMock, storageMock, uploadMock, voicesMock, type AssetItem, type AssetType, type CharacterItem, type VoiceItem } from './assetsMocks';
+import { mockData } from '@/lib/api/mode';
+import type { AssetItem, AssetType, CharacterItem, FolderItem, VoiceItem } from './assetsMocks';
 
 /**
  * My assets. Real mode: GraphQL `assets(scope: MINE)` (newest first), REST
@@ -82,12 +83,39 @@ const realVoices = async (): Promise<VoiceItem[]> => {
   return r.items.map((v) => ({ id: v.id, name: v.name, meta: [v.kind === 'cloned' ? 'Cloned' : 'Built-in', v.language].filter(Boolean).join(' · '), state: v.status === 'pending' ? 'cloning' : 'ready' }));
 };
 
-export const useFolders = () => useQuery(q(['assets', 'folders'], foldersMock));
-export const useAssets = () => useQuery(isMockApi() ? q(assetsKey, assetsMock) : { queryKey: assetsKey, queryFn: realAssets, staleTime: 15_000 });
-export const useCharacters = () => useQuery(isMockApi() ? q(['characters'], charactersMock) : { queryKey: ['characters'], queryFn: realCharacters, staleTime: 30_000 });
-export const useVoices = () => useQuery(isMockApi() ? q(voicesKey, voicesMock) : { queryKey: voicesKey, queryFn: realVoices, staleTime: 30_000 });
-export const useUpload = () => useQuery(q(['assets', 'upload'], uploadMock));
-export const useStorage = () => useQuery(q(['assets', 'storage'], storageMock));
+const lib = () => mockData().library;
+/** A query that never runs (real mode has no endpoint for it yet; the page hides that part). */
+const none = <T>(key: readonly string[]) => ({ queryKey: key, queryFn: async (): Promise<T | null> => null, enabled: false });
+
+export const useAssets = () => useQuery(isMockApi() ? q(assetsKey, lib().assetsMock) : { queryKey: assetsKey, queryFn: realAssets, staleTime: 15_000 });
+export const useCharacters = () => useQuery(isMockApi() ? q(['characters'], lib().charactersMock) : { queryKey: ['characters'], queryFn: realCharacters, staleTime: 30_000 });
+export const useVoices = () => useQuery(isMockApi() ? q(voicesKey, lib().voicesMock) : { queryKey: voicesKey, queryFn: realVoices, staleTime: 30_000 });
+/** Mock only: the design's sample upload row (real uploads come from `lib/transfers`). */
+export const useUpload = () => useQuery<{ name: string; sizeMb: number; progress: number } | null>(isMockApi() ? q(['assets', 'upload'], lib().uploadMock) : none(['assets', 'upload']));
+/** Mock only until a storage endpoint exists; real mode hides the meter. */
+export const useStorage = () => useQuery<{ usedGb: number; totalGb: number } | null>(isMockApi() ? q(['assets', 'storage'], lib().storageMock) : none(['assets', 'storage']));
+
+/**
+ * Folder rail. Mock mode: the design's folders. Real mode: the built-in
+ * folders with counts from the lists themselves (`null` while a list loads,
+ * shown as a skeleton).
+ */
+export function useFolders(): { data: FolderItem[] | undefined } {
+  const mock = isMockApi();
+  const m = useQuery(mock ? q(['assets', 'folders'], lib().foldersMock) : none<FolderItem[]>(['assets', 'folders']));
+  const assets = useAssets();
+  const chars = useCharacters();
+  const voices = useVoices();
+  if (mock) return { data: m.data ?? undefined };
+  return {
+    data: [
+      { id: 'all', kind: 'all', count: assets.data?.length ?? null },
+      { id: 'characters', kind: 'characters', count: chars.data?.length ?? null },
+      { id: 'voices', kind: 'voices', count: voices.data?.length ?? null },
+      { id: 'favorites', kind: 'favorites', count: assets.data ? assets.data.filter((a) => a.favorite).length : null },
+    ],
+  };
+}
 
 /** File type from a browser `File` (uploads are probed server-side later). */
 export function assetTypeOf(file: File): AssetType {

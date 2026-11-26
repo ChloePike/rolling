@@ -1,6 +1,7 @@
 import { cx, presenceProps, type PresenceState } from '@rolling/ui';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AUTO_MODEL, ModelPicker, mockModels, Paywall, catalogToOptions } from '@/features/overlays';
+import { AUTO_MODEL, ModelPicker, Paywall, catalogToOptions } from '@/features/overlays';
+import { mockData } from '@/lib/api/mode';
 import { ReferencePicker, useSkills, type RefItem } from '@/features/prompt';
 import { checkoutPlan } from '@/lib/session';
 import { useAgentAllowance } from '@/lib/session/agentAllowance';
@@ -13,7 +14,7 @@ import { agentPlanOptions, applyAgentProposal, discardAgentProposal, graphPropos
 import type { GraphNode } from '@rolling/core/graph';
 import { CanvasIcon } from '../icons';
 import { MenuPopover } from '../layers/Menu';
-import { MOCK_AGENT, type AgentPlanOption } from '../mocks';
+import type { AgentPlanOption } from '../mocks';
 import { readLocal, writeLocal } from '../storage';
 import styles from './agent.module.css';
 
@@ -57,26 +58,27 @@ export const AGENT_MODEL_KEY = 'rolling.agent.model';
  * proposes; building nodes is free and nothing runs until the user runs it.
  */
 export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal, onPreview, projectId, selection, nodes }: AgentPanelProps) {
-  const real = !isMockApi() && !!projectId;
+  const mock = isMockApi();
+  const real = !mock && !!projectId;
   const [paywall, setPaywall] = useState(false);
   const intl = useIntl();
-  const [messages, setMessages] = useState<Message[]>(real ? [] : MOCK_AGENT.messages);
+  const [messages, setMessages] = useState<Message[]>(() => (mock ? mockData().canvas.MOCK_AGENT.messages : []));
   /** Real mode: the latest plan proposal of the thread (Build on canvas applies one option). */
   const [planProposal, setPlanProposal] = useState<{ proposalId: string; options: AgentPlanOption[] } | null>(null);
   const [draft, setDraft] = useState('');
   const [built, setBuilt] = useState<number | null>(null);
   const [option, setOption] = useState(0);
   const [pending, setPending] = useState(false);
-  const [skill, setSkill] = useState(real ? '' : MOCK_AGENT.skill);
+  const [skill, setSkill] = useState(() => (mock ? mockData().canvas.MOCK_AGENT.skill : ''));
   const [menu, setMenu] = useState<'plus' | 'llm' | 'model' | 'refs' | null>(null);
   const [llm, setLlm] = useState<string | null>(() => readLocal(AGENT_LLM_KEY));
   const [model, setModel] = useState<string>(() => readLocal(AGENT_MODEL_KEY) ?? AUTO_MODEL);
   const autoRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const options = real ? (planProposal?.options ?? []) : agentPlanOptions();
+  const options = mock ? agentPlanOptions() : (planProposal?.options ?? []);
   const plan = options.length ? options[option % options.length]! : null;
   // Real mode: one agent message lists 0..2 leading messages before the plan card in mock; here all go after it.
-  const lead = real ? 0 : 2;
+  const lead = mock ? 2 : 0;
 
   // Real mode: restore the canvas thread's conversation and its open proposals.
   useEffect(() => {
@@ -128,7 +130,8 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
   const videoAll = useModels('video').data;
   const videoOptions = useMemo(() => {
     const fromCatalog = videoAll ? catalogToOptions(videoAll, 'video') : [];
-    return fromCatalog.length ? fromCatalog : mockModels.video;
+    // Real mode: the synced catalog only (empty while it loads); mock mode falls back to the design list.
+    return fromCatalog.length || !isMockApi() ? fromCatalog : mockData().overlays.mockModels.video;
   }, [videoAll]);
   const modelLabel = model === AUTO_MODEL ? intl.formatMessage({ id: 'canvas.agent.auto' }) : (videoOptions.find((m) => m.id === model)?.name ?? intl.formatMessage({ id: 'canvas.agent.auto' }));
 

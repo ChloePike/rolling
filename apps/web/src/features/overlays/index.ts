@@ -8,7 +8,8 @@
  * - ResultViewer: full-screen modal with versions, prompt, params and actions.
  *
  * Every overlay animates with the @rolling/ui motion tokens and fades only under reduced motion.
- * Mock data in `./mocks` matches the design files.
+ * Mock data in `./mocks` matches the design files; it is read only through the mock-mode
+ * adapter (`mockData().overlays`, lib/api/mode.ts), never in real mode.
  */
 export { ModelPicker, type ModelPickerProps } from './ModelPicker';
 export { ParamPopover, type ParamPopoverProps, type VideoParamPopoverProps, type ImageParamPopoverProps } from './ParamPopover';
@@ -19,15 +20,4 @@ export { ResultViewer, ResultViewerContent, formatAgo, type ResultViewerProps, t
 export { useRunFlow, type RunRequest } from './useRunFlow';
 export * from './types';
 export { catalogToOptions, unitCredits } from './catalog';
-export {
-  mockModels,
-  defaultVideoParams,
-  defaultImageParams,
-  estimateVideoCost,
-  estimateImageCost,
-  mockGraphPlan,
-  mockGraphBlockedNote,
-  mockSingleRun,
-  mockVersions,
-  mockResultActions,
-} from './mocks';
+export { defaultVideoParams, defaultImageParams, RESULT_ACTIONS, resultActions } from './params';

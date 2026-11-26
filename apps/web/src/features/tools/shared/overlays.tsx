@@ -9,18 +9,16 @@ import {
   AUTO_MODEL,
   defaultImageParams,
   defaultVideoParams,
-  estimateImageCost,
-  estimateVideoCost,
-  mockResultActions,
-  mockVersions,
   ModelPicker,
   ParamPopover,
   Paywall,
   ResultViewer,
   RunConfirm,
   type ImageParams,
+  resultActions,
   type ModelOption,
   type ResultActionId,
+  type ResultVersion,
   type VideoParams,
 } from '@/features/overlays';
 import type { ParamKind, PickerKind } from '../types';
@@ -28,6 +26,13 @@ import type { ToolModel } from './models';
 import { checkoutPlan } from '@/lib/session';
 import { useToolPlan } from './plan';
 import type { PlanId } from '@rolling/core/pricing/config';
+import { isMockApi, mockData } from '@/lib/api/mode';
+
+/** Mock mode: the design's estimator; real mode: no number until a quote exists (the popover shows a skeleton). */
+const estimateVideo = (v: VideoParams): number | null => (isMockApi() ? mockData().overlays.estimateVideoCost(v) : null);
+const estimateImage = (v: ImageParams): number | null => (isMockApi() ? mockData().overlays.estimateImageCost(v) : null);
+/** Real results have one version; mock mode shows the design's v1–v4. */
+const versions = (): ResultVersion[] => (isMockApi() ? mockData().overlays.mockVersions : [{ id: 'v3', label: 'v1', tone: 'var(--c-tone-blank)' }]);
 
 /** Balance shown in quotes until the credits API lands (same placeholder as the header). */
 const BALANCE = 2480;
@@ -99,7 +104,7 @@ export function ToolParamPopover({ open, kind, onClose, anchorClassName, anchorR
           open={open}
           value={video}
           onValueChange={setVideo}
-          cost={estimateVideoCost(video)}
+          cost={estimateVideo(video)}
           plan={plan}
           onReset={() => setVideo(defaultVideoParams)}
           onClose={onClose}
@@ -111,7 +116,7 @@ export function ToolParamPopover({ open, kind, onClose, anchorClassName, anchorR
           open={open}
           value={image}
           onValueChange={setImage}
-          cost={estimateImageCost(image)}
+          cost={estimateImage(image)}
           plan={plan}
           onReset={() => setImage(defaultImageParams)}
           onClose={onClose}
@@ -180,7 +185,7 @@ export function ToolResultViewer({ open, aspect, prompt, onClose, onAction }: Vi
       author="Alex"
       createdAt={new Date(Date.now() - 10 * 60_000)}
       aspectRatio={aspect}
-      versions={mockVersions}
+      versions={versions()}
       versionId={version}
       onVersionChange={setVersion}
       currentVersionId="v3"
@@ -201,7 +206,7 @@ export function ToolResultViewer({ open, aspect, prompt, onClose, onAction }: Vi
         { id: 'ast_lead', name: '@Lead', tone: 'var(--c-tone-plum)' },
         { id: 'ast_room', name: 'Kitchen set', tone: 'var(--c-tone-teal)' },
       ]}
-      actions={mockResultActions}
+      actions={resultActions()}
       onAction={(id) => onAction(id)}
     />
   );

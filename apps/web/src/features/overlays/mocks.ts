@@ -23,8 +23,6 @@ export const mockModels: Record<ModelKind, ModelOption[]> = {
   ],
 };
 
-export const defaultVideoParams: VideoParams = { aspectRatio: '9:16', resolution: '720p', duration: '5s', count: '1', audio: true };
-export const defaultImageParams: ImageParams = { aspectRatio: '9:16', quality: 'standard', size: '2K', count: '1' };
 
 /** Mock estimator used by ParamPopover when no quote is passed (same formula as the design). */
 export function estimateVideoCost(p: VideoParams): number {

@@ -4,7 +4,8 @@ import { api } from '@/lib/api/client';
 import { ApiError, isApiError } from '@/lib/api/errors';
 import type { CheckoutOutcome, CheckoutStarted, Interval, SeatsChanged } from '@/lib/api/types';
 import { isMockApi } from '@/lib/api/mode';
-import { FlowError, mockCheckoutPlan, mockCheckoutTopUp } from './mock';
+import { mockData } from '@/lib/api/mode';
+import { FlowError } from './seams';
 import type { BillingPeriod } from './store';
 import { refetchMe } from './real';
 import { bindPendingToCheckout, markCheckoutResumed } from './pending';
@@ -160,10 +161,10 @@ async function mockPollCheckout(sessionId: string): Promise<CheckoutOutcome> {
   const base = { sessionId, interval: null, amountCents: null, credits: null, completedAt: null, seats: null, resume: null, planId: null } as const;
   if (!c) return { ...base, kind: 'plan', status: 'expired' };
   if (c.kind === 'plan') {
-    const s = await mockCheckoutPlan(c.planId, c.period, c.seats);
+    const s = await mockData().session.mockCheckoutPlan(c.planId, c.period, c.seats);
     return { ...base, kind: 'plan', status: 'complete', planId: s.planId, interval: toInterval(c.period), seats: c.seats, completedAt: Date.now() };
   }
-  const r = await mockCheckoutTopUp(c.amountUsd);
+  const r = await mockData().session.mockCheckoutTopUp(c.amountUsd);
   return { ...base, kind: 'topUp', status: 'complete', amountCents: Math.round(c.amountUsd * 100), credits: r.credits, completedAt: Date.now() };
 }
 

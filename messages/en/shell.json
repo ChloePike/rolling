@@ -121,5 +121,8 @@
   "shell.help.kind.idea": "Idea",
   "shell.help.kind.other": "Other",
   "shell.help.diagnostics": "Include browser and workspace details",
-  "shell.help.limited": "You’ve sent a lot of feedback this hour. Try again later."
+  "shell.help.limited": "You’ve sent a lot of feedback this hour. Try again later.",
+  "shell.load.loading": "Loading",
+  "shell.load.failed": "Couldn’t load this. Check your connection and try again.",
+  "shell.load.retry": "Try again"
 }

@@ -40,5 +40,6 @@
   "templates.preview.cancel": "Close",
   "templates.preview.used": "Popularity",
   "templates.preview.desc": "Shots, camera moves and pacing are set. Swap in your characters, lines and product.",
-  "templates.preview.note": "Opens in Quick Create with this template. Nothing runs until you confirm the cost."
+  "templates.preview.note": "Opens in Quick Create with this template. Nothing runs until you confirm the cost.",
+  "templates.none": "No templates yet. Save a selection on a canvas as a template and it shows up here."
 }

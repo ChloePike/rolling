@@ -1,4 +1,4 @@
-import { useToast } from '@rolling/ui';
+import { Skeleton, useToast } from '@rolling/ui';
 import { Paywall, useRunFlow } from '@/features/overlays';
 import { checkoutPlan, getSession, useCheckoutResume } from '@/lib/session';
 import { useModels } from '@/lib/models';
@@ -63,8 +63,45 @@ export function Editor(props: EditorProps) {
     queryFn: () => getEditorProject(props.projectId),
     staleTime: Infinity,
   });
-  if (!project) return <div className={styles.root} />;
+  if (!project) return <EditorSkeleton />;
   return <EditorLoaded {...props} project={project} />;
+}
+
+/** The editor's regions while the project loads: top bar, bin, monitor, inspector and timeline, sized like the loaded editor. */
+function EditorSkeleton() {
+  const intl = useIntl();
+  return (
+    <div className={styles.root} data-shown="true" aria-busy="true" aria-label={intl.formatMessage({ id: 'editor.label' })} data-testid="editor-skeleton">
+      <div className={styles.topbar}>
+        <Skeleton width={64} height={20} />
+        <Skeleton width={180} height={14} />
+        <span className={styles.spacer} />
+        <Skeleton width={90} height={30} />
+      </div>
+      <div className={styles.body}>
+        <div className={styles.bin} style={{ padding: 8, gap: 8 }}>
+          {[0, 1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} height={36} />
+          ))}
+        </div>
+        <div className={styles.monitor}>
+          <div className={styles.stage}>
+            <Skeleton width="38%" height="100%" radius={2} />
+          </div>
+        </div>
+        <div className={styles.inspector} style={{ padding: 12, gap: 10 }}>
+          <Skeleton text width="60%" height={14} />
+          <Skeleton height={120} />
+          <Skeleton text width="80%" height={12} />
+        </div>
+      </div>
+      <div className={styles.timeline} style={{ padding: 12, gap: 8 }}>
+        {[0, 1, 2, 3].map((i) => (
+          <Skeleton key={i} height={30} width={`${90 - i * 12}%`} />
+        ))}
+      </div>
+    </div>
+  );
 }
 
 const CLOSE_MS = 200;

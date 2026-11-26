@@ -10,7 +10,7 @@ import type { AutoTopUpView, BillingSummary, InvoiceView, LedgerPage, MembersRes
 import { uploadFiles } from '@/lib/transfers';
 import { topUpFor, topUpPresets, type TopUpOption } from '@/lib/topUp';
 import { checkoutTopUp, getSession, ME_KEY, meQuery, mockOverrides, MockFlowError, openBillingPortal, refetchMe, useSession } from '@/lib/session';
-import { invoicesMock, meMock, membersMock } from './mocks';
+import { mockData } from '@/lib/api/mode';
 import type { Invoice, Me, Member, Prefs, Role } from './types';
 
 /**
@@ -50,10 +50,23 @@ export function errorCode(e: unknown): string | null {
 
 // ---------------------------------------------------------------- mock state
 
-let me: Me = structuredClone(meMock);
-let overridesApplied = false;
+// Seeded from the mock-mode adapter on first use (never read in real mode).
+let me = undefined as unknown as Me;
+let members: Member[] = [];
+let invoices: Invoice[] = [];
+let mockSeeded = false;
+
+function seedMock() {
+  if (mockSeeded) return;
+  mockSeeded = true;
+  const m = mockData().account;
+  me = structuredClone(m.meMock);
+  members = structuredClone(m.membersMock);
+  invoices = structuredClone(m.invoicesMock);
+}
 
 function current(): Me {
+  seedMock();
   if (!overridesApplied) me = { ...me, ...(mockOverrides() as Partial<Me>) };
   overridesApplied = true;
   // The plan always follows the session (checkout elsewhere updates it).
@@ -61,11 +74,11 @@ function current(): Me {
   return me;
 }
 
-let members: Member[] = structuredClone(membersMock);
-let invoices: Invoice[] = structuredClone(invoicesMock);
+let overridesApplied = false;
 
 /** Mock latency so pending states are visible; tests can set `window.__rollingMocks.delayMs`. */
 function wait(): Promise<void> {
+  seedMock();
   const w = typeof window !== 'undefined' ? (window as unknown as { __rollingMocks?: { delayMs?: number } }).__rollingMocks : undefined;
   const ms = typeof w?.delayMs === 'number' ? w.delayMs : 450;
   return new Promise((r) => setTimeout(r, ms));
@@ -147,12 +160,18 @@ export async function fetchMe(): Promise<Me> {
 }
 
 export async function fetchMembers(): Promise<Member[]> {
-  if (isMockApi()) return structuredClone(members);
+  if (isMockApi()) {
+    seedMock();
+    return structuredClone(members);
+  }
   return membersFromApi(await api.get<MembersResponse>('/workspace/members'));
 }
 
 export async function fetchInvoices(): Promise<Invoice[]> {
-  if (isMockApi()) return structuredClone(invoices);
+  if (isMockApi()) {
+    seedMock();
+    return structuredClone(invoices);
+  }
   try {
     const r = await api.get<{ invoices: InvoiceView[] }>('/billing/invoices');
     return r.invoices.map(invoiceFromApi);
@@ -265,6 +284,7 @@ export async function buyTopUp(amountUsd: number, opts: { returnTo?: string } = 
     if (e instanceof MockFlowError && e.code === 'NO_PLAN') throw new ApiError('NO_PLAN');
     throw e;
   }
+  if (isMockApi()) seedMock();
   invoices = [{ id: `in_${Date.now()}`, kind: 'topUp', amountUsd, credits: r.credits, createdAt: Date.now() }, ...invoices];
   return { credits: r.credits, me: structuredClone(current()) };
 }

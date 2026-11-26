@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch, isMockApi } from '@/features/overlays/backend';
-import { MOCK_FEATURED, MOCK_TEMPLATE_TOTAL, MOCK_TEMPLATES } from './mocks';
+import { mockData } from '@/lib/api/mode';
 import type { TemplateCategory, TemplateDetail, TemplateSummary } from './types';
 
 export interface TemplatesPage {
@@ -57,18 +57,26 @@ function summaryFrom(t: ApiTemplate): TemplateSummary {
 
 /** Templates list. Real: `GET /api/templates` (built-ins and this workspace's); mock: the design's catalog. */
 export async function fetchTemplates(): Promise<TemplatesPage> {
-  if (isMockApi()) return { featured: MOCK_FEATURED, items: MOCK_TEMPLATES, total: MOCK_TEMPLATE_TOTAL };
+  if (isMockApi()) return mockTemplates();
   const r = await apiFetch<{ items: ApiTemplate[]; featured: ApiTemplate[]; total: number }>('/templates', { query: { first: 100 } });
   return { featured: r.featured.map(summaryFrom), items: r.items.map(summaryFrom), total: r.total };
 }
 
-const INITIAL: TemplatesPage = { featured: MOCK_FEATURED, items: MOCK_TEMPLATES, total: MOCK_TEMPLATE_TOTAL };
+function mockTemplates(): TemplatesPage {
+  const m = mockData().templates;
+  return { featured: m.MOCK_FEATURED, items: m.MOCK_TEMPLATES, total: m.MOCK_TEMPLATE_TOTAL };
+}
+
 const EMPTY: TemplatesPage = { featured: [], items: [], total: 0 };
 
 export function useTemplates() {
   const mock = isMockApi();
-  const q = useQuery({ queryKey: ['templates', 'list'], queryFn: fetchTemplates, ...(mock ? { initialData: INITIAL } : { staleTime: 60_000 }) });
+  const q = useQuery({ queryKey: ['templates', 'list'], queryFn: fetchTemplates, ...(mock ? { initialData: mockTemplates } : { staleTime: 60_000 }) });
   return { ...q, data: q.data ?? EMPTY };
+/**
+ * Templates list. `data` is empty (never sample rows) until the list arrives;
+ * read `isPending` for skeletons and `isError` for the retry state.
+ */
 }
 
 /** `GET /api/templates/:id`: the template with its graph. */

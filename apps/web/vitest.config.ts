@@ -16,5 +16,6 @@ export default defineConfig({
     environment: 'node',
     // Unit tests run the mock clients unless a test opts into the real path (lib/api/mode.ts).
     env: { VITE_API_MODE: 'mock' },
+    setupFiles: ['./src/test-setup.ts'],
   },
 });

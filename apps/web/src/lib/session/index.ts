@@ -1,23 +1,18 @@
 import { useSyncExternalStore } from 'react';
 import { isMockApi } from '@/lib/api/mode';
 import { mockCheckoutRedirect, realChangeSeats, realCheckoutPlan, realCheckoutTopUp, type CheckoutOptions } from './checkout';
+import { mockData } from '@/lib/api/mode';
 import {
   clampSeats,
   FlowError,
   getMockWorkspace,
-  initialMockCredits,
-  initialMockSession,
-  mockChangeSeats,
-  mockCheckoutPlan,
-  mockCheckoutTopUp,
-  mockIdentity,
   mocks,
-  resetMockForTests,
   setMockWorkspace,
   subscribeMockWorkspace,
+  type MockRun,
   type SeatChange,
   type TopUpResult,
-} from './mock';
+} from './seams';
 import { realSignOut, realSwitchWorkspace, startRealSession } from './real';
 import { derive, getCredits, getSession, resetStore, setInitialCredits, setInitialSession, setSession, useSession, type BillingPeriod, type Session } from './store';
 import type { PlanId } from '@rolling/core/pricing/config';
@@ -36,22 +31,29 @@ import type { PlanId } from '@rolling/core/pricing/config';
 export * from './store';
 export {
   clampSeats,
-  DEFAULT_PLAN,
   FlowError,
   MOCK_MEMBER_KEY,
-  MOCK_USER,
-  MOCK_WORKSPACES,
   MockFlowError,
   mockOverrides,
   mockPeriod,
-  startMockRun,
   ACTIVE_WORKSPACE_KEY,
   type MockOutcome,
   type MockRun,
   type SeatChange,
   type SessionMockOverrides,
   type TopUpResult,
-} from './mock';
+} from './seams';
+
+/** The mock session flows (`./mock.ts`), through the mock-mode adapter only. */
+const mockSession = () => mockData().session;
+
+/**
+ * Mock mode only: a paid run on the mock balance (quote → hold → settle, or
+ * release on failure). The real run flow lives with the creation features.
+ */
+export function startMockRun(cost: number): Promise<MockRun> {
+  return mockSession().startMockRun(cost);
+}
 export {
   currentReturnPath,
   emitCheckoutResume,
@@ -67,8 +69,8 @@ export { bindPendingToCheckout, hasPendingAction, markCheckoutResumed, savePendi
 export { ALLOWANCE_KEY, currentMe, ensureMe, ME_KEY, meQuery, refetchMe } from './real';
 
 if (isMockApi()) {
-  setInitialSession(initialMockSession);
-  setInitialCredits(initialMockCredits);
+  setInitialSession(() => mockSession().initialMockSession());
+  setInitialCredits(() => mockSession().initialMockCredits());
 } else if (typeof window !== 'undefined') {
   startRealSession();
 }
@@ -81,7 +83,7 @@ if (isMockApi()) {
  * (`PAYMENT_FAILED`, `SEATS_REQUIRED`, `CONFLICT`, ...).
  */
 export async function checkoutPlan(planId: string, period: BillingPeriod = 'monthly', seats = 1, opts: CheckoutOptions = {}): Promise<Session> {
-  if (isMockApi()) return mocks().checkoutRedirect ? mockCheckoutRedirect({ kind: 'plan', planId, period, seats }) : mockCheckoutPlan(planId, period, seats);
+  if (isMockApi()) return mocks().checkoutRedirect ? mockCheckoutRedirect({ kind: 'plan', planId, period, seats }) : mockSession().mockCheckoutPlan(planId, period, seats);
   await realCheckoutPlan(planId as PlanId, period, planId === 'team' ? clampSeats(seats) : 1, opts);
   return getSession();
 }
@@ -93,7 +95,7 @@ export async function checkoutTopUp(amountUsd: number, opts: CheckoutOptions = {
       if (!getSession().isMember) throw new FlowError('NO_PLAN');
       return mockCheckoutRedirect({ kind: 'topUp', amountUsd });
     }
-    return mockCheckoutTopUp(amountUsd);
+    return mockSession().mockCheckoutTopUp(amountUsd);
   }
   if (!getSession().isMember) throw new FlowError('NO_PLAN');
   return realCheckoutTopUp(amountUsd, opts);
@@ -106,7 +108,7 @@ export async function checkoutTopUp(amountUsd: number, opts: CheckoutOptions = {
  * server answers `SEATS_IN_USE`).
  */
 export async function changeSeats(seats: number, used: number): Promise<SeatChange> {
-  if (isMockApi()) return mockChangeSeats(seats, used);
+  if (isMockApi()) return mockSession().mockChangeSeats(seats, used);
   const previous = getSession().seats;
   const r = await realChangeSeats(clampSeats(seats));
   return { seats: r.seats.purchased, previous, granted: r.granted };
@@ -124,7 +126,7 @@ export function setActiveWorkspace(id: string) {
   if (isMockApi()) {
     setMockWorkspace(id);
     const cur = getSession();
-    setSession(derive(cur.plan, cur.workspaceMatureAllowed, { ...mockIdentity(id), monthlyCreditLimit: cur.monthlyCreditLimit }));
+    setSession(derive(cur.plan, cur.workspaceMatureAllowed, { ...mockSession().mockIdentity(id), monthlyCreditLimit: cur.monthlyCreditLimit }));
     return;
   }
   void realSwitchWorkspace(id);
@@ -152,6 +154,6 @@ export async function signOut(): Promise<void> {
 /** Test helper: forget the cached session so the next read re-applies the seams. */
 export function resetSessionForTests() {
   resetStore();
-  resetMockForTests();
+  if (isMockApi()) mockSession().resetMockForTests();
 }
 

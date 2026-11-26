@@ -1,6 +1,6 @@
 import type { EditorProject } from './mocks';
 import { clipEnd, type CaptionClip, type Clip, type Edl, type GainKeyframe, type MediaClip } from '@rolling/core/timeline';
-import { PEAKS_PER_SECOND } from './mockPeaks';
+import { PEAKS_PER_SECOND } from './peaks';
 
 /** What the program monitor shows at a time: one shot, or two during a dissolve. */
 export interface Picture {

@@ -1,4 +1,4 @@
-import { cx, presenceProps, staggerStyle, type PresenceState } from '@rolling/ui';
+import { cx, presenceProps, Skeleton, staggerStyle, type PresenceState } from '@rolling/ui';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
@@ -7,7 +7,8 @@ import { useReferences, type RefItem } from '@/features/prompt';
 import canvas from '../canvas.module.css';
 import type { NodeKind } from '@rolling/core/graph';
 import { CanvasIcon, type CanvasIconName } from '../icons';
-import { MOCK_RUNS, MOCK_TEMPLATES, SCRIPT_ROWS, SCRIPT_VERSIONS, type CanvasTemplate, type ScriptRow } from '../mocks';
+import type { CanvasTemplate, ScriptRow } from '../mocks';
+import { mockData } from '@/lib/api/mode';
 import type { CanvasCredits, ShareAudience, ShareSettings } from '../api';
 import styles from './layers.module.css';
 import { CreditsPopoverContent } from '@/shell/CreditsPopover';
@@ -37,8 +38,8 @@ type ScriptFilter = 'all' | 'selected' | 'notGenerated';
 
 /** Older script version for the Versions menu (mock of `script.get` at v1). */
 export function scriptVersionRows(version: string, current: ScriptRow[]): ScriptRow[] {
-  if (version !== 'v1') return current;
-  return SCRIPT_ROWS.slice(0, 3).map((r) => ({ ...r, visual: r.visual.replace(', slow push-in', ''), status: 'off' as const, selected: true }));
+  if (version !== 'v1' || !isMockApi()) return current;
+  return mockData().canvas.SCRIPT_ROWS.slice(0, 3).map((r) => ({ ...r, visual: r.visual.replace(', slow push-in', ''), status: 'off' as const, selected: true }));
 }
 
 export interface ScriptDialogProps extends LayerProps {
@@ -56,8 +57,10 @@ export interface ScriptDialogProps extends LayerProps {
 export function ScriptDialog({ state, onClose, title, version: versionProp, rows: rowsProp, onChange, onGenerate, initialMenu = null }: ScriptDialogProps) {
   const intl = useIntl();
   const ref = useLayer<HTMLDivElement>(state === 'open', onClose, { modal: true });
-  const [rows, setRows] = useState<ScriptRow[]>(rowsProp ?? SCRIPT_ROWS);
-  const [version, setVersion] = useState(versionProp || 'v2');
+  const [rows, setRows] = useState<ScriptRow[]>(() => rowsProp ?? (isMockApi() ? mockData().canvas.SCRIPT_ROWS : []));
+  const [version, setVersion] = useState(versionProp || (isMockApi() ? 'v2' : 'v1'));
+  // Mock mode: the design's v2 / v1; real mode lists the script's current version only.
+  const scriptVersions: readonly string[] = isMockApi() ? mockData().canvas.SCRIPT_VERSIONS : [versionProp || 'v1'];
   const [hidden, setHidden] = useState<ScriptCol[]>([]);
   const [filter, setFilter] = useState<ScriptFilter>('all');
   const [menu, setMenu] = useState<'fields' | 'filter' | 'versions' | null>(initialMenu);
@@ -219,14 +222,14 @@ export function ScriptDialog({ state, onClose, title, version: versionProp, rows
             onOpenChange={(o) => setMenu(o ? 'versions' : null)}
             label={intl.formatMessage({ id: 'canvas.script.versions' })}
             align="end"
-            entries={SCRIPT_VERSIONS.map((v) => ({
+            entries={scriptVersions.map((v) => ({
               key: v,
               label: v,
-              meta: v === SCRIPT_VERSIONS[0] ? intl.formatMessage({ id: 'canvas.script.latest' }) : undefined,
+              meta: v === scriptVersions[0] ? intl.formatMessage({ id: 'canvas.script.latest' }) : undefined,
               checked: version === v,
               onSelect: () => {
                 setVersion(v);
-                save(scriptVersionRows(v, rowsProp ?? SCRIPT_ROWS), v);
+                save(scriptVersionRows(v, rowsProp ?? rows), v);
               },
             }))}
             trigger={(t) => (
@@ -763,7 +766,7 @@ export interface HistoryRow {
   at: Date;
 }
 
-export function HistoryDrawer({ state, onClose, rows, onOpen }: LayerProps & { rows: HistoryRow[]; onOpen: (nodeId: string) => void }) {
+export function HistoryDrawer({ state, onClose, rows, onOpen, loading }: LayerProps & { rows: HistoryRow[]; onOpen: (nodeId: string) => void; loading?: boolean }) {
   const intl = useIntl();
   const ref = useLayer<HTMLDivElement>(state === 'open', onClose, { focus: false });
   return (
@@ -782,8 +785,20 @@ export function HistoryDrawer({ state, onClose, rows, onOpen }: LayerProps & { r
         </button>
       </div>
       <div className={canvas.historyList} role="list" onKeyDown={rovingKeys}>
-        {rows.length === 0 ? (
-          <span className={canvas.historyMeta}>
+        {loading && rows.length === 0
+          ? [0, 1, 2].map((i) => (
+              <div key={i} className={canvas.historyItem} aria-hidden="true" data-testid="history-skeleton">
+                <span className={canvas.historyRow}>
+                  <span className={canvas.historyText}>
+                    <Skeleton text width="70%" height={13} />
+                    <Skeleton text width="45%" height={11} />
+                  </span>
+                </span>
+              </div>
+            ))
+          : null}
+        {!loading && rows.length === 0 ? (
+          <span className={canvas.historyMeta} data-empty="">
             <FormattedMessage id="canvas.history.empty" />
           </span>
         ) : null}
@@ -860,6 +875,13 @@ export function TemplatesPanel({
           <CanvasIcon name="close" size={16} />
         </button>
       </div>
+      {real && templates.isPending ? (
+        <div aria-busy="true" style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '4px 8px' }}>
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} height={32} />
+          ))}
+        </div>
+      ) : null}
       <MenuRows
         onClose={() => {}}
         entries={
@@ -875,7 +897,7 @@ export function TemplatesPanel({
                     () => onFailed?.(),
                   ),
               }))
-            : MOCK_TEMPLATES.map((t) => ({
+            : mockData().canvas.MOCK_TEMPLATES.map((t) => ({
                 key: t.id,
                 label: t.name,
                 meta: intl.formatMessage({ id: 'canvas.templates.nodes' }, { n: t.nodes.length }),
@@ -895,4 +917,3 @@ export function TemplatesPanel({
   );
 }
 
-export { MOCK_RUNS };

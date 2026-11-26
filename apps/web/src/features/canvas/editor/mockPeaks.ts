@@ -3,7 +3,7 @@
  * sampled every 3px at 100px per second, i.e. `100 / 3` peaks per second.
  * Real peaks come from the media.process queue (JSON in R2).
  */
-export const PEAKS_PER_SECOND = 100 / 3;
+export { PEAKS_PER_SECOND } from './peaks';
 
 /** Voiceover, first 8s. */
 export const VOICE_PEAKS_TENTHS: readonly number[] = [

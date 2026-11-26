@@ -1,18 +1,23 @@
 import type { PlanId } from '@rolling/core/pricing/config';
-import { cx, presenceProps, SegmentedControl, Switch, useIndicator, usePresence, type SegmentedOption } from '@rolling/ui';
+import { cx, presenceProps, SegmentedControl, Skeleton, Switch, useIndicator, usePresence, type SegmentedOption } from '@rolling/ui';
 import { useId, useRef, type CSSProperties, type RefObject } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { Svg } from './icons';
-import { defaultImageParams, defaultVideoParams, estimateImageCost, estimateVideoCost } from './mocks';
+import { isMockApi, mockData } from '@/lib/api/mode';
+import { defaultImageParams, defaultVideoParams } from './params';
 import styles from './ParamPopover.module.css';
 import { PlanLock, planLockInfo } from './PlanLock';
 import type { ImageParams, VideoAspect, VideoParams } from './types';
 import { useDismiss } from './useDismiss';
 
 interface ParamPopoverCommon {
-  /** Quoted credits for the current settings. Defaults to the mock estimator. */
-  cost?: number;
-  /** Typical wait, e.g. "2 min". Defaults like the design (video 2–3 min, image 15s). */
+  /**
+   * Quoted credits for the current settings (from the quote API). `null`: no
+   * quote yet (a small skeleton, never a guessed number). Omitted: mock mode
+   * uses the design's estimator; real mode shows the skeleton.
+   */
+  cost?: number | null;
+  /** Typical wait, e.g. "2 min". Mock mode defaults like the design (video 2–3 min, image 15s); real mode omits it unless given. */
   eta?: string;
   /** Reset to defaults; when omitted the popover resets to the design defaults via `onValueChange`. */
   onReset?: () => void;
@@ -110,8 +115,8 @@ export function ParamPopover(props: ParamPopoverProps) {
   };
 
   let groups: React.ReactNode;
-  let cost: number;
-  let eta: string;
+  let cost: number | null;
+  let eta: string | undefined;
   if (props.kind === 'video') {
     const v = props.value;
     const off = { resolution: [], duration: ['30s' as const], count: [], ...props.unsupported };
@@ -141,8 +146,8 @@ export function ParamPopover(props: ParamPopoverProps) {
         ) : null}
       </>
     );
-    cost = props.cost ?? estimateVideoCost(v);
-    eta = props.eta ?? (parseInt(v.duration, 10) > 5 ? '3 min' : '2 min');
+    cost = props.cost !== undefined ? props.cost : isMockApi() ? mockData().overlays.estimateVideoCost(v) : null;
+    eta = props.eta ?? (isMockApi() ? (parseInt(v.duration, 10) > 5 ? '3 min' : '2 min') : undefined);
   } else {
     const v = props.value;
     const off = { size: [], count: [], ...props.unsupported };
@@ -183,8 +188,8 @@ export function ParamPopover(props: ParamPopoverProps) {
         </Group>
       </>
     );
-    cost = props.cost ?? estimateImageCost(v);
-    eta = props.eta ?? '15s';
+    cost = props.cost !== undefined ? props.cost : isMockApi() ? mockData().overlays.estimateImageCost(v) : null;
+    eta = props.eta ?? (isMockApi() ? '15s' : undefined);
   }
 
   const reset = () => {
@@ -232,7 +237,11 @@ export function ParamPopover(props: ParamPopoverProps) {
       <div className={styles.cost}>
         <span className={styles.dot} />
         <span className={styles.costText}>
-          <FormattedMessage id="overlays.params.cost" values={{ cost, eta, b: (c) => <b className={styles.costNum}>{c}</b> }} />
+          {cost === null ? (
+            <Skeleton width={96} height={13} />
+          ) : (
+            <FormattedMessage id={eta ? 'overlays.params.cost' : 'overlays.params.costOnly'} values={{ cost, eta, b: (c) => <b className={styles.costNum}>{c}</b> }} />
+          )}
         </span>
         <button type="button" className={styles.reset} onClick={reset}>
           {t('reset')}

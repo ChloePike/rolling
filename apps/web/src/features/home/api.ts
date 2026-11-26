@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, gql, isMockApi } from '@/features/overlays/backend';
-import { MOCK_PROJECTS } from './mocks';
+import { mockData } from '@/lib/api/mode';
 import type { ProjectSummary } from './types';
 
 /**
@@ -42,13 +42,13 @@ function created(): ProjectSummary[] {
 /** Mock-backed `GET /api/projects` (recent first). */
 export async function fetchRecentProjects(): Promise<ProjectSummary[]> {
   if (!isMockApi()) return fetchRealProjects(4);
-  return [...created(), ...MOCK_PROJECTS].slice(0, 4);
+  return [...created(), ...mockData().home.MOCK_PROJECTS].slice(0, 4);
 }
 
 export function useRecentProjects() {
   const mock = isMockApi();
-  const q = useQuery({ queryKey: projectsKey, queryFn: fetchRecentProjects, ...(mock ? { initialData: () => [...created(), ...MOCK_PROJECTS].slice(0, 4) } : {}) });
-  return { ...q, data: q.data ?? [] };
+  // Real mode: no placeholder rows; the page shows skeletons until the list arrives.
+  return useQuery({ queryKey: projectsKey, queryFn: fetchRecentProjects, ...(mock ? { initialData: () => [...created(), ...mockData().home.MOCK_PROJECTS].slice(0, 4) } : { staleTime: 15_000 }) });
 }
 
 const CREATED_TONES = ['var(--c-tone-indigo)', 'var(--c-tone-teal)', 'var(--c-tone-plum)', 'var(--c-tone-sand)'];

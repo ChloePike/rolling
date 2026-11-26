@@ -1,5 +1,5 @@
 import { planMonthlyCredits, PLANS, TOP_UP, teamPriceCents } from '@rolling/core/pricing/config';
-import { Dialog, Switch, useToast } from '@rolling/ui';
+import { Dialog, Skeleton, Switch, useToast } from '@rolling/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
@@ -113,6 +113,21 @@ export function SettingsPage({ section }: { section: SettingsSection }) {
         ))}
       </nav>
       <div className={styles.content}>
+        {!me && (
+          // `/api/me` in flight: the section's heading and rows as placeholders (no sample account values).
+          <div aria-busy="true" data-testid="settings-skeleton">
+            <div className={styles.sectionHead}>
+              <Skeleton width={160} height={22} />
+              <Skeleton width={280} height={13} />
+            </div>
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className={styles.row}>
+                <Skeleton width={120} height={14} />
+                <Skeleton width="40%" height={14} />
+              </div>
+            ))}
+          </div>
+        )}
         {me && (
           <section key={section} aria-labelledby="settings-heading" className={motion.enter} data-testid="settings-section">
             {section === 'account' && <AccountSection me={me} />}

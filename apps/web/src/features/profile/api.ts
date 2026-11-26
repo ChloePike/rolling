@@ -1,12 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api/client';
 import { isApiError } from '@/lib/api/errors';
-import { isMockApi } from '@/lib/api/mode';
+import { isMockApi, mockData } from '@/lib/api/mode';
 import type { ProfileResponse } from '@/lib/api/types';
 import { publicSafe } from '@/lib/media';
 import { getSession, useSession } from '@/lib/session';
 import { accountHandle, accountName } from '@/shell/account';
-import { profileMock, type PublicProfile } from './mocks';
+import type { PublicProfile } from './mocks';
 
 /** Maps `GET /api/profiles/:handle` to the page model (published works first, then templates). */
 export function profileFromApi(r: ProfileResponse): PublicProfile {
@@ -44,7 +44,7 @@ export async function fetchProfile(handle: string): Promise<PublicProfile | null
       throw e;
     }
   }
-  const p = structuredClone(profileMock);
+  const p = structuredClone(mockData().profile.profileMock);
   return { ...p, handle: handle || p.handle, works: publicSafe(p.works) };
 }
 

@@ -4,12 +4,13 @@ import { checkoutTopUp, getCredits as getSessionCredits } from '@/lib/session';
 import { apiFetch, ApiError, isApiError, isMockApi, openProjectChannel } from '@/features/overlays/backend';
 import { applyProposal, discardProposal, sendTurn, threadFor, type ApplyResult, type Proposal } from '@/features/overlays/agent';
 import { listRuns } from '@/features/overlays/runs';
-import { MockProjectRoom } from './graph/mockRoom';
+import type { MockProjectRoom } from './graph/mockRoom';
 import { GraphStore } from './graph/store';
 import { ProjectSync, type SyncEvents } from './graph/sync';
-import { mockProjectOpens } from './target/projects';
 import { blockedByBypass, runScopeNodes, type GraphEdge, type GraphNode, type LocalOp, type RunScope } from '@rolling/core/graph';
-import { mockGraph, MOCK_AGENT, MOCK_AGENT_OPTIONS, MOCK_PROJECT, MOCK_SHARE, type AgentPlanOption } from './mocks';
+import { mockProjectOpens } from './target/projects';
+import type { AgentPlanOption } from './mocks';
+import { mockData } from '@/lib/api/mode';
 
 /**
  * The canvas talks to the backend only through this file.
@@ -259,9 +260,9 @@ export function openProject(projectId: string, events: ProjectEvents): ProjectSe
   const flags = mockFlags();
   room?.dispose();
   const c = credits.get();
-  room = new MockProjectRoom({
+  room = new (mockData().room.MockProjectRoom)({
     projectId,
-    initial: mockGraph(),
+    initial: mockData().canvas.mockGraph(),
     frozen: flags.frozen,
     failAll: flags.fail,
     latency: flags.fast ? 0 : 40,
@@ -305,6 +306,7 @@ async function loadProjectMeta(projectId: string): Promise<{ title: string; canE
 export function getProject(projectId: string) {
   if (!isMockApi()) return { id: projectId, title: titles.get()[projectId] ?? '' };
   const saved = titles.get()[projectId] ?? read<string>(titleKey(projectId));
+  const MOCK_PROJECT = mockData().canvas.MOCK_PROJECT;
   return { ...MOCK_PROJECT, id: projectId, title: saved ?? MOCK_PROJECT.title };
 }
 
@@ -352,6 +354,7 @@ const shareLoads = new Map<string, Promise<void>>();
 function defaultShare(): ShareSettings {
   // Real mode: nothing is shared until the first publish; `GET /api/projects/:id/share` replaces this on open.
   if (!isMockApi()) return { active: false, url: '', snapshotAt: new Date(), audience: 'link', allowDownloads: false, showPrompt: true, showOnProfile: false };
+  const MOCK_SHARE = mockData().canvas.MOCK_SHARE;
   return { active: true, url: MOCK_SHARE.url, snapshotAt: MOCK_SHARE.snapshotAt, audience: 'link', allowDownloads: false, showPrompt: true };
 }
 
@@ -418,7 +421,7 @@ export function loadShare(projectId: string): Promise<void> {
   return p;
 }
 
-export function getShare(projectId = MOCK_PROJECT.id): ShareSettings {
+export function getShare(projectId: string): ShareSettings {
   const cached = shares.get()[projectId];
   if (cached) return cached;
   const stored = read<StoredShare>(shareKey(projectId));
@@ -466,10 +469,10 @@ export async function stopSharing(projectId: string): Promise<ShareSettings> {
 }
 
 /** `POST /api/projects/:id/share`: a new snapshot (and a link again after stopping), with the current settings. */
-export async function publishShare(projectId: string = MOCK_PROJECT.id): Promise<ShareSettings> {
+export async function publishShare(projectId: string): Promise<ShareSettings> {
   const cur = getShare(projectId);
   if (!isMockApi()) return postShare(projectId, cur);
-  const url = cur.active ? cur.url : `${MOCK_SHARE.url.replace(/\/s\/.*/, '')}/s/${Math.random().toString(36).slice(2, 6)}-${Math.random().toString(36).slice(2, 6)}`;
+  const url = cur.active ? cur.url : `${mockData().canvas.MOCK_SHARE.url.replace(/\/s\/.*/, '')}/s/${Math.random().toString(36).slice(2, 6)}-${Math.random().toString(36).slice(2, 6)}`;
   return saveShare(projectId, { ...cur, active: true, url, snapshotAt: new Date() });
 }
 
@@ -757,7 +760,8 @@ export const MOCK_AGENT_LATENCY = 600;
 
 /** The plan options of the current proposal; Shuffle shows the next one (free, no new turn). */
 export function agentPlanOptions(): AgentPlanOption[] {
-  return [MOCK_AGENT.plan, ...MOCK_AGENT_OPTIONS];
+  const m = mockData().canvas;
+  return [m.MOCK_AGENT.plan, ...m.MOCK_AGENT_OPTIONS];
 }
 
 /** `propose.graphPatch` (harness section 3): a patch the user applies or discards. */

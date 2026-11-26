@@ -1,7 +1,7 @@
 import { LIBRARY_CATEGORIES } from '@rolling/core/library/categories';
 import type { LibraryCategoryKey } from '@rolling/core/library/types';
 import type { PromptIconName } from './icons';
-import type { PromptCommand, RefGlyph, RefItem } from './types';
+import type { RefGlyph, RefItem } from './types';
 
 /**
  * Mock data shaped like `GET /api/assets?scope=all` and the skills list.
@@ -58,13 +58,4 @@ export const MOCK_REFERENCES: RefItem[] = [
   pub('pw_scene_B001', 'scene', 'Café window', 'Scene B001 · CC0', icon('scene'), 'var(--c-tone-moss)'),
   pub('pw_lighting_L001', 'lighting', 'Rembrandt', 'Lighting L001 · CC0', icon('light'), 'var(--c-tone-plum)'),
   pub('pw_prop_O001', 'prop', 'Coffee cup', 'Prop O001 · CC0', icon('prop'), 'var(--c-tone-teal)'),
-];
-
-/** Built-in skills (Main.dc.html `SK`). Users can add their own in Settings. */
-export const MOCK_SKILLS: PromptCommand[] = [
-  { id: 'skl_tv_ad', name: 'TV ad', icon: 'film', kind: 'skill', description: '15–30s ads with script, storyboard and logo end card' },
-  { id: 'skl_comic', name: 'AI comic', icon: 'book', kind: 'skill', description: 'Turns a story or outline into episodes, characters and storyboards' },
-  { id: 'skl_product', name: 'Product showcase', icon: 'bag', kind: 'skill', description: 'Turns a product photo into multi-angle shots' },
-  { id: 'skl_remake', name: 'Shot-for-shot remake', icon: 'copy', kind: 'skill', description: 'Upload a reference video and recreate its shots' },
-  { id: 'skl_brand', name: 'Brand kit', icon: 'brand', kind: 'skill', description: 'Brand colors, fonts, intros and outros' },
 ];

@@ -48,7 +48,8 @@ export interface FolderItem {
   /** Built-in folders have a message id; project folders use the project title. */
   kind: 'all' | 'characters' | 'voices' | 'favorites' | 'project';
   title?: string;
-  count: number;
+  /** Null while the list it counts is loading (real mode). */
+  count: number | null;
 }
 
 const USED_IN = [

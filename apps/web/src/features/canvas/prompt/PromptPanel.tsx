@@ -6,7 +6,6 @@ import { ModelIcon, modelIcon } from '@/lib/modelIcons';
 import {
   defaultImageParams,
   defaultVideoParams,
-  mockModels,
   ModelPicker,
   ParamPopover,
   PlanLock,
@@ -23,7 +22,10 @@ import { useIntl } from 'react-intl';
 import type { GraphNode } from '@rolling/core/graph';
 import { CanvasIcon, type CanvasIconName } from '../icons';
 import { MenuPopover } from '../layers/Menu';
-import { MOCK_PRICE, mockVideoCredits, MODES, QUICK_OPTIONS, type PromptRef } from '../mocks';
+import type { PromptRef } from '../mocks';
+import { MODES, QUICK_OPTIONS } from './options';
+import { isMockApi, mockData } from '@/lib/api/mode';
+import { Skeleton } from '@rolling/ui';
 import styles from './promptPanel.module.css';
 
 interface PromptPanelProps {
@@ -123,7 +125,9 @@ export function PromptPanel({ node, left, top, state, refs, pickerOpen, onOpenPi
   // Close pill layers when another node is selected.
   useEffect(() => setOpen(null), [node.id]);
 
-  const options: ModelOption[] = (models?.length ? catalogToOptions(models, kind) : []).length ? catalogToOptions(models!, kind) : mockModels[kind];
+  const fromCatalog: ModelOption[] = models?.length ? catalogToOptions(models, kind) : [];
+  // Real mode: the synced catalog only (empty while it loads); mock mode falls back to the design list.
+  const options: ModelOption[] = fromCatalog.length || !isMockApi() ? fromCatalog : mockData().overlays.mockModels[kind];
   const currentModel = options.find((o) => o.id === node.params.modelId || o.id === node.params.model || o.name === node.params.model);
   const extraLabel = video
     ? intl.formatMessage({ id: 'canvas.prompt.extra' }, { n: count, audio: videoValue(node).audio ? 'on' : 'off' })
@@ -134,7 +138,8 @@ export function PromptPanel({ node, left, top, state, refs, pickerOpen, onOpenPi
     { key: 'format', label: formatLabel(node), icon: 'ratio', caret: false },
     { key: 'extra', label: video ? str(node.params.extra) || extraLabel : extraLabel, icon: video ? 'wave' : 'copy', caret: false },
   ];
-  const cost = runCost(node) ?? 0;
+  /** The node's price from the catalog (usePricedNodes); unknown until the catalog answers. */
+  const cost = runCost(node) ?? null;
   const resolutions = resolutionOptions(intl, findModel(models, node), kind, plan);
   const running = node.status === 'generating' || node.status === 'queued';
   const toggle = (k: PillKey) => setOpen((o) => (o === k ? null : k));
@@ -145,13 +150,15 @@ export function PromptPanel({ node, left, top, state, refs, pickerOpen, onOpenPi
   };
 
   /**
-   * Price when the catalog is unavailable: the mock D-006 scale (Seedance 720p
-   * 347 per 5s, an image 11). With the catalog, usePricedNodes re-prices every
-   * node from `useModels()` and this estimate is ignored.
+   * Mock mode only: the design's D-006 scale (Seedance 720p 347 per 5s, an
+   * image 11). Real mode stores no estimate; usePricedNodes re-prices every
+   * node from `useModels()`.
    */
-  const estimate = (_opt: ModelOption | undefined, patch: { seconds?: number; count?: number }) => {
+  const estimate = (_opt: ModelOption | undefined, patch: { seconds?: number; count?: number }): number | undefined => {
+    if (!isMockApi()) return undefined;
     const n = patch.count ?? count;
-    return video ? mockVideoCredits(patch.seconds ?? (typeof node.params.length === 'number' ? node.params.length : 5)) * n : MOCK_PRICE.image * n;
+    const m = mockData().canvas;
+    return video ? m.mockVideoCredits(patch.seconds ?? (typeof node.params.length === 'number' ? node.params.length : 5)) * n : m.MOCK_PRICE.image * n;
   };
 
   return (
@@ -322,10 +329,16 @@ export function PromptPanel({ node, left, top, state, refs, pickerOpen, onOpenPi
           );
         })}
         <span className={styles.spacer} />
-        <span className={styles.cost} aria-label={intl.formatMessage({ id: 'canvas.prompt.cost' }, { n: cost })}>
-          <span className={styles.costDot} />
-          {intl.formatNumber(cost)}
-        </span>
+        {cost === null ? (
+          <span className={styles.cost} aria-busy="true">
+            <Skeleton width={36} height={12} />
+          </span>
+        ) : (
+          <span className={styles.cost} aria-label={intl.formatMessage({ id: 'canvas.prompt.cost' }, { n: cost })}>
+            <span className={styles.costDot} />
+            {intl.formatNumber(cost)}
+          </span>
+        )}
         <button
           type="button"
           className={cx(styles.go, 'rl-press')}

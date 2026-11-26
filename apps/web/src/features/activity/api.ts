@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { isMockApi, userEvents } from '@/features/overlays/backend';
 import { listRuns, type RunView } from '@/features/overlays/runs';
-import { activityMock } from './mocks';
+import { mockData } from '@/lib/api/mode';
 import type { ActivityData, RunRow } from './types';
 
 /**
@@ -36,7 +36,7 @@ function rowFrom(r: RunView, now: number): RunRow {
 }
 
 export async function fetchActivity(): Promise<ActivityData> {
-  if (isMockApi()) return structuredClone(activityMock);
+  if (isMockApi()) return structuredClone(mockData().activity.activityMock);
   const page = await listRuns({ first: 100, from: Date.now() - 90 * 24 * 3600_000 });
   const now = Date.now();
   const s = page.stats;

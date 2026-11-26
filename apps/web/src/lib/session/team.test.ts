@@ -4,6 +4,13 @@ function stub(mocks: Record<string, unknown> = {}) {
   vi.stubGlobal('window', { __rollingMocks: { latencyMs: 0, ...mocks }, location: { search: '' }, localStorage: { getItem: () => null, setItem: () => {} } });
 }
 
+/** A fresh session module graph (after `vi.resetModules`) with its mock data loaded, like the app entry. */
+async function freshSession() {
+  const s = await import('./index');
+  await (await import('@/lib/api/mode')).loadMockData();
+  return s;
+}
+
 describe('lib/session Team (D-013)', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -12,7 +19,7 @@ describe('lib/session Team (D-013)', () => {
 
   it('personal plans have one seat; switching to Team sets seats and Team credits', async () => {
     stub();
-    const s = await import('./index');
+    const s = await freshSession();
     expect(s.getSession()).toMatchObject({ planId: 'pro', seats: 1, isTeam: false });
     await expect(s.changeSeats(3, 1)).rejects.toMatchObject({ code: 'TEAM_REQUIRED' });
     await s.checkoutPlan('team', 'monthly', 3);
@@ -22,7 +29,7 @@ describe('lib/session Team (D-013)', () => {
 
   it('adding seats grants prorated credits once; lowering below used is refused', async () => {
     stub({ me: { plan: { id: 'team', period: 'monthly', status: 'active', seats: 2 } } });
-    const s = await import('./index');
+    const s = await freshSession();
     const before = s.getCredits().plan;
     const r = await s.changeSeats(4, 2);
     expect(r).toMatchObject({ seats: 4, previous: 2 });

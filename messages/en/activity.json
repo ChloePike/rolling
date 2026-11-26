@@ -79,5 +79,6 @@
   "activity.retryError.CONCURRENCY_LIMIT": "Too many jobs running for your plan. Wait for one to finish.",
   "activity.retryError.NOTHING_TO_RUN": "Nothing to run again: the nodes are up to date or gone.",
   "activity.retryError.other": "Couldn’t run it again. Nothing was charged.",
-  "activity.retryEta": "~2 min"
+  "activity.retryEta": "~2 min",
+  "activity.none": "No runs yet. Images and videos you generate show up here."
 }

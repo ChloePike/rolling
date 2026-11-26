@@ -139,5 +139,6 @@
   "overlays.run.memberLimit": "Your team limit for this month is used. Ask the owner to raise it.",
   "overlays.run.concurrency": "{limit, plural, one {# job} other {# jobs}} already running for your plan. Wait for one to finish, or upgrade.",
   "overlays.run.startFailed": "{label} couldn’t start. Nothing was charged.",
-  "overlays.run.unavailable": "This can’t be generated here yet."
+  "overlays.run.unavailable": "This can’t be generated here yet.",
+  "overlays.params.costOnly": "~ <b>{cost, number}</b> credits"
 }

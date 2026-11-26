@@ -1,4 +1,4 @@
-import { cx, staggerStyle, useIndicator, useToast } from '@rolling/ui';
+import { cx, Skeleton, staggerStyle, useIndicator, useToast } from '@rolling/ui';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useRef, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
@@ -41,11 +41,11 @@ import type { PromptSpec } from '@/features/overlays/runs';
 import type { HomeRunSpec } from './useHomePills';
 import { formatSeconds, formatWhen } from './format';
 import { HOME_MODES, type HomeModeId } from './modes';
-import { FEED_TONES } from './mocks';
 import { useHomePills } from './useHomePills';
 import styles from './HomePage.module.css';
 import type { ProjectSummary } from './types';
 import { coverStyle } from '@/features/templates/cover';
+import { LoadError } from '@/lib/loading';
 
 const ENTRIES: Array<{ key: string; to: string; icon: PromptIconName }> = [
   { key: 'blank', to: '/p/prj_new', icon: 'frame' },
@@ -69,6 +69,11 @@ interface PendingHomeRun {
 
 const FEED_CATS = ['forYou', 'product', 'talking', 'drama', 'holiday'] as const;
 type FeedCat = (typeof FEED_CATS)[number];
+
+/** Inspiration tiles while templates load (design cover shapes). */
+const FEED_SKELETON = ['9/16', '3/4', '9/16', '1/1', '9/16', '3/4', '1/1', '9/16', '3/4', '9/16'];
+/** Inspiration placeholder tones (Main.dc.html `tones`): a cover's fill until its image loads. */
+const FEED_TONES = ['var(--c-tone-plum)', 'var(--c-tone-teal)', 'var(--c-tone-indigo)', 'var(--c-tone-ochre)', 'var(--c-tone-neutral)', 'var(--c-tone-pine)'];
 
 /** Home (Main.dc.html): prompt box with modes, quick entries, recent projects and the Inspiration feed. */
 export function HomePage() {
@@ -375,7 +380,8 @@ function RecentProjects() {
   const intl = useIntl();
   const navigate = useNavigate();
   const createProject = useCreateProject();
-  const { data: projects } = useRecentProjects();
+  const projectsQ = useRecentProjects();
+  const projects = projectsQ.data ?? [];
   const meta = (p: ProjectSummary) => {
     const when = formatWhen(intl, p.updatedAt);
     const detail =
@@ -415,6 +421,15 @@ function RecentProjects() {
             <FormattedMessage id="home.projects.new" />
           </span>
         </Link>
+        {projectsQ.data === undefined && !projectsQ.isError
+          ? [0, 1, 2].map((i) => (
+              <div key={i} className={styles.project} data-testid="project-skeleton">
+                <Skeleton className={styles.projectThumb} height="auto" radius={16} />
+                <Skeleton text width="60%" height={16} />
+                <Skeleton text width="40%" height={14} />
+              </div>
+            ))
+          : null}
         {projects.map((p) => (
           <Link key={p.id} to="/p/$projectId" params={{ projectId: p.id }} className={styles.project}>
             <div className={styles.projectThumb} style={p.thumbUrl ? { background: `center / cover no-repeat url("${p.thumbUrl}"), ${p.tone}` } : { background: p.tone }}>
@@ -427,6 +442,7 @@ function RecentProjects() {
           </Link>
         ))}
       </div>
+      {projectsQ.isError && projectsQ.data === undefined ? <LoadError inline onRetry={() => projectsQ.refetch()} retrying={projectsQ.isFetching} /> : null}
     </section>
   );
 }
@@ -444,8 +460,12 @@ function Inspiration() {
   const [cat, setCat] = useState<FeedCat>('forYou');
   const tabsRef = useRef<HTMLDivElement>(null);
   const indicator = useIndicator(tabsRef, cat);
-  const { data } = useTemplates();
+  const templatesQ = useTemplates();
+  const { data } = templatesQ;
   const feed = data.items.slice(0, 10).filter(CAT_FILTER[cat]);
+  const loading = templatesQ.isPending && !templatesQ.isError;
+  // Nothing to suggest (no templates at all): the section is left out rather than shown empty.
+  if (!loading && !templatesQ.isError && !data.items.length) return null;
   return (
     <section aria-labelledby="h-insp" className={styles.insp}>
       <div className={styles.inspHead}>
@@ -474,7 +494,11 @@ function Inspiration() {
           ))}
         </div>
       </div>
-      <div key={cat} className={styles.feed}>
+      {templatesQ.isError && !data.items.length ? <LoadError inline onRetry={() => templatesQ.refetch()} retrying={templatesQ.isFetching} /> : null}
+      <div key={cat} className={styles.feed} aria-busy={loading || undefined}>
+        {loading
+          ? FEED_SKELETON.map((ratio, i) => <Skeleton key={i} className={styles.feedCard} height="auto" radius={16} style={{ aspectRatio: ratio, display: 'block' }} />)
+          : null}
         {feed.map((t, i) => (
           <Link
             key={t.id}

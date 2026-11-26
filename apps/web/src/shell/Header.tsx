@@ -1,4 +1,4 @@
-import { IconButton, Popover, Tooltip, useIndicator, useToast } from '@rolling/ui';
+import { IconButton, Popover, Skeleton, Tooltip, useIndicator, useToast } from '@rolling/ui';
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 import { useRef, useState } from 'react';
 import { FormattedMessage, FormattedNumber, useIntl } from 'react-intl';
@@ -92,7 +92,18 @@ export function Header() {
               <FormattedMessage id="header.login" />
             </Link>
           </>
-        ) : loading ? null : (
+        ) : loading ? (
+          // `/api/me` in flight: placeholders the size of credits, Upgrade, settings and avatar (never a 0 or a sample balance).
+          <>
+            <span className="rl-visually-hidden" role="status" data-testid="header-loading">
+              {intl.formatMessage({ id: 'shell.load.loading' })}
+            </span>
+            <Skeleton width={104} height={34} round />
+            <Skeleton width={86} height={34} round />
+            <Skeleton width={32} height={32} round />
+            <Skeleton width={34} height={34} round />
+          </>
+        ) : (
           <>
             <Popover
               open={open === 'credits'}

@@ -1,9 +1,9 @@
 import { apiRequest } from '@/lib/api';
 import { queryClient } from '@/lib/api/queryClient';
-import { getActiveWorkspace, getSession, MOCK_WORKSPACES } from '@/lib/session';
+import { getActiveWorkspace, getSession } from '@/lib/session';
 import { apiFetch, isApiError, isMockApi } from '@/features/overlays/backend';
 import { createProject } from '@/features/home/api';
-import { MOCK_PROJECT } from '../mocks';
+import { mockData } from '@/lib/api/mode';
 import { readLocal, writeLocal } from '../storage';
 import { createOnce, resolveCanvasTarget, type CanvasSummary, type CanvasTarget } from './resolve';
 
@@ -34,7 +34,7 @@ const PAGE = 50;
 
 /** The active workspace id (mock: the switcher's choice). */
 export function activeWorkspace(): string {
-  if (isMockApi()) return getActiveWorkspace(MOCK_WORKSPACES[0]!.id);
+  if (isMockApi()) return getActiveWorkspace(mockData().session.MOCK_WORKSPACES[0]!.id);
   return getSession().workspace?.id ?? 'default';
 }
 
@@ -79,7 +79,7 @@ function mockCreated(): CanvasSummary[] {
 
 function mockList(): CanvasSummary[] {
   const seam = mocks().projects;
-  const base = seam ? seam.map((p, i) => ({ id: p.id, title: p.title, updatedAt: p.updatedAt ?? Date.now() - (i + 1) * 3_600_000 })) : [{ id: MOCK_PROJECT.id, title: MOCK_PROJECT.title, updatedAt: Date.now() - 2 * 3_600_000 }];
+  const base = seam ? seam.map((p, i) => ({ id: p.id, title: p.title, updatedAt: p.updatedAt ?? Date.now() - (i + 1) * 3_600_000 })) : [{ id: mockData().canvas.MOCK_PROJECT.id, title: mockData().canvas.MOCK_PROJECT.title, updatedAt: Date.now() - 2 * 3_600_000 }];
   return [...mockCreated(), ...base];
 }
 

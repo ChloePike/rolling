@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, type Dispatch } from 'react';
 import type { EditorProject } from './mocks';
-import { PEAKS_PER_SECOND } from './mockPeaks';
+import { PEAKS_PER_SECOND } from './peaks';
 import type { PlayheadStore } from './playhead';
 import type { EditorAction, EditorState } from './state';
 import styles from './Editor.module.css';

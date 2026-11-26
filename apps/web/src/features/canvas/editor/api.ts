@@ -1,4 +1,5 @@
-import { MOCK_CUT_TO_10, MOCK_SCRIPT, mockProject, type EditorProject, type EditProposal } from './mocks';
+import type { EditorProject, EditProposal } from './mocks';
+import { mockData } from '@/lib/api/mode';
 import { assembleFromScript } from '@rolling/core/timeline';
 import { planCutTo } from '@rolling/core/timeline';
 import { edlDuration, type Edl, type TimelineOp } from '@rolling/core/timeline';
@@ -11,7 +12,7 @@ import { canvasIdFor, fetchTimeline, reassembleTimeline } from './realTimeline';
 import type { BinItem, ShotInfo } from './mocks';
 
 /**
- * Editor data access. Mock mode: the Ridgeline mock project. Real mode: the
+ * Editor data access. Mock mode: the design's mock project (`mockData().editor`). Real mode: the
  * EDL from `GET /api/canvases/:id/timeline`, shot info from the open canvas'
  * graph, media through signed redirects, agent edits on the project's editor
  * thread (`propose.timelinePatch`).
@@ -38,7 +39,7 @@ export interface EditorProjectReal extends EditorProject {
 }
 
 export async function getEditorProject(projectId: string): Promise<EditorProject> {
-  if (isMockApi()) return mockProject(projectId);
+  if (isMockApi()) return mockData().editor.mockProject(projectId);
   const session = openSession(projectId);
   const canvasId = session?.canvasId() ?? canvasIdFor(projectId);
   const timeline = await fetchTimeline(canvasId);
@@ -86,7 +87,7 @@ export async function getEditorProject(projectId: string): Promise<EditorProject
 
 /** Rebuilds the cut from the current script (real: `POST …/timeline/reassemble`, keeping manual trims). */
 export async function reassemble(projectId: string): Promise<Edl> {
-  if (isMockApi()) return assembleFromScript(MOCK_SCRIPT);
+  if (isMockApi()) return assembleFromScript(mockData().editor.MOCK_SCRIPT);
   const session = openSession(projectId);
   return (await reassembleTimeline(session?.canvasId() ?? canvasIdFor(projectId))).edl;
 }
@@ -160,7 +161,7 @@ export async function proposeEdit(project: EditorProject, edl: Edl, request: str
   const target = Number(m[1]);
   const id = `prop_${++proposalSeq}`;
   if (target === 10 && JSON.stringify(edl) === JSON.stringify(project.edl)) {
-    return { id, request, ...MOCK_CUT_TO_10 };
+    return { id, request, ...mockData().editor.MOCK_CUT_TO_10 };
   }
   const plan = planCutTo(edl, target);
   if (!plan) return null;

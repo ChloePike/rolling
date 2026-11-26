@@ -1,4 +1,4 @@
-import { useToast } from '@rolling/ui';
+import { Skeleton, useToast } from '@rolling/ui';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
@@ -119,7 +119,7 @@ export function PublicLibraryPage({ category, onCategory }: { category?: string;
           />
           <span className={styles.spacer} />
           <span className={styles.count} aria-live="polite">
-            <FormattedMessage id="library.public.count" values={{ n: total }} />
+            {isPending ? <Skeleton width={64} height={12} /> : <FormattedMessage id="library.public.count" values={{ n: total }} />}
           </span>
         </div>
         {isError ? (
@@ -130,8 +130,10 @@ export function PublicLibraryPage({ category, onCategory }: { category?: string;
             </button>
           </div>
         ) : isPending ? (
-          <div className={styles.state} role="status">
-            <FormattedMessage id="library.public.loading" />
+          <div className={styles.grid} role="status" aria-busy="true" aria-label={intl.formatMessage({ id: 'library.public.loading' })} data-testid="library-skeleton">
+            {Array.from({ length: 12 }, (_, i) => (
+              <Skeleton key={i} height="auto" radius={16} style={{ aspectRatio: '3/4' }} />
+            ))}
           </div>
         ) : items.length === 0 ? (
           <div className={cx(styles.state, motion.enter)}>

@@ -2,7 +2,7 @@ import { useToast } from '@rolling/ui';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect } from 'react';
 import { useIntl } from 'react-intl';
-import { mockResultActions, ResultViewer, type ResultActionId, type ResultVersion, type RunRequest } from '@/features/overlays';
+import { resultActions, ResultViewer, type ResultActionId, type ResultVersion, type RunRequest } from '@/features/overlays';
 import type { RefItem } from '@/features/prompt';
 import { useCreateProject } from './api';
 import { assetMediaUrl, isMockApi } from '@/features/overlays/backend';
@@ -88,7 +88,7 @@ export function HomeResult({
 
   const onAction = (id: ResultActionId, versionId: string) => {
     if (!result) return;
-    const action = mockResultActions.find((a) => a.id === id);
+    const action = resultActions().find((a) => a.id === id);
     if (id === 'download') {
       const v = result.versions.find((x) => x.id === versionId);
       const assetId = result.assets?.[versionId];
@@ -150,7 +150,7 @@ export function HomeResult({
       prompt={result?.prompt ?? ''}
       params={result?.params ?? []}
       assets={(result?.refs ?? []).map((r) => ({ id: r.id, name: r.name, tone: r.tone, thumbnailUrl: r.thumbUrl }))}
-      actions={mockResultActions.map((a) => (a.id === 'regenerate' ? { ...a, cost: result?.cost } : a))}
+      actions={resultActions().map((a) => (a.id === 'regenerate' ? { ...a, cost: result?.cost } : a))}
       onAction={onAction}
     />
   );

@@ -1,6 +1,6 @@
-import { planMonthlyCredits, PLANS, prorate, SEAT_PRICE, TEAM_SEATS, type PlanId } from '@rolling/core/pricing/config';
-import { ApiError, type ApiErrorCode } from '@/lib/api/errors';
+import { planMonthlyCredits, PLANS, prorate, SEAT_PRICE, type PlanId } from '@rolling/core/pricing/config';
 import { topUpFor } from '@/lib/topUp';
+import { clampSeats, FlowError, getMockWorkspace, MOCK_MEMBER_KEY, mockOverrides, mockPeriod, mocks, type MockRun, type SeatChange, type TopUpResult } from './seams';
 import { derive, getCredits, getSession, setCredits, setSession, SIGNED_OUT, type BillingPeriod, type CreditsBreakdown, type Session, type SessionPlan } from './store';
 
 /**
@@ -17,38 +17,6 @@ import { derive, getCredits, getSession, setCredits, setSession, SIGNED_OUT, typ
  * Team (D-013): `plan: { id: 'team', seats: 5, ... }` for a Team workspace.
  */
 
-export interface SessionMockOverrides {
-  plan?: SessionPlan | null;
-  /** A signed-out visitor (public pages, One Tap). */
-  signedOut?: boolean;
-  workspace?: { matureAllowed?: boolean } & Record<string, unknown>;
-  [key: string]: unknown;
-}
-
-/** How the mock checkout and mock runs end: `ok` (default), `fail` (payment or run error). */
-export type MockOutcome = 'ok' | 'fail';
-
-declare global {
-  interface Window {
-    __rollingMocks?: {
-      me?: SessionMockOverrides;
-      /** Starting balance for `useCredits` (default 2,480: 1,800 plan + 680 purchased). */
-      credits?: Partial<CreditsBreakdown>;
-      checkout?: MockOutcome;
-      run?: MockOutcome;
-      /** Mock latency in ms for checkout and runs (default 600). */
-      latencyMs?: number;
-      /**
-       * Checkout leaves the page like Stripe: the app reloads at
-       * `?checkout=success&session_id=cs_mock_…` and the plan or top-up applies
-       * on return (resume-after-checkout flows, D-007).
-       */
-      checkoutRedirect?: boolean;
-    };
-  }
-}
-
-export const MOCK_MEMBER_KEY = 'rolling.mock.isMember';
 export const DEFAULT_PLAN: SessionPlan = { id: 'pro', period: 'monthly', status: 'active' };
 
 /** The mock identity (Settings.dc.html, Main.dc.html). */
@@ -58,22 +26,6 @@ export const MOCK_WORKSPACES = [
   { id: 'ws_ridgeline', name: 'Ridgeline brand team', kind: 'team' as const, role: 'owner' as const, plan: 'pro' as PlanId },
 ];
 
-/** Error the session flows reject with; `code` follows docs/api.md error codes (also thrown, wrapped, by the real API path). */
-export class FlowError extends ApiError {
-  constructor(code: ApiErrorCode, message: string = code, status = 0, data: Record<string, unknown> = {}) {
-    super(code, message, status, data as never);
-  }
-}
-
-/** Older name, kept for callers that check `instanceof MockFlowError`. */
-export const MockFlowError = FlowError;
-export type MockFlowError = FlowError;
-
-/** The test seam `window.__rollingMocks.me`, if set. */
-export function mockOverrides(): SessionMockOverrides {
-  return (typeof window !== 'undefined' && window.__rollingMocks?.me) || {};
-}
-
 function guestFlag(): boolean {
   if (typeof window === 'undefined') return false;
   if (new URLSearchParams(window.location.search).get('member') === '0') return true;
@@ -82,10 +34,6 @@ function guestFlag(): boolean {
   } catch {
     return false;
   }
-}
-
-export function mocks() {
-  return (typeof window !== 'undefined' && window.__rollingMocks) || {};
 }
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -127,10 +75,6 @@ function keepIdentity(cur: Session): Parameters<typeof derive>[2] {
   return { status: cur.status, user: cur.user, workspace: cur.workspace, workspaces: cur.workspaces, role: cur.role, monthlyCreditLimit: cur.monthlyCreditLimit };
 }
 
-export function clampSeats(n: number): number {
-  return Math.min(TEAM_SEATS.max, Math.max(TEAM_SEATS.min, Math.round(Number.isFinite(n) ? n : 1)));
-}
-
 export async function mockCheckoutPlan(planId: string, period: BillingPeriod = 'monthly', seats = 1): Promise<Session> {
   const id = (Object.keys(PLANS) as PlanId[]).includes(planId as PlanId) ? (planId as PlanId) : DEFAULT_PLAN.id;
   const n = id === 'team' ? clampSeats(seats) : 1;
@@ -148,19 +92,6 @@ export async function mockCheckoutPlan(planId: string, period: BillingPeriod = '
     setCredits({ ...c, plan, available: plan + c.purchased });
   }
   return getSession();
-}
-
-/** Mock billing period for prorations: the current calendar month. */
-export function mockPeriod(now = Date.now()): { start: number; end: number } {
-  const d = new Date(now);
-  return { start: new Date(d.getFullYear(), d.getMonth(), 1).getTime(), end: new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime() };
-}
-
-export interface SeatChange {
-  seats: number;
-  previous: number;
-  /** Prorated plan credits granted for added seats (D-013). */
-  granted: number;
 }
 
 let seatHighWater: number | null = null;
@@ -186,13 +117,6 @@ export async function mockChangeSeats(seats: number, used: number): Promise<Seat
   return { seats: n, previous, granted };
 }
 
-export interface TopUpResult {
-  amountUsd: number;
-  /** Credits added, bonus included. */
-  credits: number;
-  balance: number;
-}
-
 export async function mockCheckoutTopUp(amountUsd: number): Promise<TopUpResult> {
   const session = getSession();
   if (!session.isMember) throw new FlowError('NO_PLAN');
@@ -202,11 +126,6 @@ export async function mockCheckoutTopUp(amountUsd: number): Promise<TopUpResult>
   const c = getCredits();
   setCredits({ ...c, purchased: c.purchased + q.credits, available: c.available + q.credits });
   return { amountUsd, credits: q.credits, balance: getCredits().available };
-}
-
-export interface MockRun {
-  id: string;
-  cost: number;
 }
 
 let runSeq = 0;
@@ -240,34 +159,6 @@ export async function startMockRun(cost: number): Promise<MockRun> {
     usedThisMonth: now.usedThisMonth + cost,
   });
   return { id, cost };
-}
-
-// Workspace switch (account menu).
-
-export const ACTIVE_WORKSPACE_KEY = 'rolling.mock.workspace';
-const workspaceListeners = new Set<() => void>();
-
-export function getMockWorkspace(fallback: string): string {
-  if (typeof window === 'undefined') return fallback;
-  try {
-    return window.localStorage.getItem(ACTIVE_WORKSPACE_KEY) ?? fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-export function setMockWorkspace(id: string) {
-  try {
-    window.localStorage.setItem(ACTIVE_WORKSPACE_KEY, id);
-  } catch {
-    /* Storage unavailable. */
-  }
-  for (const l of workspaceListeners) l();
-}
-
-export function subscribeMockWorkspace(cb: () => void): () => void {
-  workspaceListeners.add(cb);
-  return () => workspaceListeners.delete(cb);
 }
 
 export function resetMockForTests() {

@@ -12,6 +12,7 @@ export { Tabs, TabPanel, type TabsProps, type TabItem, type TabPanelProps } from
 export { Input, type InputProps } from './components/Input';
 export { Tooltip, type TooltipProps } from './components/Tooltip';
 export { Progress, type ProgressProps } from './components/Progress';
+export { Skeleton, type SkeletonProps } from './components/Skeleton';
 export {
   duration,
   easing,

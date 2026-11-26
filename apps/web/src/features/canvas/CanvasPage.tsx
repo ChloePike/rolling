@@ -1,4 +1,4 @@
-import { cx, presenceProps, usePresence, useToast } from '@rolling/ui';
+import { cx, presenceProps, Skeleton, usePresence, useToast } from '@rolling/ui';
 import { Link, useNavigate } from '@tanstack/react-router';
 import {
   ReactFlow,
@@ -74,7 +74,6 @@ import {
   AddNodeMenu,
   CreditsPopover,
   HistoryDrawer,
-  MOCK_RUNS,
   PlanDialog,
   ScriptDialog,
   ShareDialog,
@@ -83,7 +82,8 @@ import {
   type HistoryRow,
 } from './layers/Layers';
 import { MenuPopover, PointMenu, type MenuEntry } from './layers/Menu';
-import { MOCK_PRICE, MOCK_REFS, mockVideoCredits, SCRIPT_ROWS, type CanvasTemplate, type PromptRef, type ScriptRow } from './mocks';
+import type { CanvasTemplate, PromptRef, ScriptRow } from './mocks';
+import { mockData } from '@/lib/api/mode';
 import { useSession, checkoutPlan } from '@/lib/session';
 import { PLAN_ORDER } from '@rolling/core/pricing/config';
 import { NodeActionsContext, NodeCard, NODE_WIDTH, runCost, willRun, type CardNode, type NodeActions } from './nodes/NodeCard';
@@ -138,14 +138,35 @@ const ZOOM_PRESETS = [0.5, 0.75, 1, 1.5, 2];
 const nodeTypes = { card: NodeCard };
 const edgeTypes = { wire: Wire };
 
-/** New-node defaults per kind. */
-const NODE_DEFAULTS: Record<string, Record<string, unknown>> = {
-  text: { text: '' },
-  script: { rows: [], versionLabel: 'v1' },
-  image: { tone: 'var(--c-tone-plum)', prompt: '', model: 'Seedream 5.0 Pro', mode: 'Text to image', ratio: '9:16', resolution: '2K', count: 1, quick: ['Style', 'Framing', 'Lighting', 'Camera'], refs: [], runCost: MOCK_PRICE.image },
-  video: { tone: 'var(--c-tone-indigo)', seconds: 5, prompt: '', model: 'Seedance 2.5', mode: 'First frame', ratio: '9:16', resolution: '720p', length: 5, extra: '×1 · Audio on', quick: ['Style', 'Camera', 'Lighting', 'Pace'], refs: [], runCost: mockVideoCredits(5) },
-  audio: { voice: 'Clear female', seconds: 0, wave: [], runCost: MOCK_PRICE.voice },
-};
+/**
+ * New-node defaults per kind. Real mode stores no price (the catalog prices
+ * every node, usePricedNodes) and `withCatalogModel` swaps in the catalog's
+ * default model and its defaults; mock mode keeps the design's numbers.
+ */
+function nodeDefaults(kind: string): Record<string, unknown> {
+  const price = isMockApi() ? mockData().canvas.MOCK_PRICE : null;
+  const cost = (n: number | undefined) => (price && n !== undefined ? { runCost: n } : {});
+  switch (kind) {
+    case 'text':
+      return { text: '' };
+    case 'script':
+      return { rows: [], versionLabel: 'v1' };
+    case 'image':
+      return { tone: 'var(--c-tone-plum)', prompt: '', model: 'Seedream 5.0 Pro', mode: 'Text to image', ratio: '9:16', resolution: '2K', count: 1, quick: ['Style', 'Framing', 'Lighting', 'Camera'], refs: [], ...cost(price?.image) };
+    case 'video':
+      return { tone: 'var(--c-tone-indigo)', seconds: 5, prompt: '', model: 'Seedance 2.5', mode: 'First frame', ratio: '9:16', resolution: '720p', length: 5, extra: '×1 · Audio on', quick: ['Style', 'Camera', 'Lighting', 'Pace'], refs: [], ...mockRunCost(5) };
+    case 'audio':
+      return { voice: 'Clear female', seconds: 0, wave: [], ...cost(price?.voice) };
+    default:
+      return {};
+  }
+}
+
+/** Mock mode: the design's video price for `seconds`; real mode: nothing (the catalog prices the node). */
+function mockRunCost(seconds: number): { runCost?: number } {
+  return isMockApi() ? { runCost: mockData().canvas.mockVideoCredits(seconds) } : {};
+}
+
 const ADDABLE: NodeKind[] = ['text', 'script', 'image', 'video', 'audio'];
 
 function useGraph(session: ProjectSession): GraphState {
@@ -296,7 +317,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
   const [overlay, setOverlay] = useState<CanvasOverlay | null>(initialOverlay);
   const [agentOpen, setAgentOpen] = useState(true);
   // Membership and plan caps come from the shared session (D-006, D-007).
-  const { isMember, planId } = useSession();
+  const { isMember, planId, status: sessionStatus } = useSession();
   const [creditsOpen, setCreditsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [toolPanel, setToolPanel] = useState<'templates' | 'assets' | null>(null);
@@ -314,7 +335,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
   const [dropWire, setDropWire] = useState<PendingWire | null>(null);
   const [refused, setRefused] = useState<string | null>(null);
   const [proposed, setProposed] = useState<string[] | null>(null);
-  const [refRegistry, setRefRegistry] = useState<Record<string, PromptRef>>(MOCK_REFS);
+  const [refRegistry, setRefRegistry] = useState<Record<string, PromptRef>>(() => (isMockApi() ? mockData().canvas.MOCK_REFS : {}));
   const pickerFromTyping = useRef(false);
   const [sessionRuns, setSessionRuns] = useState<HistoryRow[]>([]);
   const [serverRuns, setServerRuns] = useState<HistoryRow[] | null>(null);
@@ -745,6 +766,8 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
     [planScope],
   );
   const planQuote = usePlanQuote(projectId, overlay === 'plan', planRequest, graph);
+  /** Real mode: the project's first snapshot hasn't arrived yet. */
+  const graphLoading = !isMockApi() && syncStatus === 'connecting' && graph.nodes.length === 0;
   const runAllEstimate = graph.nodes.filter((n) => willRun(n) && !n.bypass).reduce((s, n) => s + (runCost(n) ?? 0), 0);
   const planRows: RunPlanRow[] = useMemo(
     () =>
@@ -781,8 +804,8 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
         const shot = `v${s.n}`;
         ids.push(key, shot);
         ops.push(
-          { op: 'addNode', tempId: key, kind: 'image', title: `${s.title} keyframe`, params: { ...NODE_DEFAULTS.image, prompt: s.visual, mode: 'Image to image', refs: ['m1'] }, position: { x: 448 + i * 600, y } },
-          { op: 'addNode', tempId: shot, kind: 'video', title: `Shot ${String.fromCharCode(65 + i)}: ${s.title}`, params: { ...NODE_DEFAULTS.video, seconds: s.seconds, prompt: s.visual, length: s.seconds, runCost: mockVideoCredits(s.seconds) }, position: { x: 448 + i * 600 + 270, y } },
+          { op: 'addNode', tempId: key, kind: 'image', title: `${s.title} keyframe`, params: { ...withCatalogModel(nodeDefaults('image'), 'image', models), prompt: s.visual, mode: 'Image to image', refs: isMockApi() ? ['m1'] : [] }, position: { x: 448 + i * 600, y } },
+          { op: 'addNode', tempId: shot, kind: 'video', title: `Shot ${String.fromCharCode(65 + i)}: ${s.title}`, params: { ...withCatalogModel(nodeDefaults('video'), 'video', models), seconds: s.seconds, prompt: s.visual, length: s.seconds, ...mockRunCost(s.seconds) }, position: { x: 448 + i * 600 + 270, y } },
           { op: 'connect', from: { node: key, port: 'out' }, to: { node: shot, port: 'frame' } },
         );
         if (from) ops.push({ op: 'connect', from: { node: from, port: 'out' }, to: { node: key, port: 'prompt' } });
@@ -792,7 +815,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
       const r = commit(ops);
       return r.ok ? ids.length : 0;
     },
-    [session, commit],
+    [session, commit, models],
   );
 
   const buildPlan = useCallback((plan: AgentPlan) => buildShots(plan.shots, plan.title), [buildShots]);
@@ -952,7 +975,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
         tempId,
         kind,
         title: r.name,
-        params: kind === 'audio' ? { voice: r.name, seconds: 0, wave: [], runCost: MOCK_PRICE.voice } : { media: 'image', label: r.meta, tone: r.tone, refId: r.id },
+        params: kind === 'audio' ? { voice: r.name, seconds: 0, wave: [], ...(isMockApi() ? { runCost: mockData().canvas.MOCK_PRICE.voice } : {}) } : { media: 'image', label: r.meta, tone: r.tone, refId: r.id },
         position: at,
       });
     } else {
@@ -962,7 +985,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
         tempId,
         kind,
         title: intl.formatMessage({ id: `canvas.add.newTitle.${kind}` }),
-        params: { ...withCatalogModel(NODE_DEFAULTS[kind] ?? {}, kind, models), ...(pick.variant ? { source: pick.variant } : {}) },
+        params: { ...withCatalogModel(nodeDefaults(kind), kind, models), ...(pick.variant ? { source: pick.variant } : {}) },
         position: at,
       });
     }
@@ -1041,7 +1064,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
         tempId: `t${i}`,
         kind: n.kind,
         title: n.title,
-        params: { ...(NODE_DEFAULTS[n.kind] ?? {}), ...(n.prompt ? { prompt: n.prompt } : {}) },
+        params: { ...withCatalogModel(nodeDefaults(n.kind), n.kind, models), ...(n.prompt ? { prompt: n.prompt } : {}) },
         position: { x: Math.round(center.x + i * 330), y: Math.round(center.y) },
       });
       const prev = tpl.nodes[i - 1];
@@ -1073,7 +1096,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
           title: it.name,
           params:
             it.group === 'voice'
-              ? { voice: it.name, voiceId: it.id, seconds: 0, wave: [], runCost: MOCK_PRICE.voice }
+              ? { voice: it.name, voiceId: it.id, seconds: 0, wave: [], ...(isMockApi() ? { runCost: mockData().canvas.MOCK_PRICE.voice } : {}) }
               : {
                   media: /^video/i.test(it.meta) || (it.glyph.type === 'icon' && it.glyph.icon === 'video') ? 'video' : it.glyph.type === 'wave' ? 'audio' : 'image',
                   label: it.meta,
@@ -1187,7 +1210,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
       return { ...row, status: 'done' };
     };
     if (!isMockApi()) return (serverRuns ?? sessionRuns).map((r) => live(r.nodeId, r));
-    return [...sessionRuns.map((r) => live(r.nodeId, r)), ...MOCK_RUNS.map((r) => live(r.nodeId, r))];
+    return [...sessionRuns.map((r) => live(r.nodeId, r)), ...mockData().canvas.MOCK_RUNS.map((r) => live(r.nodeId, r))];
   }, [graph.nodes, sessionRuns, serverRuns]);
 
   const pickRefs = (items: RefItem[]) => {
@@ -1349,7 +1372,15 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
   return (
     <NodeActionsContext.Provider value={actions}>
       <EdgeActionsContext.Provider value={edgeActions}>
-        <div ref={rootRef} className={canvas.flow} style={bg}>
+        <div ref={rootRef} className={canvas.flow} style={bg} aria-busy={graphLoading || undefined}>
+          {graphLoading ? (
+            // Real mode, first snapshot in flight: node-shaped placeholders where the graph will appear.
+            <div aria-hidden="true" data-testid="canvas-skeleton" style={{ position: 'absolute', left: '50%', top: '42%', transform: 'translate(-50%, -50%)', display: 'flex', gap: 48, zIndex: 1, pointerEvents: 'none' }}>
+              <Skeleton width={240} height={160} radius={16} />
+              <Skeleton width={240} height={263} radius={16} />
+              <Skeleton width={240} height={193} radius={16} />
+            </div>
+          ) : null}
           <ReactFlow<CardNode, WireEdge>
             nodes={rfNodes}
             edges={rfEdges}
@@ -1456,7 +1487,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
             ]}
             trigger={(t) => (
               <button {...t} type="button" className={canvas.project} aria-label={intl.formatMessage({ id: 'canvas.projectMenu' }, { title: project.title })}>
-                {project.title}
+                {project.title || (isMockApi() ? null : <Skeleton width={140} height={14} />)}
                 <CanvasIcon name="caret" size={12} strokeWidth={2.4} className={canvas.caret} />
               </button>
             )}
@@ -1479,7 +1510,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
         >
           <CanvasIcon name="coin" size={15} stroke="var(--c-text-3)" />
           <span className={canvas.creditsValue} data-testid="credits-balance">
-            {intl.formatNumber(credits.available)}
+            {sessionStatus === 'loading' ? <Skeleton width={44} height={13} /> : intl.formatNumber(credits.available)}
           </span>
           <span className={canvas.creditsPlus}>
             <CanvasIcon name="plus" size={13} strokeWidth={2.2} stroke="var(--c-text-1)" />
@@ -1585,7 +1616,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
         />
       ) : null}
 
-      {historyP.mounted ? <HistoryDrawer state={historyP.state} onClose={() => setHistoryOpen(false)} rows={historyRows} onOpen={(id) => selectNode(id, true)} /> : null}
+      {historyP.mounted ? <HistoryDrawer state={historyP.state} onClose={() => setHistoryOpen(false)} rows={historyRows} loading={!isMockApi() && serverRuns === null} onOpen={(id) => selectNode(id, true)} /> : null}
 
       {templatesP.mounted ? <TemplatesPanel
           state={templatesP.state}
@@ -1635,7 +1666,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
           onClose={close}
           title={scriptNode?.title ?? ''}
           version={String(scriptNode?.params.versionLabel ?? '')}
-          rows={scriptRows ?? SCRIPT_ROWS}
+          rows={scriptRows ?? (isMockApi() ? mockData().canvas.SCRIPT_ROWS : [])}
           onChange={saveScript}
           onGenerate={(rows) => generateStoryboard(rows, scriptNode?.id)}
           initialMenu={scriptMenu}
@@ -1805,8 +1836,17 @@ function withCatalogModel(params: Record<string, unknown>, kind: NodeKind, model
   if (isMockApi() || !models?.length || (kind !== 'image' && kind !== 'video')) return params;
   const byName = models.find((m) => m.kind === kind && m.name === params.model);
   const fallback = models.find((m) => m.kind === kind && m.default && !m.hidden);
-  const id = byName?.id ?? fallback?.id;
-  return id ? { ...params, model: id } : params;
+  const m = byName ?? fallback;
+  if (!m) return params;
+  // The model's own defaults (resolution, length, ratio) replace the design's, within what it supports.
+  const out: Record<string, unknown> = { ...params, model: m.id };
+  if (m.resolutions?.length && !m.resolutions.includes(String(params.resolution))) out.resolution = m.defaultResolution ?? m.resolutions[0];
+  if (m.ratios?.length && !m.ratios.includes(String(params.ratio))) out.ratio = m.ratios[0];
+  if (kind === 'video' && m.defaultSeconds && m.seconds && (Number(params.length) < m.seconds.min || Number(params.length) > m.seconds.max)) {
+    out.length = m.defaultSeconds;
+    out.seconds = m.defaultSeconds;
+  }
+  return out;
 }
 
 /** Result thumbnail of a node's active version (real mode: signed redirect per asset). */

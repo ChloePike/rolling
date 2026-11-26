@@ -1,4 +1,5 @@
-import { Popover, useToast } from '@rolling/ui';
+import { Popover, Skeleton, useToast } from '@rolling/ui';
+import { LoadError } from '@/lib/loading';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { FormattedMessage, FormattedNumber, useIntl } from 'react-intl';
@@ -72,11 +73,15 @@ function matches(run: RunRow, q: string) {
   return hay.includes(q.toLowerCase());
 }
 
+const STAT_KEYS = ['used', 'running', 'success', 'refunded'] as const;
+
 /** `/activity` (Tasks.dc.html). */
 export function ActivityPage({ initialFilter = 'all' }: { initialFilter?: ActivityFilter }) {
   const intl = useIntl();
   const toast = useToast();
-  const { data } = useActivity();
+  const activity = useActivity();
+  const { data } = activity;
+  const loading = data === undefined && !activity.isError;
   const [filter, setFilter] = useState<ActivityFilter>(initialFilter);
   const [query, setQuery] = useState('');
   const [range, setRange] = useState<ActivityRange>('last7');
@@ -290,7 +295,18 @@ export function ActivityPage({ initialFilter = 'all' }: { initialFilter?: Activi
         />
       </div>
 
-      <div className={styles.stats}>
+      <div className={styles.stats} aria-busy={loading || undefined}>
+        {loading
+          ? STAT_KEYS.map((key) => (
+              <div key={key} className={styles.stat} data-testid="stat-skeleton">
+                <span className={styles.statKey}>
+                  <FormattedMessage id={`activity.stat.${key}`} />
+                </span>
+                <Skeleton width={72} height={26} />
+                <Skeleton text width="70%" height={12} />
+              </div>
+            ))
+          : null}
         {stats.map((st, i) => (
           <div key={st.key} className={cx(styles.stat, motion.stagger)} style={{ '--i': i } as CSSProperties}>
             <span className={styles.statKey}>
@@ -365,10 +381,24 @@ export function ActivityPage({ initialFilter = 'all' }: { initialFilter?: Activi
               {rows.map((run, i) => (
                 <Row key={run.id} run={run} index={i} onAction={act} />
               ))}
+              {loading
+                ? [0, 1, 2, 3, 4].map((i) => (
+                    <div key={i} className={cx(styles.cols, styles.row)} role="row" aria-hidden="true" data-testid="row-skeleton">
+                      <Skeleton text height={14} width="80%" />
+                      <Skeleton text height={14} width="60%" />
+                      <Skeleton text height={14} width="70%" />
+                      <Skeleton height={22} width={72} round />
+                      <Skeleton text height={14} width={40} />
+                      <Skeleton text height={14} width={56} />
+                      <span />
+                    </div>
+                  ))
+                : null}
+              {activity.isError && !data ? <LoadError onRetry={() => activity.refetch()} retrying={activity.isFetching} /> : null}
               {data && rows.length === 0 && (
-                <div className={cx(styles.empty, motion.enter)} role="row">
+                <div className={cx(styles.empty, motion.enter)} role="row" data-empty="">
                   <span role="cell">
-                    <FormattedMessage id="activity.empty" />
+                    <FormattedMessage id={runs.length === 0 ? 'activity.none' : 'activity.empty'} />
                   </span>
                 </div>
               )}

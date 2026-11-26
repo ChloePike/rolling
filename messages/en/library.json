@@ -192,5 +192,7 @@
   "library.assets.deleted": "{name} deleted.",
   "library.assets.cancel": "Cancel",
   "library.assets.save": "Save",
-  "library.assets.close": "Close"
+  "library.assets.close": "Close",
+  "library.assets.none": "No assets yet. Upload files or generate on a canvas and they show up here.",
+  "library.assets.voices.none": "No voices yet. Upload a clear sample to clone a voice."
 }
