@@ -23,7 +23,20 @@ const CONTENT_TYPES: Record<string, string> = {
 
 export const WEB_PREFIX = "_web";
 
-function contentType(path: string): string {
+/** The PWA service worker script; the browser checks it for updates on every navigation. */
+export const SERVICE_WORKER = "sw.js";
+
+/**
+ * Hashed build output (`assets/*`) never changes under a name: cache for a
+ * year. Everything else — `index.html`, `sw.js`, `manifest.webmanifest`,
+ * icons — revalidates every time (ETag, 304), so a deploy reaches clients at
+ * once and the service worker sees its new version.
+ */
+export function cacheControl(path: string): string {
+  return path.startsWith("assets/") ? "public, max-age=31536000, immutable" : "no-cache";
+}
+
+export function contentType(path: string): string {
   const ext = path.slice(path.lastIndexOf(".") + 1).toLowerCase();
   return CONTENT_TYPES[ext] ?? "application/octet-stream";
 }
@@ -49,10 +62,10 @@ export async function serveSpaFromR2(bucket: R2Bucket, request: Request): Promis
   const headers = new Headers({
     "content-type": contentType(servedPath),
     etag: object.httpEtag,
-    "cache-control": servedPath.startsWith("assets/")
-      ? "public, max-age=31536000, immutable"
-      : "no-cache",
+    "cache-control": cacheControl(servedPath),
   });
+  // The PWA service worker (apps/web/src/sw.ts) controls the whole origin.
+  if (servedPath === SERVICE_WORKER) headers.set("service-worker-allowed", "/");
   if (request.headers.get("if-none-match") === object.httpEtag) {
     return new Response(null, { status: 304, headers });
   }

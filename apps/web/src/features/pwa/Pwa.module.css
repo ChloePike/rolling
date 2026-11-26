@@ -1,0 +1,35 @@
+/* PWA.dc.html "Offline and updates" and "Install prompt". */
+
+.offline{
+  min-height:100vh;box-sizing:border-box;display:flex;align-items:center;justify-content:center;padding:24px;background:var(--c-bg);
+}
+.offlineCard{
+  display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;padding:28px;border-radius:14px;
+  background:var(--c-bg);box-shadow:inset 0 0 0 1px var(--c-surface-5);
+}
+.offlineTitle{margin:0;font-size:var(--fs-prompt);font-weight:700;color:var(--c-text-1)}
+.offlineBody{margin:0;max-width:320px;font-size:var(--fs-control);line-height:1.5;color:var(--c-text-3)}
+
+.update{
+  position:fixed;left:50%;bottom:24px;z-index:79;translate:-50% 0;
+  display:flex;align-items:center;gap:12px;height:40px;padding:0 6px 0 14px;border-radius:var(--r-button);
+  background:var(--c-surface-float);color:var(--c-text-1);box-shadow:var(--shadow-toast);font-size:var(--fs-control);
+  animation:rise var(--m-base) var(--m-ease-standard);
+}
+.update .reload{height:28px}
+
+.install{
+  position:fixed;left:24px;bottom:24px;z-index:46;width:min(480px,calc(100vw - 48px));box-sizing:border-box;
+  display:flex;align-items:center;gap:12px;padding:14px;border-radius:14px;
+  background:var(--c-surface-4);color:var(--c-text-1);box-shadow:var(--shadow-float);
+  animation:rise var(--m-base) var(--m-ease-standard);
+}
+.installIcon{flex:none;width:40px;height:40px;border-radius:10px;display:block}
+.installText{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.installTitle{font-size:var(--fs-body);font-weight:700}
+.installBody{font-size:var(--fs-meta);line-height:1.4;color:var(--c-text-3)}
+
+@keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){
+  @keyframes rise{from{opacity:0}to{opacity:1}}
+}

@@ -3,6 +3,7 @@ import { useToast } from '@rolling/ui';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useIntl } from 'react-intl';
 import { getPrefs } from '@/lib/prefs';
+import { noteFinishedVideo } from '@/lib/pwa/install';
 import { checkoutPlan, checkoutTopUp, getCredits, getSession, MockFlowError, onCheckoutResume, savePendingAction, startMockRun, takePendingAction, useCredits, type MockRun } from '@/lib/session';
 import { Paywall } from './Paywall';
 import { RunConfirm } from './RunConfirm';
@@ -176,6 +177,7 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
             const assetId = r.items.find((i) => i.assetId)?.assetId ?? null;
             const finished: FinishedRun = { id: runId, cost: r.spent, assetId, run: r };
             run.onDone?.(finished);
+            if (r.items.some((i) => i.kind === 'video' && i.status === 'succeeded')) noteFinishedVideo();
             toast.show({
               message: t('overlays.run.done', { label: run.actionLabel }),
               action: run.viewLabel && run.onDone ? { label: run.viewLabel, onAction: () => run.onDone?.(finished) } : undefined,
@@ -242,6 +244,7 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
       (r) => {
         setRunning((n) => n - 1);
         run.onDone?.(r);
+        if (run.kind === 'video') noteFinishedVideo();
         toast.show({
           message: t('overlays.run.done', { label: run.actionLabel }),
           action: run.viewLabel && run.onDone ? { label: run.viewLabel, onAction: () => run.onDone?.(r) } : undefined,

@@ -1,10 +1,11 @@
 import { cx } from '@rolling/ui';
 import { Link } from '@tanstack/react-router';
-import { useEffect, useRef, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useSyncExternalStore, type KeyboardEvent } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import styles from './AccountMenu.module.css';
 import { PLANS } from '@rolling/core/pricing/config';
 import { useMembers } from '@/features/account/api';
+import { installKind, openInstall, subscribeInstall } from '@/lib/pwa/install';
 import { setActiveWorkspace, useSession } from '@/lib/session';
 import { accountHandle, accountInitial, accountName } from './account';
 import { AvatarFace } from './AvatarFace';
@@ -19,6 +20,7 @@ const P = {
   members: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 3a4 4 0 1 1 0 8 4 4 0 0 1 0-8z M22 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75',
   help: 'M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20z M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3 M12 17h.01',
   logout: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4 M16 17l5-5-5-5 M21 12H9',
+  install: 'M12 3v12 M7 10l5 5 5-5 M5 21h14',
   check: 'M20 6 9 17l-5-5',
 };
 
@@ -45,6 +47,8 @@ export function AccountMenuContent({ onClose, onLogout, onHelp }: { onClose: () 
   const { planId, plan } = session;
   const planLabel = planId ? (plan?.label ?? PLANS[planId].label) : null;
   const members = useMembers();
+  // PWA.dc.html: the install card is available any time from here while the app can be installed.
+  const canInstall = useSyncExternalStore(subscribeInstall, installKind, () => null) !== null;
   const memberCount = members.data ? members.data.filter((m) => !m.invited).length : null;
   const workspaces = session.workspaces.map((w) => ({
     ...w,
@@ -153,6 +157,23 @@ export function AccountMenuContent({ onClose, onLogout, onHelp }: { onClose: () 
             {'note' in l && l.note ? <span className={styles.note}>{l.note}</span> : null}
           </Link>
       ))}
+      {canInstall ? (
+        <button
+          type="button"
+          role="menuitem"
+          tabIndex={-1}
+          className={styles.item}
+          onClick={() => {
+            onClose();
+            openInstall();
+          }}
+        >
+          <I d={P.install} />
+          <span className={styles.itemLabel}>
+            <FormattedMessage id="pwa.install.menu" />
+          </span>
+        </button>
+      ) : null}
       <button
         type="button"
         role="menuitem"

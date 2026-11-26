@@ -38,6 +38,10 @@ export async function guardRoute(location: { pathname: string; href: string }): 
     void ensureMe().catch(() => undefined);
     return;
   }
+  // Offline (the service worker served the app shell): the session cannot be
+  // checked and the query would wait for the network; the root shows the
+  // offline page, and coming back online re-runs this guard.
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
   const me = await ensureMe();
   if (!me) throw redirect({ to: '/login', search: { redirect: location.href } });
 }

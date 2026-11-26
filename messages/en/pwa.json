@@ -1,0 +1,15 @@
+{
+  "pwa.update.message": "A new version is ready",
+  "pwa.update.reload": "Reload",
+  "pwa.offline.title": "You’re offline",
+  "pwa.offline.body": "You can keep arranging the canvas and editing the timeline. Generating and exporting need a connection.",
+  "pwa.offline.retry": "Try again",
+  "pwa.install.title": "Install the app",
+  "pwa.install.body": "Opens in its own window and from your dock. Same account, same projects.",
+  "pwa.install.notNow": "Not now",
+  "pwa.install.install": "Install",
+  "pwa.install.ios.title": "Install on iPhone or iPad",
+  "pwa.install.ios.body": "Tap Share, then Add to Home Screen.",
+  "pwa.install.ios.done": "Got it",
+  "pwa.install.menu": "Install the app"
+}

@@ -4,7 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
-    <meta name="theme-color" content="#0B0B0C" />
+    <meta name="theme-color" content="#0B0B0C" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)" />
     <script>
       /*
        * D-010: apply the saved theme before first paint (no flash), and keep the
@@ -24,8 +25,9 @@
           return t === 'light' || t === 'dark' ? t : light && light.matches ? 'light' : 'dark';
         }
         function sync() {
-          var meta = document.querySelector('meta[name="theme-color"]');
-          if (meta) meta.setAttribute('content', active() === 'light' ? '#FFFFFF' : '#0B0B0C');
+          var color = active() === 'light' ? '#FFFFFF' : '#0B0B0C';
+          var metas = document.querySelectorAll('meta[name="theme-color"]');
+          for (var i = 0; i < metas.length; i++) metas[i].setAttribute('content', color);
         }
         sync();
         if (light && light.addEventListener) light.addEventListener('change', sync);
@@ -33,6 +35,13 @@
       })();
     </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- PWA (handoff 8). vite-plugin-pwa adds the manifest link at build. -->
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon-180.png" sizes="180x180" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Rolling" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <meta name="application-name" content="Rolling" />
     <title>Rolling</title>
   </head>
   <body>

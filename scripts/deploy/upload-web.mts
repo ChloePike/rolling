@@ -7,6 +7,7 @@
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { cacheControl, contentType, SERVICE_WORKER } from '../../apps/api/src/lib/r2Static.ts';
 
 const accountId = process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
 const token = process.env.CLOUDFLARE_API_TOKEN ?? '';
@@ -24,25 +25,34 @@ function walk(dir: string): string[] {
   });
 }
 
-async function put(key: string, body: Buffer): Promise<void> {
+async function put(key: string, path: string, body: Buffer): Promise<void> {
   const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/r2/buckets/${bucket}/objects/${key
     .split('/')
     .map(encodeURIComponent)
     .join('/')}`;
   for (let attempt = 1; ; attempt++) {
-    const res = await fetch(url, { method: 'PUT', headers: { authorization: `Bearer ${token}` }, body });
+    // The Worker sets these from the path when serving (r2Static.ts); stored too for direct reads.
+    const headers = { authorization: `Bearer ${token}`, 'content-type': contentType(path), 'cache-control': cacheControl(path) };
+    const res = await fetch(url, { method: 'PUT', headers, body });
     if (res.ok) return;
     if (attempt >= 4) throw new Error(`PUT ${key} failed: ${res.status} ${await res.text()}`);
     await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
   }
 }
 
-const files = walk(distDir);
-// Upload index.html last so a half-finished upload never points at missing assets.
-files.sort((a, b) => Number(a.endsWith('index.html')) - Number(b.endsWith('index.html')));
+// `_headers` is for the Workers assets binding only; the R2 path sets headers in code.
+const files = walk(distDir).filter((f) => relative(distDir, f) !== '_headers');
+/**
+ * Order: assets first, then `index.html`, then the service worker last, so a
+ * half-finished upload never points at missing files and a client that sees
+ * the new `sw.js` can precache everything it lists.
+ */
+const rank = (f: string) => (relative(distDir, f) === SERVICE_WORKER ? 2 : relative(distDir, f) === 'index.html' ? 1 : 0);
+files.sort((a, b) => rank(a) - rank(b));
 for (const file of files) {
-  const key = `_web/${relative(distDir, file)}`;
-  await put(key, readFileSync(file));
+  const path = relative(distDir, file);
+  const key = `_web/${path}`;
+  await put(key, path, readFileSync(file));
   console.log(`uploaded ${key}`);
 }
 console.log(`done: ${files.length} files`);

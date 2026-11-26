@@ -1,0 +1,11 @@
+# Workers static assets (the `assets` binding; local dev and CI deploys). The R2-served
+# path sets the same headers in apps/api/src/lib/r2Static.ts.
+/sw.js
+  Cache-Control: no-cache
+  Service-Worker-Allowed: /
+/manifest.webmanifest
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

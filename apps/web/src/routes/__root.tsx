@@ -1,5 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { createRootRouteWithContext, Outlet } from '@tanstack/react-router';
+import { InstallCard, OfflinePage, UpdatePrompt, useOfflineGate } from '@/features/pwa';
 import { TransfersDock } from '@/features/transfers';
 import { guardRoute } from '@/lib/session/guard';
 import { SessionRuntime } from '@/lib/session/SessionRuntime';
@@ -16,13 +17,19 @@ export const Route = createRootRouteWithContext<RouterContext>()({
   notFoundComponent: NotFound,
 });
 
-/** Every route: the page plus the transfers dock (shared upload/download queue, D-011). */
+/**
+ * Every route: the page plus the transfers dock (shared upload/download queue,
+ * D-011) and the PWA layer (offline page, update prompt, install card).
+ */
 function Root() {
+  const { offline, retry } = useOfflineGate();
   return (
     <>
-      <Outlet />
+      {offline ? <OfflinePage onRetry={retry} /> : <Outlet />}
       <SessionRuntime />
       <TransfersDock />
+      <UpdatePrompt />
+      <InstallCard />
     </>
   );
 }

@@ -7,6 +7,8 @@ import { useIntl } from 'react-intl';
 import { I18nProvider } from '@/i18n/I18nProvider';
 import { routeTree } from '@/routeTree.gen';
 import { queryClient } from '@/lib/api/queryClient';
+import { startInstallWatch } from '@/lib/pwa/install';
+import { registerServiceWorker } from '@/lib/pwa/register';
 import '@/styles/app.css';
 
 const router = createRouter({
@@ -26,6 +28,11 @@ function Toasts({ children }: { children: ReactNode }) {
   const intl = useIntl();
   return <ToastProvider dismissLabel={intl.formatMessage({ id: 'toast.dismiss' })}>{children}</ToastProvider>;
 }
+
+// PWA (handoff 8): catch the install signal early; register the service worker after load.
+startInstallWatch();
+if (document.readyState === 'complete') registerServiceWorker();
+else window.addEventListener('load', registerServiceWorker, { once: true });
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root');
