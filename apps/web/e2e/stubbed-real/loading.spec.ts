@@ -130,3 +130,18 @@ test('tools: Quick Create has an empty prompt, no scope or reference chips, and 
   });
   await expect(page.getByTestId('tool-composer').locator('textarea')).toHaveValue('');
 });
+
+test('asset picker: a modal with skeletons, then the empty states of My assets and the public library; no demo items', async ({ page }) => {
+  await page.goto('/create/avatar');
+  await page.locator('[data-look="character"]').click();
+  const d = page.locator('[role="dialog"][aria-modal="true"]').filter({ has: page.locator('[data-picker-scroll]') });
+  await expect(d).toBeVisible();
+  await watchForMockStrings(page, async () => {
+    await expect(d.locator('[aria-busy="true"] [data-skeleton]').first()).toBeVisible();
+    await expect(d.locator('[data-picker-empty]')).toHaveText('Nothing in this category yet.', { timeout: 15_000 });
+    await d.getByRole('tab', { name: 'My assets' }).click();
+    await expect(d.locator('[data-picker-empty]')).toHaveText('Nothing here yet. Upload a file or drop it here.', { timeout: 15_000 });
+  });
+  await expect(d.getByRole('button', { name: 'Use' })).toBeDisabled();
+  await expectNoMockStrings(page);
+});

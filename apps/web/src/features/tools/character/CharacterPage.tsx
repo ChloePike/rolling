@@ -15,7 +15,8 @@ import type { SettingsGroupDef } from '../shared/SettingsGroup';
 import { useToolSettings, type ToolCaps } from '../shared/settings';
 import { ToolLayout, type ToolOverlay } from '../shared/ToolLayout';
 import layout from '../shared/ToolLayout.module.css';
-import { useFilePicker } from '../shared/useFilePicker';
+import { toPick, type LibraryPick } from '../shared/LibraryPicker';
+import { usePickAsset } from '../shared/usePickAsset';
 import { modelIdOf, segModels, TOOL_NEEDS, useToolModels } from '../shared/useToolModels';
 import type { ComposerPill } from '../types';
 import styles from './Character.module.css';
@@ -55,15 +56,17 @@ export function CharacterPage({ initialOverlay, models: modelsOverride, plan: pl
   const [height, setHeight] = useState(demo?.characterSample.height ?? '');
   const [pick, setPick] = useState<Pick>(() => demo?.characterSample.pick ?? { hair: 'fromDescription', body: null, wear: null, style: 'photoreal' });
   const [text, setText] = useState(demo?.characterPrompt ?? '');
+  /** Hair and outfit picked from the public library (or the user's assets) instead of a chip: a reference image plus its prompt text. */
+  const [libLook, setLibLook] = useState<Record<'hair' | 'wear', LibraryPick | null>>({ hair: null, wear: null });
 
   const pct = (v: number) => intl.formatNumber(v / 100, { style: 'percent' });
   const styleLabel = t(`tools.character.style.${pick.style}`);
   const summary = [
     age && t('tools.character.age.value', { n: age }),
     height && t('tools.character.height.value', { n: height }),
-    pick.hair !== 'fromDescription' || demo ? t(`tools.character.hair.${pick.hair}`) : '',
+    libLook.hair ? libLook.hair.title : pick.hair !== 'fromDescription' || demo ? t(`tools.character.hair.${pick.hair}`) : '',
     pick.body ? t(`tools.character.body.${pick.body}`) : '',
-    pick.wear ? t(`tools.character.wear.${pick.wear}`) : '',
+    libLook.wear ? libLook.wear.title : pick.wear ? t(`tools.character.wear.${pick.wear}`) : '',
     styleLabel,
   ].filter(Boolean) as string[];
 
@@ -102,24 +105,52 @@ export function CharacterPage({ initialOverlay, models: modelsOverride, plan: pl
   /** The reference pictures' upload ids (resolved to asset ids before the quote). */
   const [refIds, setRefIds] = useState<Record<'face' | 'outfit', string | null>>({ face: null, outfit: null });
   const [refTarget, setRefTarget] = useState<'face' | 'outfit'>('face');
-  const refPicker = useFilePicker('image/*', (file, uploadId) => {
-    setRefs((r) => ({ ...r, [refTarget]: file.name }));
-    setRefIds((r) => ({ ...r, [refTarget]: uploadId }));
-    toast.show({ message: t('tools.toast.refAdded', { name: file.name }) });
+  const refPicker = usePickAsset({ kinds: ['image', 'character'], categories: ['portrait'], tab: 'mine' }, (pick) => {
+    setRefs((r) => ({ ...r, [refTarget]: pick.name }));
+    setRefIds((r) => ({ ...r, [refTarget]: pick.assetId }));
+    toast.show({ message: t('tools.toast.refAdded', { name: pick.name }) });
   });
+  const [lookTarget, setLookTarget] = useState<'hair' | 'wear'>('hair');
+  const lookPicker = usePickAsset({ kinds: ['image'], tab: 'public' }, (p0) => {
+    const item = toPick(p0);
+    setLibLook((c) => ({ ...c, [lookTarget]: item }));
+    toast.show({ message: t('tools.toast.presetSet', { name: t(`tools.character.${lookTarget}`), value: item.title }) });
+  });
+  const LOOK_CATEGORIES = { hair: ['hairstyle'], wear: ['outfit', 'outfit_anime', 'outfit_historical'] } as const;
 
   const chipGroup = (key: 'hair' | 'body' | 'wear', list: string[]) => (
     <AsideCard testId={key}>
-      <h2 className={layout.cardTitle}>{t(`tools.character.${key}`)}</h2>
+      <div className={styles.lookHead}>
+        <h2 className={layout.cardTitle}>{t(`tools.character.${key}`)}</h2>
+        {key !== 'body' ? (
+          // Hair and outfit can also come from the public library (or the user's assets): the shared asset picker modal.
+          <button
+            type="button"
+            className={styles.libLink}
+            aria-pressed={!!libLook[key]}
+            aria-haspopup="dialog"
+            data-look-library={key}
+            onClick={() => {
+              setLookTarget(key);
+              lookPicker.open({ title: t(`tools.character.${key}`), categories: [...LOOK_CATEGORIES[key]] });
+            }}
+          >
+            {libLook[key]?.title ?? t('tools.character.reference.library')}
+          </button>
+        ) : null}
+      </div>
       <div className={controls.chips}>
         {list.map((v) => (
           <button
             key={v}
             type="button"
             className={controls.chip}
-            aria-pressed={pick[key] === v}
+            aria-pressed={pick[key] === v && !(key !== 'body' && libLook[key])}
             // Body and outfit can be left out (the description decides); hair falls back to "From description".
-            onClick={() => setPick((c) => ({ ...c, [key]: c[key] === v && key !== 'hair' ? null : v }))}
+            onClick={() => {
+              setPick((c) => ({ ...c, [key]: c[key] === v && key !== 'hair' && !(key === 'wear' && libLook.wear) ? null : v }));
+              if (key !== 'body') setLibLook((c) => ({ ...c, [key]: null }));
+            }}
           >
             {t(`tools.character.${key}.${v}`)}
           </button>
@@ -132,7 +163,8 @@ export function CharacterPage({ initialOverlay, models: modelsOverride, plan: pl
     <>
       <AsideCard title={t('tools.character.reference')} hint={t('tools.character.reference.hint')} testId="reference">
         <div className={styles.refs}>
-          {refPicker.input}
+          {refPicker.element}
+          {lookPicker.element}
           {(['face', 'outfit'] as const).map((k) => (
             <button
               key={k}
@@ -142,7 +174,7 @@ export function CharacterPage({ initialOverlay, models: modelsOverride, plan: pl
               aria-label={refs[k] ? t('tools.character.reference.replace', { file: refs[k]! }) : undefined}
               onClick={() => {
                 setRefTarget(k);
-                refPicker.open();
+                refPicker.open({ title: t(`tools.character.reference.${k}`), ...(k === 'outfit' ? { categories: ['outfit', 'outfit_anime', 'outfit_historical'] as const } : {}) });
               }}
             >
               <ToolIcon name={refs[k] ? 'check' : k === 'face' ? 'upload' : 'shirt'} size={18} />
@@ -228,12 +260,13 @@ export function CharacterPage({ initialOverlay, models: modelsOverride, plan: pl
       spec={(prompt) => {
         // Full body, then the face from it; saved to Characters when it finishes (docs/api.md → Runs).
         const traits = [...summary, adv && p.hairCustom.trim() ? p.hairCustom.trim() : '', adv && p.bodyCustom.trim() ? p.bodyCustom.trim() : ''].filter(Boolean);
-        const referenceAssetIds = [refIds.face, refIds.outfit].filter((x): x is string => !!x);
+        const referenceAssetIds = [refIds.face, refIds.outfit, libLook.hair?.assetId, libLook.wear?.assetId].filter((x): x is string => !!x);
+        const looks = [libLook.hair, libLook.wear].flatMap((x) => (x?.promptEn ? [x.promptEn] : []));
         return {
           kind: 'character',
           name: summary.slice(0, 3).join(', ') || t('tools.character.title'),
           model: modelIdOf(models, model),
-          prompt: [prompt.trim(), traits.join(', ')].filter(Boolean).join('. '),
+          prompt: [prompt.trim(), traits.join(', '), ...looks].filter(Boolean).join('. '),
           title: t('tools.character.title'),
           ...(s.resolution ? { resolution: s.resolution } : {}),
           ...(adv && p.neg.trim() ? { negativePrompt: p.neg.trim() } : {}),

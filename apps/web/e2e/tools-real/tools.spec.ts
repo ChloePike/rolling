@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { DEMO_LITERALS, stubApi } from './support';
+import { picker, uploadFromPicker, use } from '../support/picker';
 
 /**
  * Tool pages on the production client (real mode) with the API stubbed:
@@ -87,29 +88,42 @@ test('Remix: presets load the public library, a picked pose shows in its row, an
   await expect(action).toContainText('Not set');
   await expect(page.locator('[data-preset="outfit"]')).toContainText('Not set');
   await action.click();
-  const picker = page.getByRole('dialog', { name: 'Action' });
-  await expect(picker.getByRole('tab')).toHaveText(['Poses', 'Depth poses']);
-  await expect(picker.getByRole('option')).toHaveCount(24);
-  // Infinite scroll: the next page loads at the end of the grid.
-  await picker.getByRole('option').last().scrollIntoViewIfNeeded();
-  await expect(picker.getByRole('option')).toHaveCount(30);
-  await picker.getByRole('searchbox').fill('number 7');
-  await expect(picker.getByRole('option')).toHaveCount(1);
-  await picker.getByRole('option', { name: /Pose number 7/ }).click();
+  // A modal, never a popover: the asset picker on the row's public library categories.
+  const poses = picker(page, 'Action');
+  await expect(poses.getByRole('tab')).toHaveText(['My assets', 'Public library', 'Recent']);
+  await expect(poses.getByRole('tab', { name: 'Public library' })).toHaveAttribute('aria-selected', 'true');
+  const chips = poses.getByRole('group', { name: 'Public library categories' }).getByRole('button');
+  await expect(chips.first()).toHaveText('All');
+  await expect(chips.nth(1)).toHaveText('Poses');
+  await expect(chips.nth(1)).toHaveAttribute('aria-pressed', 'true');
+  const grid = poses.getByRole('listbox');
+  // Infinite scroll: pages of 24; the next one loads when the (virtualized) grid's window nears its end.
+  await poses.locator('[data-picker-scroll]').evaluate((el) => el.scrollTo(0, el.scrollHeight));
+  await expect(grid).toHaveAttribute('data-count', '30');
+  expect(calls.library.filter((v) => v.category === 'pose').map((v) => v.after ?? null)).toEqual(expect.arrayContaining([null, '24']));
+  // Only the rows in view are in the DOM.
+  expect(await poses.getByRole('option').count()).toBeLessThanOrEqual(30);
+  await poses.getByRole('searchbox').fill('number 7');
+  await expect(grid).toHaveAttribute('data-count', '1');
+  await poses.getByRole('option', { name: /Pose number 7/ }).click();
+  await use(poses);
   await expect(action).toContainText('Pose number 7');
   expect(calls.library.every((v) => v.category === 'pose' || v.category === 'pose_depth')).toBe(true);
 
   await page.locator('[data-preset="outfit"]').click();
-  const outfits = page.getByRole('dialog', { name: 'Full outfit' });
-  await expect(outfits.getByRole('tab')).toHaveText(['Outfits', 'Anime outfits', 'Historical']);
+  const outfits = picker(page, 'Full outfit');
+  await expect(outfits.getByRole('group', { name: 'Public library categories' }).getByRole('button', { pressed: true })).toHaveText('Outfits');
   await outfits.getByRole('option', { name: /Linen suit/ }).click();
+  await use(outfits);
   await expect(page.locator('[data-preset="outfit"]')).toContainText('Linen suit');
 
-  // The reference video goes through the shared upload queue.
-  const chooser = page.waitForEvent('filechooser');
+  // The reference video: uploaded from the picker through the shared queue into the user's Assets, then used by asset id.
   await page.locator('[data-remix-video]').click();
-  await (await chooser).setFiles({ name: 'clip.mp4', mimeType: 'video/mp4', buffer: Buffer.alloc(2048, 1) });
-  await expect(page.locator('[data-remix-video]')).toContainText('clip.mp4');
+  const videos = picker(page, 'Reference video');
+  await expect(videos.getByRole('tab', { name: 'My assets' })).toHaveAttribute('aria-selected', 'true');
+  await uploadFromPicker(videos, { name: 'clip.mp4', mimeType: 'video/mp4', buffer: Buffer.alloc(2048, 1) });
+  await use(videos);
+  await expect(page.locator('[data-remix-video]')).toContainText('clip');
 
   // Settings change, then the live quote and Generate.
   await pill(page, 'ratio').click();
@@ -123,7 +137,7 @@ test('Remix: presets load the public library, a picked pose shows in its row, an
   const spec = calls.quotes.slice(before).at(-1)!.promptSpec as Record<string, any>;
   expect(spec).toMatchObject({ kind: 'remix', model: 'auto', ratio: '1:1', seconds: 8, resolution: '720p', audio: true });
   expect(spec.inputs.referenceAssetIds).toEqual(expect.arrayContaining(['ast_pose_6', 'ast_outfit_1']));
-  expect(typeof spec.inputs.videoAssetId).toBe('string');
+  expect(spec.inputs.videoAssetId).toMatch(/^ast_/);
   expect(spec.prompt).toContain('a beige linen suit');
   // The run card's tags use the same settings.
   await expect(page.locator('main article').first()).toContainText('1:1');
@@ -171,11 +185,35 @@ test('Remix Advanced: "Apply outfit to" lists only the characters added to this 
   const outfit = page.locator('main aside [data-group="outfit"]');
   await expect(outfit).toHaveCount(0);
   await page.locator('[data-preset="outfit"]').click();
-  await page.getByRole('dialog', { name: 'Full outfit' }).getByRole('option', { name: /Linen suit/ }).click();
+  await picker(page, 'Full outfit').getByRole('option', { name: /Linen suit/ }).dblclick();
   // An outfit but nobody to wear it yet: still hidden.
   await expect(outfit).toHaveCount(0);
-  const chooser = page.waitForEvent('filechooser');
   await page.locator('[data-slot="1"]').click();
-  await (await chooser).setFiles({ name: 'second.png', mimeType: 'image/png', buffer: Buffer.from('89504e470d0a1a0a', 'hex') });
+  const slot = picker(page, 'Character 2');
+  await uploadFromPicker(slot, { name: 'second.png', mimeType: 'image/png', buffer: Buffer.from('89504e470d0a1a0a', 'hex') });
+  await use(slot);
   await expect(outfit.getByRole('button')).toHaveText(['All characters', 'Character 2']);
+});
+
+test('Avatar: the character photo and the voice track come from My assets by asset id', async ({ page, context }) => {
+  const calls = await stubApi(page, context);
+  await page.goto('/create/avatar');
+  await page.locator('[data-look="character"]').click();
+  const look = picker(page, 'Character');
+  await look.getByRole('tab', { name: 'My assets' }).click();
+  // Only what the row takes: images (and Characters), no audio.
+  await expect(look.getByRole('group', { name: 'Asset types' }).getByRole('button')).toHaveText(['All', 'Images', 'Characters']);
+  await expect(look.getByRole('option')).toHaveCount(1);
+  await look.getByRole('option', { name: /Studio portrait/ }).click();
+  await use(look);
+  await expect(page.locator('[data-look="character"]')).toContainText('Studio portrait');
+  await page.locator('[data-voice-upload]').click();
+  const voice = picker(page, 'Upload a voice track');
+  await expect(voice.getByRole('tab')).toHaveText(['My assets', 'Recent']);
+  await voice.getByRole('option', { name: /Voice take/ }).click();
+  await use(voice);
+  await composer(page).getByRole('textbox').fill('Say hello');
+  await expect(composer(page)).toContainText('137 credits');
+  const spec = calls.quotes.at(-1)!.promptSpec as Record<string, any>;
+  expect(spec.inputs).toMatchObject({ photoAssetId: 'ast_mine_1', audioAssetId: 'ast_mine_2' });
 });

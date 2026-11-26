@@ -2,7 +2,8 @@ import { cx, presenceProps, type PresenceState } from '@rolling/ui';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AUTO_MODEL, ModelPicker, Paywall, catalogToOptions } from '@/features/overlays';
 import { mockData } from '@/lib/api/mode';
-import { ReferencePicker, useSkills, type RefItem } from '@/features/prompt';
+import { useSkills, type RefItem } from '@/features/prompt';
+import { useAssetPicker } from '@/features/picker';
 import { UpgradeGate } from '@/lib/upgrade/store';
 import { useAgentAllowance } from '@/lib/session/agentAllowance';
 import { pickerModels, useModels } from '@/lib/models';
@@ -70,7 +71,7 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
   const [option, setOption] = useState(0);
   const [pending, setPending] = useState(false);
   const [skill, setSkill] = useState(() => (mock ? mockData().canvas.MOCK_AGENT.skill : ''));
-  const [menu, setMenu] = useState<'plus' | 'llm' | 'model' | 'refs' | null>(null);
+  const [menu, setMenu] = useState<'plus' | 'llm' | 'model' | null>(null);
   const [llm, setLlm] = useState<string | null>(() => readLocal(AGENT_LLM_KEY));
   const [model, setModel] = useState<string>(() => readLocal(AGENT_MODEL_KEY) ?? AUTO_MODEL);
   const autoRef = useRef<HTMLButtonElement>(null);
@@ -237,11 +238,24 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
     deliver(text);
   };
 
-  const addRefs = (items: RefItem[]) => {
+  const addRefs = (items: Array<Pick<RefItem, 'name'>>, fromTyping = false) => {
     const mentions = items.map((it) => `@[${it.name}]`).join(' ');
-    setDraft((d) => (d && !d.endsWith(' ') ? `${d} ${mentions} ` : `${d}${mentions} `));
+    setDraft((d0) => {
+      // A typed `@` is replaced by the mentions.
+      const d = fromTyping ? d0.replace(/@$/, '') : d0;
+      return d && !d.endsWith(' ') ? `${d} ${mentions} ` : `${d}${mentions} `;
+    });
     setMenu(null);
     inputRef.current?.focus();
+  };
+  /** References come from the shared asset picker modal (owner rule: never a cramped panel). */
+  const assetPicker = useAssetPicker();
+  const openRefs = (fromTyping: boolean) => {
+    setMenu(null);
+    void assetPicker.open({ title: intl.formatMessage({ id: 'canvas.agent.addRef' }), multiple: true }).then((picks) => {
+      if (picks?.length) addRefs(picks, fromTyping);
+      else inputRef.current?.focus();
+    });
   };
 
   return (
@@ -355,11 +369,7 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
         ) : null}
       </div>
       <div className={styles.composerWrap}>
-        {menu === 'refs' ? (
-          <div className={styles.refs}>
-            <ReferencePicker autoFocus onAdd={addRefs} onClose={() => setMenu(null)} />
-          </div>
-        ) : null}
+        {assetPicker.element}
         <ModelPicker
           kind="video"
           open={menu === 'model'}
@@ -394,7 +404,7 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
             onChange={(e) => {
               const v = e.target.value;
               setDraft(v);
-              if (v.endsWith('@')) setMenu('refs');
+              if (v.endsWith('@')) openRefs(true);
             }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -410,7 +420,7 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
               label={intl.formatMessage({ id: 'canvas.agent.add' })}
               side="top"
               entries={[
-                { key: 'refs', label: intl.formatMessage({ id: 'canvas.agent.addRef' }), meta: '@', keepOpen: true, onSelect: () => setMenu('refs') },
+                { key: 'refs', label: intl.formatMessage({ id: 'canvas.agent.addRef' }), meta: '@', keepOpen: true, onSelect: () => openRefs(false) },
                 ...skills
                   .filter((s) => s.kind === 'skill')
                   .map((s) => ({ key: s.id, label: `/${s.name}`, checked: skill === `/${s.name}`, onSelect: () => setSkill(`/${s.name}`) })),

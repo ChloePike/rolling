@@ -10,7 +10,7 @@ import { useToolFeed } from '../api';
 import { AsideCard } from '../shared/AsideCard';
 import controls from '../shared/controls.module.css';
 import { ToolIcon, type ToolIconName } from '../shared/icons';
-import { LibraryRow, type LibraryPick } from '../shared/LibraryPicker';
+import { AssetRow, LibraryRow, type LibraryPick } from '../shared/LibraryPicker';
 import type { ToolModel } from '../shared/models';
 import { resolutionOptions, useToolPlan } from '../shared/plan';
 import { remixHints, shotPrompt } from '../shared/promptHints';
@@ -18,7 +18,7 @@ import type { SettingsGroupDef } from '../shared/SettingsGroup';
 import { useToolSettings } from '../shared/settings';
 import { settingsPills, settingsTags } from '../shared/pills';
 import { ToolLayout, type ToolOverlay } from '../shared/ToolLayout';
-import { useFilePicker } from '../shared/useFilePicker';
+import { usePickAsset } from '../shared/usePickAsset';
 import { modelIdOf, segModels, TOOL_NEEDS, useToolModels } from '../shared/useToolModels';
 import type { ComposerPill } from '../types';
 import styles from './Remix.module.css';
@@ -62,29 +62,19 @@ export function RemixPage({ initialOverlay, models: modelsOverride, plan: planPr
   const [people, setPeople] = useState(2);
   const [text, setText] = useState(demo?.remixPrompt ?? '');
   const toast = useToast();
-  /** Library items picked per preset row; uploads use the same row (`uploads`). */
+  /** Items picked per preset row (public library or the user's assets, uploads included). */
   const [picked, setPicked] = useState<Partial<Record<PresetId, LibraryPick>>>({});
-  const [presetUploads, setPresetUploads] = useState<Partial<Record<PresetId, { id: string; name: string }>>>({});
+  /** Character slots: the asset that gives each character its look. */
   const [uploads, setUploads] = useState<Record<number, { id: string | null; name: string }>>({});
+  /** The reference video: a video asset from the user's Assets. */
   const [video, setVideo] = useState<{ id: string; name: string } | null>(null);
   /** The shot fields the user writes (camera, line, actions), keyed by field id. */
   const [shot, setShot] = useState<Record<string, string>>({});
-  const videoPicker = useFilePicker('video/*', (file, uploadId) => {
-    setVideo({ id: uploadId, name: file.name });
-    toast.show({ message: t('tools.remix.video.added', { file: file.name }) });
-  });
-  const [target, setTarget] = useState<{ kind: 'slot'; i: number } | { kind: 'preset'; id: PresetId } | null>(null);
-  const picker = useFilePicker('image/*,video/*', (file, uploadId) => {
-    if (!target) return;
-    const image = file.type.startsWith('image/');
-    if (target.kind === 'slot') {
-      setUploads((u) => ({ ...u, [target.i]: { id: image ? uploadId : null, name: file.name } }));
-      toast.show({ message: t('tools.toast.slotUploaded', { name: charName(target.i), file: file.name }) });
-    } else {
-      setPicked((cur) => ({ ...cur, [target.id]: undefined }));
-      setPresetUploads((cur) => ({ ...cur, [target.id]: { id: image ? uploadId : '', name: file.name } }));
-      toast.show({ message: t('tools.toast.presetUploaded', { file: file.name }) });
-    }
+  const [slotTarget, setSlotTarget] = useState<number | null>(null);
+  const slotPicker = usePickAsset({ kinds: ['image', 'character'], categories: ['portrait'], tab: 'mine' }, (pick) => {
+    if (slotTarget === null) return;
+    setUploads((u) => ({ ...u, [slotTarget]: { id: pick.assetId, name: pick.name } }));
+    toast.show({ message: t('tools.toast.slotUploaded', { name: charName(slotTarget), file: pick.name }) });
   });
 
   const charName = (i: number) => t('tools.remix.character', { n: i + 1 });
@@ -141,7 +131,7 @@ export function RemixPage({ initialOverlay, models: modelsOverride, plan: planPr
         ] satisfies SettingsGroupDef[])
       : []),
     // "Apply outfit to": the characters this remix has; hidden until one is added.
-    ...(cast.length && (picked.outfit || presetUploads.outfit || demo)
+    ...(cast.length && (picked.outfit || demo)
       ? [
           {
             kind: 'seg', id: 'outfit', title: t('tools.adv.outfit'), icon: 'shirt',
@@ -173,26 +163,26 @@ export function RemixPage({ initialOverlay, models: modelsOverride, plan: planPr
   const tags = [...settingsTags(intl, s), t('tools.remix.people', { n: people })];
 
   const presetValue = (id: PresetId) => picked[id] ?? null;
-  const presetFallback = (id: PresetId) => presetUploads[id]?.name ?? demo?.remixPresets.find((x) => x.id === id)?.value ?? null;
+  const presetFallback = (id: PresetId) => demo?.remixPresets.find((x) => x.id === id)?.value ?? null;
 
   const aside = (
     <>
       <AsideCard title={t('tools.remix.presets')} testId="presets">
-        {picker.input}
+        {slotPicker.element}
         {!demo && (
-          <>
-            {videoPicker.input}
-            <button type="button" className={controls.pickRow} data-remix-video="" data-set={video ? 'true' : 'false'} onClick={videoPicker.open}>
-              <span className={controls.pickThumb} style={{ background: 'var(--c-tone-slate)' }}>
-                <ToolIcon name="play" size={16} color="var(--c-text-2)" />
-              </span>
-              <span className={controls.pickText}>
-                <span className={controls.pickLabel}>{t('tools.remix.video')}</span>
-                <span className={controls.pickValue}>{video?.name ?? t('tools.remix.video.empty')}</span>
-              </span>
-              <span className={controls.chev}>›</span>
-            </button>
-          </>
+          <AssetRow
+            label={t('tools.remix.video')}
+            kinds={['video']}
+            icon="play"
+            tone="var(--c-tone-slate)"
+            value={video}
+            empty={t('tools.remix.video.empty')}
+            attrs={{ 'data-remix-video': '' }}
+            onChange={(pick) => {
+              setVideo({ id: pick.assetId, name: pick.name });
+              toast.show({ message: t('tools.remix.video.added', { file: pick.name }) });
+            }}
+          />
         )}
         {PRESETS.map((x) => (
           <LibraryRow
@@ -206,18 +196,8 @@ export function RemixPage({ initialOverlay, models: modelsOverride, plan: planPr
             fallback={presetFallback(x.id)}
             onChange={(item) => {
               setPicked((cur) => ({ ...cur, [x.id]: item ?? undefined }));
-              setPresetUploads((cur) => ({ ...cur, [x.id]: undefined }));
               if (item) toast.show({ message: t('tools.toast.presetSet', { name: t(`tools.remix.preset.${x.id}`), value: item.title }) });
             }}
-            onClear={
-              picked[x.id] || presetUploads[x.id]
-                ? () => {
-                    setPicked((cur) => ({ ...cur, [x.id]: undefined }));
-                    setPresetUploads((cur) => ({ ...cur, [x.id]: undefined }));
-                  }
-                : undefined
-            }
-            extra={x.id === 'action' ? undefined : { label: t('tools.remix.preset.upload'), onSelect: () => (setTarget({ kind: 'preset', id: x.id }), picker.open()) }}
           />
         ))}
       </AsideCard>
@@ -238,8 +218,8 @@ export function RemixPage({ initialOverlay, models: modelsOverride, plan: planPr
               aria-label={t('tools.remix.slot.upload.label', { name: x.name })}
               data-slot={i}
               onClick={() => {
-                setTarget({ kind: 'slot', i });
-                picker.open();
+                setSlotTarget(i);
+                slotPicker.open({ title: x.name });
               }}
             >
               <span className={styles.slotThumb} style={{ background: x.tone }}>
@@ -322,9 +302,9 @@ export function RemixPage({ initialOverlay, models: modelsOverride, plan: planPr
       actions={['redo', 'sliders', 'frame', 'down', 'star']}
       spec={(prompt) => {
         if (!video) return t('tools.remix.needVideo');
-        // New looks: the character slots, then the presets (library items or uploads), as references (docs/api.md → Runs, remix).
+        // New looks: the character slots, then the presets (library items or the user's assets), as references (docs/api.md → Runs, remix).
         const presetIds = PRESETS.flatMap((x) => {
-          const id = picked[x.id]?.assetId ?? presetUploads[x.id]?.id;
+          const id = picked[x.id]?.assetId;
           return id ? [id] : [];
         });
         const slotIds = Object.entries(uploads).flatMap(([i, u]) => (Number(i) < people && u.id ? [u.id] : []));

@@ -52,8 +52,11 @@
 .body{flex:1;min-height:0;display:flex}
 
 /* Bin */
-.bin{width:251px;flex:none;border-right:1px solid var(--c-border);display:flex;flex-direction:column;min-height:0}
+.bin{position:relative;width:251px;flex:none;border-right:1px solid var(--c-border);display:flex;flex-direction:column;min-height:0}
 .binTabs{display:flex;gap:2px;padding:8px 8px 6px}
+/* Import (asset picker modal) sits at the end of the tab row without moving the tabs or the list. */
+.binImport{position:absolute;right:8px;top:8px;height:26px;padding:0 8px;border-radius:6px;background:transparent;color:var(--c-text-3);font-size:12px;font-weight:600;line-height:26px}
+.binImport:hover{color:var(--c-text-1)}
 .binTab{height:26px;padding:0 10px;border-radius:6px;background:transparent;color:var(--c-text-4);font-size:12px;font-weight:600;line-height:26px}
 .binTab:hover{color:var(--c-text-1)}
 .binTab[aria-selected="true"]{background:var(--c-surface-5);color:var(--c-text-1)}

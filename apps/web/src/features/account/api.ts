@@ -7,7 +7,7 @@ import { api } from '@/lib/api/client';
 import { ApiError as HttpError, isApiError } from '@/lib/api/errors';
 import { isMockApi } from '@/lib/api/mode';
 import type { AutoTopUpView, BillingSummary, InvoiceView, LedgerPage, MembersResponse, MeResponse, PaymentMethodView, ProfileUpdate, SeatsPreview } from '@/lib/api/types';
-import { uploadFiles } from '@/lib/transfers';
+import { uploadToAssets } from '@/features/picker';
 import { topUpFor, topUpPresets, type TopUpOption } from '@/lib/topUp';
 import { checkoutTopUp, getSession, ME_KEY, meQuery, mockOverrides, MockFlowError, openBillingPortal, refetchMe, useSession } from '@/lib/session';
 import { mockData } from '@/lib/api/mode';
@@ -227,8 +227,9 @@ export async function uploadAvatar(file: File): Promise<string> {
     me = { ...base, user: { ...base.user, image: url } };
     return url;
   }
-  const { items, rejected } = uploadFiles([file], { purpose: 'other', priority: 'high', quiet: true });
-  if (rejected.length || !items[0]) throw new ApiError('VALIDATION', 'avatar');
+  // Into the user's Assets first (shared transfer queue, D-011), then referenced by asset id.
+  const { items, refused } = uploadToAssets([file], { purpose: 'other', priority: 'high', quiet: true });
+  if (refused.length || !items[0]) throw new ApiError('VALIDATION', 'avatar');
   const { assetId } = await items[0].done;
   const r = await api.patch<ProfileUpdate>('/me/profile', { avatarAssetId: assetId });
   await refetchMe();

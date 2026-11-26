@@ -1,3 +1,4 @@
+import { picker as pickerDialog } from './support/picker';
 import { expect, test, type Page } from '@playwright/test';
 import { asPlan } from './support/session';
 import { mkdirSync } from 'node:fs';
@@ -752,10 +753,13 @@ test.describe('canvas controls', () => {
     await openApp(page);
     const before = await page.locator('.react-flow__node').count();
     await page.getByRole('button', { name: 'Assets', exact: true }).click();
-    const picker = page.getByTestId('assets-panel');
-    await expect(picker).toBeVisible();
-    await picker.getByTestId('reference-picker').locator('[role="option"]').first().click();
-    await picker.getByRole('button', { name: /^Add/ }).click();
+    // The shared asset picker modal (never a side panel); My assets first.
+    const assets = pickerDialog(page, 'Add assets to the canvas');
+    await expect(assets).toBeVisible();
+    await expect(assets.getByRole('tab', { name: 'My assets' })).toHaveAttribute('aria-selected', 'true');
+    await assets.getByRole('option').first().click();
+    await assets.getByRole('button', { name: 'Add to canvas' }).click();
+    await expect(assets).toHaveCount(0);
     await expect(page.locator('.react-flow__node')).toHaveCount(before + 1);
 
     await page.getByRole('button', { name: 'Workflows and templates' }).click();

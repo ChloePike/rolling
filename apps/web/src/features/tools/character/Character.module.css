@@ -26,3 +26,13 @@
 .styleSwatch{aspect-ratio:1;border-radius:7px}
 .styleLabel{font-size:11px;font-weight:600}
 .refBtn span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Hair / Outfits title row: "From the library" opens the asset picker (public library hairstyles / outfits). */
+.lookHead{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
+.libLink{
+  border:0;background:none;padding:0;font:inherit;font-size:12px;line-height:16px;font-weight:600;color:var(--c-text-3);cursor:pointer;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%;transition:color var(--m-fast) var(--m-ease-standard);
+}
+.libLink:hover{color:var(--c-text-1)}
+.libLink[aria-pressed="true"]{color:var(--c-accent-text)}
+.libLink:focus-visible{box-shadow:var(--focus-ring);outline:0;border-radius:4px}
+@media (prefers-reduced-motion: reduce){.libLink{transition:none}}

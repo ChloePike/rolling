@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { uploadFiles } from '@/lib/transfers';
+import { uploadToAssets, type AssetPick } from '@/features/picker';
 import { apiFetch, isMockApi } from '@/features/overlays/backend';
 import { fetchAssets, type GqlAsset } from '@/features/library/assetsApi';
 import { mockData } from '@/lib/api/mode';
@@ -76,16 +76,33 @@ export function uploadKind(file: File): 'image' | 'video' | 'audio' | 'file' {
   return t === 'image' || t === 'video' || t === 'audio' ? t : 'file';
 }
 
+/** A pick from the asset picker modal as a prompt reference (always by asset id). */
+export function refFromPick(p: AssetPick, i = 0): RefItem {
+  const kind = p.kind === 'character' ? 'Character' : p.kind.charAt(0).toUpperCase() + p.kind.slice(1);
+  return {
+    id: p.assetId,
+    group: p.kind === 'character' ? 'char' : p.source === 'public' ? 'pub' : 'mine',
+    ...(p.category ? { category: p.category } : {}),
+    name: p.name,
+    meta: [kind, p.meta].filter(Boolean).join(' · '),
+    source: p.source === 'generated' ? 'mine' : p.source,
+    tone: REF_TONES[i % REF_TONES.length]!,
+    glyph: p.kind === 'audio' ? { type: 'wave' } : p.kind === 'character' ? { type: 'letter', letter: p.name.charAt(0).toUpperCase() } : { type: 'icon', icon: p.kind === 'video' ? 'video' : 'img' },
+    ...(p.thumbUrl && !p.mature ? { thumbUrl: p.thumbUrl } : {}),
+  };
+}
+
 /**
- * Upload through the shared transfer queue (D-011, `lib/transfers`): direct to
- * R2, resumable, high priority because the user is about to reference them.
- * Cards appear at once with the upload id as a provisional id; resolve it with
- * `resolveAssetId` from `@/lib/transfers` before sending. Files over the limits
- * are left out (the transfers dock explains why). Images preview through an
- * object URL. `meta` formats the card's detail line (localized by the caller).
+ * Upload into the user's Assets through the shared transfer queue (D-011,
+ * `uploadToAssets`): direct to R2, resumable, high priority because the user
+ * is about to reference them. Cards appear at once with the upload id as a
+ * provisional id; resolve it with `resolveAssetId` from `@/lib/transfers`
+ * before sending. Files over the limits are left out (the transfers dock
+ * explains why). Images preview through an object URL. `meta` formats the
+ * card's detail line (localized by the caller).
  */
 export async function uploadReferences(files: File[], meta: (file: File) => string): Promise<RefItem[]> {
-  const { items } = uploadFiles(files, { purpose: 'reference', priority: 'high', quiet: true });
+  const { items } = uploadToAssets(files, { purpose: 'reference', priority: 'high', quiet: true });
   return items.map(({ id, file }) => {
     const kind = uploadKind(file);
     const thumbUrl = kind === 'image' && typeof URL.createObjectURL === 'function' ? URL.createObjectURL(file) : undefined;

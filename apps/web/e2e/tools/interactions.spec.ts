@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { asPlan } from '../support/session';
 import { mockPublicLibrary, type PublicNode } from '../support/publicLibrary';
 import { MODAL, setMode, setThreshold } from './support/toolSpec';
+import { devUploads, picker, uploadFromPicker, use } from '../support/picker';
 
 /** Interaction pass: every left-panel control, feed action and composer control in the four tools does something. */
 const fast = (page: Page, extra: Record<string, unknown> = {}) =>
@@ -91,13 +92,15 @@ test.describe('tools: generation flow', () => {
     await expect(page.locator('.react-flow__node.selected [data-node-kind="asset"]')).toHaveCount(1);
   });
 
-  test('composer: + adds a reference from a real file, Refine rewrites the prompt with Undo', async ({ page }) => {
+  test('composer: + opens the asset picker; an upload there becomes a reference; Refine rewrites the prompt with Undo', async ({ page, context }) => {
+    await devUploads(context);
     await setMode(page, 'simple');
     await fast(page);
     await page.goto('/create/quick');
-    const chooser = page.waitForEvent('filechooser');
     await composer(page).getByRole('button', { name: 'Add assets or skills' }).click();
-    await (await chooser).setFiles(png);
+    const dialog = picker(page, 'Add assets or skills');
+    await uploadFromPicker(dialog, png);
+    await use(dialog);
     await expect(composer(page).locator('[data-ref="@lead"]')).toBeVisible();
     const box = composer(page).getByRole('textbox');
     await box.fill('Shot 2 warmer');
@@ -119,13 +122,15 @@ test.describe('tools: generation flow', () => {
 });
 
 test.describe('tools: left panels', () => {
-  test('Quick Create: Upload/Replace open a real file chooser and set the slot; language select changes', async ({ page }) => {
+  test('Quick Create: Upload/Replace open the asset picker and set the slot; language select changes', async ({ page, context }) => {
+    await devUploads(context);
     await setMode(page, 'simple');
     await page.goto('/create/quick');
-    const chooser = page.waitForEvent('filechooser');
     await page.getByRole('button', { name: 'Upload a photo for @Partner' }).click();
-    await (await chooser).setFiles({ ...png, name: 'partner.png' });
-    await expect(page.locator('[data-slot="Partner"]')).toContainText('partner.png');
+    const dialog = picker(page, '@Partner');
+    await uploadFromPicker(dialog, { ...png, name: 'partner.png' });
+    await use(dialog);
+    await expect(page.locator('[data-slot="Partner"]')).toContainText('partner');
     await expect(page.getByRole('button', { name: 'Replace the photo for @Partner' })).toBeVisible();
     const lang = page.getByRole('combobox', { name: /language/i });
     await lang.selectOption({ index: 1 });
@@ -138,27 +143,34 @@ test.describe('tools: left panels', () => {
     await expect(page).toHaveURL(/\/templates$/);
   });
 
-  test('Remix: preset rows open the public library (keyboard too); character slots upload', async ({ page }) => {
+  test('Remix: preset rows open the asset picker on their public library categories (keyboard too); character slots upload', async ({ page, context }) => {
+    await devUploads(context);
     await mockPublicLibrary(page, library);
     await setMode(page, 'simple');
     await page.goto('/create/remix');
     const row = page.locator('[data-preset="scene"]');
     await row.click();
-    const picker = page.getByRole('dialog', { name: 'Scenes' });
-    await expect(picker.getByRole('tab')).toHaveText(['Scenes', 'Lighting', 'Props', 'Furniture']);
-    await picker.getByRole('option', { name: /Kitchen/ }).click();
+    const scenes = picker(page, 'Scenes');
+    await expect(scenes.getByRole('tab', { name: 'Public library' })).toHaveAttribute('aria-selected', 'true');
+    // The row's categories come first, preselected.
+    await expect(scenes.getByRole('group', { name: 'Public library categories' }).getByRole('button', { pressed: true })).toHaveText('Scenes');
+    await scenes.getByRole('option', { name: /Kitchen/ }).click();
+    await use(scenes);
     await expect(row).toContainText('Kitchen');
     await page.locator('[data-preset="action"]').focus();
     await page.keyboard.press('Enter');
-    const poses = page.getByRole('dialog', { name: 'Action' });
+    const poses = picker(page, 'Action');
     await poses.getByRole('option', { name: /Walk and talk/ }).focus();
+    // Enter picks and uses it (single select).
     await page.keyboard.press('Enter');
+    await expect(poses).toHaveCount(0);
     await expect(page.locator('[data-preset="action"]')).toContainText('Walk and talk');
     await page.getByRole('radio', { name: '3 people' }).click();
-    const chooser = page.waitForEvent('filechooser');
     await page.locator('[data-slot="2"]').click();
-    await (await chooser).setFiles({ ...png, name: 'third.png' });
-    await expect(page.locator('[data-slot="2"]')).toContainText('third.png');
+    const slot = picker(page, 'Character 3');
+    await uploadFromPicker(slot, { ...png, name: 'third.png' });
+    await use(slot);
+    await expect(page.locator('[data-slot="2"]')).toContainText('third');
   });
 
   test('Avatar: look rows pick, custom persona adds a chip, voice preview plays, draft rewrite and confirm', async ({ page }) => {
@@ -167,8 +179,10 @@ test.describe('tools: left panels', () => {
     await page.goto('/create/avatar');
     await mockPublicLibrary(page, library);
     await page.locator('[data-look="scene"]').click();
-    await page.getByRole('dialog', { name: 'Scenes' }).getByRole('tab', { name: 'Lighting' }).click();
-    await page.getByRole('dialog', { name: 'Scenes' }).getByRole('option', { name: /Golden hour/ }).click();
+    const scenes = picker(page, 'Scenes');
+    await scenes.getByRole('group', { name: 'Public library categories' }).getByRole('button', { name: 'Lighting' }).click();
+    await scenes.getByRole('option', { name: /Golden hour/ }).dblclick();
+    await expect(scenes).toHaveCount(0);
     await expect(page.locator('[data-look="scene"]')).toContainText('Golden hour');
     await page.getByRole('button', { name: 'Custom' }).click();
     await page.getByLabel('Custom persona').fill('Calm skincare expert');
@@ -184,13 +198,22 @@ test.describe('tools: left panels', () => {
     await expect(page.locator(MODAL)).toBeVisible();
   });
 
-  test('Characters: reference buttons upload a file', async ({ page }) => {
+  test('Characters: reference buttons and the hair / outfit library links open the asset picker', async ({ page, context }) => {
+    await devUploads(context);
+    await mockPublicLibrary(page, (c) => (c === 'hairstyle' ? [libraryItem('hairstyle', 'Wolf cut')] : []));
     await setMode(page, 'simple');
     await page.goto('/create/character');
-    const chooser = page.waitForEvent('filechooser');
     await page.locator('[data-ref-slot="face"]').click();
-    await (await chooser).setFiles({ ...png, name: 'face.png' });
-    await expect(page.locator('[data-ref-slot="face"]')).toContainText('face.png');
+    const face = picker(page, 'Face reference');
+    await uploadFromPicker(face, { ...png, name: 'face.png' });
+    await use(face);
+    await expect(page.locator('[data-ref-slot="face"]')).toContainText('face');
+    await page.locator('[data-look-library="hair"]').click();
+    const hair = picker(page, 'Hair');
+    await hair.getByRole('option', { name: /Wolf cut/ }).click();
+    await use(hair);
+    await expect(page.locator('[data-look-library="hair"]')).toHaveText('Wolf cut');
+    await expect(page.locator('[data-look-library="hair"]')).toHaveAttribute('aria-pressed', 'true');
     await page.locator('main article[data-state="done"]').first().getByRole('button', { name: 'Save to characters' }).click();
     await page.getByRole('status').getByRole('button', { name: 'View' }).click();
     await expect(page).toHaveURL(/\/assets\?folder=characters$/);

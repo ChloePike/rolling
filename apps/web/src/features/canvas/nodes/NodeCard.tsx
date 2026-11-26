@@ -42,6 +42,8 @@ export interface NodeActions {
   openResult: (nodeId: string) => void;
   /** Version chip: the version menu at the chip. */
   openVersions: (nodeId: string, anchor: DOMRect) => void;
+  /** Asset node "Replace": pick another asset in the asset picker modal. */
+  replaceAsset?: (nodeId: string) => void;
 }
 
 const noop = () => {};
@@ -191,6 +193,27 @@ function AssetMedia({ node }: { node: GraphNode }) {
     <video className={styles.resultMedia} src={url} muted playsInline preload="metadata" />
   ) : (
     <img className={styles.resultMedia} src={url} alt="" draggable={false} />
+  );
+}
+
+/** Asset node: "Replace" (shown on hover and focus, so the card's layout stays the design's). */
+function ReplaceButton({ node }: { node: GraphNode }) {
+  const actions = useContext(NodeActionsContext);
+  const intl = useIntl();
+  if (!actions.replaceAsset) return null;
+  return (
+    <button
+      type="button"
+      className={cx(styles.replace, 'nodrag')}
+      aria-label={intl.formatMessage({ id: 'canvas.node.replaceLabel' }, { name: node.title })}
+      onClick={(e) => {
+        e.stopPropagation();
+        actions.replaceAsset?.(node.id);
+      }}
+      data-replace=""
+    >
+      {intl.formatMessage({ id: 'canvas.node.menu.replace' })}
+    </button>
   );
 }
 
@@ -357,6 +380,7 @@ function CardContent({ node, selected, refused }: { node: GraphNode; selected: b
           <div className={styles.headBlock}>
             <Label node={node} />
           </div>
+          <ReplaceButton node={node} />
           <div className={cx(styles.body, styles.assetBody)} style={{ height: 184, background: str(node.params.tone, 'var(--c-tone-teal)') }} data-body="">
             <AssetMedia node={node} />
             {str(node.params.label)}

@@ -342,5 +342,15 @@
   "canvas.target.mature": "Mature items can’t be added from the public library.",
   "canvas.target.noResult": "This run has no result to add yet.",
   "canvas.target.textUnsupported": "Text files can’t be added to a canvas yet.",
-  "canvas.target.resultName": "Result"
+  "canvas.target.resultName": "Result",
+  "canvas.assets.title": "Add assets to the canvas",
+  "canvas.assets.add": "Add to canvas",
+  "canvas.assets.refTitle": "Add references",
+  "canvas.assets.replace": "Replace {name}",
+  "canvas.node.menu.replace": "Replace",
+  "canvas.node.replaceLabel": "Replace the asset in {name}",
+  "canvas.toast.assetReplaced": "Replaced with {name}.",
+  "canvas.drop.hint": "Drop to upload to your assets and add to the canvas",
+  "canvas.drop.uploading": "{n, plural, one {Uploading # file to your assets.} other {Uploading # files to your assets.}}",
+  "canvas.drop.refused": "{n, plural, one {# file can’t go on the canvas.} other {# files can’t go on the canvas.}}"
 }

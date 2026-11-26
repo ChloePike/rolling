@@ -14,7 +14,7 @@ import type { ToolIconName } from './icons';
 import { ToolModelPicker, ToolParamPopover, ToolPaywall, ToolResultViewer, ToolRunConfirm } from './overlays';
 import { SettingsGroup, type SettingsGroupDef } from './SettingsGroup';
 import styles from './ToolLayout.module.css';
-import { useFilePicker } from './useFilePicker';
+import { usePickAsset } from './usePickAsset';
 import { usePresence } from './usePresence';
 import { useRuns, type RunSpec } from './useRuns';
 import type { ToolCaps, ToolSettings } from './settings';
@@ -118,7 +118,15 @@ export function ToolLayout(p: ToolLayoutProps) {
   const [overlay, setOverlay] = useState<ToolOverlay | null>(p.initialOverlay ?? null);
   const [filter, setFilter] = useState<Filter>('all');
   const [viewing, setViewing] = useState<MediaRun | null>(null);
-  const [extraRefs, setExtraRefs] = useState<ComposerRef[]>([]);
+  /** References added with the composer's `+` (asset picker): badges in the composer, image assets in the run. */
+  const [extraRefs, setExtraRefs] = useState<Array<ComposerRef & { assetId: string; image: boolean }>>([]);
+  const specOf = (prompt: string): PromptSpec | string | null | undefined => {
+    const raw = p.spec?.(prompt);
+    const extra = extraRefs.filter((r) => r.image).map((r) => r.assetId);
+    if (!raw || typeof raw === 'string' || !extra.length) return raw;
+    const ids = [...new Set([...(raw.inputs?.referenceAssetIds ?? []), ...extra])].slice(0, 9);
+    return { ...raw, inputs: { ...raw.inputs, referenceAssetIds: ids } };
+  };
   const [refining, setRefining] = useState(false);
   /** A run waiting for the confirm dialog (Generate, Retry, Regenerate). */
   const pendingRun = useRef<{ prompt: string; cost: number; quote?: SpecQuote } | null>(null);
@@ -130,7 +138,7 @@ export function ToolLayout(p: ToolLayoutProps) {
   const isMember = p.isMember ?? session.isMember;
   const threshold = usePref('confirmThreshold');
   // The live quote of what Generate would run (real mode); mock mode shows the mock adapter's estimate.
-  const liveQuote = useToolQuote(real && p.spec ? p.spec(p.composer.text) : null, p.confirm.cost);
+  const liveQuote = useToolQuote(real && p.spec ? (specOf(p.composer.text) ?? null) : null, p.confirm.cost);
   const confirmMeta = p.run.tags.join(' · ');
   const runs = useRuns(p.feed, {
     onDone: (run) =>
@@ -233,7 +241,7 @@ export function ToolLayout(p: ToolLayoutProps) {
 
   /** Real mode: quote the tool's spec. */
   function spendReal(prompt: string, given?: PromptSpec) {
-    const raw = given ?? p.spec?.(prompt);
+    const raw = given ?? specOf(prompt);
     if (typeof raw === 'string') return void toast.show({ message: raw });
     if (!raw) return void toast.show({ message: t('tools.toast.runError') });
     void resolveSpecAssets(raw, resolveAssetId)
@@ -253,7 +261,7 @@ export function ToolLayout(p: ToolLayoutProps) {
     void retryRun(run.runId).then(
       (q) => {
         runs.remove(run.id);
-        const spec = p.spec?.(run.prompt);
+        const spec = specOf(run.prompt);
         handleQuote(run.prompt, q, spec && typeof spec === 'object' ? spec : { kind: 'video', prompt: run.prompt });
       },
       (e: unknown) => {
@@ -330,10 +338,14 @@ export function ToolLayout(p: ToolLayoutProps) {
     toast.show({ message: t('tools.toast.refined'), action: { label: t('tools.toast.undo'), onAction: () => p.composer.onText(before) } });
   }
 
-  const refPicker = useFilePicker('image/*,video/*,audio/*', (file) => {
-    const stem = file.name.replace(/\.[^.]+$/, '').slice(0, 14) || 'Ref';
-    setExtraRefs((r) => [...r, { badge: `@${stem}`, tone: 'var(--c-tone-indigo)' }]);
-    toast.show({ message: t('tools.toast.refAdded', { name: file.name }) });
+  const refPicker = usePickAsset({ title: t('tools.composer.add'), multiple: true }, (_first, picks) => {
+    setExtraRefs((r) => [
+      ...r,
+      ...picks
+        .filter((x) => !r.some((y) => y.assetId === x.assetId))
+        .map((x) => ({ badge: `@${x.name.slice(0, 14) || 'Ref'}`, tone: 'var(--c-tone-indigo)', assetId: x.assetId, image: x.kind === 'image' || x.kind === 'character' })),
+    ]);
+    toast.show({ message: t('tools.toast.refAdded', { name: picks.map((x) => x.name).join(', ') }) });
   });
 
   const toggle = (o: ToolOverlay) => setOverlay((cur) => (cur === o ? null : o));
@@ -392,7 +404,7 @@ export function ToolLayout(p: ToolLayoutProps) {
 
   return (
     <div className={styles.root} data-testid={p.testId} data-mode={p.advanced ? 'advanced' : 'simple'}>
-      {refPicker.input}
+      {refPicker.element}
       <aside className={styles.aside} aria-label={t('tools.aside.label')}>
         {p.aside}
         {adv.mounted && (
@@ -462,14 +474,14 @@ export function ToolLayout(p: ToolLayoutProps) {
           {...p.composer}
           cost={liveQuote.credits}
           costLoading={liveQuote.loading}
-          refs={[...p.composer.refs, ...extraRefs]}
+          refs={[...p.composer.refs, ...extraRefs.map(({ badge, tone }) => ({ badge, tone }))]}
           pillsRef={pillsRef}
           openOverlay={overlay === 'model' || overlay === 'params' ? overlay : null}
           onPill={onPill}
           onSend={() => spend()}
           onRefine={() => void refine()}
           refining={refining}
-          onAdd={refPicker.open}
+          onAdd={() => refPicker.open()}
         />
         <ToolModelPicker
           open={overlay === 'model'}

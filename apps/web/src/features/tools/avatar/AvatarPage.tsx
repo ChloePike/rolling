@@ -9,7 +9,7 @@ import { useToolFeed } from '../api';
 import { AsideCard } from '../shared/AsideCard';
 import controls from '../shared/controls.module.css';
 import { ToolIcon } from '../shared/icons';
-import { LibraryRow, type LibraryPick } from '../shared/LibraryPicker';
+import { AssetRow, LibraryRow, type LibraryPick } from '../shared/LibraryPicker';
 import type { ToolModel } from '../shared/models';
 import { settingsPills, settingsTags } from '../shared/pills';
 import { resolutionOptions, useToolPlan } from '../shared/plan';
@@ -18,27 +18,9 @@ import type { SettingsGroupDef } from '../shared/SettingsGroup';
 import { useToolSettings } from '../shared/settings';
 import { ToolLayout, type ToolOverlay } from '../shared/ToolLayout';
 import layout from '../shared/ToolLayout.module.css';
-import { useFilePicker } from '../shared/useFilePicker';
 import { modelIdOf, segModels, useToolModels } from '../shared/useToolModels';
 import type { ComposerPill, FeedItem, ScriptDraft } from '../types';
 import styles from './Avatar.module.css';
-
-/** Length of an audio file from its metadata (null when the browser can't tell). */
-function audioSeconds(file: File): Promise<number | null> {
-  return new Promise((resolve) => {
-    if (typeof Audio === 'undefined' || typeof URL.createObjectURL !== 'function') return resolve(null);
-    const url = URL.createObjectURL(file);
-    const a = new Audio();
-    const done = (v: number | null) => {
-      URL.revokeObjectURL(url);
-      resolve(v);
-    };
-    a.preload = 'metadata';
-    a.onloadedmetadata = () => done(Number.isFinite(a.duration) ? a.duration : null);
-    a.onerror = () => done(null);
-    a.src = url;
-  });
-}
 
 const EMOTIONS = ['calm', 'warm', 'upbeat', 'serious'];
 /** Presenting styles (prompt direction, `avatarHints`); names in messages. */
@@ -78,28 +60,11 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
   const mapItem = (f: FeedItem): FeedItem =>
     f.kind === 'draft' ? { ...f, title: t('tools.avatar.draft.title'), meta: t('tools.avatar.draft.meta', { persona: personaName(persona), voice, sec: 9, of: 10 }) } : f;
   const toast = useToast();
-  /** The photo that speaks (an upload or a library portrait) and the scene (a library item); upload ids until resolved. */
-  const [photo, setPhoto] = useState<{ id: string; name: string } | null>(null);
+  /** The photo that speaks (an asset: an upload, a Character or a library portrait) and the scene (a library item or an asset). */
   const [portrait, setPortrait] = useState<LibraryPick | null>(null);
   const [scene, setScene] = useState<LibraryPick | null>(null);
-  const [sceneUpload, setSceneUpload] = useState<string | null>(null);
+  /** The voice track: an audio asset from the user's Assets (uploaded from the picker if new). */
   const [track, setTrack] = useState<{ id: string; name: string; seconds: number | null } | null>(null);
-  const voicePicker = useFilePicker('audio/*', (file, uploadId) => {
-    setTrack({ id: uploadId, name: file.name, seconds: null });
-    toast.show({ message: t('tools.avatar.voice.added', { file: file.name }) });
-    void audioSeconds(file).then((sec) => setTrack((cur) => (cur && cur.id === uploadId ? { ...cur, seconds: sec } : cur)));
-  });
-  const [lookTarget, setLookTarget] = useState<'character' | 'scene'>('character');
-  const lookPicker = useFilePicker('image/*', (file, uploadId) => {
-    if (lookTarget === 'character') {
-      setPhoto({ id: uploadId, name: t('tools.avatar.look.uploaded', { file: file.name }) });
-      setPortrait(null);
-    } else {
-      setSceneUpload(t('tools.avatar.look.uploaded', { file: file.name }));
-      setScene(null);
-    }
-    toast.show({ message: t('tools.toast.presetUploaded', { file: file.name }) });
-  });
   const [customOpen, setCustomOpen] = useState(false);
   const [customText, setCustomText] = useState('');
   const [customPersonas, setCustomPersonas] = useState<string[]>([]);
@@ -170,28 +135,25 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
     ...(adv ? [{ id: 'emotion', label: t(`tools.avatar.emotion.${p.emo}`), icon: 'person' } as ComposerPill] : []),
   ];
   const go = t('tools.avatar.go');
-  const sceneLabel = scene?.title ?? sceneUpload;
   const tags = [...settingsTags(intl, { ...s, seconds }), ...(demo ? [voice] : track ? [track.name] : [])];
 
   const aside = (
     <>
       <AsideCard title={t('tools.avatar.look')} testId="look">
-        {lookPicker.input}
         <LibraryRow
           testId="character"
           attr="look"
           label={t('tools.avatar.look.character')}
           categories={['portrait']}
+          kinds={['image', 'character']}
           icon="person"
           tone="var(--c-tone-teal)"
           value={portrait}
-          fallback={photo?.name ?? demo?.avatarLooks[0].value ?? t('tools.avatar.photo.empty')}
+          fallback={demo?.avatarLooks[0].value ?? t('tools.avatar.photo.empty')}
           onChange={(item) => {
             setPortrait(item);
-            setPhoto(null);
             if (item) toast.show({ message: t('tools.toast.presetSet', { name: t('tools.avatar.look.character'), value: item.title }) });
           }}
-          extra={{ label: t('tools.remix.preset.upload'), onSelect: () => (setLookTarget('character'), lookPicker.open()) }}
         />
         <LibraryRow
           testId="scene"
@@ -201,13 +163,11 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
           icon="scene"
           tone="var(--c-tone-indigo)"
           value={scene}
-          fallback={sceneUpload ?? demo?.avatarLooks[1].value ?? t('tools.avatar.scene.photo')}
+          fallback={demo?.avatarLooks[1].value ?? t('tools.avatar.scene.photo')}
           onChange={(item) => {
             setScene(item);
-            setSceneUpload(null);
             if (item) toast.show({ message: t('tools.toast.presetSet', { name: t('tools.avatar.look.scene'), value: item.title }) });
           }}
-          extra={demo ? { label: t('tools.remix.preset.upload'), onSelect: () => (setLookTarget('scene'), lookPicker.open()) } : undefined}
         />
       </AsideCard>
       <AsideCard title={t('tools.avatar.persona')} hint={t('tools.avatar.persona.hint')} testId="persona">
@@ -302,24 +262,22 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
         ) : (
           // The TTS / voice-clone provider is an open decision: no built-in voices yet; runs lip-sync to an uploaded track.
           <>
-            {voicePicker.input}
             <p className={styles.example} data-voice-unavailable="">
               <FormattedMessage id="tools.avatar.voice.unavailable" />
             </p>
-            <button type="button" className={controls.pickRow} data-voice-upload="" onClick={voicePicker.open}>
-              <span className={controls.pickThumb} style={{ background: 'var(--c-tone-plum)' }}>
-                <ToolIcon name="mic" size={16} color="var(--c-text-2)" />
-              </span>
-              <span className={controls.pickText}>
-                <span className={controls.pickLabel}>
-                  <FormattedMessage id="tools.avatar.voice.upload" />
-                </span>
-                <span className={controls.pickValue}>
-                  {track ? (track.seconds !== null ? t('tools.avatar.voice.track', { file: track.name, sec: Math.round(track.seconds) }) : track.name) : t('tools.avatar.voice.hint')}
-                </span>
-              </span>
-              <span className={controls.chev}>›</span>
-            </button>
+            <AssetRow
+              label={t('tools.avatar.voice.upload')}
+              kinds={['audio']}
+              icon="mic"
+              tone="var(--c-tone-plum)"
+              value={track ? { name: track.seconds !== null ? t('tools.avatar.voice.track', { file: track.name, sec: Math.round(track.seconds) }) : track.name } : null}
+              empty={t('tools.avatar.voice.hint')}
+              attrs={{ 'data-voice-upload': '' }}
+              onChange={(pick) => {
+                setTrack({ id: pick.assetId, name: pick.name, seconds: pick.durationSec ?? null });
+                toast.show({ message: t('tools.avatar.voice.added', { file: pick.name }) });
+              }}
+            />
           </>
         )}
       </AsideCard>
@@ -343,7 +301,7 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
       composer={{
         noteLead: t('tools.avatar.note'),
         noteChips: demo ? [t('tools.avatar.note.exact', { n: 1 }), t('tools.avatar.note.gestures', { n: 3 })] : [],
-        refs: demo ? [{ badge: '@Advisor', tone: 'var(--c-tone-teal)' }] : photo || portrait ? [{ badge: `@${t('tools.avatar.look.character')}`, tone: 'var(--c-tone-teal)' }] : [],
+        refs: demo ? [{ badge: '@Advisor', tone: 'var(--c-tone-teal)' }] : portrait ? [{ badge: `@${t('tools.avatar.look.character')}`, tone: 'var(--c-tone-teal)' }] : [],
         label: t('tools.avatar.composer.label'),
         text,
         onText: setText,
@@ -368,10 +326,10 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
       }}
       actions={['redo', 'sliders', 'frame', 'down', 'star']}
       spec={(prompt) => {
-        const photoId = portrait?.assetId ?? photo?.id;
+        const photoId = portrait?.assetId;
         if (!photoId) return t('tools.avatar.needPhoto');
         if (!track) return t('tools.avatar.needVoice');
-        const setting = adv && p.bg === 'reference' ? { keepPhoto: true as const } : scene ? { scene: scene.promptEn || scene.title } : sceneLabel ? { scene: sceneLabel } : { keepPhoto: true as const };
+        const setting = adv && p.bg === 'reference' ? { keepPhoto: true as const } : scene ? { scene: scene.promptEn || scene.title } : { keepPhoto: true as const };
         return {
           kind: 'avatar',
           model: modelIdOf(models, model),

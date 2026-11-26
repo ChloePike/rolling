@@ -62,8 +62,6 @@
 .pending{color:var(--c-text-4)}
 .pillText{max-width:120px;overflow:hidden;text-overflow:ellipsis}
 .composerWrap{position:relative}
-.refs{position:absolute;left:10px;right:10px;bottom:calc(100% - 4px);z-index:8}
-.refs > *{width:100%;box-sizing:border-box}
 .modelPicker{position:absolute;left:10px;bottom:calc(100% - 4px);z-index:8;width:320px}
 .change{display:flex;flex-direction:column;gap:2px;color:var(--c-text-2);font-size:12px;line-height:1.5}
 .changeTitle{color:var(--c-text-1);font-weight:600}

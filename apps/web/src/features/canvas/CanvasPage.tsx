@@ -14,9 +14,10 @@ import {
   type OnConnectStart,
 } from '@xyflow/react';
 import '@xyflow/react/dist/base.css';
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
-import { ReferencePicker, type RefItem } from '@/features/prompt';
+import { ReferencePicker, refFromPick, type RefItem } from '@/features/prompt';
+import { acceptedFiles, useAssetPicker, useUploadToAssets, type AssetPick } from '@/features/picker';
 import { UpgradeGate } from '@/lib/upgrade/store';
 import { Paywall, ResultViewer, RunConfirm, type PaywallOption, type ResultActionId, type RunPlanRow, type RunRowKind } from '@/features/overlays';
 import { AgentPanel, type AgentPlan } from './agent/AgentPanel';
@@ -55,7 +56,6 @@ import { assetMediaUrl, hasPendingAction, isMockApi, savePendingAction, takePend
 import { saveSelectionAsTemplate } from '@/features/templates/api';
 import { useQueryClient } from '@tanstack/react-query';
 import { downloadAsset } from '@/features/overlays/media';
-import { resolveAssetId } from '@/lib/transfers';
 import canvas from './canvas.module.css';
 import type { LocalOp } from './graph/store';
 import {
@@ -131,6 +131,7 @@ const TOOLS: Array<{ key: Tool; icon: CanvasIconName; label: string }> = [
 
 /** Default drop point of the add menu when opened from the tool rail (Canvas.dc.html). */
 const ADD_AT = { x: 360, y: 500 };
+const ASSET_TONES = ['var(--c-tone-teal)', 'var(--c-tone-indigo)', 'var(--c-tone-plum)', 'var(--c-tone-sand)'];
 /** Right inset of the top-right cluster: clear of the 340px agent panel, or 16px. */
 const AGENT_INSET = 368;
 /** Gap between a node and its prompt editor (Canvas.dc.html genY). */
@@ -321,7 +322,11 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
   const { isMember, planId, status: sessionStatus } = useSession();
   const [creditsOpen, setCreditsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [toolPanel, setToolPanel] = useState<'templates' | 'assets' | null>(null);
+  const [toolPanel, setToolPanel] = useState<'templates' | null>(null);
+  /** The shared asset picker modal (tool rail Assets, a prompt's Add reference, an asset node's Replace). */
+  const assetPicker = useAssetPicker();
+  const uploadAssets = useUploadToAssets();
+  const [fileDrag, setFileDrag] = useState(false);
   const [projectMenu, setProjectMenu] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [zoomMenu, setZoomMenu] = useState(false);
@@ -930,7 +935,6 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
     };
   }, [historyOpen, projectId]);
   const templatesP = usePresence(toolPanel === 'templates');
-  const assetsP = usePresence(toolPanel === 'assets');
   const menuP = usePresence(!!menu);
   const lastMenu = useRef(menu);
   if (menu) lastMenu.current = menu;
@@ -946,7 +950,8 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
     } else if (k === 'hist') {
       setHistoryOpen((h) => !h);
     } else if (k === 'asset') {
-      setToolPanel((p) => (p === 'assets' ? null : 'assets'));
+      setToolPanel(null);
+      void assetPicker.open({ title: intl.formatMessage({ id: 'canvas.assets.title' }), multiple: true, projectId, confirmLabel: intl.formatMessage({ id: 'canvas.assets.add' }) }).then((picks) => picks && addPicks(picks));
     } else if (k === 'flow') {
       setToolPanel((p) => (p === 'templates' ? null : 'templates'));
     } else if (k === 'dir') {
@@ -954,7 +959,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
     }
   };
   const toolPressed = (k: Tool) =>
-    k === 'add' ? overlay === 'addMenu' : k === 'cut' ? editorOpen : k === 'hist' ? historyOpen : k === 'asset' ? toolPanel === 'assets' : k === 'flow' ? toolPanel === 'templates' : false;
+    k === 'add' ? overlay === 'addMenu' : k === 'cut' ? editorOpen : k === 'hist' ? historyOpen : k === 'asset' ? assetPicker.isOpen : k === 'flow' ? toolPanel === 'templates' : false;
 
   /** Flow position of the screen point (relative to the canvas). */
   const toFlow = (p: XY) => {
@@ -976,7 +981,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
         tempId,
         kind,
         title: r.name,
-        params: kind === 'audio' ? { voice: r.name, seconds: 0, wave: [], ...(isMockApi() ? { runCost: mockData().canvas.MOCK_PRICE.voice } : {}) } : { media: 'image', label: r.meta, tone: r.tone, refId: r.id },
+        params: kind === 'audio' ? { voice: r.name, seconds: 0, wave: [], ...(isMockApi() ? { runCost: mockData().canvas.MOCK_PRICE.voice } : {}) } : { media: 'image', label: r.meta, tone: r.tone, refId: r.id, ...(r.id.startsWith('ast_') ? { assetId: r.id } : {}) },
         position: at,
       });
     } else {
@@ -1086,36 +1091,75 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
     }
   };
 
-  const addAssets = (items: RefItem[]) => {
-    const center = toFlow({ x: 120, y: size.h / 2 - 100 });
-    const place = (resolved: string[]) => {
-      const r = commit(
-        items.map((it, i) => ({
-          op: 'addNode' as const,
-          tempId: `a${i}`,
-          kind: it.group === 'voice' ? ('audio' as const) : ('asset' as const),
-          title: it.name,
-          params:
-            it.group === 'voice'
-              ? { voice: it.name, voiceId: it.id, seconds: 0, wave: [], ...(isMockApi() ? { runCost: mockData().canvas.MOCK_PRICE.voice } : {}) }
-              : {
-                  media: /^video/i.test(it.meta) || (it.glyph.type === 'icon' && it.glyph.icon === 'video') ? 'video' : it.glyph.type === 'wave' ? 'audio' : 'image',
-                  label: it.meta,
-                  tone: it.tone,
-                  refId: it.id,
-                  // Real mode: the planner reads `params.assetId` (uploads resolved from `upl_` first).
-                  ...(isMockApi() ? {} : { assetId: resolved[i] }),
-                },
-          position: { x: Math.round(center.x + i * 230), y: Math.round(center.y) },
-        })),
-      );
-      if (r.ok) {
-        setToolPanel(null);
-        toast.show({ message: intl.formatMessage({ id: 'canvas.toast.assetsAdded' }, { n: items.length }) });
-      }
-    };
-    if (isMockApi()) return place([]);
-    void Promise.all(items.map((it) => resolveAssetId(it.id))).then(place, () => toast.show({ message: intl.formatMessage({ id: 'canvas.toast.offline' }) }));
+  /** Asset node params for a picked asset: the planner reads `params.assetId` (always an asset id, D-011 uploads included). */
+  const assetNodeParams = (p: AssetPick, i: number) => ({
+    media: p.kind === 'video' ? 'video' : p.kind === 'audio' ? 'audio' : 'image',
+    label: p.meta ?? intl.formatMessage({ id: `picker.kind.${p.kind}` }),
+    tone: ASSET_TONES[i % ASSET_TONES.length],
+    refId: p.id,
+    assetId: p.assetId,
+  });
+
+  /** Adds picked or uploaded assets as asset nodes, left to right from `at` (screen point) or the left of the view. */
+  const addPicks = (picks: AssetPick[], at?: XY) => {
+    if (!picks.length) return;
+    const center = toFlow(at ?? { x: 120, y: size.h / 2 - 100 });
+    const r = commit(
+      picks.map((p, i) => ({
+        op: 'addNode' as const,
+        tempId: `a${i}`,
+        kind: 'asset' as const,
+        title: p.name,
+        params: assetNodeParams(p, i),
+        position: { x: Math.round(center.x + i * 230), y: Math.round(center.y) },
+      })),
+    );
+    if (r.ok) {
+      const id = r.idMap.a0 ?? null;
+      if (id) setSelected(id);
+      toast.show({
+        message: intl.formatMessage({ id: 'canvas.toast.assetsAdded' }, { n: picks.length }),
+        action: { label: intl.formatMessage({ id: 'canvas.toast.undo' }), onAction: () => session.sync.undo() },
+      });
+    }
+  };
+
+  /** Replace on an asset node: pick another asset (or upload one into Assets); the node keeps its wires. */
+  const replaceAsset = useCallback(
+    (nodeId: string) => {
+      const n = session.store.getState().nodes.find((x) => x.id === nodeId);
+      if (!n || n.kind !== 'asset') return;
+      const media = n.params.media;
+      const kinds = media === 'video' ? (['video'] as const) : media === 'audio' ? (['audio'] as const) : (['image', 'character'] as const);
+      void assetPicker.open({ title: intl.formatMessage({ id: 'canvas.assets.replace' }, { name: n.title }), kinds: [...kinds], projectId }).then((picks) => {
+        const p = picks?.[0];
+        if (!p) return;
+        const r = commit([{ op: 'updateNode', nodeId, title: p.name, params: { ...assetNodeParams(p, 0), tone: n.params.tone ?? ASSET_TONES[0] } }]);
+        if (r.ok) toast.show({ message: intl.formatMessage({ id: 'canvas.toast.assetReplaced' }, { name: p.name }) });
+      });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [session, projectId, assetPicker.open],
+  );
+
+  /** Files dropped on the canvas upload at once into the user's Assets (D-011); each becomes an asset node when the asset exists. */
+  const onFileDrop = (e: ReactDragEvent<HTMLDivElement>) => {
+    if (!Array.from(e.dataTransfer.types).includes('Files')) return;
+    e.preventDefault();
+    setFileDrag(false);
+    const rect = rootRef.current?.getBoundingClientRect();
+    const at = { x: e.clientX - (rect?.left ?? 0), y: e.clientY - (rect?.top ?? 0) };
+    const { ok, refused } = acceptedFiles(Array.from(e.dataTransfer.files), ['image', 'video', 'audio']);
+    const { items, refused: tooBig } = uploadAssets(ok, { projectId, purpose: 'canvas' });
+    if (refused.length + tooBig.length) toast.show({ message: intl.formatMessage({ id: 'canvas.drop.refused' }, { n: refused.length + tooBig.length }) });
+    if (!items.length) return;
+    toast.show({ message: intl.formatMessage({ id: 'canvas.drop.uploading' }, { n: items.length }) });
+    items.forEach((it, i) =>
+      void it.done.then(
+        (pick) => addPicks([pick], { x: at.x + i * 24, y: at.y + i * 24 }),
+        () => undefined,
+      ),
+    );
   };
 
   // The canvas opened: remember it as this user's last canvas in this workspace (the sidebar Canvas item).
@@ -1179,8 +1223,9 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
       run: (id) => requestRun(id),
       openResult: (id) => setResultFor(id),
       openVersions: (id, r) => setMenu({ kind: 'versions', id, x: r.left, y: r.bottom + 6 }),
+      replaceAsset,
     }),
-    [requestRun, generateStoryboard, session],
+    [requestRun, generateStoryboard, session, replaceAsset],
   );
 
   const edgeActions: EdgeActions = useMemo(
@@ -1213,6 +1258,14 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
     if (!isMockApi()) return (serverRuns ?? sessionRuns).map((r) => live(r.nodeId, r));
     return [...sessionRuns.map((r) => live(r.nodeId, r)), ...mockData().canvas.MOCK_RUNS.map((r) => live(r.nodeId, r))];
   }, [graph.nodes, sessionRuns, serverRuns]);
+
+  /** The selected prompt's references from the asset picker modal (My assets, Public library, Recent, Upload). */
+  const openRefPicker = () => {
+    pickerFromTyping.current = false;
+    void assetPicker.open({ title: intl.formatMessage({ id: 'canvas.assets.refTitle' }), multiple: true, projectId }).then((picks) => {
+      if (picks?.length) pickRefs(picks.map((p, i) => refFromPick(p, i)));
+    });
+  };
 
   const pickRefs = (items: RefItem[]) => {
     if (!promptNode) return;
@@ -1309,6 +1362,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
           ]
         : []),
       ...(n.version ? [{ key: 'result', label: intl.formatMessage({ id: 'canvas.node.menu.result' }), onSelect: () => setResultFor(n.id) }] : []),
+      ...(n.kind === 'asset' ? [{ key: 'replace', label: intl.formatMessage({ id: 'canvas.node.menu.replace' }), onSelect: () => replaceAsset(n.id) }] : []),
       ...(n.kind === 'script' ? [{ key: 'script', label: intl.formatMessage({ id: 'canvas.node.fullScreen' }), onSelect: () => setOverlay('script') }] : []),
       { key: 'duplicate', label: intl.formatMessage({ id: 'canvas.node.menu.duplicate' }), meta: `${mod}D`, onSelect: () => duplicate(n.id) },
       {
@@ -1373,7 +1427,28 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
   return (
     <NodeActionsContext.Provider value={actions}>
       <EdgeActionsContext.Provider value={edgeActions}>
-        <div ref={rootRef} className={canvas.flow} style={bg} aria-busy={graphLoading || undefined}>
+        <div
+          ref={rootRef}
+          className={canvas.flow}
+          style={bg}
+          aria-busy={graphLoading || undefined}
+          data-file-drag={fileDrag || undefined}
+          onDragOver={(e) => {
+            if (!Array.from(e.dataTransfer.types).includes('Files')) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+            if (!fileDrag) setFileDrag(true);
+          }}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFileDrag(false);
+          }}
+          onDrop={onFileDrop}
+        >
+          {fileDrag ? (
+            <div className={canvas.dropLayer} aria-hidden="true" data-testid="canvas-drop">
+              <FormattedMessage id="canvas.drop.hint" />
+            </div>
+          ) : null}
           {graphLoading ? (
             // Real mode, first snapshot in flight: node-shaped placeholders where the graph will appear.
             <div aria-hidden="true" data-testid="canvas-skeleton" style={{ position: 'absolute', left: '50%', top: '42%', transform: 'translate(-50%, -50%)', display: 'flex', gap: 48, zIndex: 1, pointerEvents: 'none' }}>
@@ -1445,7 +1520,9 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
           pickerOpen={overlay === 'at'}
           onOpenPicker={(fromTyping) => {
             pickerFromTyping.current = !!fromTyping;
-            setOverlay((o) => (o === 'at' && !fromTyping ? null : 'at'));
+            // Typing `@` opens the inline mention list (CanvasAt); the Add reference button opens the asset picker modal.
+            if (fromTyping) setOverlay('at');
+            else openRefPicker();
           }}
           onGenerate={(id) => requestRun(id)}
           models={models}
@@ -1628,11 +1705,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
           onSaveSelection={saveSelectionTemplate}
         /> : null}
 
-      {assetsP.mounted ? (
-        <div className={cx(canvas.assetPanel, 'rl-pop')} {...presenceProps(assetsP.state)} data-testid="assets-panel">
-          <ReferencePicker autoFocus onAdd={addAssets} onClose={() => setToolPanel(null)} />
-        </div>
-      ) : null}
+      {assetPicker.element}
 
       {atP.mounted && lastPromptPos.current ? (
         <div className={cx(canvas.picker, 'rl-pop')} style={{ left: lastPromptPos.current.left, top: lastPromptPos.current.top + 68 }} {...presenceProps(atP.state)}>
@@ -1640,6 +1713,10 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
             initialSelected={[]}
             attachedIds={promptNode && Array.isArray(promptNode.params.refs) ? (promptNode.params.refs as string[]) : []}
             onAdd={pickRefs}
+            onUpload={() => {
+              close();
+              openRefPicker();
+            }}
             onClose={() => {
               pickerFromTyping.current = false;
               close();

@@ -6,6 +6,7 @@ import type { BinItem } from './mocks';
 import { formatClipLength } from '@rolling/core/timeline';
 import { useReferences, type RefItem } from '@/features/prompt';
 import { usePublicItems } from '@/lib/publicLibrary';
+import { useAssetPicker } from '@/features/picker';
 
 type BinTab = 'project' | 'assets' | 'public';
 const TABS: BinTab[] = ['project', 'assets', 'public'];
@@ -111,6 +112,12 @@ const PUB_TONES = ['var(--c-tone-plum)', 'var(--c-tone-indigo)', 'var(--c-tone-s
 export function Bin({ items, currentId, onPick, onInsert }: BinProps) {
   const intl = useIntl();
   const [tab, setTab] = useState<BinTab>('project');
+  /** Import: the shared asset picker modal (My assets, Public library, Recent, Upload into Assets); picks go on the timeline. */
+  const picker = useAssetPicker();
+  const importAssets = () =>
+    void picker.open({ title: intl.formatMessage({ id: 'editor.bin.importTitle' }), multiple: true, confirmLabel: intl.formatMessage({ id: 'editor.bin.importUse' }) }).then((picks) => {
+      for (const p of picks ?? []) onInsert({ name: p.name, assetId: p.assetId, kind: p.kind === 'character' ? 'image' : p.kind, ...(p.durationSec ? { seconds: p.durationSec } : {}) });
+    });
   const onKey = (e: KeyboardEvent) => {
     const i = TABS.indexOf(tab);
     const next = e.key === 'ArrowRight' ? TABS[(i + 1) % 3] : e.key === 'ArrowLeft' ? TABS[(i + 2) % 3] : null;
@@ -121,6 +128,7 @@ export function Bin({ items, currentId, onPick, onInsert }: BinProps) {
   };
   return (
     <aside aria-label={intl.formatMessage({ id: 'editor.bin.label' })} className={styles.bin}>
+      {picker.element}
       <div role="tablist" aria-label={intl.formatMessage({ id: 'editor.bin.tabs' })} className={styles.binTabs} onKeyDown={onKey}>
         {TABS.map((k) => (
           <button
@@ -139,6 +147,9 @@ export function Bin({ items, currentId, onPick, onInsert }: BinProps) {
           </button>
         ))}
       </div>
+      <button type="button" className={`${styles.btn} ${styles.binImport}`} aria-haspopup="dialog" onClick={importAssets} data-bin-import="">
+        {intl.formatMessage({ id: 'editor.bin.import' })}
+      </button>
       <div role="tabpanel" id={`edbin-panel-${tab}`} aria-labelledby={`edbin-tab-${tab}`} key={tab} className={`${styles.binPanel} ${styles.panelSwap}`}>
         {tab === 'project' ? (
           <ul className={styles.binList}>

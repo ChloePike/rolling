@@ -5,7 +5,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { isMockApi, mockData } from '@/lib/api/mode';
 import { useCreationMode } from '@/lib/prefs';
-import { resolveAssetId } from '@/lib/transfers';
 import { createProjectFromTemplate, useTemplate, useTemplates, type SlotFills } from '@/features/templates/api';
 import { coverStyle } from '@/features/templates/cover';
 import { useToolFeed } from '../api';
@@ -20,7 +19,7 @@ import { useToolSettings, type ToolSettings } from '../shared/settings';
 import { ToolSwitch } from '../shared/Switch';
 import { ToolLayout, type ToolOverlay } from '../shared/ToolLayout';
 import layout from '../shared/ToolLayout.module.css';
-import { useFilePicker } from '../shared/useFilePicker';
+import { usePickAsset } from '../shared/usePickAsset';
 import { modelIdOf, segModels, TOOL_NEEDS, useToolModels } from '../shared/useToolModels';
 import type { ComposerPill } from '../types';
 import styles from './QuickCreate.module.css';
@@ -46,7 +45,8 @@ interface Slot {
   shots?: string;
   tone: string;
   file?: string;
-  uploadId?: string;
+  /** The picked image asset (a template default, or one chosen in the asset picker). */
+  assetId?: string;
 }
 
 export function QuickCreatePage({ initialOverlay, models: modelsOverride, plan: planProp, isMember, templateId, ratio: ratioParam }: Props) {
@@ -92,7 +92,7 @@ export function QuickCreatePage({ initialOverlay, models: modelsOverride, plan: 
   const templateSlots = demo ? undefined : picked?.slots?.filter((x) => x.kind === 'image');
   useEffect(() => {
     if (!templateSlots) return;
-    setSlots(templateSlots.map((x, i) => ({ name: x.label, uploaded: !!x.default, tone: i % 2 ? 'var(--c-tone-neutral)' : 'var(--c-tone-plum)', id: x.id, uploadId: x.default })));
+    setSlots(templateSlots.map((x, i) => ({ name: x.label, uploaded: !!x.default, tone: i % 2 ? 'var(--c-tone-neutral)' : 'var(--c-tone-plum)', id: x.id, assetId: x.default })));
     // Once per template.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [picked?.id, templateSlots?.length]);
@@ -110,7 +110,7 @@ export function QuickCreatePage({ initialOverlay, models: modelsOverride, plan: 
     setOpening(true);
     try {
       const fills: SlotFills = {};
-      for (const x of slots) if (x.uploadId && picked?.slots?.some((ps) => ps.id === x.id)) fills[x.id] = { assetId: await resolveAssetId(x.uploadId) };
+      for (const x of slots) if (x.assetId && picked?.slots?.some((ps) => ps.id === x.id)) fills[x.id] = { assetId: x.assetId };
       const project = await createProjectFromTemplate(templateId, fills);
       void navigate({ to: '/p/$projectId', params: { projectId: project.id } });
     } catch {
@@ -121,10 +121,11 @@ export function QuickCreatePage({ initialOverlay, models: modelsOverride, plan: 
   };
   const [slotTarget, setSlotTarget] = useState<string | null>(null);
   const [lineLang, setLineLang] = useState('en-US');
-  const slotPicker = useFilePicker('image/*', (file, uploadId) => {
+  /** A slot takes an image asset: from My assets, a Character, the public library (portraits first) or an upload into Assets. */
+  const slotPicker = usePickAsset({ kinds: ['image', 'character'], categories: ['portrait'], tab: 'mine' }, (pick) => {
     if (!slotTarget) return;
-    setSlots((all) => all.map((x) => (x.name === slotTarget ? { ...x, uploaded: true, shots: x.shots, file: file.name, uploadId } : x)));
-    toast.show({ message: t('tools.toast.slotUploaded', { name: slotTarget, file: file.name }) });
+    setSlots((all) => all.map((x) => (x.name === slotTarget ? { ...x, uploaded: true, shots: x.shots, file: pick.name, assetId: pick.assetId } : x)));
+    toast.show({ message: t('tools.toast.slotUploaded', { name: slotTarget, file: pick.name }) });
   });
 
   const modelLabel = (m: string) => (m === 'Auto' ? t('tools.model.auto') : m);
@@ -222,7 +223,7 @@ export function QuickCreatePage({ initialOverlay, models: modelsOverride, plan: 
       </AsideCard>
       {slots.length > 0 && (
         <AsideCard title={t('tools.quick.swap')} hint={t('tools.quick.swap.hint')} testId="swap">
-          {slotPicker.input}
+          {slotPicker.element}
           {slots.map((x) => (
             <div key={x.name} className={styles.slot} data-slot={x.name}>
               <div className={styles.slotThumb} style={{ background: x.tone }}>
@@ -240,7 +241,7 @@ export function QuickCreatePage({ initialOverlay, models: modelsOverride, plan: 
                 aria-label={t(x.uploaded ? 'tools.quick.slot.replace.label' : 'tools.quick.slot.upload.label', { name: x.name })}
                 onClick={() => {
                   setSlotTarget(x.name);
-                  slotPicker.open();
+                  slotPicker.open({ title: `@${x.name}` });
                 }}
               >
                 <FormattedMessage id={x.uploaded ? 'tools.quick.slot.replace' : 'tools.quick.slot.upload'} />
@@ -335,7 +336,7 @@ export function QuickCreatePage({ initialOverlay, models: modelsOverride, plan: 
       actions={['redo', 'sliders', 'frame', 'down', 'star']}
       spec={(prompt) => {
         // The swapped cast pictures go in as references (resolved from upload ids before the quote).
-        const referenceAssetIds = slots.flatMap((x) => (x.uploadId ? [x.uploadId] : []));
+        const referenceAssetIds = slots.flatMap((x) => (x.assetId ? [x.assetId] : []));
         return {
           kind: 'video',
           model: modelIdOf(models, model),

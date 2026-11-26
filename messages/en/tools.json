@@ -346,6 +346,7 @@
   "tools.library.error": "Couldn’t load the library.",
   "tools.library.retry": "Try again",
   "tools.library.clear": "Clear",
+  "tools.library.clearLabel": "Clear {label}",
   "tools.character.reference.library": "From the library",
   "tools.character.pill.viewsOnly": "2 views",
   "tools.quick.shotCount": "{n, plural, one {# shot} other {# shots}}"

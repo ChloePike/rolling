@@ -177,7 +177,6 @@ button.historyRow:focus-visible{background:var(--c-surface-4);outline:none;box-s
 .toolPanel:focus-visible{outline:none}
 .toolPanelLink{margin:6px 10px 0;font-size:12px;color:var(--c-link);text-decoration:none}
 .toolPanelLink:hover{text-decoration:underline}
-.assetPanel{position:absolute;left:72px;top:64px;z-index:40;width:640px}
 
 /* Project title: rename in place. */
 .projectInput{
@@ -204,3 +203,10 @@ button.historyRow:focus-visible{background:var(--c-surface-4);outline:none;box-s
 .errorLink{display:inline-flex;align-items:center;text-decoration:none}
 .errorSwitchButton{height:32px;line-height:32px;padding:0 14px;margin-left:4px}
 .errorSwitch{margin:4px 0 0;padding:10px 12px;border-radius:12px;background:var(--c-surface-4);font-size:13px;line-height:1.5;color:var(--c-text-2)}
+/* Files dragged over the canvas: they upload into the user's Assets and become asset nodes. */
+.dropLayer{
+  position:absolute;inset:12px;z-index:45;border-radius:18px;border:2px dashed var(--c-accent);background:var(--c-accent-soft);
+  display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;color:var(--c-text-1);pointer-events:none;
+  animation:rl-fade-in var(--dur-fast) var(--ease-standard) both;
+}
+@media (prefers-reduced-motion: reduce){.dropLayer{animation:none}}

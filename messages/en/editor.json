@@ -141,5 +141,8 @@
   "editor.export.join": "Exports are part of every plan. Join to export this cut.",
   "editor.export.offline": "Can’t reach the server. Check your connection and try again.",
   "editor.export.unknown": "The renderer stopped.",
+  "editor.bin.import": "Import",
+  "editor.bin.importTitle": "Import to the timeline",
+  "editor.bin.importUse": "Add to timeline",
   "editor.timeline.generatePlain": "Generate"
 }

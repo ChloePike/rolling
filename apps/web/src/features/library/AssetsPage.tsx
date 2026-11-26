@@ -209,7 +209,7 @@ function Files({
   folder: string;
   query: string;
   sel: string | null;
-  setSel: (id: string) => void;
+  setSel: (id: string | null) => void;
   uploads: Array<{ id: string; file: File; progress: number }>;
 }) {
   const intl = useIntl();
@@ -226,7 +226,14 @@ function Files({
   const visible = assets
     .map((a, i) => ({ a, i }))
     .filter(({ a }) => inFolder(a) && (type === 'all' || a.type === type) && a.name.toLowerCase().includes(query.trim().toLowerCase()));
-  const selId = sel ?? assets[0]?.id ?? null;
+  // The details panel follows the filters: a selection the folder, type or search hides moves to the first
+  // visible asset, or clears (no panel) when nothing is visible.
+  const visibleKey = visible.map(({ a }) => a.id).join('|');
+  const selId = sel && visible.some(({ a }) => a.id === sel) ? sel : (visible[0]?.a.id ?? null);
+  useEffect(() => {
+    if (assetsQ.data !== undefined && selId !== sel) setSel(selId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleKey, sel, assetsQ.data !== undefined]);
   return (
     <>
       <ChipGroup
@@ -343,8 +350,9 @@ function FileDetailSlot({ sel, onDeleted }: { sel: string | null; onDeleted: () 
   const [name, setName] = useState('');
   const nameId = useId();
   const toCanvas = useSendToCanvas();
-  const idx = Math.max(0, sel ? assets.findIndex((x) => x.id === sel) : 0);
-  const a = assets[idx];
+  // Only the asset the grid shows as selected (Files clears `sel` when the filters hide it).
+  const idx = sel ? assets.findIndex((x) => x.id === sel) : -1;
+  const a = idx >= 0 ? assets[idx] : undefined;
   if (!a) return null;
   const t = (id: string, v?: Record<string, string | number>) => intl.formatMessage({ id }, v);
   const ext = a.name.split('.').pop()?.toUpperCase() ?? '';

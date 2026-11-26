@@ -3,7 +3,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { useIntl } from 'react-intl';
 import { ModelIcon, modelIcon } from '@/lib/modelIcons';
-import { promptKeys, uploadKind, uploadReferences } from './api';
+import { promptKeys, refFromPick, uploadKind, uploadReferences } from './api';
+import { useAssetPicker } from '@/features/picker';
 import { CommandPalette, paletteOptionId } from './CommandPalette';
 import { filterCommands, isSlashQuery, stripTrailingAt, trailingAtQuery, COMMAND } from './commands';
 import { PromptIcon } from './icons';
@@ -60,9 +61,10 @@ export interface PromptBoxProps {
   /** Items for the `@` picker. Defaults to the mock-backed `useReferences()`. */
   referenceItems?: RefItem[];
   /**
-   * `+` → Choose from Assets. (`+` → Upload and the picker’s Upload button
-   * open the file chooser here; the files become `mine` references, are added
-   * to `refs` and reported through `onUploaded`.)
+   * Other `+` actions. (`+` → Choose from Assets opens the shared asset picker
+   * modal here; `+` → Upload and the `@` picker’s Upload button open the file
+   * chooser here; uploads go into the user's Assets, become `mine` references,
+   * are added to `refs` and reported through `onUploaded`.)
    */
   onAddAction?: (action: Exclude<PlusAction, 'reference'>) => void;
   /** Files the user uploaded from the box, after they were added to `refs`. */
@@ -247,6 +249,7 @@ export function PromptBox(props: PromptBoxProps) {
 
   const togglePlus = () => setOverlay(plusOpen ? { kind: 'none' } : { kind: 'plus' });
   const chooseFiles = () => fileRef.current?.click();
+  const assetPicker = useAssetPicker();
   const onFiles = async (list: FileList | null) => {
     const files = Array.from(list ?? []);
     if (fileRef.current) fileRef.current.value = '';
@@ -270,6 +273,13 @@ export function PromptBox(props: PromptBoxProps) {
     else if (a === 'upload') {
       close();
       chooseFiles();
+    } else if (a === 'assets') {
+      // Choose from Assets: the shared asset picker modal (My assets, Public library, Recent, Upload).
+      close();
+      void assetPicker.open({ title: t('prompt.plus.assets'), multiple: true }).then((picks) => {
+        if (picks?.length) addRefs(picks.map((p, i) => refFromPick(p, i)));
+        textRef.current?.focus();
+      });
     } else {
       close();
       onAddAction?.(a);
@@ -302,6 +312,7 @@ export function PromptBox(props: PromptBoxProps) {
 
   return (
     <div ref={rootRef} className={`${dock ? styles.dock : styles.box} ${className ?? ''}`} data-variant={variant}>
+      {assetPicker.element}
       <input
         ref={fileRef}
         type="file"

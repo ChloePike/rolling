@@ -110,16 +110,22 @@ export function ReferencePicker({
   const counts = useMemo(() => (facets ? new Map(facets.map((f) => [f.key, f.count])) : null), [facets]);
   const pubCategories = LIBRARY_CATEGORIES.filter((c) => !counts || (counts.get(c.key) ?? 0) > 0).map((c) => c.key);
   const pubTotal = counts ? [...counts.values()].reduce((a, b) => a + b, 0) : null;
-  const pub = usePublicItems(cat === 'all' ? null : cat, { q: q.trim(), enabled: tab === 'pub' });
+  // The All tab includes the public library too (its first page; the Public library tab pages through the rest).
+  const pub = usePublicItems(cat === 'all' ? null : cat, { q: q.trim(), enabled: tab === 'pub' || tab === 'all' });
   const pubItems = useMemo(() => (pub.data?.pages.flatMap((p) => p.items) ?? []).map((item, i) => publicRef(intl, item, i)), [pub.data, intl]);
   // Picked public items stay addable after switching category or tab.
   const seen = useRef(new Map<string, RefItem>());
   for (const r of pubItems) seen.current.set(r.id, r);
 
   const list = useMemo(
-    () => (tab === 'pub' ? pubItems : all.filter((r) => (tab === 'all' || r.group === tab) && matches(r))),
+    () =>
+      tab === 'pub'
+        ? pubItems
+        : tab === 'all'
+          ? [...all.filter((r) => r.group !== 'pub' && matches(r)), ...(pub.data ? pubItems : all.filter((r) => r.group === 'pub' && matches(r)))]
+          : all.filter((r) => r.group === tab && matches(r)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [all, tab, q, pubItems],
+    [all, tab, q, pubItems, pub.data],
   );
 
   const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
@@ -187,7 +193,10 @@ export function ReferencePicker({
       </div>
       <div role="tablist" aria-label={t('prompt.picker.tabs')} className={styles.tabs}>
         {TABS.map((k, i) => {
-          const count = k === 'pub' && pubTotal !== null && !q ? pubTotal : all.filter((r) => (k === 'all' || r.group === k) && matches(r)).length;
+          // All = every local item plus the whole public library (its server total; while searching, the loaded matches).
+          const local = all.filter((r) => (k === 'all' ? r.group !== 'pub' : r.group === k) && matches(r)).length;
+          const pubCount = pubTotal !== null && !q ? pubTotal : pub.data ? pubItems.length : all.filter((r) => r.group === 'pub' && matches(r)).length;
+          const count = k === 'pub' ? pubCount : k === 'all' ? local + pubCount : local;
           return (
             <button
               key={k}

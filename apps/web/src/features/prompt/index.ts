@@ -18,7 +18,7 @@ export {
   trailingAtQuery,
   stripTrailingAt,
 } from './commands';
-export { useReferences, useSkills, fetchReferences, fetchSkills, promptKeys, uploadReferences } from './api';
+export { useReferences, useSkills, fetchReferences, fetchSkills, promptKeys, refFromPick, uploadReferences } from './api';
 export type {
   RefItem,
   RefSource,

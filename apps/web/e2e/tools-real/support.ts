@@ -57,6 +57,11 @@ export const POSES = Array.from({ length: 30 }, (_, i) => ({
   depthUrl: null,
   angles: [],
 }));
+/** The user's workspace assets (GraphQL `assets`, the picker's My assets). */
+export const MINE = [
+  { id: 'ast_mine_1', kind: 'IMAGE', source: 'mine', name: 'Studio portrait.png', status: 'ready', mature: false, rating: 'safe', size: 1000, contentType: 'image/png', license: null, projectId: null, createdAt: 1_800_000_000_000, url: null, thumbUrl: null, meta: { width: 1024, height: 1536, durationSec: null } },
+  { id: 'ast_mine_2', kind: 'AUDIO', source: 'mine', name: 'Voice take.mp3', status: 'ready', mature: false, rating: 'safe', size: 1000, contentType: 'audio/mpeg', license: null, projectId: null, createdAt: 1_799_000_000_000, url: null, thumbUrl: null, meta: { width: null, height: null, durationSec: 7 } },
+];
 const OUTFITS = [{ ...POSES[0]!, id: 'pw_outfit_1', category: 'outfit', title: 'Linen suit', promptEn: 'a beige linen suit', assetId: 'ast_outfit_1' }];
 
 export interface Calls {
@@ -117,6 +122,11 @@ export async function stubApi(page: Page, context: BrowserContext, opts: { creat
     if (path === '/graphql') {
       const body = req.postDataJSON() as { query: string; variables?: Record<string, unknown> };
       const v = body.variables ?? {};
+      if (body.query.includes('PickerAssets')) {
+        const kind = typeof v.kind === 'string' ? v.kind : null;
+        const list = MINE.filter((a) => !kind || a.kind === kind);
+        return route.fulfill({ json: { data: { assets: { edges: list.map((node) => ({ cursor: node.id, node })), pageInfo: { hasNextPage: false, endCursor: null } } } } });
+      }
       if (body.query.includes('publicCategories')) return route.fulfill({ json: { data: { publicCategories: [{ key: 'pose', count: 30 }, { key: 'outfit', count: 1 }] } } });
       if (body.query.includes('publicItems')) {
         calls.library.push(v);
@@ -142,6 +152,7 @@ export async function stubApi(page: Page, context: BrowserContext, opts: { creat
     }
     if (path === '/runs' && method === 'GET') return route.fulfill({ json: { stats: { usedThisMonth: 0, usedLastMonth: 0, running: 0, successRate: null, runsLast7Days: 0, refundedThisMonth: 0 }, runs: [], nextCursor: null } });
     if (path.startsWith('/runs/run_e2e')) return route.fulfill({ json: { run: { id: 'run_e2e', ref: 'r', name: 'x', source: 'quickCreate', projectId: null, projectTitle: null, params: '', status: 'running', progress: 0.1, credits: 137, quoted: 137, spent: 0, refunded: 0, error: null, createdAt: Date.now(), finishedAt: null, items: [] } } });
+    if (path === '/characters') return route.fulfill({ json: { items: [] } });
     if (path === '/templates') return route.fulfill({ json: { featured: [], items: [], total: 0 } });
     return route.fulfill({ status: 404, json: { error: { code: 'NOT_FOUND', message: 'stub', data: null } } });
   });
