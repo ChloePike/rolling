@@ -183,8 +183,8 @@ export function RemixPage({ initialOverlay, models: modelsOverride, plan: planPr
       <AsideCard title={t('tools.remix.characterTitle')} testId="characters">
         <div role="radiogroup" aria-label={t('tools.remix.characters')} className={styles.counts}>
           {[1, 2, 3, 4, 5].map((n) => (
-            <button key={n} type="button" role="radio" aria-checked={people === n} className={styles.countBtn} onClick={() => setPeople(n)}>
-              {t('tools.remix.people', { n })}
+            <button key={n} type="button" role="radio" aria-checked={people === n} aria-label={t('tools.remix.people', { n })} title={t('tools.remix.people', { n })} className={styles.countBtn} onClick={() => setPeople(n)}>
+              {n}
             </button>
           ))}
         </div>

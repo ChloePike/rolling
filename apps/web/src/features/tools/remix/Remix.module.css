@@ -1,7 +1,7 @@
 /* Remix left panel cards (OriginalVideo.dc.html). */
 .counts{display:flex;gap:2px;border-radius:var(--r-pill);background:var(--c-surface-4);padding:3px}
 .countBtn{
-  flex:1;height:28px;border-radius:var(--r-pill);border:0;background:transparent;color:var(--c-text-2);font:inherit;font-size:12px;font-weight:600;cursor:pointer;padding:0;
+  flex:1 1 0;min-width:0;height:28px;border-radius:var(--r-pill);border:0;background:transparent;color:var(--c-text-2);font:inherit;font-size:13px;font-weight:600;cursor:pointer;padding:0;white-space:nowrap;text-align:center;
   transition:background-color var(--m-fast) var(--m-ease-standard),color var(--m-fast) var(--m-ease-standard);
 }
 .countBtn:hover:not([aria-checked="true"]){color:var(--c-text-1)}
