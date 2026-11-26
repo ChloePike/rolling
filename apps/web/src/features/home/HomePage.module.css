@@ -64,8 +64,9 @@
   align-self:flex-start;height:20px;padding:0 8px;border-radius:999px;background:var(--c-media-chip);
   font-weight:600;font-size:11px;line-height:20px;
 }
-.feedFoot{display:flex;align-items:flex-end;gap:8px}
-.feedName{flex:1;font-size:13px;font-weight:600}
+.feedFoot{display:flex;align-items:flex-end;justify-content:space-between;gap:8px}
+/* Solid chip (like the duration badge) so the name reads on any poster; no gradient scrim. */
+.feedName{flex:0 1 auto;min-width:0;padding:4px 9px;border-radius:10px;background:var(--c-media-chip);color:var(--c-text-1);font-size:13px;font-weight:600;line-height:18px}
 .useBtn{
   height:28px;padding:0 10px;border-radius:999px;background:color-mix(in srgb,var(--c-text-1) 92%,transparent);color:var(--c-bg);
   font-size:12px;font-weight:700;line-height:28px;white-space:nowrap;
