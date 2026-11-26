@@ -15,10 +15,14 @@
   display:flex;align-items:center;justify-content:center;gap:10px;width:100%;
 }
 .btn:disabled{cursor:default}
-/* The official Google button (D-016) sits in the slot of the design's 44px primary button. */
-.gis{height:44px;width:100%;display:flex;align-items:center;justify-content:center;color-scheme:normal}
 .primary{background:var(--c-text-1);color:var(--c-bg)}
 .primary:hover:not(:disabled){background:var(--c-primary-hover)}
+/* "Continue with Google" (D-017): the design's inverted button; busy swaps the mark for a spinner. */
+.google:disabled:not([aria-busy]){opacity:.5}
+.mark,.spinner{flex:none;width:18px;height:18px}
+.spinner{box-sizing:border-box;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:rl-auth-spin .8s linear infinite}
+@keyframes rl-auth-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spinner{animation-duration:2.4s}}
 .dark{background:var(--c-surface-4);color:var(--c-text-1)}
 .dark:hover:not(:disabled){background:var(--c-surface-5)}
 .mid{background:var(--c-surface-5);color:var(--c-text-1)}

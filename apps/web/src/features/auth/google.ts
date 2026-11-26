@@ -2,31 +2,31 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api/client';
 import { ApiError } from '@/lib/api/errors';
 import { isMockApi } from '@/lib/api/mode';
-import { getPrefs, resolvedTheme } from '@/lib/prefs';
 import { refetchMe } from '@/lib/session';
 
 /**
- * Google sign-in without leaving the page (D-016, docs/api.md → Auth):
+ * Google sign-in without leaving the page (D-017, docs/api.md → Auth), no client secret:
  *
- * 1. `GET /api/auth/nonce?redirect=` → a single-use nonce (5 minutes).
- * 2. Google Identity Services (loaded lazily, auth pages only) renders the official
- *    button (popup) and One Tap (FedCM), both with that nonce.
- * 3. The credential (an ID token) goes to `POST /api/auth/sign-in/social`
- *    `{ provider: 'google', idToken: { token, nonce } }`; the response sets the session cookie.
+ * - **Our own button** (the design's "Continue with Google"): Google Identity Services'
+ *   OAuth2 token client (`google.accounts.oauth2.initTokenClient`, initialized on mount so
+ *   `requestAccessToken()` runs synchronously in the click and the popup is not blocked)
+ *   opens Google's popup; the access token goes to `POST /api/auth/google/access-token`,
+ *   which verifies it with Google and sets the session cookie.
+ * - **One Tap** (Google's own prompt, FedCM): `GET /api/auth/nonce` → ID token →
+ *   `POST /api/auth/sign-in/social` `{ provider: 'google', idToken: { token, nonce } }`.
  *
- * Fallbacks: GIS redirect mode (`ux_mode: 'redirect'`, Google posts the token to
- * `login_uri`) after a closed or blocked popup and in the installed app; the
- * script-free `GET /api/auth/google/start` when the script cannot load at all.
+ * Fallback: the script-free `GET /api/auth/google/start` (full-page redirect) when the
+ * script cannot load or the popup is blocked (`popup_failed_to_open`). A popup the user
+ * closes (`popup_closed`) is quiet.
  *
  * Mock mode: GIS is only loaded when `window.__rollingMocks.googleSdk` is true
- * (the e2e specs stub the script by route interception); otherwise the design
- * button runs the mock redirect as before.
+ * (the e2e specs stub the script by route interception); otherwise the button runs
+ * the mock redirect.
  */
 
 export const GIS_SRC = 'https://accounts.google.com/gsi/client';
 const LOAD_TIMEOUT_MS = 8000;
-/** After a GIS button click, a credential should arrive this soon after focus returns, or the popup was closed. */
-const POPUP_GRACE_MS = 1500;
+export const GOOGLE_SCOPE = 'openid email profile';
 
 export interface GoogleConfig {
   clientId: string;
@@ -39,15 +39,39 @@ interface CredentialResponse {
 
 interface GisId {
   initialize(config: Record<string, unknown>): void;
-  renderButton(el: HTMLElement, options: Record<string, unknown>): void;
   prompt(listener?: (n: unknown) => void): void;
   cancel(): void;
   disableAutoSelect?(): void;
 }
 
+interface TokenResponse {
+  access_token?: string;
+  error?: string;
+  error_description?: string;
+}
+
+interface TokenClient {
+  requestAccessToken(overrides?: Record<string, unknown>): void;
+}
+
+interface GisOauth2 {
+  initTokenClient(config: {
+    client_id: string;
+    scope: string;
+    prompt?: string;
+    callback: (r: TokenResponse) => void;
+    error_callback?: (e: { type?: string; message?: string }) => void;
+  }): TokenClient;
+}
+
+interface GisAccounts {
+  id?: GisId;
+  oauth2?: GisOauth2;
+}
+
 declare global {
   interface Window {
-    google?: { accounts?: { id?: GisId } };
+    google?: { accounts?: GisAccounts };
   }
 }
 
@@ -70,13 +94,13 @@ export function gisEnabled(): boolean {
   return !isMockApi() || seams().googleSdk === true;
 }
 
-let loading: Promise<GisId> | null = null;
+let loading: Promise<GisAccounts> | null = null;
 
-/** Loads the GIS script once. Rejects when it is blocked, fails or takes too long. */
-export function loadGis(): Promise<GisId> {
-  if (window.google?.accounts?.id) return Promise.resolve(window.google.accounts.id);
+/** Loads the GIS script once (One Tap and the token client). Rejects when it is blocked, fails or takes too long. */
+export function loadGis(): Promise<GisAccounts> {
+  if (window.google?.accounts?.id || window.google?.accounts?.oauth2) return Promise.resolve(window.google.accounts);
   if (loading) return loading;
-  loading = new Promise<GisId>((resolve, reject) => {
+  loading = new Promise<GisAccounts>((resolve, reject) => {
     const script = document.createElement('script');
     script.src = GIS_SRC;
     script.async = true;
@@ -90,9 +114,9 @@ export function loadGis(): Promise<GisId> {
     }
     script.onload = () => {
       window.clearTimeout(timer);
-      const id = window.google?.accounts?.id;
-      if (id) resolve(id);
-      else fail(new Error('GIS loaded without google.accounts.id'));
+      const accounts = window.google?.accounts;
+      if (accounts?.id || accounts?.oauth2) resolve(accounts);
+      else fail(new Error('GIS loaded without google.accounts'));
     };
     script.onerror = () => fail(new Error('GIS failed to load'));
     document.head.appendChild(script);
@@ -153,19 +177,129 @@ export async function startGoogleRedirect(redirect: string): Promise<{ redirectT
 
 export type GisState = 'loading' | 'ready' | 'unavailable';
 
+/**
+ * Signs in (or, with `intent: 'link'`, links Google to the signed-in user) with an
+ * access token from the token client. Resolves once `/api/me` reflects the session.
+ * Rejects with `UNAUTHENTICATED` (`data.reason`: `INVALID_TOKEN` | `SCOPE`),
+ * `FORBIDDEN` (`EMAIL_NOT_VERIFIED`) or `CONFLICT` (`ACCOUNT_IN_USE`, linking).
+ * Mock: the token `mock-invalid` is refused.
+ */
+export async function signInWithGoogleAccessToken(accessToken: string, redirect: string, intent?: 'link'): Promise<{ redirectTo: string }> {
+  if (isMockApi()) {
+    await wait();
+    if (accessToken === 'mock-invalid') throw new ApiError('UNAUTHENTICATED', 'Invalid or expired Google access token', 401, { reason: 'INVALID_TOKEN' } as never);
+    return { redirectTo: redirect };
+  }
+  const r = await api.post<{ redirectTo?: string }>('/auth/google/access-token', { accessToken, redirect, ...(intent ? { intent } : {}) }, { noWorkspace: true });
+  await refetchMe();
+  return { redirectTo: r.redirectTo ?? redirect };
+}
+
+/** Why the token client produced no token. `popup_closed` and `superseded` are quiet. */
+export type GooglePopupFailure = 'popup_closed' | 'popup_failed_to_open' | 'unavailable' | 'denied' | 'superseded' | 'unknown';
+
+export class GooglePopupError extends Error {
+  constructor(readonly type: GooglePopupFailure) {
+    super(`Google popup: ${type}`);
+  }
+}
+
+/** One token client per page (GIS calls a fixed callback; it settles the pending request). */
+let tokenClient: { clientId: string; client: TokenClient } | null = null;
+let preparing: { clientId: string; promise: Promise<void> } | null = null;
+let pending: { resolve: (token: string) => void; reject: (err: GooglePopupError) => void } | null = null;
+
+function settle(fn: (p: NonNullable<typeof pending>) => void) {
+  const p = pending;
+  pending = null;
+  if (p) fn(p);
+}
+
+/** Loads GIS and initializes the token client for `clientId` (idempotent). */
+export function prepareGoogleTokenClient(clientId: string): Promise<void> {
+  if (tokenClient?.clientId === clientId) return Promise.resolve();
+  if (preparing?.clientId === clientId) return preparing.promise;
+  const promise = loadGis().then((accounts) => {
+    if (!accounts.oauth2) throw new Error('GIS loaded without google.accounts.oauth2');
+    const client = accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: GOOGLE_SCOPE,
+      prompt: 'select_account',
+      callback: (r) => {
+        if (r.access_token) settle((p) => p.resolve(r.access_token!));
+        else settle((p) => p.reject(new GooglePopupError(r.error === 'access_denied' ? 'denied' : 'unknown')));
+      },
+      error_callback: (e) => {
+        const t = e?.type;
+        settle((p) => p.reject(new GooglePopupError(t === 'popup_closed' || t === 'popup_failed_to_open' ? t : 'unknown')));
+      },
+    });
+    tokenClient = { clientId, client };
+  });
+  preparing = { clientId, promise };
+  promise.catch(() => {
+    if (preparing?.promise === promise) preparing = null;
+  });
+  return promise;
+}
+
+/**
+ * Opens Google's popup. Call it synchronously from the click handler (the token client
+ * must be prepared already, or browsers block the popup). Rejects with `unavailable`
+ * when it is not, so the caller can use the redirect fallback.
+ */
+export function requestGoogleAccessToken(): Promise<string> {
+  if (!tokenClient) return Promise.reject(new GooglePopupError('unavailable'));
+  settle((p) => p.reject(new GooglePopupError('superseded')));
+  const promise = new Promise<string>((resolve, reject) => {
+    pending = { resolve, reject };
+  });
+  try {
+    tokenClient.client.requestAccessToken();
+  } catch {
+    settle((p) => p.reject(new GooglePopupError('popup_failed_to_open')));
+  }
+  return promise;
+}
+
+/** Test seam: forget the token client (a fresh page has none). */
+export function resetGoogleTokenClient(): void {
+  tokenClient = null;
+  preparing = null;
+  pending = null;
+}
+
+/** Prepares the token client on mount; `ready` once a click can open the popup. */
+export function useGoogleTokenClient(config: GoogleConfig | null): GisState {
+  const clientId = config?.clientId;
+  const enabled = !!clientId && gisEnabled();
+  const [state, setState] = useState<GisState>(enabled ? (tokenClient?.clientId === clientId ? 'ready' : 'loading') : 'unavailable');
+  useEffect(() => {
+    if (!clientId || !gisEnabled()) {
+      setState('unavailable');
+      return;
+    }
+    let live = true;
+    prepareGoogleTokenClient(clientId).then(
+      () => live && setState('ready'),
+      () => live && setState('unavailable'),
+    );
+    return () => {
+      live = false;
+    };
+  }, [clientId]);
+  return state;
+}
+
 export interface UseGoogleOptions {
   config: GoogleConfig | null;
   /** App path to land on after signing in. */
   redirect: string;
   /** Show One Tap (signed-out visitors only). */
   oneTap: boolean;
-  /** Where the official button goes (popup or redirect mode). */
-  buttonRef?: React.RefObject<HTMLDivElement | null>;
-  /** `signin` (login) or `signup`: One Tap and button wording. */
+  /** `signin` (login) or `signup`: One Tap wording. */
   context?: 'signin' | 'signup';
   onCredential: (token: string, nonce: string) => Promise<void> | void;
-  /** The popup closed without a credential (the next try uses redirect mode). */
-  onPopupClosed?: () => void;
 }
 
 function standalone(): boolean {
@@ -177,55 +311,40 @@ function standalone(): boolean {
 }
 
 /**
- * Loads GIS, initializes it with a fresh nonce, renders the button and shows One Tap.
+ * One Tap: loads GIS, initializes it with a fresh nonce and prompts (when `oneTap`).
  * `refresh()` starts over with a new nonce (after a failed attempt, or when it expires).
  */
 export function useGoogleIdentity(opts: UseGoogleOptions): { state: GisState; refresh: () => void } {
-  const [state, setState] = useState<GisState>(opts.config && gisEnabled() ? 'loading' : 'unavailable');
+  const [state, setState] = useState<GisState>(opts.config && opts.oneTap && gisEnabled() ? 'loading' : 'unavailable');
   const [round, setRound] = useState(0);
   const latest = useRef(opts);
   latest.current = opts;
-  const redirectMode = useRef(false);
   const config = opts.config;
   const clientId = config?.clientId;
 
   useEffect(() => {
-    if (!config || !gisEnabled()) {
+    if (!config || !opts.oneTap || !gisEnabled()) {
       setState('unavailable');
       return;
     }
     setState((s) => (s === 'ready' ? s : 'loading'));
     let live = true;
-    let clickedAt = 0;
-    let gotCredential = false;
     let id: GisId | null = null;
-    const onFocus = () => {
-      if (!clickedAt) return;
-      window.setTimeout(() => {
-        if (!live || gotCredential || !clickedAt) return;
-        clickedAt = 0;
-        // Closed or blocked popup: switch to redirect mode for the next try.
-        redirectMode.current = true;
-        latest.current.onPopupClosed?.();
-        setRound((r) => r + 1);
-      }, POPUP_GRACE_MS);
-    };
-    window.addEventListener('focus', onFocus);
     Promise.all([loadGis(), fetchNonce(latest.current.redirect)])
-      .then(([gis, nonce]) => {
+      .then(([accounts, nonce]) => {
         if (!live) return;
-        id = gis;
+        if (!accounts.id) throw new Error('GIS loaded without google.accounts.id');
+        id = accounts.id;
         const o = latest.current;
-        const redirect = redirectMode.current || standalone();
-        gis.initialize({
+        id.initialize({
           client_id: config.clientId,
           nonce,
           callback: (r: CredentialResponse) => {
             if (!r.credential) return;
-            gotCredential = true;
             void latest.current.onCredential(r.credential, nonce);
           },
-          ux_mode: redirect ? 'redirect' : 'popup',
+          // The installed app: Google posts the credential to `login_uri` instead.
+          ux_mode: standalone() ? 'redirect' : 'popup',
           login_uri: config.loginUri,
           auto_select: false,
           cancel_on_tap_outside: true,
@@ -233,25 +352,7 @@ export function useGoogleIdentity(opts: UseGoogleOptions): { state: GisState; re
           itp_support: true,
           context: o.context ?? 'signin',
         });
-        const el = o.buttonRef?.current;
-        if (el) {
-          el.replaceChildren();
-          const width = Math.max(200, Math.min(400, Math.round(el.getBoundingClientRect().width) || 360));
-          gis.renderButton(el, {
-            type: 'standard',
-            // Matches the design's primary button: light on dark, dark on light.
-            theme: resolvedTheme(getPrefs().theme) === 'dark' ? 'outline' : 'filled_black',
-            size: 'large',
-            text: o.context === 'signup' ? 'signup_with' : 'continue_with',
-            shape: 'rectangular',
-            logo_alignment: 'center',
-            width,
-            click_listener: () => {
-              clickedAt = Date.now();
-            },
-          });
-        }
-        if (o.oneTap) gis.prompt();
+        id.prompt();
         setState('ready');
       })
       .catch(() => {
@@ -262,7 +363,6 @@ export function useGoogleIdentity(opts: UseGoogleOptions): { state: GisState; re
     return () => {
       live = false;
       window.clearTimeout(expiry);
-      window.removeEventListener('focus', onFocus);
       try {
         id?.cancel();
       } catch {

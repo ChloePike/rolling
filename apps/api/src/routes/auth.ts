@@ -3,11 +3,11 @@
  * rate limits per email + IP, a 30 s resend cooldown, logout, and Better Auth
  * errors rewritten into the API error envelope.
  *
- * Google (D-016) is ID-token only, with no client secret: the SPA gets a nonce
- * (`GET /nonce`), Google Identity Services returns an ID token (popup / One Tap →
- * `POST /sign-in/social` with `idToken`; redirect mode → Google posts it to
- * `POST /google/credential`). Better Auth's OAuth code flow (`/sign-in/social`
- * without `idToken`, `/callback/*`, `/link-social`) is closed.
+ * Google (D-017) needs no client secret: our button's popup (GIS token client) yields
+ * an access token → `POST /google/access-token`; One Tap yields an ID token for a nonce
+ * from `GET /nonce` → `POST /sign-in/social` with `idToken` (redirect mode / the
+ * script-free fallback → Google posts it to `POST /google/credential`). Better Auth's
+ * OAuth code flow (`/sign-in/social` without `idToken`, `/callback/*`, `/link-social`) is closed.
  */
 import { Hono, type Context } from "hono";
 import { z } from "zod";
@@ -48,6 +48,17 @@ const IdTokenSignInBody = z.object({
   idToken: z.object({ token: z.string().min(20).max(8192), nonce: Nonce }),
   callbackURL: z.string().max(512).optional(),
 });
+
+/** Google access-token sign-in (GIS token client popup, D-017). Profile fields are never taken from the client. */
+const AccessTokenBody = z
+  .object({
+    accessToken: z.string().min(20).max(4096),
+    redirect: z.string().max(512).optional(),
+    intent: z.enum(["signin", "link"]).optional(),
+  })
+  .strict();
+/** Refusal codes of the access-token endpoint that the SPA explains (`error.data.reason`). */
+const ACCESS_TOKEN_REASONS = new Set(["INVALID_TOKEN", "SCOPE", "EMAIL_NOT_VERIFIED", "ACCOUNT_IN_USE"]);
 
 const AUTH_CODE_MAP: Record<string, ErrorCode> = {
   INVALID_OTP: "INVALID_CODE",
@@ -220,6 +231,34 @@ export const authRoutes = new Hono<AppEnv>()
     if (!res.ok) return res;
     const out = (await res.json()) as { user?: unknown };
     const reply = c.json({ user: out.user ?? null, redirectTo: safeAppPath(body.callbackURL) ?? data.redirect ?? "/" });
+    for (const v of res.headers.getSetCookie()) reply.headers.append("set-cookie", v);
+    return reply;
+  })
+  /**
+   * Google sign-in from our own button (D-017): the GIS token client's popup returns an
+   * OAuth access token; `{ accessToken, redirect?, intent? }`. The Better Auth plugin
+   * (auth/googleAccessToken.ts) verifies it with Google (tokeninfo: aud/azp, expiry,
+   * email scope; userinfo: sub, email, email_verified) and signs in or, with
+   * `intent: "link"`, links Google to the signed-in user. Better Auth's Origin check applies.
+   */
+  .post("/google/access-token", async (c) => {
+    const { json } = await readJson(c);
+    const body = parse(AccessTokenBody, json);
+    if (!configuredProviders(c.env).includes("google")) throw new ApiError(404, "NOT_FOUND", "Google sign-in is not configured");
+    await limitOrThrow(c.env.RATE_LIMIT, `auth-ip:${clientIp(c.req.raw)}`);
+    const res = await forward(c, JSON.stringify({ accessToken: body.accessToken, ...(body.intent ? { intent: body.intent } : {}) }));
+    if (!res.ok) {
+      const env = (await res.clone().json().catch(() => null)) as { error?: { code: ErrorCode; message: string; data?: { authCode?: string } } } | null;
+      const authCode = env?.error?.data?.authCode;
+      if (env?.error && authCode && ACCESS_TOKEN_REASONS.has(authCode)) {
+        const code: ErrorCode = authCode === "ACCOUNT_IN_USE" ? "CONFLICT" : env.error.code;
+        return c.json(errorEnvelope(code, env.error.message, { reason: authCode }), res.status as 401 | 403 | 409);
+      }
+      return res;
+    }
+    if (body.intent === "link") return c.json({ linked: true });
+    const out = (await res.json()) as { user?: unknown };
+    const reply = c.json({ user: out.user ?? null, redirectTo: safeAppPath(body.redirect) ?? "/" });
     for (const v of res.headers.getSetCookie()) reply.headers.append("set-cookie", v);
     return reply;
   })

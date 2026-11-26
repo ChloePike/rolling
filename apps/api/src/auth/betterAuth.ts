@@ -16,6 +16,7 @@ import { newId, type IdKind } from "@rolling/core/ids";
 import { emailProviderName, enqueueEmail } from "./email";
 import { onUserCreated } from "./workspace";
 import { purgeAccount } from "./deleteAccount";
+import { googleAccessToken } from "./googleAccessToken";
 
 /** Email code: 6 digits, valid 10 minutes, 5 tries per code. */
 export const OTP_LENGTH = 6;
@@ -157,6 +158,8 @@ async function buildAuth(env: Env) {
           });
         },
       }),
+      // D-017: access tokens from the GIS token client (our own button's popup).
+      googleAccessToken(env.GOOGLE_CLIENT_ID),
     ],
     databaseHooks: {
       user: {

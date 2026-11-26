@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { googleStartUrl, leaveTo } from '@/features/auth/google';
+import { fetchProviders } from '@/features/auth/api';
+import { googleStartUrl, GooglePopupError, leaveTo, requestGoogleAccessToken, signInWithGoogleAccessToken, useGoogleTokenClient } from '@/features/auth/google';
 import { useMemo } from 'react';
 import { PLAN_ORDER, PLANS, type PlanId } from '@rolling/core/pricing/config';
 import { api } from '@/lib/api/client';
@@ -602,13 +603,35 @@ export function useTopUps(plan: PlanId | null) {
 
 // ---------------------------------------------------------------- sign-in methods (Better Auth)
 
+/** Loads Google Identity Services and prepares the token client, so "Connect" can open the popup in the click. */
+export function usePrepareGoogleLink() {
+  const providers = useQuery({ queryKey: ['auth', 'providers'], queryFn: fetchProviders, staleTime: 5 * 60_000, enabled: !isMockApi() });
+  return useGoogleTokenClient(providers.data?.google || null);
+}
+
 /**
- * Links Google to this account (D-016, no client secret): Google posts an ID token
- * to `/api/auth/google/credential` and the window returns to Settings → Account.
+ * Links Google to this account (D-017, no client secret). Call it synchronously from the
+ * click: the token client's popup returns an access token, `POST /api/auth/google/access-token`
+ * with `intent: 'link'` links it. Resolves `closed` when the user closed the popup (quiet).
+ * Without the token client, or when the popup is blocked, the window goes to the
+ * redirect fallback (`/api/auth/google/start?intent=link`) and returns to Settings.
  */
-export async function linkProvider(_provider: 'google'): Promise<never> {
-  leaveTo(googleStartUrl('/settings/account', 'link'));
-  return new Promise(() => {});
+export function linkProvider(_provider: 'google'): Promise<'linked' | 'closed'> {
+  return requestGoogleAccessToken().then(
+    async (token) => {
+      await signInWithGoogleAccessToken(token, '/settings/account', 'link');
+      return 'linked' as const;
+    },
+    (err: unknown) => {
+      const type = err instanceof GooglePopupError ? err.type : 'unknown';
+      if (type === 'popup_closed' || type === 'superseded') return 'closed' as const;
+      if (type === 'popup_failed_to_open' || type === 'unavailable') {
+        leaveTo(googleStartUrl('/settings/account', 'link'));
+        return new Promise<never>(() => {});
+      }
+      throw err;
+    },
+  );
 }
 
 export async function unlinkProvider(provider: 'google'): Promise<void> {

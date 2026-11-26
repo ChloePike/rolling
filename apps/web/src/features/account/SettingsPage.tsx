@@ -40,6 +40,7 @@ import {
   errorCode,
   fetchLedgerPage,
   linkProvider,
+  usePrepareGoogleLink,
   unlinkProvider,
   useLedger,
   useLinkedAccounts,
@@ -387,6 +388,8 @@ function SignInDialog({ open, onClose, me }: { open: boolean; onClose: () => voi
   const toast = useToast();
   const qc = useQueryClient();
   const accounts = useLinkedAccounts();
+  // D-017: "Connect" opens Google's popup in the click, so the token client is prepared now.
+  usePrepareGoogleLink();
   const [mockLinked, setMockLinked] = useState<Record<'google' | 'email', boolean>>({ google: me.user.signIn === 'google', email: true });
   const ids = (accounts.data ?? []).map((a) => a.providerId);
   // Real API: email codes always work for the account's address; social methods come from `list-accounts`.
@@ -403,8 +406,12 @@ function SignInDialog({ open, onClose, me }: { open: boolean; onClose: () => voi
     if (p === 'email') return;
     setBusy(p);
     try {
-      if (!on) await linkProvider(p);
-      else {
+      if (!on) {
+        if ((await linkProvider(p)) === 'linked') {
+          await qc.invalidateQueries({ queryKey: accountsKey });
+          toast.show({ message: t('account.settings.signIn.linked', { provider: name }) });
+        }
+      } else {
         await unlinkProvider(p);
         await qc.invalidateQueries({ queryKey: accountsKey });
         toast.show({ message: t('account.settings.signIn.disconnected', { provider: name }) });
