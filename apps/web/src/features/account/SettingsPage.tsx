@@ -8,7 +8,6 @@ import { pickerModels, useModels } from '@/lib/models';
 import {
   ASPECT_RATIO_OPTIONS,
   CONFIRM_THRESHOLD_OPTIONS,
-  CURRENCY_OPTIONS,
   LANGUAGE_OPTIONS,
   languageOption,
   setPref,
@@ -17,7 +16,6 @@ import {
   usePrefs,
   type AspectRatioPref,
   type CreationMode,
-  type CurrencyCode,
   type ThemePref,
 } from '@/lib/prefs';
 import { isApiError } from '@/lib/api/errors';
@@ -802,13 +800,6 @@ function PreferencesSection() {
   const session = useSession();
   const showMature = session.matureAllowed || (!session.isMember && session.workspaceMatureAllowed);
   const language = languageOption(prefs.language ?? intl.locale) ?? LANGUAGE_OPTIONS[0]!;
-  const currencyName = (c: string) => {
-    try {
-      return new Intl.DisplayNames([intl.locale], { type: 'currency' }).of(c) ?? c;
-    } catch {
-      return c;
-    }
-  };
   return (
     <>
       <Head id="account.settings.section.preferences" />
@@ -818,14 +809,6 @@ function PreferencesSection() {
           value={language.tag}
           options={LANGUAGE_OPTIONS.map((l) => ({ value: l.tag, label: <span lang={l.tag}>{l.name}</span>, text: l.name }))}
           onChange={(tag) => setPrefs({ language: tag })}
-        />
-      </Row>
-      <Row label={t('account.settings.prefs.currency')} hint={t('account.settings.prefs.currency.hint')}>
-        <SelectMenu<CurrencyCode>
-          label={t('account.settings.prefs.currency')}
-          value={prefs.currency}
-          options={CURRENCY_OPTIONS.map((c) => ({ value: c, label: c, hint: currencyName(c) }))}
-          onChange={(c) => setPref('currency', c)}
         />
       </Row>
       <Row label={t('account.settings.prefs.mode')} hint={t('account.settings.prefs.mode.hint')}>

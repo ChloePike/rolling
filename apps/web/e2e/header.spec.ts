@@ -425,13 +425,11 @@ test.describe('header interactions', () => {
     await expect(page.getByRole('button', { name: /Credit balance/ })).toContainText('2.480');
   });
 
-  test('settings: Currency, Default aspect ratio and Notify when done save to prefs, show in the row and persist', async ({ page }) => {
+  test('settings: Default aspect ratio and Notify when done save to prefs, show in the row and persist; no currency row (USD only, D-019)', async ({ page }) => {
     await routeModels(page);
     await openApp(page, 1440);
     await openSettings(page);
-    await row(page, 'Currency').click();
-    await settings(page).getByRole('menuitemradio', { name: /^JPY/ }).click();
-    await expect(row(page, 'Currency')).toContainText('JPY');
+    await expect(settings(page).getByRole('button', { name: /^Currency/ })).toHaveCount(0);
     await row(page, 'Default aspect ratio').click();
     await settings(page).getByRole('menuitemradio', { name: /^16:9/ }).click();
     await expect(row(page, 'Default aspect ratio')).toContainText('16:9');
@@ -439,17 +437,16 @@ test.describe('header interactions', () => {
     await settings(page).getByRole('menuitemradio', { name: /^Off/ }).click();
     await expect(row(page, 'Notify when done')).toContainText('Off');
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('rolling.prefs') ?? '{}'));
-    expect(stored).toMatchObject({ currency: 'JPY', defaultAspectRatio: '16:9', notifyWhenDone: false });
-    // Prices follow the currency; the Home video settings start from the default ratio.
+    expect(stored).toMatchObject({ defaultAspectRatio: '16:9', notifyWhenDone: false });
+    // Prices are in USD; the Home video settings start from the default ratio.
     await page.keyboard.press('Escape');
     await page.getByRole('button', { name: /Credit balance/ }).click();
-    await expect(page.getByRole('dialog', { name: 'Credits' }).getByRole('radio').first()).toContainText('¥1,500');
+    await expect(page.getByRole('dialog', { name: 'Credits' }).getByRole('radio').first()).toContainText('$10');
     await page.keyboard.press('Escape');
     await page.reload();
     await page.getByRole('tab', { name: 'Video' }).click();
     await expect(page.getByRole('button', { name: /^16:9 · 720p/ })).toBeVisible();
     await openSettings(page);
-    await expect(row(page, 'Currency')).toContainText('JPY');
     await expect(row(page, 'Notify when done')).toContainText('Off');
   });
 
@@ -495,12 +492,12 @@ test.describe('header interactions', () => {
   test('settings lists: rows stagger in; reduced motion keeps them still', async ({ page }) => {
     await openApp(page, 1440);
     await openSettings(page);
-    await row(page, 'Currency').click();
+    await row(page, 'Language').click();
     const delays = await settings(page).getByRole('menuitemradio').evaluateAll((els) => els.slice(0, 8).map((el) => getComputedStyle(el).animationDelay));
     expect(delays).toEqual(['0s', '0.03s', '0.06s', '0.09s', '0.12s', '0.15s', '0.15s', '0.15s']);
     await page.keyboard.press('Escape');
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await row(page, 'Language').click();
+    await row(page, 'Default aspect ratio').click();
     const t = await settings(page).getByRole('menuitemradio').first().evaluate((el) => getComputedStyle(el).transform);
     expect(['none', 'matrix(1, 0, 0, 1, 0, 0)']).toContain(t);
   });

@@ -38,7 +38,7 @@ test.describe('settings (Settings.dc.html)', () => {
   test('billing: D-006 plan price, credit split, top-up presets with bonus, custom amount validation, auto top-up', async ({ page }) => {
     await openApp(page, '/settings/billing');
     await expect(page.getByText('Pro, monthly')).toBeVisible();
-    await expect(page.getByText('$49 a month. Renews Dec 1 with 2,500 bonus credits.')).toBeVisible();
+    await expect(page.getByText('$49 a month. Renews Dec 1 with 2,500 credits.')).toBeVisible();
     await expect(page.getByRole('main').getByText('2,480')).toBeVisible();
     // Pro adds 10% to every tier bonus: $25 → 2,500 + 4% + 10%.
     const p25 = page.getByRole('radio', { name: /2,850/ });
@@ -231,10 +231,9 @@ test.describe('settings (Settings.dc.html)', () => {
     await expect(page.getByTestId('link-error')).toContainText('Couldn’t connect Google. Try again.');
   });
 
-  test('preferences persist through lib/prefs after reload: language, currency, theme, ratio, model, threshold, mature', async ({ page }) => {
+  test('preferences persist through lib/prefs after reload: language, theme, ratio, model, threshold, mature; no currency (D-019)', async ({ page }) => {
     await openApp(page, '/settings/preferences');
-    await page.getByRole('button', { name: /^Currency: / }).click();
-    await page.getByRole('listbox', { name: 'Currency' }).getByRole('option', { name: /^EUR/ }).click();
+    await expect(page.getByRole('button', { name: /^Currency/ })).toHaveCount(0);
     await page.getByRole('radiogroup', { name: 'Theme' }).getByRole('radio', { name: 'Light' }).click();
     await page.getByRole('button', { name: /^Default video model: / }).click();
     await page.getByRole('listbox', { name: 'Default video model' }).getByRole('option', { name: 'MiniMax H3' }).click();
@@ -247,7 +246,6 @@ test.describe('settings (Settings.dc.html)', () => {
     await page.getByRole('option', { name: 'Deutsch' }).click();
     await expect(page.getByText('Text stays in English for now; dates and numbers follow this language')).toBeVisible();
     await page.reload();
-    await expect(page.getByRole('button', { name: 'Currency: EUR' })).toBeVisible();
     await expect(page.getByRole('radiogroup', { name: 'Theme' }).getByRole('radio', { name: 'Light' })).toHaveAttribute('aria-checked', 'true');
     await expect(page.getByRole('button', { name: 'Default video model: MiniMax H3' })).toBeVisible();
     // German number format after switching the language (text stays English).
@@ -256,7 +254,7 @@ test.describe('settings (Settings.dc.html)', () => {
     await expect(page.getByRole('switch', { name: 'Mature content' })).toHaveAttribute('aria-checked', 'true');
     await expect(page.getByRole('button', { name: 'Language: Deutsch' })).toBeVisible();
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('rolling.prefs') ?? '{}'));
-    expect(stored).toMatchObject({ currency: 'EUR', theme: 'light', defaultModel: 'minimax/minimax-h3', confirmThreshold: 1000, defaultAspectRatio: '1:1', matureContent: true });
+    expect(stored).toMatchObject({ theme: 'light', defaultModel: 'minimax/minimax-h3', confirmThreshold: 1000, defaultAspectRatio: '1:1', matureContent: true });
   });
 
   test('billing: top-up purchase, cancel and resume, card update with decline, invoice download', async ({ page }) => {

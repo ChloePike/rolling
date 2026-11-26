@@ -92,8 +92,9 @@ test('preferences save to the server, survive a new session, and apply live in a
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  // No currency row: prices are USD only (D-019); the server still stores the field.
   await page.getByRole('button', { name: 'Settings' }).click();
-  await expect(page.getByRole('dialog', { name: 'Settings' }).getByRole('button', { name: /^Currency:/ })).toContainText('EUR');
+  await expect(page.getByRole('dialog', { name: 'Settings' }).getByRole('button', { name: /^Currency/ })).toHaveCount(0);
 });
 
 test('mature content without a plan is refused by the server and rolled back', async ({ page }) => {

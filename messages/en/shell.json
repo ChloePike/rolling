@@ -27,7 +27,6 @@
   "settingsPopover.creationMode.advanced.sub": "Settings panel",
   "settingsPopover.creationMode.advanced.desc": "Model, seed, motion strength, negative prompt and more in the left panel",
   "settingsPopover.language": "Language",
-  "settingsPopover.currency": "Currency",
   "settingsPopover.aspectRatio": "Default aspect ratio",
   "settingsPopover.notify": "Notify when done",
   "settingsPopover.notify.on": "On",

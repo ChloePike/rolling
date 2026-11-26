@@ -78,15 +78,23 @@ test('SET-4 theme: System follows the OS live, Light and Dark override; persiste
   await expect.poll(isLight).toBe(false);
 });
 
-test('SET-5 language and currency: currency formats prices through Intl; untranslated languages are marked', async ({ page, context, baseURL }, testInfo) => {
+test('SET-5 language; no currency preference: prices show and charge in USD (D-019); an invalid currency gets 400', async ({ page, context, baseURL }, testInfo) => {
   await account(context, baseURL, 'locale', 'plus');
+  // An old client may still send a currency; it changes nothing on screen.
   const r = await api(page.request, baseURL, 'PATCH', '/api/me/prefs', { currency: 'EUR' });
   expect(r.status(), await r.text()).toBe(200);
   await page.goto('/settings/preferences');
-  await expect(page.getByRole('button', { name: 'Currency: EUR' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Preferences' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Currency/ })).toHaveCount(0);
+  await expect(page.getByText('Used for prices and invoices')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Settings' }).getByRole('button', { name: /^Currency/ })).toHaveCount(0);
+  await page.keyboard.press('Escape');
   await page.goto('/upgrade');
-  await expect(page.getByText(/€\s?\d|\d\s?€/).first()).toBeVisible();
-  await shot(page, testInfo, 'eur-upgrade');
+  await expect(page.getByText(/\$\d/).first()).toBeVisible();
+  await expect(page.getByText(/€\s?\d|\d\s?€/)).toHaveCount(0);
+  await shot(page, testInfo, 'usd-upgrade');
   await page.goto('/settings/preferences');
   await page.getByRole('button', { name: /^Language:/ }).click();
   await expect(page.getByText('日本語').or(page.getByText('Deutsch')).first()).toBeVisible();
@@ -131,7 +139,13 @@ test('SET-8 plan and billing page: plan, balance split, invoices empty state, cr
   await expect(page.getByTestId('plan-status')).toContainText('$49');
   // Design (Settings.dc.html): “Renews [DATE] with 3,000 credits.” — plan credits are not “bonus” credits.
   await expect(page.getByTestId('plan-status')).not.toContainText('bonus');
+  await expect(page.getByTestId('plan-status')).toContainText(/Renews .+ with [\d,]+ credits\./);
   await expect(page.getByTestId('balance')).toContainText('2,750');
+  // Balance split (design): “Plan 2,500, renews [DATE]” and “Purchased 250, no expiry”; top-up bonuses land in purchased, so nothing is labelled “Bonus”.
+  const legend = page.getByTestId('balance').locator('xpath=..');
+  await expect(legend).toContainText(/Plan 2,500, renews /);
+  await expect(legend).toContainText('Purchased 250, no expiry');
+  await expect(legend).not.toContainText(/bonus/i);
   await expect(page.getByTestId('no-invoices').or(page.getByRole('heading', { name: 'Invoices' })).first()).toBeVisible();
   await expect(page.getByTestId('ledger')).toBeVisible();
   await shot(page, testInfo, 'billing');

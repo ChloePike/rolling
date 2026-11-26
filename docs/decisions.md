@@ -2,6 +2,14 @@
 
 Decisions made after the original spec. Where this file disagrees with `PRD.md`, `architecture.md`, `api.md` or `harness.md`, this file wins. Newest first.
 
+## D-019 — Prices are shown and charged in USD only; no currency preference (2026-11-26)
+
+Owner rule from the staging feature test (SET-5): the currency preference changed nothing that mattered, since pricing (`packages/core/pricing/config.ts`) is in USD and Stripe charges USD. Of the two options (show converted prices from a fixed rate table with a “Charged in USD” note, or drop the preference), we drop it: a converted price is not what the card is charged, and a rate table would go stale.
+
+- **No currency control:** removed from Settings → Preferences (with its “Used for prices and invoices” hint) and from the header settings popover. This supersedes the currency rows in `PRD.md` (Settings → preferences), `handoff.md` §3 (Settings popover) and `interaction-pass.md`.
+- **Formatting:** every price goes through `formatPrice` / `formatUsd` (`apps/web/src/lib/prefs/currency.ts`, `lib/topUp.ts`): USD through `Intl`, so the language still decides separators and symbol placement (`$1,234.50`, `1.234,50 $`). No display rates.
+- **API:** `PATCH /api/me/prefs` still accepts and validates `currency` (old clients, sign-up default from `Accept-Language`); the value is stored and ignored. Invoices show the currency Stripe reports (USD).
+
 ## D-018 — Privacy: durable deletion, pseudonymised records, retention purge, self-serve export (2026-11-26)
 
 From the legal review of `legal/privacy-policy.md` against the code. Values live in `packages/core/src/privacy.ts`; the policy quotes them.

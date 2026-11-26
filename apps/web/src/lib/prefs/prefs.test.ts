@@ -71,14 +71,16 @@ describe('lib/prefs', () => {
     expect(dataset.theme).toBeUndefined();
   });
 
-  it('formats prices in the chosen currency', async () => {
+  it('formats prices in USD only, whatever currency is passed (D-019)', async () => {
     stubBrowser();
     const { formatPrice } = await import('./currency');
     const intl = { formatNumber: (n: number, o?: Intl.NumberFormatOptions) => new Intl.NumberFormat('en-US', o).format(n) } as never;
     expect(formatPrice(intl, 25)).toBe('$25');
     expect(formatPrice(intl, 39.17)).toBe('$39.17');
-    expect(formatPrice(intl, 25, 'JPY')).toBe('¥3,750');
-    expect(formatPrice(intl, 10, 'EUR')).toBe('€9.20');
+    expect(formatPrice(intl, 25, 'JPY')).toBe('$25');
+    expect(formatPrice(intl, 10, 'EUR')).toBe('$10');
+    const de = { formatNumber: (n: number, o?: Intl.NumberFormatOptions) => new Intl.NumberFormat('de', o).format(n) } as never;
+    expect(formatPrice(de, 1234.5)).toBe(new Intl.NumberFormat('de', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(1234.5));
   });
 });
 

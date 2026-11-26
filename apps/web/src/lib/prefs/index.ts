@@ -381,7 +381,7 @@ export function languageOption(tag: string | null | undefined): LanguageOption |
 }
 
 export { applyTheme, resolvedTheme } from './theme';
-export { convertUsd, formatPrice, useFormatPrice, MOCK_USD_RATES } from './currency';
+export { formatPrice, useFormatPrice } from './currency';
 
 // D-010: apply the theme preference as soon as prefs load, and keep it applied.
 import { applyTheme as apply } from './theme';

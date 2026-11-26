@@ -3,7 +3,6 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import {
   ASPECT_RATIO_OPTIONS,
-  CURRENCY_OPTIONS,
   LANGUAGE_OPTIONS,
   languageOption,
   setCreationMode,
@@ -21,20 +20,14 @@ const modes: ReadonlyArray<{ value: CreationMode; icon: IconName }> = [
   { value: 'advanced', icon: 'sliders' },
 ];
 
-type Sub = 'language' | 'currency' | 'aspectRatio' | 'notify' | 'theme';
-const SUBS: readonly Sub[] = ['language', 'currency', 'aspectRatio', 'notify', 'theme'];
-
-function currencyName(locale: string, code: string): string | undefined {
-  try {
-    return new Intl.DisplayNames([locale], { type: 'currency' }).of(code);
-  } catch {
-    return undefined;
-  }
-}
+// No currency row: prices are shown and charged in USD only (D-019).
+type Sub = 'language' | 'aspectRatio' | 'notify' | 'theme';
+const SUBS: readonly Sub[] = ['language', 'aspectRatio', 'notify', 'theme'];
 
 /**
  * Header settings popover (MainSettings.dc.html): creation mode, then
- * Language, Currency, Default aspect ratio, Notify when done and Theme (D-010).
+ * Language, Default aspect ratio, Notify when done and Theme (D-010); no
+ * currency (USD only, D-019).
  * Each `›` row opens its option list in place; picking one saves it to
  * lib/prefs (shared with Settings → Preferences) and returns to the rows.
  * Escape or ‹ goes back one level; Escape on the rows closes the popover.
@@ -75,7 +68,6 @@ export function SettingsPopoverContent({ onClose }: { onClose: () => void }) {
   const current = languageOption(prefs.language ?? intl.locale) ?? LANGUAGE_OPTIONS[0]!;
   const values: Record<Sub, string> = {
     language: current.name,
-    currency: prefs.currency,
     aspectRatio: prefs.defaultAspectRatio,
     notify: t(prefs.notifyWhenDone ? 'settingsPopover.notify.on' : 'settingsPopover.notify.off'),
     theme: t(`settingsPopover.theme.${prefs.theme}`),
@@ -91,11 +83,6 @@ export function SettingsPopoverContent({ onClose }: { onClose: () => void }) {
         hint: o.translated ? undefined : t('settingsPopover.language.notTranslated'),
       })),
       onSelect: (tag) => setPrefs({ language: tag }),
-    },
-    currency: {
-      value: prefs.currency,
-      options: CURRENCY_OPTIONS.map((c) => ({ value: c, label: c, hint: currencyName(intl.locale, c) })),
-      onSelect: (c) => setPref('currency', c as (typeof CURRENCY_OPTIONS)[number]),
     },
     aspectRatio: {
       value: prefs.defaultAspectRatio,

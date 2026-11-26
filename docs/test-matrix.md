@@ -164,7 +164,7 @@ Sources: **PRD** = `docs/PRD.md`, **M*n*** = `docs/milestones.md`, **CF*n*** = `
 | Avatar upload | Change photo → picture shows from signed media; `/api/media/avatar/:id` returns 302 | API, D-008 | SET-2 |
 | Google link | Manage sign-in → Google Connect. `start?intent=link` returns 302. | D-017 | SET-3 |
 | Theme | System follows the OS live. Light and Dark override it. The value persists in prefs and after reload. `theme-color` follows the theme. | D-010 | SET-4 |
-| Language / currency | EUR formats prices with €. Language options are listed. An invalid currency gets 400. | M1, HO | SET-5 |
+| Language; no currency | Language options are listed. There is no currency control (Preferences, header settings popover); prices show in USD even after an old client sets `currency: EUR`. An invalid currency gets 400. | M1, HO, D-019 | SET-5 |
 | Preferences | Creation mode persists and shows in the header popover. An empty or unknown body gets 400. | M1 | SET-6 |
 | Notifications | Toggles persist after reload | HO | SET-7 |
 | Plan and billing | See SET-8 under Billing | HO | SET-8 |
