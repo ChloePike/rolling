@@ -5,6 +5,7 @@
 import { z } from "zod";
 import { RecordingEmailProvider } from "@rolling/core/email/recording";
 import { ResendEmailProvider } from "@rolling/core/email/resend";
+import { CloudflareEmailProvider, type SendEmailBinding } from "@rolling/core/email/cloudflare";
 import { TestInboxEmailProvider } from "./testInbox";
 import { EmailSendError, type EmailProvider } from "@rolling/core/email/EmailProvider";
 import { isEmailTemplateId, renderEmail, type EmailTemplateData, type EmailTemplateId } from "@rolling/core/email/templates";
@@ -34,20 +35,34 @@ export function setEmailProviderForTests(provider: EmailProvider | null): void {
   override = provider;
 }
 
-export type EmailProviderName = "resend" | "recording" | "test-inbox";
+export type EmailProviderName = "cloudflare" | "resend" | "recording" | "test-inbox";
+
+/** Default sender and reply-to (D-015). `EMAIL_FROM` overrides the sender. */
+export const DEFAULT_EMAIL_FROM = "Rolling <no-reply@rolling.actor>";
+export const EMAIL_REPLY_TO = "support@rolling.actor";
+
+/** The `send_email` binding (Cloudflare Email Service), when this env has one. */
+function emailBinding(env: Env): SendEmailBinding | undefined {
+  return (env as unknown as { EMAIL?: SendEmailBinding }).EMAIL;
+}
 
 /**
  * The configured provider name. `EMAIL_PROVIDER` picks one explicitly; empty means
+ * Cloudflare Email Service when the `EMAIL` binding exists (outside development), else
  * Resend when `RESEND_API_KEY` is set, else (development only) the recording provider.
- * Throws for an unknown name and for `test-inbox` / `recording` in production.
+ * Throws for an unknown name and for `test-inbox` / `recording` in production; a missing
+ * binding or key is reported by `emailProvider` (the queue consumer retries, then dead-letters).
  */
 export function emailProviderName(env: Env): EmailProviderName {
   const raw = (env.EMAIL_PROVIDER ?? "").trim();
+  const isDev = env.ENVIRONMENT === "development";
   let name: EmailProviderName | null = null;
-  if (raw === "resend" || raw === "recording" || raw === "test-inbox") name = raw;
-  else if (raw === "") name = env.RESEND_API_KEY ? "resend" : env.ENVIRONMENT === "development" ? "recording" : null;
-  if (!name) throw new Error(raw ? `EMAIL_PROVIDER "${raw}" is not supported` : "RESEND_API_KEY is not set");
-  if (env.ENVIRONMENT === "production" && name !== "resend") {
+  if (raw === "cloudflare" || raw === "resend" || raw === "recording" || raw === "test-inbox") name = raw;
+  else if (raw === "") {
+    name = emailBinding(env) && !isDev ? "cloudflare" : env.RESEND_API_KEY ? "resend" : isDev ? "recording" : null;
+  }
+  if (!name) throw new Error(raw ? `EMAIL_PROVIDER "${raw}" is not supported` : "No email provider: add the EMAIL binding or set RESEND_API_KEY");
+  if (env.ENVIRONMENT === "production" && name !== "cloudflare" && name !== "resend") {
     throw new Error(`EMAIL_PROVIDER "${name}" is refused in production`);
   }
   return name;
@@ -60,10 +75,16 @@ export function emailProviderName(env: Env): EmailProviderName {
 export function emailProvider(env: Env): EmailProvider {
   if (override) return override;
   const name = emailProviderName(env);
+  const from = env.EMAIL_FROM || DEFAULT_EMAIL_FROM;
   if (name === "test-inbox") return new TestInboxEmailProvider(env.DB);
+  if (name === "cloudflare") {
+    const binding = emailBinding(env);
+    if (!binding) throw new Error('EMAIL_PROVIDER "cloudflare" needs the EMAIL send_email binding');
+    return new CloudflareEmailProvider({ binding, from, replyTo: EMAIL_REPLY_TO });
+  }
   if (name === "resend") {
     if (!env.RESEND_API_KEY) throw new Error("RESEND_API_KEY is not set");
-    return new ResendEmailProvider({ apiKey: env.RESEND_API_KEY, from: env.EMAIL_FROM || "Rolling <onboarding@resend.dev>" });
+    return new ResendEmailProvider({ apiKey: env.RESEND_API_KEY, from });
   }
   return new RecordingEmailProvider({ log: env.ENVIRONMENT === "development" && env.EMAIL_LOG !== "off" });
 }

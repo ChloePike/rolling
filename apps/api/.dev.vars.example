@@ -10,7 +10,8 @@ HYPEROUTER_WEBHOOK_SECRET=
 # Better Auth: 32+ random bytes (e.g. `openssl rand -base64 32`). Required outside development.
 BETTER_AUTH_SECRET=
 
-# Email (Resend). Without it, development records and logs messages instead.
+# Email: staging and production send through the EMAIL binding (Cloudflare Email Service). Resend is an
+# optional fallback (EMAIL_PROVIDER=resend). Without either, development records and logs messages instead.
 RESEND_API_KEY=
 
 # Only with the EMAIL_PROVIDER=test-inbox var (staging e2e): bearer token for GET /api/test/inbox.

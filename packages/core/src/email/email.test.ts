@@ -58,3 +58,13 @@ describe('ResendEmailProvider', () => {
     }
   });
 });
+
+describe('CloudflareEmailProvider', () => {
+  it('parses display-name senders for the binding', async () => {
+    const { parseAddress } = await import('./cloudflare');
+    expect(parseAddress('Rolling <no-reply@rolling.actor>')).toEqual({ email: 'no-reply@rolling.actor', name: 'Rolling' });
+    expect(parseAddress('"Rolling Team" <a@b.co>')).toEqual({ email: 'a@b.co', name: 'Rolling Team' });
+    expect(parseAddress('<a@b.co>')).toBe('a@b.co');
+    expect(parseAddress(' a@b.co ')).toBe('a@b.co');
+  });
+});

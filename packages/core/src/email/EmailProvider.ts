@@ -1,5 +1,5 @@
 /**
- * Outgoing email. Implementations: `ResendEmailProvider` (production) and
+ * Outgoing email. Implementations: `CloudflareEmailProvider` (production), `ResendEmailProvider` (fallback) and
  * `RecordingEmailProvider` (development and tests). Callers enqueue through the
  * `notify-email` queue; only its consumer calls a provider.
  */

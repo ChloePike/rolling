@@ -123,7 +123,7 @@ Stripe processes payments, subscriptions, invoices and tax calculations [CONFIRM
 
 ### Email delivery
 
-We send email (sign-in codes, invites, receipts) through [EMAIL PROVIDER: Cloudflare Email Service or Resend]. It receives your email address and the message content.
+We send email (sign-in codes, invites, receipts) through Cloudflare Email Service. It receives your email address and the message content to deliver it; we have turned off message previews, so message content is not kept in Cloudflare's activity log. If Cloudflare Email Service is unavailable we may send through Resend instead [CONFIRM: remove if the backup is not enabled].
 
 ### Google sign-in
 

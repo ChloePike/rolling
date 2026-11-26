@@ -12,8 +12,8 @@ These are the third parties that process personal data for Rolling. See the [Pri
 
 | Name | Purpose | Data | Location |
 |---|---|---|---|
-| Cloudflare, Inc. | Hosting of the app and API (Workers), databases (D1, Durable Objects), media storage (R2), image processing (Images), background jobs (Workflows, Queues), video rendering (Containers), logs (Workers Logs), product metrics (Analytics Engine), inbound email routing | All data types in the Privacy policy: account, sessions, content, media, usage, safety logs | Global network; storage in [CONFIRM: D1 and R2 location or jurisdiction] |
-| [EMAIL PROVIDER: Cloudflare Email Service or Resend] | Sending sign-in codes, invites, receipts and service email | Email address, message content (including one-time codes) | [LOCATION] |
+| Cloudflare, Inc. | Hosting of the app and API (Workers), databases (D1, Durable Objects), media storage (R2), image processing (Images), background jobs (Workflows, Queues), video rendering (Containers), logs (Workers Logs), product metrics (Analytics Engine), outgoing email (Email Service: sign-in codes, invites, receipts and service email; message previews are turned off), inbound email routing | All data types in the Privacy policy: account, sessions, content, media, usage, safety logs | Global network; storage in [CONFIRM: D1 and R2 location or jurisdiction] |
+| Resend, Inc. (backup only; used only if Cloudflare Email Service is unavailable) [CONFIRM: remove if not enabled] | Sending sign-in codes, invites, receipts and service email | Email address, message content (including one-time codes) | United States |
 | Stripe, Inc. / [STRIPE CONTRACTING ENTITY] | Payments, subscriptions, invoices, customer portal [CONFIRM: tax] | Email, workspace identifier, plan and seats, payment details collected by Stripe directly | United States and other countries |
 | Sentry (Functional Software, Inc.) [CONFIRM: planned, not yet active] | Error monitoring | Error reports, user and workspace identifiers, request paths, browser details | [LOCATION] |
 
