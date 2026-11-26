@@ -94,7 +94,7 @@ describe('planRun', () => {
     expect(items.keyframe).toMatchObject({ action: 'run', dependsOn: [] });
     expect(items.keyframe!.spec).toMatchObject({ mode: 'edit', prompt: 'A sparkling water ad. Morning by a river. Bottle on a Rock' });
     expect(items.keyframe!.spec!.inputs).toEqual([{ role: 'edit', media: 'image', from: { assetId: 'ast_photo', origin: 'mine' } }]);
-    expect(items.keyframe!.priceRequest).toMatchObject({ size: '1536x2752', inputImages: 1 });
+    expect(items.keyframe!.priceRequest).toMatchObject({ size: '1536x2688', inputImages: 1 });
     expect(items.shotA).toMatchObject({ action: 'run', dependsOn: ['keyframe'] });
   });
 
@@ -210,7 +210,14 @@ describe('planPromptSpec and buildGenerateRequest', () => {
   });
 
   it('sizes size-based image models from resolution and ratio', () => {
-    expect(imageSizeFor('2K', '9:16')).toBe('1536x2752');
+    expect(imageSizeFor('2K', '9:16')).toBe('1536x2688');
+    expect(imageSizeFor('2K', '16:9')).toBe('2688x1536');
+    // Never above the square's pixel budget (Qwen Image refuses areas over 2048×2048).
+    for (const ratio of ['1:1', '9:16', '16:9', '4:3', '3:4', '21:9', '2:3', '4:5']) {
+      const [w, h] = imageSizeFor('2K', ratio)!.split('x').map(Number);
+      expect(w! * h!, ratio).toBeLessThanOrEqual(2048 * 2048);
+      expect(w! % 64 + h! % 64, ratio).toBe(0);
+    }
     expect(imageSizeFor('1K', '1:1')).toBe('1024x1024');
     expect(imageSizeFor(undefined, undefined)).toBeNull();
     expect(imageSizeFor('8K', '1:1')).toBeNull();

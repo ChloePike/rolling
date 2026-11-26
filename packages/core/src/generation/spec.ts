@@ -200,8 +200,10 @@ const K_SIDE: Record<string, number> = { '1k': 1024, '2k': 2048, '4k': 4096 };
 
 /**
  * `WxH` for an image of `resolution` (1K/2K/4K: the pixel budget of a square of
- * that side) at `ratio` (e.g. 9:16), both sides multiples of 64. Null when the
- * labels are not understood (the model default applies).
+ * that side) at `ratio` (e.g. 9:16), both sides multiples of 64 and the area
+ * never above the budget (providers cap the area, e.g. Qwen Image at 2048×2048,
+ * so rounding up would be refused). Null when the labels are not understood
+ * (the model default applies).
  */
 export function imageSizeFor(resolution: string | undefined, ratio: string | undefined): string | null {
   if (resolution === undefined && (ratio === undefined || ratio === 'adaptive')) return null;
@@ -211,8 +213,8 @@ export function imageSizeFor(resolution: string | undefined, ratio: string | und
   const r = m ? Number(m[1]) / Number(m[2]) : 1;
   if (!Number.isFinite(r) || r <= 0) return null;
   const pixels = side * side;
-  const round = (v: number) => Math.max(64, Math.round(v / 64) * 64);
-  const w = round(Math.sqrt(pixels * r));
-  const h = round(pixels / Math.sqrt(pixels * r));
+  const floor = (v: number) => Math.max(64, Math.floor(v / 64 + 1e-9) * 64);
+  const w = floor(Math.sqrt(pixels * r));
+  const h = floor(pixels / w);
   return `${w}x${h}`;
 }

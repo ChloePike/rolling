@@ -388,7 +388,7 @@ describe("runs: run all", () => {
     const shotBCreate = fake.calls.findIndex((c) => c.method === "POST" && c.key === jobs.find((j) => j.node_id === ids["Shot B"]).id);
     expect(shotBCreate).toBeGreaterThan(imageDone);
     // 9:16 at 2K for a size-based image model; idempotency key = job id.
-    expect(imageJob.body).toMatchObject({ model: "bytedance/seedream-5.0-lite", size: "1536x2752", moderation: "auto" });
+    expect(imageJob.body).toMatchObject({ model: "bytedance/seedream-5.0-lite", size: "1536x2688", moderation: "auto" });
     expect(jobs.map((j) => j.id).sort()).toEqual(fake.jobs.map((j) => j.key).sort());
 
     // Charged the provider cost converted by creditsFor, never more than the hold.
