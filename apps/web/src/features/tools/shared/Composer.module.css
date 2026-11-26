@@ -45,7 +45,7 @@
 .pill:hover{background:var(--c-surface-5);color:var(--c-text-1)}
 .pillModel{background:var(--c-surface-6);color:var(--c-text-1);font-weight:600}
 .pillModel:hover{background:var(--c-surface-7-hover)}
-.pill[aria-expanded="true"]{background:var(--c-accent);color:var(--c-on-accent)}
+.pill[aria-expanded="true"]{background:var(--c-surface-6);color:var(--c-text-1)}
 .caret{opacity:.7}
 .refine{
   height:32px;padding:0 10px;border-radius:var(--r-pill);border:0;background:none;color:var(--c-text-3);

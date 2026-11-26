@@ -1,4 +1,4 @@
-import { useId, type RefObject } from 'react';
+import { useId, useState, type RefObject } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import type { ComposerPill, ComposerRef } from '../types';
 import styles from './Composer.module.css';
@@ -35,6 +35,8 @@ export interface ComposerProps {
  * the tool variant (note line, numbered refs, cost + send cluster).
  */
 export function Composer(p: ComposerProps) {
+  // All parameter pills share one settings popover; only the pill that opened it shows as open.
+  const [openedPill, setOpenedPill] = useState<string | null>(null);
   const intl = useIntl();
   const id = useId();
   return (
@@ -78,10 +80,13 @@ export function Composer(p: ComposerProps) {
                 key={pill.id}
                 type="button"
                 className={i === 0 ? `${styles.pill} ${styles.pillModel}` : styles.pill}
-                aria-expanded={p.openOverlay === (i === 0 ? 'model' : 'params')}
+                aria-expanded={i === 0 ? p.openOverlay === 'model' : p.openOverlay === 'params' && openedPill === pill.id}
                 aria-haspopup="dialog"
                 data-pill={pill.id}
-                onClick={() => p.onPill(pill, i)}
+                onClick={() => {
+                  setOpenedPill(pill.id);
+                  p.onPill(pill, i);
+                }}
               >
                 <ToolIcon name={pill.icon} size={14} />
                 {pill.label}
