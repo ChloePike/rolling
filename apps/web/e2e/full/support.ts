@@ -172,7 +172,7 @@ export async function openCanvas(page: Page, id: string, query = '') {
 /** Records page errors, console errors and 5xx responses; `assertClean()` fails on any. */
 export function watchErrors(page: Page, opts: { ignore?: RegExp[] } = {}) {
   const errors: string[] = [];
-  const ignore = [/favicon/i, /Error retrieving a token/ /* FedCM One Tap without a Google session (headless) */, /Failed to load resource: the server responded with a status of 4\d\d/, /accounts\.google\.com/, /gsi/i, ...(opts.ignore ?? [])];
+  const ignore = [/favicon/i, /Error retrieving a token|accounts list is empty|FedCM/ /* One Tap (FedCM) without a Google session in a headless browser */, /Failed to load resource: the server responded with a status of 4\d\d/, /accounts\.google\.com/, /gsi/i, ...(opts.ignore ?? [])];
   const skip = (t: string) => ignore.some((r) => r.test(t));
   page.on('pageerror', (e) => {
     if (!skip(e.message)) errors.push(`pageerror: ${e.message}`);

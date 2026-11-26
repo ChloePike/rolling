@@ -18,7 +18,9 @@ test('PWA-1 manifest: standalone, theme/background #0B0B0C, start_url /, icons 1
   expect(m.icons.some((i) => i.sizes === '192x192')).toBe(true);
   expect(m.icons.some((i) => i.sizes === '512x512' && (i.purpose ?? '').includes('maskable'))).toBe(true);
   for (const i of m.icons) expect((await request.get(i.src)).status(), i.src).toBe(200);
-  expect((await request.get('/apple-touch-icon.png').catch(() => null))?.status() ?? 200).toBeLessThan(400);
+  const apple = await page.locator('link[rel="apple-touch-icon"]').first().getAttribute('href');
+  expect(apple, 'apple-touch-icon link').toBeTruthy();
+  expect((await request.get(apple!)).status()).toBe(200);
 });
 
 test('PWA-2 service worker registers and controls the page', async ({ page, context, baseURL }) => {

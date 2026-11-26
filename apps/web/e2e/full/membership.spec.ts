@@ -171,12 +171,12 @@ test('GATE-7 Team seats, roles and per-member monthly limits: SEATS_REQUIRED, ME
   expect(ed.monthlyCreditLimit).toBe(5);
   const toViewer = await api(oreq, baseURL, 'PATCH', `/api/workspace/members/${ed.userId}`, { role: 'viewer', monthlyCreditLimit: null });
   expect(toViewer.status(), await toViewer.text()).toBe(200);
-  const q2 = await quote(ectx.request, baseURL, { kind: 'image', model: 'bytedance/seedream-5.0-flash', prompt: 'A glass bottle on a rock' }, ws);
-  if (q2.quoteId) {
-    const s2 = await ectx.request.post('/api/runs', { data: { quoteId: q2.quoteId }, headers: { origin: new URL(baseURL!).origin, ...ws } });
-    expect(s2.status()).toBe(403);
-    expect(await errorCode(s2)).toBe('FORBIDDEN');
-  }
+  // Viewers can't even quote (editor role required) — so they can't spend.
+  const q2 = await ectx.request.post('/api/runs/quote', { data: { promptSpec: { kind: 'image', model: 'bytedance/seedream-5.0-flash', prompt: 'A glass bottle on a rock' } }, headers: { origin: new URL(baseURL!).origin, ...ws } });
+  expect(q2.status()).toBe(403);
+  expect(await errorCode(q2)).toBe('FORBIDDEN');
+  const s2 = await ectx.request.post('/api/runs', { data: { quoteId: q.quoteId }, headers: { origin: new URL(baseURL!).origin, ...ws } });
+  expect(s2.status()).toBe(403);
   const p = await seedProject(oreq, baseURL, 'Team project', SAMPLE_OPS);
   const edit = await ectx.request.post(`/api/projects/${p.id}/patch`, { data: { baseRevision: p.revision, ops: [{ op: 'addNode', tempId: 'x', kind: 'text', title: 'T', params: {} }] }, headers: { origin: new URL(baseURL!).origin, ...ws } });
   expect(edit.status()).toBe(403);

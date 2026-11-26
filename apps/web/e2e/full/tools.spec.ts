@@ -9,8 +9,15 @@ test('TOOL-1 Quick Create: composer, cost, Generate asks to confirm when over th
   const errs = watchErrors(page);
   await page.goto('/create/quick');
   await expect(page.getByTestId('tool-composer')).toBeVisible();
+  await page.getByTestId('tool-composer').getByRole('textbox').first().fill('A bottle on a rock, slow push-in');
+  // HO §4 “Quotes everywhere”: every prompt box shows its cost before running.
   await expect(page.getByTestId('tool-composer')).toContainText(/\d+\s+credits/, { timeout: 20_000 });
-  await page.getByRole('button', { name: /Generate video/ }).click();
+  // Default Quick Create costs less than the 300-credit threshold and would start straight away (by design):
+  // lower the threshold so Generate has to ask first.
+  expect((await api(page.request, baseURL, 'PATCH', '/api/me/prefs', { confirmThreshold: 1 })).status()).toBe(200);
+  await page.reload();
+  await page.getByTestId('tool-composer').getByRole('textbox').first().fill('A bottle on a rock, slow push-in');
+  await page.getByRole('button', { name: /Generate video|^Generate$|Send|Start/ }).last().click();
   const confirm = page.getByRole('dialog', { name: 'Confirm', exact: true });
   const paywall = page.getByRole('dialog').filter({ hasText: /Not enough credits|Pick a plan/ });
   await expect(confirm.or(paywall).first()).toBeVisible({ timeout: 30_000 });
@@ -26,7 +33,12 @@ test('TOOL-2 Remix: without a reference video the run is blocked with a reason (
   expect(q.quoteId).toBeNull();
   expect(q.items[0]).toMatchObject({ action: 'blocked', code: 'missing_input' });
   await page.goto('/create/remix');
-  await page.getByRole('button', { name: /Generate video/ }).click();
+  // Default Quick Create costs less than the 300-credit threshold and would start straight away (by design):
+  // lower the threshold so Generate has to ask first.
+  expect((await api(page.request, baseURL, 'PATCH', '/api/me/prefs', { confirmThreshold: 1 })).status()).toBe(200);
+  await page.reload();
+  await page.getByTestId('tool-composer').getByRole('textbox').first().fill('A bottle on a rock, slow push-in');
+  await page.getByRole('button', { name: /Generate video|^Generate$|Send|Start/ }).last().click();
   await expect(page.getByText(/Upload the video|reference video/i).first()).toBeVisible();
   await shot(page, testInfo, 'remix-needs-video');
   expect((await getJson<{ runs: unknown[] }>(page.request, '/api/runs')).runs).toHaveLength(0);

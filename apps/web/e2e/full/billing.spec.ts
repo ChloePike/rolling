@@ -70,9 +70,9 @@ test('BILL-2 top-up: $10 minimum, tier + plan bonus math in the UI matches quote
 
   // Upgrade page calculator, Pro bonus.
   await page.goto('/upgrade');
-  await page.getByRole('button', { name: '$100' }).click();
-  await page.getByRole('button', { name: /^Pro \+10%/ }).click();
-  await expect(page.getByTestId('topup-buy')).toContainText(fmt(quoteTopUp(10_000, 'pro').credits));
+  await page.getByRole('radio', { name: /^\$100/ }).or(page.getByRole('button', { name: '$100' })).first().click();
+  await page.getByRole('radio', { name: /^Plus \+5%/ }).or(page.getByRole('button', { name: /^Plus \+5%/ })).first().click();
+  await expect(page.getByTestId('topup-calculator')).toContainText(fmt(quoteTopUp(10_000, 'plus').credits));
 });
 
 test('BILL-3 auto top-up settings: enable, threshold and amount persist; out-of-range is refused', async ({ page, context, baseURL }) => {

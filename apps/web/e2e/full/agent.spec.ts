@@ -141,7 +141,7 @@ test('AGENT-5 editor agent: “cut to 10s” proposes a timeline patch; Apply ch
   const tl0 = await getJson<{ revision: number; edl: { tracks: Array<{ kind: string; clips: Array<{ start: number; in: number; out: number }> }> } }>(page.request, `/api/canvases/${canvasId}/timeline`);
   const dur = (edl: typeof tl0.edl) => Math.max(0, ...edl.tracks.filter((t) => t.kind !== 'caption').flatMap((t) => t.clips.map((c) => c.start + (c.out - c.in))));
   expect(dur(tl0.edl)).toBeCloseTo(15, 0);
-  const field = page.getByRole('textbox', { name: /Ask for an edit|edit/i }).first();
+  const field = page.getByPlaceholder(/Ask for an edit/).first();
   await field.fill('cut to 10s');
   await field.press('Enter');
   const card = page.getByRole('button', { name: 'Apply' }).first();

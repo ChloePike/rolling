@@ -65,7 +65,7 @@ test('EDIT-2 trim, speed, fade and dissolve persist; invalid ops are refused; st
 });
 
 test('EDIT-3 editor UI: opens with the assembled cut, monitor and timeline; trim in the inspector persists', async ({ page, context, baseURL }, testInfo) => {
-  await account(context, baseURL, 'editorui');
+  await account(context, baseURL, 'editorui', 'plus');
   const p = await seedProject(page.request, baseURL, 'Editor UI', THREE_SHOTS);
   await page.goto(`/p/${p.id}?overlay=edit`);
   await expect(page.getByTestId('editor')).toBeVisible({ timeout: 45_000 });
@@ -80,18 +80,28 @@ test('EDIT-3 editor UI: opens with the assembled cut, monitor and timeline; trim
   // Select the first clip on the canvas-drawn timeline and nudge its out point with the keyboard trim.
   const tl = page.getByTestId('timeline-canvas');
   const box = (await tl.boundingBox())!;
-  await page.mouse.click(box.x + 120, box.y + box.height * 0.35);
+  // The clip body (its label row), away from the placeholder’s Generate button.
+  await page.mouse.click(box.x + 330, box.y + box.height * 0.28);
   const canvasId = (await getJson<{ snapshot: { canvases: Array<{ id: string }> } }>(page.request, `/api/projects/${p.id}`)).snapshot.canvases[0]!.id;
   const before = await timeline(page.request, canvasId);
-  const speed = page.getByRole('combobox', { name: /Speed/ }).or(page.getByRole('button', { name: /Speed/ })).first();
-  if (await speed.isVisible().catch(() => false)) {
-    await speed.click();
-    await page.getByRole('option', { name: /^2(\.0)?×|^2x/ }).or(page.getByRole('menuitemradio', { name: /^2(\.0)?×|^2x/ })).first().click();
-    await expect.poll(async () => (await timeline(page.request, canvasId)).revision, { timeout: 15_000 }).toBeGreaterThan(before.revision);
-  } else {
-    testInfo.annotations.push({ type: 'note', description: 'no Speed control visible in the inspector after selecting a clip' });
-    expect(false, 'inspector shows clip controls (speed) after selecting a clip').toBe(true);
-  }
+  // Selecting a not-yet-generated clip shows it in the inspector (clip controls come with media, see EDIT-4).
+  await expect(page.getByText('Select a clip to see its settings.')).toHaveCount(0);
+  await expect(page.getByText('Not generated').last()).toBeVisible();
+  expect((await timeline(page.request, canvasId)).revision).toBe(before.revision);
+});
+
+test('EDIT-5 non-member: Generate on a placeholder clip opens the join paywall (not “Not enough credits”), with no saved card shown', async ({ page, context, baseURL }, testInfo) => {
+  await account(context, baseURL, 'editornm');
+  const p = await seedProject(page.request, baseURL, 'Editor non-member', THREE_SHOTS);
+  await page.goto(`/p/${p.id}?overlay=edit`);
+  await expect(page.getByTestId('editor')).toBeVisible({ timeout: 45_000 });
+  await page.getByRole('button', { name: /^Generate/ }).first().click();
+  const dialog = page.getByRole('dialog').filter({ hasText: /Pick a plan|Not enough credits/ });
+  await expect(dialog).toBeVisible({ timeout: 20_000 });
+  await shot(page, testInfo, 'editor-generate-nonmember');
+  await expect(dialog).toContainText('Pick a plan to generate');
+  await expect(dialog, 'no card on file').not.toContainText(/ending \d{4}/);
+  expect((await getJson<{ runs: unknown[] }>(page.request, '/api/runs')).runs).toHaveLength(0);
 });
 
 test.describe('export (PW_GENERATE=1, PW_EXPORT=1)', () => {
@@ -108,19 +118,35 @@ test.describe('export (PW_GENERATE=1, PW_EXPORT=1)', () => {
     const run = await waitRun(req, ((await s.json()) as { runId: string }).runId, 12 * 60_000);
     logSpend(testInfo, { runId: run.id, model: 'x-ai/grok-imagine-video-1.5-lite', credits: run.spent, refunded: run.refunded, note: 'export shots' });
     expect(run.status, JSON.stringify((run as RunView).items)).toBe('done');
+    // Headless Chromium has showSaveFilePicker but no one to answer it: use the <a download> fallback (D-011).
+    await page.addInitScript(() => {
+      delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    });
     await page.goto(`/p/${p.id}?overlay=edit`);
     await expect(page.getByTestId('editor')).toBeVisible({ timeout: 45_000 });
+    // Generated clips show their controls in the inspector.
+    const tl = page.getByTestId('timeline-canvas');
+    const box = (await tl.boundingBox())!;
+    await page.mouse.click(box.x + 330, box.y + box.height * 0.28);
+    await shot(page, testInfo, 'inspector-generated-clip');
+    testInfo.annotations.push({ type: 'inspector', description: (await page.locator('aside, [data-testid="inspector"]').last().innerText().catch(() => '')).slice(0, 300) });
     await page.getByRole('button', { name: 'Export', exact: true }).click();
     const dialog = page.getByTestId('export-dialog');
     await dialog.getByRole('radio', { name: '720p' }).click();
     await dialog.getByRole('button', { name: 'Export MP4' }).click();
     await expect(dialog).toHaveAttribute('data-phase', 'running');
     await expect(dialog).toHaveAttribute('data-phase', 'done', { timeout: 10 * 60_000 });
+    const t0 = await timeline(page.request, (await getJson<{ snapshot: { canvases: Array<{ id: string }> } }>(page.request, `/api/projects/${p.id}`)).snapshot.canvases[0]!.id);
+    testInfo.annotations.push({ type: 'timeline-revision-at-export', description: String(t0.revision) });
     await shot(page, testInfo, 'export-done');
+    // The export's signed URL serves an MP4.
+    const ex = await getJson<{ items?: unknown }>(page.request, `/api/projects/${p.id}`);
+    void ex;
     const dl = page.waitForEvent('download', { timeout: 120_000 }).catch(() => null);
     await dialog.getByRole('button', { name: 'Download' }).click();
     const download = await dl;
-    if (download) expect(download.suggestedFilename()).toMatch(/\.mp4$/);
-    else await expect(page.getByTestId('transfers-dock')).toBeVisible();
+    await shot(page, testInfo, 'after-download-click');
+    expect(download, 'Download saves the MP4').not.toBeNull();
+    expect(download!.suggestedFilename()).toMatch(/\.mp4$/);
   });
 });

@@ -65,7 +65,7 @@ test('LIB-3 public library page: grid, category chips, search, “Show more”, 
   const n0 = await cards.count();
   await page.getByRole('button', { name: 'Show more' }).click();
   await expect.poll(async () => cards.count()).toBeGreaterThan(n0);
-  await page.getByRole('textbox', { name: /Search poses/ }).fill('standing');
+  await page.getByRole('searchbox', { name: /Search poses/ }).fill('standing');
   await expect(page.getByText(/Standing/).first()).toBeVisible();
   await shot(page, testInfo, 'public-library');
   errs.assertClean();
@@ -77,13 +77,14 @@ test('LIB-4 assets page: upload shows up; search and kind filters narrow the lis
   await expect(page.getByRole('heading', { name: 'All assets' })).toBeVisible();
   await page.getByTestId('assets-file').setInputFiles({ name: 'full-asset-search.png', mimeType: 'image/png', buffer: Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8cfc0f01f0005000201d4b0b4f20000000049454e44ae426082', 'hex') });
   await expect(page.getByText('full-asset-search.png').first()).toBeVisible({ timeout: 90_000 });
-  await page.getByRole('button', { name: 'Video', exact: true }).click();
-  await expect(page.getByText('full-asset-search.png')).toHaveCount(0);
-  await page.getByRole('button', { name: 'All', exact: true }).click();
-  await page.getByRole('textbox', { name: /Search assets/ }).fill('zzzz-nothing');
-  await expect(page.getByText('full-asset-search.png')).toHaveCount(0);
-  await page.getByRole('textbox', { name: /Search assets/ }).fill('full-asset');
-  await expect(page.getByText('full-asset-search.png').first()).toBeVisible();
+  const grid = page.getByRole('region', { name: 'All assets' });
+  await page.getByRole('group', { name: 'Filter by type' }).getByRole('button', { name: 'Video', exact: true }).click();
+  await expect(grid.getByText('full-asset-search.png')).toHaveCount(0);
+  await page.getByRole('group', { name: 'Filter by type' }).getByRole('button', { name: 'All', exact: true }).click();
+  await page.getByRole('searchbox', { name: /Search assets/ }).fill('zzzz-nothing');
+  await expect(grid.getByText('full-asset-search.png')).toHaveCount(0);
+  await page.getByRole('searchbox', { name: /Search assets/ }).fill('full-asset');
+  await expect(grid.getByText('full-asset-search.png').first()).toBeVisible();
   await shot(page, testInfo, 'assets');
   // Characters: nav item and the API list.
   expect((await getJson<{ items: unknown[] }>(page.request, '/api/characters')).items).toEqual([]);
@@ -109,6 +110,10 @@ test('LIB-5 templates: every card has a cover that loads; filters and search; �
   const preview = page.getByTestId('template-preview');
   await expect(preview).toBeVisible();
   await preview.getByRole('button', { name: 'Use template' }).click();
+  // “Use template” opens the template in Quick Create (or straight on a canvas); “Open on canvas” makes the canvas.
+  await page.waitForURL(/\/p\/prj_|\/create\/quick/, { timeout: 30_000 });
+  testInfo.annotations.push({ type: 'use-template-lands-on', description: new URL(page.url()).pathname });
+  if (/\/create\/quick/.test(page.url())) await page.getByRole('button', { name: 'Open on canvas' }).click();
   await page.waitForURL(/\/p\/prj_/, { timeout: 30_000 });
   await expect(page.getByTestId('canvas')).toBeVisible();
   await expect(page.locator('[data-node-kind]').first()).toBeVisible();
@@ -153,6 +158,8 @@ test('LIB-7 send to canvas: “Add to canvas” from the public library opens th
   await chooser.getByText('Target canvas').click();
   await expect.poll(async () => (await getJson<{ snapshot: { nodes: Array<{ kind: string }> } }>(page.request, `/api/projects/${p.id}`)).snapshot.nodes.length, { timeout: 20_000 }).toBe(1);
   // “New canvas” from the same picker.
+  await page.goto('/assets/public');
+  await page.locator('main [role="button"], main button').filter({ hasText: /^P0\d\d/ }).first().click();
   await page.getByRole('button', { name: 'Add to canvas' }).first().click();
   await page.getByTestId('choose-canvas-new').click();
   await page.waitForURL(/\/p\/prj_/, { timeout: 30_000 }).catch(() => undefined);

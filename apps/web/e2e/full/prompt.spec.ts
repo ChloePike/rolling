@@ -96,7 +96,7 @@ test('PROMPT-3 @ opens the reference picker with every source; a public item bec
   await expect(first).toBeVisible({ timeout: 20_000 });
   await expect(first).toContainText('Public');
   await first.click();
-  await page.keyboard.press('Enter');
+  await picker.getByRole('button', { name: /^Add( \d+)?$/ }).click();
   await expect(page.getByTestId('ref-chips')).toBeVisible();
   await expect(page.getByTestId('ref-chips').getByRole('button', { name: 'Remove reference' }).first()).toBeVisible();
   await shot(page, testInfo, 'at-chip');
@@ -158,7 +158,7 @@ test('PROMPT-6 no demo literals: a fresh account sees no mock projects, names or
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'My projects' })).toBeVisible();
   // A fresh account owns no projects: only the “New project” tile.
-  await expect(page.locator('a[href^="/p/prj_"]')).toHaveCount(0);
+  await expect(page.locator('a[href^="/p/prj_"]:not([href="/p/prj_new"])')).toHaveCount(0);
   await shot(page, testInfo, 'fresh-home');
   errs.assertClean();
 });
