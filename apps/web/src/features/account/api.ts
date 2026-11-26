@@ -22,7 +22,7 @@ import type { Invoice, Me, Member, Prefs, Role } from './types';
  * /api/billing/seats/preview`, `GET /api/billing/payment-method`,
  * `/api/workspace/members|invites`, `PATCH /api/me/profile` (name, handle, bio,
  * avatar), account deletion (`POST /api/me/delete/send-code`, `POST
- * /api/me/delete`), Better Auth `email-otp/request-email-change` /
+ * /api/me/delete`), data export (`POST|GET /api/account/export`), Better Auth `email-otp/request-email-change` /
  * `email-otp/change-email` / `list-accounts` / `link-social` / `unlink-account`.
  *
  * Mock mode (`VITE_API_MODE=mock`): in-memory data from `mocks.ts`. The test
@@ -35,7 +35,7 @@ import type { Invoice, Me, Member, Prefs, Role } from './types';
 /** API error with a code from docs/api.md (`NO_PLAN`, `VALIDATION`, ...). Mock flows throw it; real calls throw `HttpError`. */
 export class ApiError extends Error {
   constructor(
-    readonly code: 'NO_PLAN' | 'VALIDATION' | 'NOT_FOUND' | 'CARD_DECLINED' | 'TEAM_REQUIRED' | 'SEATS_REQUIRED' | 'HANDLE_TAKEN' | 'INVALID_CODE' | 'AVATAR_REJECTED',
+    readonly code: 'NO_PLAN' | 'VALIDATION' | 'NOT_FOUND' | 'CARD_DECLINED' | 'TEAM_REQUIRED' | 'SEATS_REQUIRED' | 'HANDLE_TAKEN' | 'INVALID_CODE' | 'AVATAR_REJECTED' | 'RATE_LIMITED',
     message: string = code,
   ) {
     super(message);
@@ -131,7 +131,7 @@ export function cardFromApi(c: PaymentMethodView): Me['paymentMethod'] {
 
 export function membersFromApi(r: MembersResponse): Member[] {
   return [
-    ...r.members.map((m) => ({ id: m.userId, name: m.name || m.email.split('@')[0] || m.email, email: m.email, role: m.role, monthlyCreditLimit: m.monthlyCreditLimit, isYou: m.isYou })),
+    ...r.members.map((m) => ({ id: m.userId, name: m.name || m.email.split('@')[0] || m.email, email: m.email, role: m.role, monthlyCreditLimit: m.monthlyCreditLimit, isYou: m.isYou, image: m.image })),
     ...r.invites.map((i) => ({ id: i.id, name: i.email.split('@')[0] || i.email, email: i.email, role: i.role, monthlyCreditLimit: i.monthlyCreditLimit ?? null, invited: true, expiresAt: i.expiresAt })),
   ];
 }
@@ -377,6 +377,48 @@ export async function deleteAccount(code: string): Promise<void> {
     return;
   }
   await api.post('/me/delete', { code }, { noWorkspace: true });
+}
+
+/** `GET|POST /api/account/export` (docs/api.md → Account). */
+export interface DataExportView {
+  id: string;
+  status: 'queued' | 'running' | 'done' | 'failed' | 'expired';
+  createdAt: number;
+  finishedAt: number | null;
+  expiresAt: number | null;
+  nextAvailableAt: number;
+}
+
+const DATA_EXPORT_COOLDOWN_MS = 24 * 3_600_000;
+let mockExport: DataExportView | null = null;
+
+/** Latest data export of the signed-in user (null when none). Mock: the one asked for in this page session. */
+export async function fetchDataExport(): Promise<DataExportView | null> {
+  if (isMockApi()) return mockExport;
+  return (await api.get<{ export: DataExportView | null }>('/account/export', { noWorkspace: true })).export;
+}
+
+/**
+ * Starts a data export: the server builds the bundle and emails a download
+ * link (7 days). One per 24 hours: `RATE_LIMITED` with `nextAvailableAt`.
+ * Mock: the second request in a page session is rate limited.
+ */
+export async function requestDataExport(): Promise<{ export: DataExportView; email: string }> {
+  if (isMockApi()) {
+    await wait();
+    if (mockExport) throw new ApiError('RATE_LIMITED');
+    const now = Date.now();
+    mockExport = { id: 'dex_mock', status: 'queued', createdAt: now, finishedAt: null, expiresAt: null, nextAvailableAt: now + DATA_EXPORT_COOLDOWN_MS };
+    return { export: mockExport, email: current().user.email };
+  }
+  return api.post<{ export: DataExportView; email: string }>('/account/export', {}, { noWorkspace: true });
+}
+
+export const dataExportKey = ['account', 'export'] as const;
+
+export function useDataExport() {
+  const { status } = useSession();
+  return useQuery({ queryKey: dataExportKey, queryFn: fetchDataExport, enabled: isMockApi() || status === 'signedIn', staleTime: 30_000 });
 }
 
 /** Top-up quotes live in lib/topUp (shared with the header and the paywall). */

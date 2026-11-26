@@ -35,6 +35,9 @@ import {
   EMAIL_RE,
   meKey,
   requestEmailChange,
+  requestDataExport,
+  dataExportKey,
+  useDataExport,
   sendDeleteCode,
   uploadAvatar,
   errorCode,
@@ -352,6 +355,8 @@ function AccountSection({ me }: { me: Me }) {
           </button>
         </span>
       </Row>
+      <LinkErrorNotice />
+      <ExportDataRow email={me.user.email} />
       <div className={styles.dangerWrap}>
         <button type="button" className={cx(styles.btn, styles.danger, motion.hover)} onClick={() => setDeleteOpen(true)}>
           <FormattedMessage id="account.settings.account.delete" />
@@ -380,6 +385,82 @@ function AccountSection({ me }: { me: Me }) {
         }}
       />
     </form>
+  );
+}
+
+/** Google linking fallbacks come back to `/settings/account?error=<code>` (routes/auth.ts `failTo`). */
+const LINK_ERRORS = new Set(['account_in_use', 'access_denied', 'email_not_verified', 'unavailable', 'nonce']);
+
+export function linkErrorMessage(code: string): string {
+  return `account.settings.account.linkError.${LINK_ERRORS.has(code) ? code : 'generic'}`;
+}
+
+function LinkErrorNotice() {
+  const search = useSearch({ strict: false }) as { error?: string };
+  const navigate = useNavigate();
+  if (!search.error) return null;
+  return (
+    <div className={cx(styles.notice, motion.enter)} role="alert" data-testid="link-error">
+      <span className={styles.rowHint}>
+        <FormattedMessage id={linkErrorMessage(search.error)} />
+      </span>
+      <button type="button" className={cx(styles.btn, motion.hover)} onClick={() => void navigate({ to: '/settings/$section', params: { section: 'account' }, search: {}, replace: true })}>
+        <FormattedMessage id="account.settings.account.linkError.dismiss" />
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Settings → Account → Export my data: `POST /api/account/export` builds a
+ * bundle and emails a 7-day download link; one request per 24 hours.
+ */
+function ExportDataRow({ email }: { email: string }) {
+  const t = useT();
+  const intl = useIntl();
+  const toast = useToast();
+  const qc = useQueryClient();
+  const latest = useDataExport();
+  const [busy, setBusy] = useState(false);
+  const last = latest.data ?? null;
+  const when = (ms: number) => intl.formatDate(ms, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const coolingDown = !!last && last.status !== 'failed' && last.nextAvailableAt > Date.now();
+  const hint = !last || !coolingDown
+    ? t('account.settings.account.export.hint')
+    : last.status === 'done' && last.expiresAt
+      ? t('account.settings.account.export.ready', { expires: when(last.expiresAt) })
+      : t('account.settings.account.export.pending', { email });
+
+  async function start() {
+    setBusy(true);
+    try {
+      const r = await requestDataExport();
+      qc.setQueryData(dataExportKey, r.export);
+      toast.show({ message: t('account.settings.account.export.requested', { email: r.email }) });
+    } catch (e) {
+      if (errorCode(e) === 'RATE_LIMITED') {
+        void qc.invalidateQueries({ queryKey: dataExportKey });
+        toast.show({ message: t('account.settings.account.export.wait') });
+      } else toast.show({ message: t('account.settings.account.export.failed') });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Row label={<FormattedMessage id="account.settings.account.export" />} hint={<span data-testid="export-hint">{hint}</span>}>
+      <button
+        type="button"
+        className={cx(styles.btn, motion.hover)}
+        aria-label={t('account.settings.account.export')}
+        disabled={busy || coolingDown}
+        aria-busy={busy || undefined}
+        title={coolingDown && last ? t('account.settings.account.export.nextAt', { time: when(last.nextAvailableAt) }) : undefined}
+        onClick={() => void start()}
+      >
+        <FormattedMessage id={busy ? 'account.settings.account.export.requesting' : 'account.settings.account.export.button'} />
+      </button>
+    </Row>
   );
 }
 
@@ -1296,9 +1377,7 @@ function TeamSection({ me }: { me: Me }) {
         const self = m.isYou ?? m.email === me.user.email;
         return (
           <div key={m.id} className={styles.member} data-member={m.id}>
-            <span className={styles.avatarSm} aria-hidden="true">
-              {m.name.slice(0, 1)}
-            </span>
+            <MemberAvatar name={m.name} image={self ? (me.user.image ?? m.image) : m.image} />
             <span className={styles.memberText}>
               <span className={styles.memberName}>
                 {m.name}
@@ -1649,5 +1728,20 @@ function NotificationsSection({ me }: { me: Me }) {
         );
       })}
     </>
+  );
+}
+
+/** A member's photo filling the round avatar; the initial when there is none or it fails to load. */
+function MemberAvatar({ name, image }: { name: string; image?: string | null }) {
+  const [broken, setBroken] = useState(false);
+  useEffect(() => setBroken(false), [image]);
+  return (
+    <span className={styles.avatarSm} aria-hidden="true">
+      {image && !broken ? (
+        <img src={image} alt="" className={styles.avatarImg} draggable={false} referrerPolicy="no-referrer" data-testid="member-avatar-img" onError={() => setBroken(true)} />
+      ) : (
+        name.slice(0, 1).toUpperCase()
+      )}
+    </span>
   );
 }

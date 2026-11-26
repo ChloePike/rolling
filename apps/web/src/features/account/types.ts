@@ -53,6 +53,8 @@ export interface Member {
   invited?: boolean;
   /** Real API: the signed-in user's own row. */
   isYou?: boolean;
+  /** Profile photo URL (Google picture or uploaded avatar), or null. */
+  image?: string | null;
   /** Real API: invite expiry (epoch ms) for pending invites. */
   expiresAt?: number;
 }

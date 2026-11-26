@@ -392,5 +392,22 @@
   "account.settings.delete.toTeam": "Go to Members",
   "account.settings.delete.privacy": "What we delete and what we keep is in the <link>Privacy Policy</link>.",
   "account.settings.billing.cardExpires": "expires {date}",
-  "account.settings.billing.updateInPortal": "Update in billing portal"
+  "account.settings.billing.updateInPortal": "Update in billing portal",
+  "account.settings.account.export": "Export my data",
+  "account.settings.account.export.hint": "A copy of your profile, projects, assets, agent threads and credit history. We email you a download link.",
+  "account.settings.account.export.button": "Export",
+  "account.settings.account.export.requesting": "Requesting…",
+  "account.settings.account.export.requested": "Export started. We’ll email a download link to {email}.",
+  "account.settings.account.export.pending": "Export in progress. We’ll email a download link to {email}.",
+  "account.settings.account.export.ready": "We emailed your download link. It works until {expires}.",
+  "account.settings.account.export.wait": "You can export your data once a day.",
+  "account.settings.account.export.nextAt": "You can export again after {time}.",
+  "account.settings.account.export.failed": "Couldn’t start the export. Try again.",
+  "account.settings.account.linkError.account_in_use": "That Google account is already linked to another account.",
+  "account.settings.account.linkError.access_denied": "Google wasn’t connected because access was declined.",
+  "account.settings.account.linkError.email_not_verified": "That Google account’s email isn’t verified, so it wasn’t connected.",
+  "account.settings.account.linkError.unavailable": "Google sign-in isn’t available right now. Try again later.",
+  "account.settings.account.linkError.nonce": "The Google request expired. Try connecting again.",
+  "account.settings.account.linkError.generic": "Couldn’t connect Google. Try again.",
+  "account.settings.account.linkError.dismiss": "Dismiss"
 }

@@ -198,6 +198,33 @@ test.describe('settings (Settings.dc.html)', () => {
     await expect(page).toHaveURL(/\/login$/);
   });
 
+  test('account: export my data starts once, then waits a day; keyboard works', async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as unknown as { __rollingMocks: Record<string, unknown> }).__rollingMocks = { delayMs: 50 };
+    });
+    await openApp(page, '/settings/account');
+    const exportBtn = page.getByRole('button', { name: 'Export my data' });
+    await expect(page.getByTestId('export-hint')).toHaveText('A copy of your profile, projects, assets, agent threads and credit history. We email you a download link.');
+    await exportBtn.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByText(/^Export started\. We’ll email a download link to .+\.$/)).toBeVisible();
+    await expect(page.getByTestId('export-hint')).toContainText('Export in progress.');
+    await expect(exportBtn).toBeDisabled();
+    await expect(exportBtn).toHaveAttribute('title', /^You can export again after /);
+  });
+
+  test('account: a failed Google link from /settings/account?error= is explained and can be dismissed', async ({ page }) => {
+    await openApp(page, '/settings/account?error=account_in_use');
+    const notice = page.getByTestId('link-error');
+    await expect(notice).toHaveAttribute('role', 'alert');
+    await expect(notice).toContainText('That Google account is already linked to another account.');
+    await notice.getByRole('button', { name: 'Dismiss' }).click();
+    await expect(notice).toHaveCount(0);
+    await expect(page).toHaveURL(/\/settings\/account$/);
+    await openApp(page, '/settings/account?error=csrf');
+    await expect(page.getByTestId('link-error')).toContainText('Couldn’t connect Google. Try again.');
+  });
+
   test('preferences persist through lib/prefs after reload: language, currency, theme, ratio, model, threshold, mature', async ({ page }) => {
     await openApp(page, '/settings/preferences');
     await page.getByRole('button', { name: /^Currency: / }).click();
