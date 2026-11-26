@@ -61,7 +61,7 @@
 .charMeta{font-size:12px;color:var(--c-text-3)}
 .charId{height:22px;padding:0 8px;border-radius:6px;background:var(--c-surface-4);font-size:11px;font-weight:600;line-height:22px;color:var(--c-text-3)}
 .charActions{display:flex;gap:6px}
-.charPrimary{flex:1;height:32px;border-radius:999px;background:var(--c-text-1);color:var(--c-bg);font-size:12px;font-weight:700;line-height:32px;text-align:center}
+.charPrimary{flex:1;height:32px;padding:0;border:0;font-family:inherit;cursor:pointer;border-radius:999px;background:var(--c-text-1);color:var(--c-bg);font-size:12px;font-weight:700;line-height:32px;text-align:center}
 .charPrimary:hover{background:var(--c-primary-hover);color:var(--c-bg)}
 .charEdit{height:32px;padding:0 12px;border-radius:999px;background:var(--c-surface-5);color:var(--c-text-1);font-size:12px;line-height:32px}
 .charEdit:hover{background:var(--c-surface-6)}
@@ -103,7 +103,7 @@
 .usedLink{font-size:13px;color:var(--c-text-2)}
 .usedLink:hover{color:var(--c-text-1)}
 .detailActions{display:flex;gap:6px}
-.addCanvas{flex:1;height:36px;border-radius:999px;background:var(--c-text-1);color:var(--c-bg);font-size:13px;font-weight:700;line-height:36px;text-align:center}
+.addCanvas{flex:1;height:36px;padding:0;border:0;font-family:inherit;cursor:pointer;border-radius:999px;background:var(--c-text-1);color:var(--c-bg);font-size:13px;font-weight:700;line-height:36px;text-align:center}
 .addCanvas:hover{background:var(--c-primary-hover);color:var(--c-bg)}
 .iconBtn{
   width:36px;height:36px;border-radius:999px;border:0;background:var(--c-surface-5);color:var(--c-text-1);cursor:pointer;

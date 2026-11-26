@@ -7,6 +7,7 @@ import { listRuns } from '@/features/overlays/runs';
 import { MockProjectRoom } from './graph/mockRoom';
 import { GraphStore } from './graph/store';
 import { ProjectSync, type SyncEvents } from './graph/sync';
+import { mockProjectOpens } from './target/projects';
 import { blockedByBypass, runScopeNodes, type GraphEdge, type GraphNode, type LocalOp, type RunScope } from '@rolling/core/graph';
 import { mockGraph, MOCK_AGENT, MOCK_AGENT_OPTIONS, MOCK_PROJECT, MOCK_SHARE, type AgentPlanOption } from './mocks';
 
@@ -248,6 +249,13 @@ function openRealProject(projectId: string, events: ProjectEvents): ProjectSessi
 
 export function openProject(projectId: string, events: ProjectEvents): ProjectSession {
   if (!isMockApi()) return openRealProject(projectId, events);
+  if (!mockProjectOpens(projectId)) {
+    // Mock 404 (missing, deleted or another workspace's project): the same fatal path as the real check.
+    const store = new GraphStore({ revision: 0, nodes: [], edges: [], groups: [] });
+    const sync = new ProjectSync(store, { send: () => {}, onMessage: () => () => {}, close: () => {} }, events);
+    const t = setTimeout(() => events.onFatal?.('NOT_FOUND'), 0);
+    return { projectId, store, sync, canvasId: () => null, dispose: () => (clearTimeout(t), sync.dispose()) };
+  }
   const flags = mockFlags();
   room?.dispose();
   const c = credits.get();

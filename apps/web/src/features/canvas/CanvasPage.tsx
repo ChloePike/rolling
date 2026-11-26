@@ -47,6 +47,9 @@ import {
   type StartRunResult,
 } from './api';
 import { CanvasError } from './CanvasError';
+import { forgetCanvas, rememberCanvas } from './target/projects';
+import { incomingParams, takeIncoming } from './target/incoming';
+import { freePosition } from './target/resolve';
 import { assetMediaUrl, hasPendingAction, isMockApi, savePendingAction, takePendingAction } from '@/features/overlays/backend';
 import { saveSelectionAsTemplate } from '@/features/templates/api';
 import { useQueryClient } from '@tanstack/react-query';
@@ -111,6 +114,8 @@ export interface CanvasPageProps {
   initialSelection?: string | null;
   /** The timeline editor (owned by `features/canvas/editor`) rendered over the canvas. */
   renderEditor?: (props: CanvasEditorSlotProps) => ReactNode;
+  /** `?insert=` token: an item sent here from Activity, Assets, the public library or a tool (`target/incoming.ts`). */
+  incoming?: string | null;
 }
 
 type Tool = 'add' | 'asset' | 'flow' | 'dir' | 'cut' | 'hist';
@@ -165,7 +170,11 @@ export function CanvasPage(props: CanvasPageProps) {
   useEffect(() => {
     setFatal(null);
     const s = openProject(props.projectId, {
-      onFatal: setFatal,
+      onFatal: (reason) => {
+        // A canvas that no longer opens is not "the last canvas" any more.
+        if (reason !== 'UNAUTHENTICATED') forgetCanvas(props.projectId);
+        setFatal(reason);
+      },
       onRefused: (r) => toast.show({ message: refusalText(intl, r) }),
       onJobFailed: (nodeId, refunded) =>
         toast.show({
@@ -179,7 +188,7 @@ export function CanvasPage(props: CanvasPageProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.projectId]);
 
-  if (fatal) return <CanvasError reason={fatal} />;
+  if (fatal) return <CanvasError reason={fatal} projectId={props.projectId} />;
 
   return (
     <div className={canvas.root} data-testid="canvas">
@@ -265,7 +274,7 @@ interface InnerProps extends CanvasPageProps {
   retryRef: { current: (id: string) => void };
 }
 
-function CanvasInner({ projectId, initialOverlay = null, initialSelection = null, renderEditor, session, titles, retryRef }: InnerProps) {
+function CanvasInner({ projectId, initialOverlay = null, initialSelection = null, renderEditor, incoming = null, session, titles, retryRef }: InnerProps) {
   const intl = useIntl();
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -368,6 +377,17 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
     const zoom = Math.min(1, w / Math.max(1, b.width), h / Math.max(1, b.height));
     void flow.setViewport({ x: pad - b.x * zoom, y: 96 + (h - b.height * zoom) / 2 - b.y * zoom, zoom });
   }, [rfNodes, flow, size, agentOpen]);
+
+  // An item sent to this canvas: bring it into view once its card is measured (instead of framing the graph).
+  const focusInsert = useRef<string | null>(null);
+  useEffect(() => {
+    const id = focusInsert.current;
+    const n = id ? rfNodes.find((x) => x.id === id) : undefined;
+    if (!n?.measured?.width) return;
+    focusInsert.current = null;
+    framed.current = true;
+    void flow.setCenter(n.position.x + n.measured.width / 2, n.position.y + (n.measured.height ?? 200) / 2, { zoom: Math.max(viewport.zoom, 0.75), duration: 320 });
+  }, [rfNodes, flow, viewport.zoom]);
 
   const rfEdges = useMemo<WireEdge[]>(() => {
     const byId = new Map(graph.nodes.map((n) => [n.id, n]));
@@ -1073,6 +1093,51 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
     if (isMockApi()) return place([]);
     void Promise.all(items.map((it) => resolveAssetId(it.id))).then(place, () => toast.show({ message: intl.formatMessage({ id: 'canvas.toast.offline' }) }));
   };
+
+  // The canvas opened: remember it as this user's last canvas in this workspace (the sidebar Canvas item).
+  const loaded = syncStatus === 'saved' || syncStatus === 'saving';
+  useEffect(() => {
+    if (loaded) rememberCanvas(projectId);
+  }, [loaded, projectId]);
+
+  // "Send to canvas" from elsewhere: once the graph has loaded, add the item as an asset node at a free
+  // spot right of the graph through the normal patch path, select it and bring it into view.
+  const incomingDone = useRef(false);
+  useEffect(() => {
+    if (!loaded || !incoming || incomingDone.current) return;
+    incomingDone.current = true;
+    void navigate({ to: '.', search: (prev: Record<string, unknown>) => ({ ...prev, insert: undefined }), replace: true } as never);
+    const items = takeIncoming(incoming, projectId);
+    if (!items?.length) return;
+    const nodes = session.store.getState().nodes;
+    const empty = toFlow({ x: Math.max(120, size.w / 2 - 280), y: size.h / 2 - 120 });
+    const at = freePosition(
+      nodes.map((n) => ({ position: n.position, width: NODE_WIDTH[n.kind] })),
+      NODE_WIDTH.asset,
+      empty,
+    );
+    const r = commit(
+      items.map((it, i) => ({
+        op: 'addNode' as const,
+        tempId: `in${i}`,
+        kind: 'asset' as const,
+        title: it.name,
+        params: incomingParams(it),
+        position: { x: at.x + i * (NODE_WIDTH.asset + 40), y: at.y },
+      })),
+    );
+    if (!r.ok) return;
+    const id = r.idMap.in0 ?? null;
+    setSelected(id);
+    setSelectedEdge(null);
+    focusInsert.current = id;
+    toast.show({
+      message: intl.formatMessage({ id: 'canvas.toast.assetsAdded' }, { n: items.length }),
+      action: { label: intl.formatMessage({ id: 'canvas.toast.undo' }), onAction: () => session.sync.undo() },
+    });
+    // Runs once per token, after the graph loads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, incoming]);
 
   const actions: NodeActions = useMemo(
     () => ({

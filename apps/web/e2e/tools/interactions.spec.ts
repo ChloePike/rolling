@@ -81,7 +81,9 @@ test.describe('tools: generation flow', () => {
     await expect(page.locator('main article').first()).toContainText('Swap the lead, switch lines to English');
     await expect(page.locator('main article')).toHaveCount(5);
     await page.locator('main article[data-state="done"]').nth(1).getByRole('button', { name: 'Send to canvas' }).click();
+    await page.getByRole('dialog', { name: 'Choose a canvas' }).getByRole('button', { name: /Ridgeline Sparkling/ }).click();
     await expect(page).toHaveURL(/\/p\/prj_demo$/);
+    await expect(page.locator('.react-flow__node.selected [data-node-kind="asset"]')).toHaveCount(1);
   });
 
   test('composer: + adds a reference from a real file, Refine rewrites the prompt with Undo', async ({ page }) => {

@@ -10,6 +10,7 @@ import { assetMediaUrl, isApiError, isMockApi } from '@/features/overlays/backen
 import { downloadAsset } from '@/features/overlays/media';
 import { cancelRun, retryRun, startQuote, type SpecQuote } from '@/features/overlays/runs';
 import { runError } from '@/features/canvas/api';
+import { useSendToCanvas, type IncomingItem } from '@/features/canvas/target';
 import type { RunAction, RunRow, RunStatus } from './types';
 import styles from './Activity.module.css';
 
@@ -82,6 +83,7 @@ export function ActivityPage({ initialFilter = 'all' }: { initialFilter?: Activi
   const [rangeOpen, setRangeOpen] = useState(false);
   const [viewing, setViewing] = useState<RunRow | null>(null);
   const navigate = useNavigate();
+  const toCanvas = useSendToCanvas();
   const timers = useRef<number[]>([]);
   useEffect(() => () => timers.current.forEach((t) => window.clearInterval(t)), []);
   const [runs, setRuns] = useState<RunRow[]>([]);
@@ -182,7 +184,9 @@ export function ActivityPage({ initialFilter = 'all' }: { initialFilter?: Activi
     } else if (action === 'locate') {
       const to = SOURCE_ROUTE[run.source];
       if (to) void navigate({ to });
-      else void navigate({ to: '/p/$projectId', params: { projectId: 'prj_demo' } });
+      // Mock runs carry no project id: the canvas the sidebar item opens (the demo canvas).
+      else if (run.projectId) void navigate({ to: '/p/$projectId', params: { projectId: run.projectId } });
+      else void navigate({ to: '/canvas' });
     }
   }
 
@@ -198,6 +202,27 @@ export function ActivityPage({ initialFilter = 'all' }: { initialFilter?: Activi
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     toast.show({ message: intl.formatMessage({ id: 'activity.toast.exported' }, { n: rows.length }) });
+  }
+
+  /**
+   * "Edit in canvas" / "Send to canvas": a canvas run's result is already on its canvas, so Edit opens it there;
+   * otherwise the result is added as an asset node to the run's project, or to the canvas the user picks.
+   */
+  function sendRun(run: RunRow, id: 'edit' | 'sendToCanvas') {
+    if (id === 'edit' && run.source === 'canvas' && run.projectId) return void navigate({ to: '/p/$projectId', params: { projectId: run.projectId } });
+    if (!isMockApi() && !run.assetId) {
+      if (run.projectId) return void navigate({ to: '/p/$projectId', params: { projectId: run.projectId } });
+      return void toast.show({ message: intl.formatMessage({ id: 'canvas.target.noResult' }) });
+    }
+    const item: IncomingItem = {
+      name: run.name,
+      media: run.mediaKind ?? (/Seedream/.test(run.params) ? 'image' : 'video'),
+      assetId: run.assetId ?? null,
+      refId: run.assetId ?? run.id,
+      source: 'generated',
+      label: run.params,
+    };
+    toCanvas.send(item, { projectId: run.projectId });
   }
 
   const viewItem: ResultModalItem | null = viewing
@@ -368,13 +393,13 @@ export function ActivityPage({ initialFilter = 'all' }: { initialFilter?: Activi
             prompt={viewing?.name ?? ''}
             params={viewItem?.params ?? []}
             assets={[]}
-            actions={[{ id: 'edit' }, { id: 'download' }]}
+            actions={[{ id: 'edit' }, ...(viewing?.assetId ? [{ id: 'sendToCanvas' as const }] : []), { id: 'download' }]}
             onAction={(id) => {
               const v = viewing;
               if (!v) return;
-              if (id === 'edit' && v.projectId) {
+              if (id === 'edit' || id === 'sendToCanvas') {
                 setViewing(null);
-                void navigate({ to: '/p/$projectId', params: { projectId: v.projectId } });
+                sendRun(v, id);
               } else if (id === 'download' && v.assetId) {
                 toast.show({ message: intl.formatMessage({ id: 'activity.toast.downloaded' }) });
                 void downloadAsset(v.assetId, v.name).catch((e: unknown) => isApiError(e) && toast.show({ message: e.message }));
@@ -393,12 +418,14 @@ export function ActivityPage({ initialFilter = 'all' }: { initialFilter?: Activi
           />
         </>
       ) : null}
+      {toCanvas.dialog}
       <ResultModal
         item={isMockApi() ? viewItem : null}
         onClose={() => setViewing(null)}
         onAction={(id) => {
+          const v = viewing;
           setViewing(null);
-          if (id === 'sendToCanvas' || id === 'edit') void navigate({ to: '/p/$projectId', params: { projectId: 'prj_demo' } });
+          if ((id === 'sendToCanvas' || id === 'edit') && v) sendRun(v, id);
           else toast.show({ message: intl.formatMessage({ id: 'activity.toast.downloaded' }) });
         }}
       />

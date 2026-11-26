@@ -179,6 +179,8 @@ test.describe('public library (PublicLibrary.dc.html)', () => {
     await expect(page).toHaveURL(/\/create\/quick$/);
     await openApp(page, '/assets/public');
     await page.getByRole('complementary', { name: 'Asset details' }).getByRole('button', { name: 'Add to canvas' }).click();
+    // No source project: "Choose a canvas" first (canvas-target.spec.ts covers the insert).
+    await page.getByRole('dialog', { name: 'Choose a canvas' }).getByRole('button', { name: /Ridgeline Sparkling/ }).click();
     await expect(page).toHaveURL(/\/p\/prj_demo$/);
   });
 });

@@ -3,9 +3,6 @@ export const placeholderAccount = {
   initial: 'A',
 };
 
-/** Placeholder project for the Canvas nav item until the projects list exists. */
-export const placeholderProjectId = 'prj_demo';
-
 /** Workspaces for the account menu switcher. */
 export const placeholderWorkspaces = [
   { id: 'ws_personal', name: 'Personal', kind: 'personal' as const, mark: 'A', tone: 'var(--c-tone-graphite)', members: 1 },

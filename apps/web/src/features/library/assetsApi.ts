@@ -63,6 +63,7 @@ export function assetItemFrom(a: GqlAsset): AssetItem {
     uploadedAt: new Date(a.createdAt).toISOString(),
     usedIn: a.projectId ? [{ label: a.projectId, to: `/p/${a.projectId}` }] : [],
     ...(a.projectId ? { folder: a.projectId } : {}),
+    projectId: a.projectId,
     thumbUrl: a.thumbUrl,
     mature: a.mature,
     rating: a.rating ?? (a.mature ? 'suggestive' : null),

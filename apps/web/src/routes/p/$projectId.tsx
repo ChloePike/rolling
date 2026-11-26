@@ -9,6 +9,8 @@ const EDITOR_TO_CANVAS: Record<string, string> = { node_shot_a: NODE.shotA, node
 interface CanvasSearch {
   /** Opens one layer on load, like the design's `initOverlay` (plan, addMenu, script, share, edit, editAgent, at). */
   overlay?: CanvasOverlay;
+  /** One-time token of an item sent to this canvas (`features/canvas/target/incoming.ts`). */
+  insert?: string;
 }
 
 /**
@@ -18,7 +20,11 @@ interface CanvasSearch {
 export const Route = createFileRoute('/p/$projectId')({
   validateSearch: (search: Record<string, unknown>): CanvasSearch => {
     const o = search.overlay;
-    return typeof o === 'string' && (CANVAS_OVERLAYS as readonly string[]).includes(o) ? { overlay: o as CanvasOverlay } : {};
+    const insert = typeof search.insert === 'string' && /^[a-z0-9]{1,16}$/.test(search.insert) ? search.insert : undefined;
+    return {
+      ...(typeof o === 'string' && (CANVAS_OVERLAYS as readonly string[]).includes(o) ? { overlay: o as CanvasOverlay } : {}),
+      ...(insert ? { insert } : {}),
+    };
   },
   component: CanvasRoute,
   errorComponent: CanvasError,
@@ -26,12 +32,13 @@ export const Route = createFileRoute('/p/$projectId')({
 
 function CanvasRoute() {
   const { projectId } = Route.useParams();
-  const { overlay } = Route.useSearch();
+  const { overlay, insert } = Route.useSearch();
   return (
     <CanvasPage
       key={projectId}
       projectId={projectId}
       initialOverlay={overlay ?? null}
+      incoming={insert ?? null}
       initialSelection={isMockApi() ? NODE.shotA : null}
       renderEditor={({ projectId: id, withProposal, onClose, onOpenOnCanvas }) => (
         <Editor

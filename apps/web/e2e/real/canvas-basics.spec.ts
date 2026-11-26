@@ -89,3 +89,26 @@ test('a missing project shows the not-found state', async ({ page, baseURL }) =>
   await page.goto('/p/prj_01JDNOTAREALPROJECT0000000');
   await expect(page.getByTestId('canvas-error')).toHaveAttribute('data-reason', 'NOT_FOUND', { timeout: 30_000 });
 });
+
+test('the sidebar Canvas item creates one canvas for a new user, then reopens the last one; not-found offers a way out', async ({ page, baseURL }) => {
+  await signIn(page, `e2e+navcanvas-${Date.now().toString(36)}@rolling.test`, baseURL!);
+  await page.goto('/activity');
+  // A new user has no projects: one blank canvas is created and opened (a double click still makes one).
+  await page.getByTestId('main-nav').getByRole('link', { name: 'Canvas' }).dblclick();
+  await expect(page).toHaveURL(/\/p\/prj_[0-9A-Za-z]+$/, { timeout: 30_000 });
+  await expect(page.getByTestId('sync-status')).toHaveAttribute('data-status', 'saved', { timeout: 30_000 });
+  const first = new URL(page.url()).pathname;
+  const list = await page.request.get('/api/projects?first=10');
+  expect(((await list.json()) as { items: unknown[] }).items).toHaveLength(1);
+  // Next time the item opens the same canvas (the last one opened).
+  await page.goto('/activity');
+  await page.getByTestId('main-nav').getByRole('link', { name: 'Canvas' }).click();
+  await expect(page).toHaveURL(new RegExp(`${first}$`), { timeout: 30_000 });
+  // A bad id: the not-found page, with "Go to your canvases" and "New canvas".
+  await page.goto('/p/prj_01JDNOTAREALPROJECT0000000');
+  const error = page.getByTestId('canvas-error');
+  await expect(error).toHaveAttribute('data-reason', 'NOT_FOUND', { timeout: 30_000 });
+  await expect(error.getByRole('link', { name: 'Go to your canvases' })).toBeVisible();
+  await error.getByRole('button', { name: 'New canvas' }).click();
+  await expect(page).toHaveURL(/\/p\/prj_(?!01JDNOTAREAL)[0-9A-Za-z]+$/, { timeout: 30_000 });
+});

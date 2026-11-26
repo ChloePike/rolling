@@ -194,6 +194,13 @@ button.historyRow:focus-visible{background:var(--c-surface-4);outline:none;box-s
 .errorBox{position:absolute;left:50%;top:50%;translate:-50% -50%;width:420px;padding:24px;border-radius:24px;background:var(--c-surface-2);box-shadow:var(--shadow-float);display:flex;flex-direction:column;gap:10px}
 .errorTitle{margin:0;font-size:20px;font-weight:700}
 .errorText{margin:0;font-size:14px;line-height:1.5;color:var(--c-text-3)}
-.errorActions{display:flex;gap:8px;margin-top:6px}
+.errorActions{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
 .errorPrimary{height:40px;padding:0 18px;border-radius:999px;border:0;background:var(--c-text-1);color:var(--c-bg);font:inherit;font-size:13px;font-weight:700;cursor:pointer}
-.errorSecondary{height:40px;padding:0 18px;border-radius:999px;background:var(--c-surface-5);color:var(--c-text-1);font-size:13px;line-height:40px;text-decoration:none}
+.errorSecondary{height:40px;padding:0 18px;border-radius:999px;border:0;background:var(--c-surface-5);color:var(--c-text-1);font:inherit;font-size:13px;line-height:40px;text-decoration:none;cursor:pointer}
+.errorPrimary,.errorSecondary{transition:background-color var(--m-fast) var(--m-ease-standard),opacity var(--m-fast) var(--m-ease-standard)}
+.errorPrimary:focus-visible,.errorSecondary:focus-visible{outline:none;box-shadow:var(--focus-ring)}
+.errorSecondary:hover{background:var(--c-surface-6)}
+.errorPrimary[aria-disabled="true"],.errorSecondary[aria-disabled="true"]{opacity:.6;cursor:progress}
+.errorLink{display:inline-flex;align-items:center;text-decoration:none}
+.errorSwitchButton{height:32px;line-height:32px;padding:0 14px;margin-left:4px}
+.errorSwitch{margin:4px 0 0;padding:10px 12px;border-radius:12px;background:var(--c-surface-4);font-size:13px;line-height:1.5;color:var(--c-text-2)}

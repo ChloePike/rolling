@@ -30,6 +30,7 @@ interface PendingToolRun {
   spec: PromptSpec;
 }
 import { resolveAssetId } from '@/lib/transfers';
+import { useSendToCanvas } from '@/features/canvas/target';
 
 export type ToolOverlay = 'model' | 'params' | 'confirm' | 'viewer' | 'paywall';
 type Filter = 'all' | 'running' | 'saved';
@@ -99,7 +100,14 @@ export function ToolLayout(p: ToolLayoutProps) {
   const intl = useIntl();
   const toast = useToast();
   const navigate = useNavigate();
+  const toCanvas = useSendToCanvas();
   const t = (id: string, v?: Record<string, string | number>) => intl.formatMessage({ id }, v);
+  /** A result goes to the canvas the user picks, as an asset node (tool runs have no project of their own). */
+  const sendToCanvas = (run: MediaRun | null) => {
+    if (!run) return;
+    if (real && !run.assetId) return void toast.show({ message: t('canvas.target.noResult') });
+    toCanvas.send({ name: run.prompt.slice(0, 60) || t('canvas.target.resultName'), media: run.video ? 'video' : 'image', assetId: real ? run.assetId : null, refId: run.assetId ?? run.id, source: 'generated', label: run.tags.join(' · ') });
+  };
   const [overlay, setOverlay] = useState<ToolOverlay | null>(p.initialOverlay ?? null);
   const [filter, setFilter] = useState<Filter>('all');
   const [viewing, setViewing] = useState<MediaRun | null>(null);
@@ -330,8 +338,7 @@ export function ToolLayout(p: ToolLayoutProps) {
         p.composer.onText(item.prompt);
         return toast.show({ message: t('tools.toast.reused') });
       case 'frame':
-        toast.show({ message: t('tools.toast.toCanvas') });
-        return void navigate({ to: '/p/$projectId', params: { projectId: 'prj_demo' } });
+        return sendToCanvas(item);
       case 'save':
         return toast.show({
           message: t('tools.toast.savedCharacter'),
@@ -485,6 +492,7 @@ export function ToolLayout(p: ToolLayoutProps) {
         }}
       />
       <ToolPaywall open={overlay === 'paywall'} onClose={close} />
+      {toCanvas.dialog}
       <ToolResultViewer
         open={overlay === 'viewer'}
         aspect={viewing?.aspect ?? p.viewerAspect}
@@ -503,7 +511,7 @@ export function ToolLayout(p: ToolLayoutProps) {
             downloadMock(run?.id ?? 'result', run?.prompt ?? '', true);
             toast.show({ message: t('tools.toast.downloaded') });
           } else if (id === 'sendToCanvas') {
-            void navigate({ to: '/p/$projectId', params: { projectId: 'prj_demo' } });
+            sendToCanvas(run);
           } else if (id === 'edit') {
             p.composer.onText(run?.prompt ?? '');
             toast.show({ message: t('tools.toast.reused') });

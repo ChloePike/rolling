@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ShellRouteImport } from './routes/_shell'
 import { Route as AcceptableUseRouteImport } from './routes/acceptable-use'
+import { Route as CanvasRouteImport } from './routes/canvas'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as SignupRouteImport } from './routes/signup'
@@ -43,6 +44,11 @@ const ShellRoute = ShellRouteImport.update({
 const AcceptableUseRoute = AcceptableUseRouteImport.update({
   id: '/acceptable-use',
   path: '/acceptable-use',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CanvasRoute = CanvasRouteImport.update({
+  id: '/canvas',
+  path: '/canvas',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -169,6 +175,7 @@ const ShellUHandleRoute = ShellUHandleRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof ShellIndexRoute
   '/acceptable-use': typeof AcceptableUseRoute
+  '/canvas': typeof CanvasRoute
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
@@ -195,6 +202,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/acceptable-use': typeof AcceptableUseRoute
+  '/canvas': typeof CanvasRoute
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
@@ -224,6 +232,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_shell': typeof ShellRouteWithChildren
   '/acceptable-use': typeof AcceptableUseRoute
+  '/canvas': typeof CanvasRoute
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
   '/signup': typeof SignupRoute
@@ -254,6 +263,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/acceptable-use'
+    | '/canvas'
     | '/login'
     | '/privacy'
     | '/signup'
@@ -280,6 +290,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/acceptable-use'
+    | '/canvas'
     | '/login'
     | '/privacy'
     | '/signup'
@@ -308,6 +319,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_shell'
     | '/acceptable-use'
+    | '/canvas'
     | '/login'
     | '/privacy'
     | '/signup'
@@ -337,6 +349,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   ShellRoute: typeof ShellRouteWithChildren
   AcceptableUseRoute: typeof AcceptableUseRoute
+  CanvasRoute: typeof CanvasRoute
   LoginRoute: typeof LoginRoute
   PrivacyRoute: typeof PrivacyRoute
   SignupRoute: typeof SignupRoute
@@ -364,6 +377,13 @@ declare module '@tanstack/react-router' {
       path: '/acceptable-use'
       fullPath: '/acceptable-use'
       preLoaderRoute: typeof AcceptableUseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/canvas': {
+      id: '/canvas'
+      path: '/canvas'
+      fullPath: '/canvas'
+      preLoaderRoute: typeof CanvasRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -574,6 +594,7 @@ const ShellRouteWithChildren = ShellRoute._addFileChildren(ShellRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   ShellRoute: ShellRouteWithChildren,
   AcceptableUseRoute: AcceptableUseRoute,
+  CanvasRoute: CanvasRoute,
   LoginRoute: LoginRoute,
   PrivacyRoute: PrivacyRoute,
   SignupRoute: SignupRoute,

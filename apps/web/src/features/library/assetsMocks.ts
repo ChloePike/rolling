@@ -18,6 +18,8 @@ export interface AssetItem {
   favorite?: boolean;
   /** Project folder id, when the asset belongs to one. */
   folder?: string;
+  /** Real mode: the project the asset was made in ("Add to canvas" goes back there). */
+  projectId?: string | null;
   /** Real mode: signed thumbnail, and whether it is mature-rated (blurred until clicked, D-005). */
   thumbUrl?: string | null;
   mature?: boolean;

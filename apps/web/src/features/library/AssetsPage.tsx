@@ -9,6 +9,7 @@ import type { AssetItem, AssetType, FolderItem, VoiceState } from './assetsMocks
 import styles from './Assets.module.css';
 import { isMockApi } from '@/features/overlays/backend';
 import { RatedThumb } from '@/lib/media';
+import { useSendToCanvas } from '@/features/canvas/target';
 
 
 const cx = (...c: Array<string | false | undefined>) => c.filter(Boolean).join(' ');
@@ -326,6 +327,7 @@ function FileDetailSlot({ sel, onDeleted }: { sel: string | null; onDeleted: () 
   const [deleting, setDeleting] = useState(false);
   const [name, setName] = useState('');
   const nameId = useId();
+  const toCanvas = useSendToCanvas();
   const idx = Math.max(0, sel ? assets.findIndex((x) => x.id === sel) : 0);
   const a = assets[idx];
   if (!a) return null;
@@ -367,9 +369,29 @@ function FileDetailSlot({ sel, onDeleted }: { sel: string | null; onDeleted: () 
           ))}
         </div>
         <div className={styles.detailActions}>
-          <Link to="/p/$projectId" params={{ projectId: 'prj_demo' }} className={cx(styles.addCanvas, motion.press)}>
+          <button
+            type="button"
+            className={cx(styles.addCanvas, motion.press)}
+            disabled={a.type === 'text'}
+            title={a.type === 'text' ? t('canvas.target.textUnsupported') : undefined}
+            onClick={() =>
+              toCanvas.send(
+                {
+                  name: a.name,
+                  media: a.type === 'video' ? 'video' : a.type === 'audio' ? 'audio' : 'image',
+                  assetId: isMockApi() ? null : a.id,
+                  refId: a.id,
+                  source: a.source === 'canvas' ? 'generated' : 'mine',
+                  label: a.meta,
+                },
+                // An asset made on a canvas goes back to that project.
+                { projectId: a.projectId ?? null },
+              )
+            }
+          >
             <FormattedMessage id="library.assets.addToCanvas" />
-          </Link>
+          </button>
+          {toCanvas.dialog}
           <button
             type="button"
             className={cx(styles.iconBtn, motion.hover)}
@@ -471,6 +493,7 @@ function FileDetailSlot({ sel, onDeleted }: { sel: string | null; onDeleted: () 
 function Characters({ query }: { query: string }) {
   const intl = useIntl();
   const { data: chars = [] } = useCharacters();
+  const toCanvas = useSendToCanvas();
   const visible = chars.filter((c) => c.name.toLowerCase().includes(query.trim().toLowerCase()));
   return (
     <div className={styles.chars}>
@@ -490,15 +513,20 @@ function Characters({ query }: { query: string }) {
             <span className={styles.charId}>{c.id}</span>
           </div>
           <div className={styles.charActions}>
-            <Link to="/p/$projectId" params={{ projectId: 'prj_demo' }} className={cx(styles.charPrimary, motion.press)}>
+            <button
+              type="button"
+              className={cx(styles.charPrimary, motion.press)}
+              onClick={() => toCanvas.send({ name: `@${c.name}`, media: 'image', refId: c.id, source: 'character', label: c.meta })}
+            >
               <FormattedMessage id="library.assets.character.create" />
-            </Link>
+            </button>
             <Link to="/create/character" className={cx(styles.charEdit, motion.hover)} aria-label={intl.formatMessage({ id: 'library.assets.character.edit.label' }, { name: c.name })}>
               <FormattedMessage id="library.assets.character.edit" />
             </Link>
           </div>
         </div>
       ))}
+      {toCanvas.dialog}
       <Link to="/create/character" className={cx(styles.newChar, motion.stagger)} style={{ '--i': visible.length } as CSSProperties}>
         <span className={styles.newCharIcon}>
           <PathIcon d={paths.plus} size={20} />

@@ -6,6 +6,8 @@ import { ChipGroup, motion, PathIcon, paths, SearchField } from '@/features/acco
 import { shortId, usePublicCategories, usePublicItems, usePublicSubCategories, type PublicItem } from '@/lib/publicLibrary';
 import { categoryGroups, findCategory, LICENSE_CHIP, type CategoryView } from './catalog';
 import styles from './PublicLibrary.module.css';
+import { isMockApi } from '@/features/overlays/backend';
+import { useSendToCanvas } from '@/features/canvas/target';
 
 const cx = (...c: Array<string | false | undefined>) => c.filter(Boolean).join(' ');
 const TONES = ['var(--c-tone-plum)', 'var(--c-tone-teal)', 'var(--c-tone-indigo)', 'var(--c-tone-sand)', 'var(--c-tone-neutral)', 'var(--c-tone-moss)', 'var(--c-tone-clay)', 'var(--c-tone-slate)'];
@@ -250,12 +252,18 @@ function Details({ cat, item, tone, onCopy }: { cat: CategoryView; item: PublicI
   const [fav, setFav] = useState<Record<string, boolean>>({});
   const [board, setBoard] = useState<Record<string, boolean>>({});
   const ctaKey = cat.cta.split('.').pop() ?? 'canvas';
+  const toCanvas = useSendToCanvas();
+  /** The item goes to the canvas the user picks, as an asset node (mature items never leave the public surface, D-005). */
+  const sendToCanvas = (it: PublicItem) => {
+    if (it.mature) return void toast.show({ message: intl.formatMessage({ id: 'canvas.target.mature' }) });
+    toCanvas.send({ name: it.title, media: 'image', assetId: isMockApi() ? null : it.assetId, refId: it.id, source: 'public', label: intl.formatMessage({ id: cat.def.messageId }) });
+  };
   const use = () => {
     if (!item) return;
     const to = USE_ROUTE[ctaKey] ?? '/create/quick';
+    if (to === '/p/$projectId') return sendToCanvas(item);
     toast.show({ message: intl.formatMessage({ id: 'library.public.used' }, { title: item.title, use: intl.formatMessage({ id: cat.cta }) }) });
-    if (to === '/p/$projectId') void navigate({ to, params: { projectId: 'prj_demo' } });
-    else void navigate({ to });
+    void navigate({ to });
   };
   return (
     <aside aria-label={intl.formatMessage({ id: 'library.public.details' })} className={styles.detail}>
@@ -339,10 +347,7 @@ function Details({ cat, item, tone, onCopy }: { cat: CategoryView; item: PublicI
                 <button
                   type="button"
                   className={cx(styles.secondary, motion.hover)}
-                  onClick={() => {
-                    toast.show({ message: intl.formatMessage({ id: 'library.public.toCanvas' }, { title: item.title }) });
-                    void navigate({ to: '/p/$projectId', params: { projectId: 'prj_demo' } });
-                  }}
+                  onClick={() => sendToCanvas(item)}
                 >
                   <FormattedMessage id="library.public.addToCanvas" />
                 </button>
@@ -367,6 +372,7 @@ function Details({ cat, item, tone, onCopy }: { cat: CategoryView; item: PublicI
           </>
         )}
       </div>
+      {toCanvas.dialog}
     </aside>
   );
 }
