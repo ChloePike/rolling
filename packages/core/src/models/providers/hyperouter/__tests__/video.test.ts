@@ -19,6 +19,12 @@ describe('buildVideoBody', () => {
     const flf = buildVideoBody(model, { kind: 'video', mode: 'first_last_frame', prompt: 'p', seconds: 5, ratio: '9:16', firstFrameUrl: 'https://x/a.png', lastFrameUrl: 'https://x/b.png' }, 'auto');
     expect(flf.ratio).toBeUndefined();
   });
+  it('sends the start picture as input_reference to image-to-video-only listings (no first_frame param)', () => {
+    const lip = buildVideoBody(fixtureModel('lumina/wan2.7-i2v-spicy'), { kind: 'video', mode: 'i2v', prompt: 'p', seconds: 8, firstFrameUrl: 'https://x/f.png', audioUrl: 'https://x/v.mp3' }, 'auto');
+    expect(lip.first_frame).toBeUndefined();
+    expect(lip.input_reference).toEqual({ image_url: 'https://x/f.png' });
+    expect(lip.audio_url).toBe('https://x/v.mp3');
+  });
 });
 
 describe('Hyperouter video provider', () => {

@@ -29,6 +29,8 @@ export interface VideoCreateBody {
   seed?: number;
   negative_prompt?: string;
   first_frame?: string;
+  /** Start picture of models whose listing has no `first_frame` (image-to-video only, e.g. `lumina/wan2.7-i2v-spicy`). */
+  input_reference?: { image_url: string };
   last_frame?: string;
   reference_images?: string[];
   reference_videos?: string[];
@@ -54,7 +56,13 @@ export function buildVideoBody(cap: CatalogModel, req: GenerateRequest, moderati
   if (req.audio !== undefined && cap.audio) body.audio = req.audio;
   if (req.seed !== undefined) body.seed = req.seed;
   if (req.negativePrompt !== undefined) body.negative_prompt = req.negativePrompt;
-  if (req.firstFrameUrl !== undefined) body.first_frame = req.firstFrameUrl;
+  if (req.firstFrameUrl !== undefined) {
+    // Image-to-video-only listings (no `first_frame` param, `input_image_required`) take the
+    // start picture as `input_reference` (their `request_example`); `first_frame` is refused.
+    if (!cap.acceptedParams.includes('first_frame') && (cap.inputImageRequired || cap.acceptedParams.includes('input_reference'))) {
+      body.input_reference = { image_url: req.firstFrameUrl };
+    } else body.first_frame = req.firstFrameUrl;
+  }
   if (req.lastFrameUrl !== undefined) body.last_frame = req.lastFrameUrl;
   if (req.referenceImageUrls?.length) body.reference_images = req.referenceImageUrls;
   if (req.referenceVideoUrls?.length) body.reference_videos = req.referenceVideoUrls;
