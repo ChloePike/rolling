@@ -22,7 +22,7 @@ Generation and agent requests go to Hyperouter, which routes each request to the
 
 | Name | Purpose | Data | Location |
 |---|---|---|---|
-| Hyperouter | Model gateway for all generation, agent and safety model calls | Prompts, parameters, reference media links, agent conversations, safety check inputs; generated outputs | Not yet confirmed |
+| Hyperouter (Singapore company) | Model gateway for all generation, agent and safety model calls | Prompts, parameters, reference media links, agent conversations, safety check inputs; generated outputs | Singapore |
 | ByteDance (Seedance, Seedream) | Video and image generation | Prompts, parameters, reference media | China and other regions |
 | MiniMax | Video and avatar generation | Prompts, parameters, reference media | China and other regions |
 | Alibaba Cloud (Wan, Qwen) | Video and image generation | Prompts, parameters, reference media | China and other regions |

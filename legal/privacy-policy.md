@@ -158,7 +158,7 @@ Rolling runs on Cloudflare: the app and API, databases, media storage, image pro
 
 ### Hyperouter and the model vendors behind it
 
-We send generation and agent requests to **Hyperouter**, a model gateway, which routes them to the model vendor that runs the chosen model. To generate an output, a request contains your **prompt, settings (such as length, resolution and aspect ratio), and links to your reference images, videos or audio**. For agent turns, a request contains the conversation, your brief and the parts of your project the agent needs. Safety checks send the text being checked and, for some checks, reference images. We never send your Google user data to Hyperouter or to model vendors.
+We send generation and agent requests to **Hyperouter**, a model gateway operated by a company based in Singapore, which routes them to the model vendor that runs the chosen model. To generate an output, a request contains your **prompt, settings (such as length, resolution and aspect ratio), and links to your reference images, videos or audio**. For agent turns, a request contains the conversation, your brief and the parts of your project the agent needs. Safety checks send the text being checked and, for some checks, reference images. We never send your Google user data to Hyperouter or to model vendors.
 
 Depending on the model you or Auto choose, the request is processed by one of these vendors:
 
