@@ -121,9 +121,12 @@ test.describe('real generation (PW_GENERATE=1)', () => {
     const run = await waitRun(page.request, (await getJson<{ runs: RunView[] }>(page.request, '/api/runs?first=5')).runs[0]!.id, 5 * 60_000);
     logSpend(testInfo, { runId: run.id, model: IMAGE.model, credits: run.spent, refunded: run.refunded });
     expect(run.status, JSON.stringify(run.items)).toBe('done');
-    await expect(page.getByText(/is ready/)).toBeVisible({ timeout: 60_000 });
+    // The run card under the prompt box follows the run to its result (no toast).
+    const card = page.getByTestId('home-run').first();
+    await expect(card).toHaveAttribute('data-status', 'done', { timeout: 60_000 });
+    await expect(card.getByTestId('home-run-cost')).toContainText(`${run.spent} credit`);
     await shot(page, testInfo, 'home-image-done');
-    await page.getByRole('button', { name: 'View' }).first().click().catch(() => undefined);
+    await card.getByRole('button', { name: 'View' }).click();
     await expect(page.getByRole('dialog', { name: 'Result' })).toBeVisible();
     await expect(page.getByRole('dialog', { name: 'Result' }).locator('img, video').first()).toBeVisible();
     await page.keyboard.press('Escape');

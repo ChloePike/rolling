@@ -42,7 +42,8 @@ function created(): ProjectSummary[] {
 
 /** Mock-backed `GET /api/projects` (recent first). */
 export async function fetchRecentProjects(): Promise<ProjectSummary[]> {
-  if (!isMockApi()) return fetchRealProjects(4);
+  // A few more than the four cards: empty untitled canvases are left out on Home.
+  if (!isMockApi()) return fetchRealProjects(8);
   return mockRecent();
 }
 

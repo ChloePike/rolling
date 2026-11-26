@@ -41,8 +41,15 @@ export interface RunRequest {
    * `POST /api/runs/quote { projectId, scope: 'node', nodeIds }`).
    */
   quote?: () => Promise<SpecQuote>;
-  /** Real mode: the run started (credits held). */
-  onStarted?: (runId: string) => void;
+  /** The run started (credits held). Real mode: the run id; mock mode: the mock run id. */
+  onStarted?: (runId: string, credits: number) => void;
+  /**
+   * The host shows the run inline (Home run cards): no started/done toasts and, in real mode, the flow
+   * does not follow the run (the host does, from `onStarted`). A failure toast with Retry stays (handoff 4).
+   */
+  inline?: boolean;
+  /** The request ended without starting a run: the confirm or a paywall was dismissed, or the run could not start. */
+  onAbort?: () => void;
   /** Real mode: the run failed or was canceled (credits refunded), or could not start. */
   onFailed?: () => void;
   /** Real mode: the project the run belongs to (Activity groups by it). */
@@ -142,7 +149,15 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
     if (kind === 'credits') return setStep({ kind });
     // No plan: the shared upgrade modal. Its checkout resume continues the run (`onCheckoutResume` below).
     setStep({ kind: 'idle' });
-    openUpgrade({ kind: 'generate' }, { onDismiss: () => (pending.current = null) });
+    openUpgrade(
+      { kind: 'generate' },
+      {
+        onDismiss: () => {
+          pending.current?.onAbort?.();
+          pending.current = null;
+        },
+      },
+    );
   };
   /** The checkout finished in this tab: the run continues here, so its stored copy is dropped. */
   const continueAfterCheckout = () => {
@@ -169,7 +184,8 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
     quoteRef.current = null;
     startQuote(quote.quoteId!).then(
       ({ runId }) => {
-        run.onStarted?.(runId);
+        run.onStarted?.(runId, quote.total);
+        if (run.inline) return;
         setRunning((n) => n + 1);
         toast.show({ message: t('overlays.run.started', { label: run.actionLabel, cost: quote.total }) });
         waitForRun(runId, run.projectId).then(
@@ -196,6 +212,7 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
       },
       (e: unknown) => {
         run.onFailed?.();
+        if (!isApiError(e, 'NO_PLAN') && !isApiError(e, 'INSUFFICIENT_CREDITS') && !(isApiError(e, 'QUOTE_EXPIRED') && attempt < 1)) run.onAbort?.();
         if (isApiError(e, 'NO_PLAN')) return toPaywall(run, 'join');
         if (isApiError(e, 'INSUFFICIENT_CREDITS')) return toPaywall(run, 'credits');
         if (isApiError(e, 'QUOTE_EXPIRED') && attempt < 1) return void advance(run, attempt + 1);
@@ -212,6 +229,7 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
     const spec = run.spec;
     const getQuote = run.quote ?? (spec ? () => resolveSpec(spec).then((s) => quoteSpec(s, run.projectId)) : null);
     if (!getQuote) {
+      run.onAbort?.();
       toast.show({ message: t('overlays.run.unavailable') });
       return;
     }
@@ -224,6 +242,7 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
           const blocked = q.items.find((i) => i.action === 'blocked');
           if (!q.quoteId) {
             if (blocked?.code === 'NO_PLAN') return toPaywall(run, 'join');
+            run.onAbort?.();
             // D-005: mature content needs a paid plan → the upgrade modal with reason `mature` (members get the Settings copy).
             if (blocked?.code === 'MATURE_REQUIRED' && blocked.matureAccess === 'no_plan') return void openUpgrade({ kind: 'mature' });
             return void toast.show({ message: blocked?.reason ?? t('overlays.run.unavailable') });
@@ -234,6 +253,7 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
         },
         (e: unknown) => {
           if (isApiError(e, 'NO_PLAN')) return toPaywall(run, 'join');
+          run.onAbort?.();
           toast.show({ message: t('overlays.run.startFailed', { label: run.actionLabel }) });
         },
       );
@@ -246,12 +266,15 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
     }
     setStep({ kind: 'idle' });
     setRunning((n) => n + 1);
-    toast.show({ message: t('overlays.run.started', { label: run.actionLabel, cost: run.cost }) });
+    if (!run.inline) toast.show({ message: t('overlays.run.started', { label: run.actionLabel, cost: run.cost }) });
+    const mockId = `run_mock${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    run.onStarted?.(mockId, run.cost);
     startMockRun(run.cost).then(
       (r) => {
         setRunning((n) => n - 1);
-        run.onDone?.(r);
+        run.onDone?.({ ...r, id: run.inline ? mockId : r.id });
         if (run.kind === 'video') noteFinishedVideo();
+        if (run.inline) return;
         toast.show({
           message: t('overlays.run.done', { label: run.actionLabel }),
           action: run.viewLabel && run.onDone ? { label: run.viewLabel, onAction: () => run.onDone?.(r) } : undefined,
@@ -259,7 +282,13 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
       },
       (e: unknown) => {
         setRunning((n) => n - 1);
-        if (e instanceof MockFlowError && e.code === 'INSUFFICIENT_CREDITS') return advance(run);
+        if (e instanceof MockFlowError && e.code === 'INSUFFICIENT_CREDITS') {
+          run.onAbort?.();
+          return advance(run);
+        }
+        run.onFailed?.();
+        // Inline runs: the host's card says it failed and was refunded (and toasts Retry itself).
+        if (run.inline) return;
         toast.show({
           message: t('overlays.run.failed', { label: run.actionLabel, cost: run.cost }),
           action: { label: t('overlays.run.retry'), onAction: () => advance(run) },
@@ -283,6 +312,7 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
   const paymentFailed = () => toast.show({ message: t('overlays.run.paymentFailed') });
   const close = () => {
     setStep({ kind: 'idle' });
+    pending.current?.onAbort?.();
     pending.current = null;
   };
   const run = pending.current;

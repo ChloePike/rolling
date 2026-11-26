@@ -72,6 +72,8 @@ export function useHomePills(
   /** Why the cost line can't show a number (plan lock, unsupported, unpriced); the line shows this instead. */
   blocked: string | null;
   run: HomeRunSpec | null;
+  /** Agent mode: the selected public agent LLM (D-009), shared with the canvas panel. */
+  llm: { id: string | null; name: string };
 } {
   const intl = useIntl();
   const { planId } = useSession();
@@ -90,7 +92,11 @@ export function useHomePills(
   const videos = useMemo(() => (allVideo ? pickerModels(allVideo).filter((m) => !m.lipSync) : allVideo), [allVideo]);
   const lipSync = allVideo?.filter((m) => m.lipSync);
 
-  const [llmId, setLlmId] = useState<string | null>(null);
+  const [llmId, setLlmIdState] = useState<string | null>(() => readAgentLlm());
+  const setLlmId = (id: string | null) => {
+    setLlmIdState(id);
+    writeAgentLlm(id);
+  };
   const [agentModel, setAgentModel] = useState<string>(AUTO_MODEL);
   const [agentVideo, setAgentVideo] = useState(() => seedRatio(AGENT_VIDEO));
   const [imageModel, setImageModel] = useState<string | null>(null);
@@ -185,6 +191,9 @@ export function useHomePills(
     const c = m && !mockMode ? strictCredits(m, { resolution: v.resolution, seconds: parseInt(v.duration, 10) }) : quoteCredits(m, { resolution: v.resolution, seconds: parseInt(v.duration, 10) });
     return c === null ? null : c * Number(v.count);
   };
+
+  const llmModel = pick(chat, llmId);
+  const llmInfo = { id: llmModel?.id ?? llmId, name: llmModel?.name ?? '' };
 
   let specs: PillSpec[] = [];
   let credits: number | null = null;
@@ -318,6 +327,7 @@ export function useHomePills(
         credits,
         blocked,
         run,
+        llm: llmInfo,
       };
     }
     run = {
@@ -344,5 +354,24 @@ export function useHomePills(
     credits,
     blocked,
     run,
+    llm: llmInfo,
   };
+}
+
+/** Agent LLM choice (D-009), the same key the canvas agent panel uses. */
+const AGENT_LLM_KEY = 'rolling.agent.llm';
+function readAgentLlm(): string | null {
+  try {
+    return localStorage.getItem(AGENT_LLM_KEY);
+  } catch {
+    return null;
+  }
+}
+function writeAgentLlm(id: string | null) {
+  try {
+    if (id) localStorage.setItem(AGENT_LLM_KEY, id);
+    else localStorage.removeItem(AGENT_LLM_KEY);
+  } catch {
+    /* Storage unavailable: the choice lasts for this page. */
+  }
 }

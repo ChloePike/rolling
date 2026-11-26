@@ -267,7 +267,10 @@ test.describe('home interactions', () => {
     await expect(ta).toHaveValue('A 15s ad for a sparkling water');
     await expect(page).toHaveURL(/\/$/);
     await paywall.getByRole('button', { name: /^Continue with/ }).click();
-    await expect(page).toHaveURL(/\/p\/prj_[a-z0-9]+$/);
+    // After checkout the kept brief goes to the agent: it shows in the conversation with the agent's plan.
+    const agent = page.getByTestId('home-agent');
+    await expect(agent.getByTestId('home-agent-user')).toHaveText('A 15s ad for a sparkling water');
+    await expect(agent.getByTestId('home-plan')).toBeVisible();
   });
 
   test('`@` picker: opens on @ at the end, filters by the query, multi-selects, Enter adds chips with source, Esc closes and strips the @', async ({ page }) => {
@@ -552,13 +555,67 @@ test.describe('home flows', () => {
     await expect(page.locator('textarea')).toBeFocused();
   });
 
-  test('member agent send creates a project and opens its canvas; it shows in My projects', async ({ page }) => {
+  /** The newest run card. */
+  const card = (page: Page) => page.getByTestId('home-run').first();
+
+  test('member agent send: the conversation shows the brief and a plan; Build on canvas creates the project and opens it', async ({ page }) => {
+    await seed(page);
     await openApp(page);
     await page.locator('textarea').fill('Launch video for a desk lamp');
     await page.getByRole('button', { name: 'Start' }).click();
+    const agent = page.getByTestId('home-agent');
+    await expect(agent.getByTestId('home-agent-user')).toHaveText('Launch video for a desk lamp');
+    // The message moved into the conversation: the prompt box is free again.
+    await expect(page.locator('#brief')).toHaveValue('');
+    const plan = agent.getByTestId('home-plan');
+    await expect(plan).toBeVisible();
+    await expect(plan.getByRole('radio')).toHaveCount(2);
+    await expect(plan).toContainText('About 26 credits to generate. Building is free.');
+    await plan.getByRole('radio', { name: /City heat/ }).click();
+    await expect(plan).toContainText('A can opens in slow motion');
+    await plan.getByRole('button', { name: 'Build on canvas' }).click();
     await expect(page).toHaveURL(/\/p\/prj_[a-z0-9]+$/);
     await page.goto('/');
-    await expect(page.locator('#projects').getByRole('link', { name: /Launch video for a desk lamp/ })).toBeVisible();
+    await expect(page.locator('#projects').getByRole('link', { name: /City heat/ })).toBeVisible();
+  });
+
+  test('agent: text streams with a typing indicator, small talk gets a short reply without a plan, follow-ups continue the thread', async ({ page }) => {
+    await seed(page, { mocks: { latencyMs: 600 } });
+    await openApp(page);
+    await page.locator('textarea').fill('hello');
+    await page.getByRole('button', { name: 'Start' }).click();
+    const agent = page.getByTestId('home-agent');
+    await expect(agent.getByTestId('home-agent-typing')).toBeVisible();
+    const reply = agent.getByTestId('home-agent-reply').last();
+    await expect(reply).toHaveAttribute('data-status', 'streaming');
+    await expect(reply).toHaveAttribute('data-status', 'done');
+    await expect(reply).toContainText('Tell me what the video is for');
+    await expect(agent.getByTestId('home-plan')).toHaveCount(0);
+    // The selected LLM is named on the conversation (its allowance line is checked against staging).
+    await expect(agent.getByTestId('home-agent-llm')).toContainText('DeepSeek');
+    // Follow-up from the thread's own composer: Enter sends, Shift+Enter breaks the line.
+    const replyBox = agent.getByRole('textbox', { name: 'Reply to the agent' });
+    await replyBox.fill('A 15s vertical ad');
+    await replyBox.press('Shift+Enter');
+    await replyBox.pressSequentially('for sparkling water');
+    await expect(replyBox).toHaveValue('A 15s vertical ad\nfor sparkling water');
+    await replyBox.evaluate((el) => el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, isComposing: true })));
+    await expect(agent.getByTestId('home-agent-user')).toHaveCount(1);
+    await replyBox.press('Enter');
+    await expect(agent.getByTestId('home-agent-user')).toHaveCount(2);
+    await expect(replyBox).toHaveValue('');
+    await expect(agent.getByTestId('home-plan')).toBeVisible();
+    await page.screenshot({ path: `${OUT}agent-thread.png` });
+    // Edit puts the option into the composer; Discard drops the plan.
+    await agent.getByRole('button', { name: 'Edit' }).click();
+    await expect(replyBox).toHaveValue('Change “Morning ritual”: ');
+    await expect(replyBox).toBeFocused();
+    await agent.getByRole('button', { name: 'Discard' }).click();
+    await expect(agent.getByTestId('home-plan')).toHaveAttribute('data-status', 'discarded');
+    await expect(agent).toContainText('Discarded. Nothing was built.');
+    // New conversation clears the thread.
+    await agent.getByRole('button', { name: 'New conversation' }).click();
+    await expect(page.getByTestId('home-agent')).toHaveCount(0);
   });
 
   test('Enter sends the brief; Shift+Enter adds a line; Enter while an IME is composing does not send', async ({ page }) => {
@@ -570,27 +627,64 @@ test.describe('home flows', () => {
     await expect(brief).toHaveValue('Launch video\nfor a desk lamp');
     // An IME confirming a candidate fires Enter with isComposing: it must not send.
     await brief.evaluate((el) => el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, isComposing: true })));
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByTestId('home-agent')).toHaveCount(0);
     await brief.press('Enter');
-    await expect(page).toHaveURL(/\/p\/prj_[a-z0-9]+$/);
+    await expect(page.getByTestId('home-agent-user')).toHaveText('Launch video\nfor a desk lamp');
   });
 
-  test('image send under the confirm threshold runs at once; View opens the result viewer', async ({ page }) => {
-    await seed(page);
+  test('image send under the confirm threshold: a run card shows queued → generating → done; View opens the result viewer', async ({ page }) => {
+    await seed(page, { mocks: { latencyMs: 1500 } });
     await openApp(page);
     await mode(page, 'Image');
     await page.locator('textarea').fill('A glass bottle on wet stone');
     await page.getByRole('button', { name: 'Start' }).click();
     await expect(page.getByRole('dialog', { name: 'Confirm' })).toHaveCount(0);
-    await expect(page.getByRole('status')).toContainText('Generate images is ready');
+    const c = card(page);
+    await expect(c).toContainText('A glass bottle on wet stone');
+    await expect(c).toContainText('Seedream');
+    await expect(c).toHaveAttribute('data-status', 'running');
+    await expect(c.getByRole('progressbar')).toBeVisible();
+    await expect(c.getByTestId('home-run-cost')).toHaveText('2 credits held · charged only if it succeeds');
+    await page.screenshot({ path: `${OUT}run-generating.png` });
+    // The prompt stays for the next variation.
+    await expect(page.locator('#brief')).toHaveValue('A glass bottle on wet stone');
+    await expect(c).toHaveAttribute('data-status', 'done');
+    await expect(c.getByTestId('home-run-cost')).toHaveText('2 credits');
     await expect(balance(page)).toContainText('2,478');
-    await page.getByRole('status').getByRole('button', { name: 'View' }).click();
+    // No started or done toasts: the card is the feedback.
+    await expect(page.locator('.rl-toast')).toHaveCount(0);
+    await page.screenshot({ path: `${OUT}run-done.png` });
+    await c.getByRole('button', { name: 'View' }).click();
     const viewer = page.getByRole('dialog', { name: 'Result' });
     await expect(viewer).toBeVisible();
     await expect(viewer.getByRole('button', { name: 'v1' })).toHaveAttribute('aria-pressed', 'true');
   });
 
-  test('video send at or over the threshold opens RunConfirm; confirm runs, closes and charges the quote', async ({ page }) => {
+  test('run cards stack newest first, can be canceled (refunded) and survive a reload', async ({ page }) => {
+    await seed(page, { mocks: { latencyMs: 4000 } });
+    await openApp(page);
+    await mode(page, 'Image');
+    await page.locator('textarea').fill('First bottle');
+    await page.getByRole('button', { name: 'Start' }).click();
+    await page.locator('textarea').fill('Second bottle');
+    await page.getByRole('button', { name: 'Start' }).click();
+    const cards = page.getByTestId('home-run');
+    await expect(cards).toHaveCount(2);
+    await expect(cards.nth(0)).toContainText('Second bottle');
+    await expect(cards.nth(1)).toContainText('First bottle');
+    await cards.nth(0).getByRole('button', { name: 'Cancel' }).click();
+    await expect(cards.nth(0)).toHaveAttribute('data-status', 'canceled');
+    await expect(cards.nth(0).getByTestId('home-run-cost')).toHaveText('No credits were charged · 2 held credits released');
+    await expect(cards.nth(1)).toHaveAttribute('data-status', 'done', { timeout: 10_000 });
+    await page.reload();
+    await expect(page.getByTestId('home-run')).toHaveCount(2);
+    await expect(page.getByTestId('home-run').nth(0)).toHaveAttribute('data-status', 'canceled');
+    await expect(page.getByTestId('home-run').nth(1)).toHaveAttribute('data-status', 'done');
+    await page.getByTestId('home-run').nth(1).getByRole('button', { name: /^Remove/ }).click();
+    await expect(page.getByTestId('home-run')).toHaveCount(1);
+  });
+
+  test('video send at or over the threshold opens RunConfirm; confirm starts the card and charges the quote', async ({ page }) => {
     await seed(page, { prefs: { confirmThreshold: 0 } });
     await openApp(page);
     await mode(page, 'Video');
@@ -599,14 +693,27 @@ test.describe('home flows', () => {
     const confirm = page.getByRole('dialog', { name: 'Confirm' });
     await expect(confirm).toBeVisible();
     await expect(confirm).toContainText('Seedance 2.5 · 9:16 · 720p · 5s');
+    // The card waits for the confirm ("Starting…").
+    await expect(card(page)).toHaveAttribute('data-status', 'starting');
     const skip = confirm.getByRole('checkbox', { name: /Skip this step for runs under 300 credits/ });
     await expect(skip).not.toBeChecked();
     await skip.check();
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem('rolling.prefs') ?? '{}').confirmThreshold)).toBe(300);
     await confirm.getByRole('button', { name: 'Generate video · 8 credits' }).click();
     await expect(confirm).toHaveCount(0);
-    await expect(page.getByRole('status')).toContainText('Generate video is ready');
+    await expect(card(page)).toHaveAttribute('data-status', 'done');
     await expect(balance(page)).toContainText('2,472');
+  });
+
+  test('dismissing RunConfirm drops the card: nothing ran', async ({ page }) => {
+    await seed(page, { prefs: { confirmThreshold: 0 } });
+    await openApp(page);
+    await mode(page, 'Video');
+    await page.locator('textarea').fill('Slow push-in on a sneaker');
+    await page.getByRole('button', { name: 'Start' }).click();
+    await expect(page.getByRole('dialog', { name: 'Confirm' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('home-run')).toHaveCount(0);
   });
 
   test('non-member generate: join paywall → checkout → the same run continues', async ({ page }) => {
@@ -620,7 +727,7 @@ test.describe('home flows', () => {
     await paywall.getByRole('radio', { name: /^Plus/ }).click();
     await paywall.getByRole('button', { name: 'Continue with Plus' }).click();
     await expect(paywall).toHaveCount(0);
-    await expect(page.getByRole('status')).toContainText('Generate video is ready');
+    await expect(card(page)).toHaveAttribute('data-status', 'done');
     // 2,480 + 800 (Plus) − 8.
     await expect(balance(page)).toContainText('3,272');
   });
@@ -641,7 +748,8 @@ test.describe('home flows', () => {
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByRole('tablist', { name: 'Creation mode' }).getByRole('tab', { name: 'Image' })).toHaveAttribute('aria-selected', 'true');
     await expect(page.locator('textarea')).toHaveValue('A glass bottle on wet stone');
-    await expect(page.getByRole('status').filter({ hasText: 'Generate images is ready' })).toBeVisible();
+    await expect(page.getByTestId('home-run')).toHaveCount(1);
+    await expect(card(page)).toHaveAttribute('data-status', 'done');
     // 2,480 + 800 (Plus) − 2.
     await expect(balance(page)).toContainText('3,278');
     expect(await page.evaluate(() => Object.keys(sessionStorage).filter((k) => k.startsWith('rolling.pendingAction')))).toEqual([]);
@@ -653,7 +761,7 @@ test.describe('home flows', () => {
     await mode(page, 'Video');
     await page.locator('textarea').fill('Product turntable');
     await page.getByRole('button', { name: 'Start' }).click();
-    await page.getByRole('status').getByRole('button', { name: 'View' }).click();
+    await card(page).getByRole('button', { name: 'View' }).click();
     const viewer = page.getByRole('dialog', { name: 'Result' });
     await viewer.getByRole('button', { name: /^Regenerate/ }).click();
     const paywall = page.getByRole('dialog', { name: 'Not enough credits' });
@@ -677,28 +785,34 @@ test.describe('home flows', () => {
     await expect(paywall).toBeVisible();
     await paywall.getByRole('button', { name: /^Buy 1,100 credits for \$10 and run$/ }).click();
     await expect(paywall).toHaveCount(0);
-    await expect(page.getByRole('status')).toContainText('Generate video is ready');
+    await expect(card(page)).toHaveAttribute('data-status', 'done');
     await expect(balance(page)).toContainText('1,097');
   });
 
-  test('a failed run is refunded and offers Retry', async ({ page }) => {
+  test('a failed run says no credits were charged and offers Retry on the card and in a toast', async ({ page }) => {
     await seed(page, { mocks: { run: 'fail' } });
     await openApp(page);
     await mode(page, 'Image');
     await page.locator('textarea').fill('Bottle');
     await page.getByRole('button', { name: 'Start' }).click();
-    await expect(page.getByRole('status')).toContainText('Generate images failed. Refunded 2 credits.');
-    await expect(page.getByRole('status').getByRole('button', { name: 'Retry' })).toBeVisible();
+    const c = card(page);
+    await expect(c).toHaveAttribute('data-status', 'failed');
+    await expect(c.getByTestId('home-run-error')).toHaveText('The model didn’t return a result.');
+    await expect(c.getByTestId('home-run-cost')).toHaveText('No credits were charged · 2 held credits released');
+    await expect(page.getByRole('status').filter({ hasText: 'Bottle failed. No credits were charged.' })).toBeVisible();
     await expect(balance(page)).toContainText('2,480');
+    await page.screenshot({ path: `${OUT}run-failed.png` });
+    await c.getByRole('button', { name: 'Retry' }).click();
+    await expect(page.getByTestId('home-run')).toHaveCount(2);
   });
 
-  test('result viewer: favorite, regenerate adds a version, download saves a file, Send to canvas opens a project', async ({ page }) => {
+  test('result viewer: favorite, regenerate adds a version, download saves a file, Send to canvas opens a project with the result', async ({ page }) => {
     await seed(page);
     await openApp(page);
     await mode(page, 'Image');
     await page.locator('textarea').fill('A glass bottle');
     await page.getByRole('button', { name: 'Start' }).click();
-    await page.getByRole('status').getByRole('button', { name: 'View' }).click();
+    await card(page).getByRole('button', { name: 'View' }).click();
     const viewer = page.getByRole('dialog', { name: 'Result' });
     const fav = viewer.getByRole('button', { name: 'Favorites' });
     await fav.click();
@@ -709,7 +823,18 @@ test.describe('home flows', () => {
     await viewer.getByRole('button', { name: /^Download/ }).click();
     expect((await download).suggestedFilename()).toMatch(/^A-glass-bottle-v2\.svg$/);
     await viewer.getByRole('button', { name: /^Send to canvas/ }).click();
-    await expect(page).toHaveURL(/\/p\/prj_[a-z0-9]+$/);
+    await expect(page).toHaveURL(/\/p\/prj_[a-z0-9]+(\?insert=.+)?$/);
+  });
+
+  test('run card Open in canvas: a canvas titled after the prompt with the result on it', async ({ page }) => {
+    await seed(page);
+    await openApp(page);
+    await mode(page, 'Image');
+    await page.locator('textarea').fill('A glass bottle');
+    await page.getByRole('button', { name: 'Start' }).click();
+    await expect(card(page)).toHaveAttribute('data-status', 'done');
+    await card(page).getByRole('button', { name: 'Open in canvas' }).click();
+    await expect(page).toHaveURL(/\/p\/prj_[a-z0-9]+\?insert=/);
   });
 
   test('+ Upload opens the file chooser and adds the file as a My assets reference', async ({ page }) => {

@@ -6,6 +6,7 @@ const DAY = 24 * HOUR;
 /** “2h ago”, “Yesterday”, “3d ago” (Main.dc.html project meta), via Intl. */
 export function formatWhen(intl: IntlShape, iso: string, now = Date.now()): string {
   const diff = Math.max(0, now - Date.parse(iso));
+  if (diff < HOUR) return intl.formatRelativeTime(-Math.max(1, Math.round(diff / 60_000)), 'minute', { style: 'narrow' });
   if (diff < DAY) return intl.formatRelativeTime(-Math.max(1, Math.round(diff / HOUR)), 'hour', { style: 'narrow' });
   const days = Math.floor(diff / DAY);
   if (days === 1) return intl.formatMessage({ id: 'home.when.yesterday' });

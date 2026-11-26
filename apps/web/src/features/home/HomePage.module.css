@@ -134,3 +134,4 @@
 .renameSave{background:var(--c-text-1);color:var(--c-bg);font-weight:700}
 .renameSave[aria-busy="true"]{cursor:progress;opacity:.7}
 .renameCancel:focus-visible,.renameSave:focus-visible{outline:none;box-shadow:var(--focus-ring)}
+.entriesAfter{margin-top:2px}

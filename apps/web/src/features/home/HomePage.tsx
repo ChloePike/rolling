@@ -1,6 +1,6 @@
 import { cx, Skeleton, staggerStyle, useIndicator, useToast } from '@rolling/ui';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import {
   COMMAND,
@@ -20,26 +20,19 @@ import { uploadReferences } from '@/features/prompt';
 import { useTemplates } from '@/features/templates/api';
 import { useCheckoutResume, useSession } from '@/lib/session';
 import { useQueryClient } from '@tanstack/react-query';
-import { agentFailure, applyProposal, createThread, rememberThread, sendTurn, skillId } from '@/features/overlays/agent';
+import { agentFailure, type AgentFailure } from '@/features/overlays/agent';
 import { isMockApi, savePendingAction, takePendingAction } from '@/features/overlays/backend';
-import { resolveAssetId } from '@/lib/transfers';
-import { HomeAgent, type HomeAgentState } from './HomeAgent';
-
-/** Agent LLM picked in the canvas panel (public id, D-009), shared with Home. */
-function getAgentLlm(): string | null {
-  try {
-    return localStorage.getItem('rolling.agent.llm');
-  } catch {
-    return null;
-  }
-}
+import { retryRun, type PromptSpec } from '@/features/overlays/runs';
+import { downloadAsset } from '@/features/overlays/media';
+import { noteFinishedVideo } from '@/lib/pwa/install';
+import { useSendToCanvas } from '@/features/canvas/target';
+import { useToolQuote } from '@/features/tools/shared/useToolQuote';
 import { useAgentAllowance } from '@/lib/session/agentAllowance';
 import type { TemplateSummary } from '@/features/templates/types';
 import { useCreateProject, useRecentProjects } from './api';
 import { ProjectCard } from './ProjectCard';
-import { HomeResult, nextVersion, type HomeResultState, type PendingHomeResult } from './HomeResult';
+import { downloadPoster, HomeResult, nextVersion, type HomeResultState, type PendingHomeResult } from './HomeResult';
 import type { ResultActionId } from '@/features/overlays';
-import type { PromptSpec } from '@/features/overlays/runs';
 import type { HomeRunSpec } from './useHomePills';
 import { formatSeconds, formatWhen } from './format';
 import { HOME_MODES, type HomeModeId } from './modes';
@@ -50,6 +43,11 @@ import { coverStyle } from '@/features/templates/cover';
 import { TemplateMedia } from '@/features/templates/TemplateMedia';
 import { TemplatePreview } from '@/features/templates/TemplatePreview';
 import { LoadError } from '@/lib/loading';
+import { HomeRunList } from './runs/HomeRunList';
+import { isActive, type CardStatus, type HomeRunCard } from './runs/model';
+import { useHomeRuns } from './runs/useHomeRuns';
+import { HomeThreadView } from './agent/HomeThread';
+import { useHomeThread, type SendInput } from './agent/useHomeThread';
 
 const ENTRIES: Array<{ key: string; to: string; icon: PromptIconName }> = [
   { key: 'blank', to: '/p/prj_new', icon: 'frame' },
@@ -79,7 +77,10 @@ const FEED_SKELETON = ['9/16', '3/4', '9/16', '1/1', '9/16', '3/4', '1/1', '9/16
 /** Inspiration placeholder tones (Main.dc.html `tones`): a cover's fill until its image loads. */
 const FEED_TONES = ['var(--c-tone-plum)', 'var(--c-tone-teal)', 'var(--c-tone-indigo)', 'var(--c-tone-ochre)', 'var(--c-tone-neutral)', 'var(--c-tone-pine)'];
 
-/** Home (Main.dc.html): prompt box with modes, quick entries, recent projects and the Inspiration feed. */
+let cardSeq = 0;
+const cardKey = () => `hr_${Date.now().toString(36)}${(cardSeq++).toString(36)}`;
+
+/** Home (Main.dc.html): prompt box with modes, quick entries, run cards or the agent conversation, recent projects and the Inspiration feed. */
 export function HomePage() {
   const intl = useIntl();
   const navigate = useNavigate();
@@ -90,7 +91,7 @@ export function HomePage() {
   const { data: skills } = useSkills();
   // Real mode, Avatar: the voice pill uploads a voice track; it joins the `@` references.
   const voiceInput = useRef<HTMLInputElement>(null);
-  const { pills, renderPillPopover, credits, blocked, run } = useHomePills(mode, { onUploadVoice: () => voiceInput.current?.click() });
+  const { pills, renderPillPopover, credits, blocked, run, llm } = useHomePills(mode, { onUploadVoice: () => voiceInput.current?.click() });
   const allowance = useAgentAllowance();
   // Settings commands open the pill they name; a mode without that pill does not list them.
   const pillIds = {
@@ -105,19 +106,19 @@ export function HomePage() {
   const { isMember } = useSession();
   const toast = useToast();
   const createProject = useCreateProject();
+  const toCanvas = useSendToCanvas();
   // D-007: sending to the agent (or generating) needs a plan. Non-members get
   // the join paywall; the brief, refs and skill stay in the prompt box and the
   // send resumes after checkout.
   const [paywall, setPaywall] = useState(false);
-  const [paying, setPaying] = useState(false);
   // Image, video and avatar sends go through the shared run flow (paywalls, RunConfirm by threshold).
   const flow = useRunFlow();
+  const runs = useHomeRuns();
   const [result, setResult] = useState<HomeResultState | null>(null);
-  const [agent, setAgent] = useState<HomeAgentState | null>(null);
-  const [building, setBuilding] = useState(false);
-  const homeThread = useRef<string | null>(null);
+  const [building, setBuilding] = useState<string | null>(null);
   const qc = useQueryClient();
   const t = (id: string, v?: Record<string, string | number>) => intl.formatMessage({ id }, v);
+  const mock = isMockApi();
 
   const modes: PromptMode[] = HOME_MODES.map((m) => ({ id: m.id, icon: m.icon, label: intl.formatMessage({ id: `home.mode.${m.id}` }) }));
 
@@ -125,108 +126,224 @@ export function HomePage() {
     const line = text.trim().split('\n')[0]!.slice(0, 80);
     return line || skill?.name || t('home.project.untitled');
   };
-  const start = async () => {
-    const { id } = await createProject({ title: title(), kind: 'canvas' });
-    void navigate({ to: '/p/$projectId', params: { projectId: id } });
+
+  /* ---------- Generations: one run card per send ---------- */
+
+  /** Called once a card's run finishes (the result viewer's Regenerate adds the new version). */
+  const onCardDone = useRef(new Map<string, (runId: string, assetId: string | null) => void>());
+
+  /** Starts a generation as a run card under the prompt box; the run flow gates it (paywalls, RunConfirm). */
+  const startRun = (g: PendingHomeRun, opts: { quote?: RunRequest['quote']; done?: (runId: string, assetId: string | null) => void; resume?: RunRequest['resume'] } = {}) => {
+    const key = cardKey();
+    const card: HomeRunCard = {
+      key,
+      runId: null,
+      kind: g.run.kind,
+      mode: g.mode === 'agent' ? undefined : g.mode,
+      prompt: g.brief,
+      title: g.title,
+      modelName: g.run.modelName,
+      meta: g.run.meta,
+      aspect: g.run.aspect,
+      params: g.run.params,
+      ...(g.spec ? { spec: g.spec } : {}),
+      credits: g.cost,
+      status: 'starting',
+      progress: null,
+      createdAt: Date.now(),
+      finishedAt: null,
+      assetIds: [],
+      spent: 0,
+      refunded: 0,
+      error: null,
+      retryable: false,
+    };
+    runs.add(card);
+    if (opts.done) onCardDone.current.set(key, opts.done);
+    flow.request({
+      cost: g.cost,
+      kind: g.run.kind,
+      actionLabel: g.actionLabel,
+      meta: g.run.meta,
+      subtitle: g.run.modelName,
+      spec: g.spec,
+      ...(opts.quote ? { quote: opts.quote } : {}),
+      inline: true,
+      resume: opts.resume ?? { kind: 'home.run', data: g },
+      onStarted: (runId, held) => {
+        runs.started(key, runId, card);
+        runs.patch(key, (c) => ({ ...c, credits: held, status: c.status === 'starting' ? 'queued' : c.status }));
+      },
+      onAbort: () => {
+        runs.remove(key);
+        onCardDone.current.delete(key);
+      },
+      // Mock mode: the flow reports the end (real runs are followed by the card).
+      onDone: (r) => runs.patch(key, (c) => (isActive(c) ? { ...c, status: 'done', progress: 1, finishedAt: Date.now(), spent: r.cost, assetIds: r.assetId ? [r.assetId] : c.assetIds } : c)),
+      onFailed: () => {
+        if (mock) runs.patch(key, (c) => (!isActive(c) ? c : { ...c, status: 'failed', progress: null, finishedAt: Date.now(), refunded: c.credits, error: t('home.run.mockError'), retryable: true }));
+      },
+    });
   };
 
-  const runFlow = (req: Omit<RunRequest, 'onDone'>, done: (runId: string, assetId?: string | null) => void) =>
-    flow.request({ ...req, viewLabel: t('overlays.run.view'), onDone: (r) => done(r.id, r.assetId) });
+  // A card's status change: the finished-video install hint, the viewer's new version, a failure toast with Retry (handoff 4).
+  const seen = useRef(new Map<string, CardStatus>());
+  useEffect(() => {
+    for (const c of runs.cards) {
+      const before = seen.current.get(c.key);
+      seen.current.set(c.key, c.status);
+      if (before === undefined || before === c.status || !isActive({ status: before })) continue;
+      if (c.status === 'done') {
+        if (c.kind === 'video') noteFinishedVideo();
+        const done = onCardDone.current.get(c.key);
+        onCardDone.current.delete(c.key);
+        if (done && c.runId) done(c.runId, c.assetIds[0] ?? null);
+      } else if (c.status === 'failed') {
+        onCardDone.current.delete(c.key);
+        toast.show({ message: t('home.run.failedToast', { label: c.title }), action: { label: t('home.run.retry'), onAction: () => retryCard(c) }, duration: 0 });
+      }
+    }
+    // Only when cards change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runs.cards]);
 
-  /** A generation: also what a paywall keeps (`home.run`) so it runs again after checkout. */
-  const runGeneration = (g: PendingHomeRun) =>
-    runFlow(
-      { cost: g.cost, kind: g.run.kind, actionLabel: g.actionLabel, meta: g.run.meta, subtitle: g.run.modelName, spec: g.spec, resume: { kind: 'home.run', data: g } },
-      (runId, assetId) =>
-        setResult({
-          spec: g.spec,
-          assets: { [runId]: assetId ?? null },
-          title: g.title,
-          prompt: g.brief,
-          kind: g.run.kind,
-          aspect: g.run.aspect,
-          modelName: g.run.modelName,
-          params: g.run.params,
-          refs: g.refs,
-          versions: [nextVersion([], runId)],
-          versionId: runId,
-          createdAt: new Date(),
-          cost: g.cost,
-        }),
-    );
+  const pendingFromCard = (c: HomeRunCard): PendingHomeRun => ({
+    mode: c.mode ?? (c.kind === 'image' ? 'image' : 'video'),
+    brief: c.prompt,
+    title: c.title,
+    cost: c.credits,
+    actionLabel: t(`home.send.${c.mode ?? (c.kind === 'image' ? 'image' : 'video')}`),
+    run: { kind: c.kind, meta: c.meta, modelName: c.modelName, aspect: c.aspect, params: c.params },
+    refs: [],
+    ...(c.spec ? { spec: c.spec } : {}),
+  });
+  /** Failed or canceled: the server quotes the same request again (`POST /api/runs/:id/retry`); mock: the same run. */
+  function retryCard(c: HomeRunCard) {
+    if (!mock && c.runId && c.retryable) startRun(pendingFromCard(c), { quote: () => retryRun(c.runId!) });
+    else startRun(pendingFromCard(c));
+  }
+
+  const resultFromCard = (c: HomeRunCard): HomeResultState => {
+    const id = c.runId ?? c.key;
+    return {
+      title: c.title,
+      prompt: c.prompt,
+      kind: c.kind,
+      aspect: c.aspect,
+      modelName: c.modelName,
+      params: c.params,
+      refs: [],
+      versions: [nextVersion([], id)],
+      versionId: id,
+      createdAt: new Date(c.createdAt),
+      cost: c.credits,
+      ...(c.spec ? { spec: c.spec } : {}),
+      assets: { [id]: c.assetIds[0] ?? null },
+    };
+  };
+
+  const cardActions = {
+    onCancel: (c: HomeRunCard) => void runs.cancel(c.key).catch(() => toast.show({ message: t('overlays.run.startFailed', { label: t('home.run.cancel') }) })),
+    onRetry: retryCard,
+    onRunAgain: (c: HomeRunCard) => startRun(pendingFromCard(c)),
+    onView: (c: HomeRunCard) => setResult(resultFromCard(c)),
+    onRemove: (c: HomeRunCard) => runs.remove(c.key),
+    onDownload: (c: HomeRunCard) => {
+      const asset = c.assetIds[0];
+      const name = c.title.replace(/[^\w.-]+/g, '-');
+      toast.show({ message: t('overlays.viewer.downloading', { name: c.title }) });
+      if (!mock && asset) void downloadAsset(asset, c.title).catch(() => {});
+      else downloadPoster(name, 'var(--c-tone-indigo)', c.aspect);
+    },
+    onOpenCanvas: (c: HomeRunCard) => {
+      const asset = c.assetIds[0] ?? null;
+      if (!mock && !asset) return void toast.show({ message: t('home.run.noResult') });
+      // A new canvas titled after the prompt, with the result as an asset node (never an empty project).
+      void createProject({ title: c.title, kind: 'canvas' }).then(({ id }) =>
+        toCanvas.send({ name: c.title, media: c.kind, assetId: asset, refId: asset ?? c.runId ?? c.key, source: 'generated', label: c.meta }, { projectId: id }),
+      );
+    },
+  };
+
+  /** The spec of the current prompt box (real mode): prompt, title and `@` inputs. A string says what is missing. */
+  const buildSpec = (r: HomeRunSpec | null, brief: string, runTitle: string): PromptSpec | string | undefined => {
+    if (!r?.spec) return undefined;
+    // Real mode: the prompt, title and `@` images (uploads resolve to asset ids in the flow) go in the spec.
+    const own = refs.filter((x) => x.group !== 'pub' && /^(ast_|upl_)/.test(x.id));
+    const imageRefs = own.filter((x) => x.glyph.type !== 'wave').map((x) => x.id);
+    if (r.spec.kind === 'avatar') {
+      // Avatar: the first `@` picture speaks the uploaded voice track (lip sync, D-009).
+      const photo = own.find((x) => x.glyph.type === 'icon' && x.glyph.icon === 'img') ?? own.find((x) => x.glyph.type !== 'wave' && !(x.glyph.type === 'icon' && x.glyph.icon === 'video'));
+      const voice = own.find((x) => x.glyph.type === 'wave');
+      if (!photo) return t('home.avatar.needPhoto');
+      if (!voice) return t('home.avatar.needVoice');
+      return { ...r.spec, prompt: brief, title: runTitle, inputs: { firstFrameAssetId: photo.id, audioAssetId: voice.id } };
+    }
+    return { ...r.spec, prompt: brief, title: runTitle, ...(imageRefs.length ? { inputs: { referenceAssetIds: imageRefs } } : {}) };
+  };
+
+  // Real mode: the cost line is the server's quote for exactly what Send runs (D-006), so it matches the hold.
+  const liveSpec = mode !== 'agent' && !blocked && text.trim() ? buildSpec(run, text.trim(), title()) : undefined;
+  const quote = useToolQuote(liveSpec ?? null, credits ?? undefined);
+  const shownCredits = mock || !liveSpec || typeof liveSpec === 'string' ? credits : (quote.credits ?? (quote.loading ? null : credits));
 
   const generate = () => {
     if (!run) return;
-    const cost = credits ?? 0;
-    const actionLabel = t(`home.send.${mode}`);
     const brief = text.trim();
-    const snapshot = { run, refs, title: title(), cost };
-    // Real mode: the prompt, title and `@` images (uploads resolve to asset ids in the flow) go in the spec.
-    const own = refs.filter((r) => r.group !== 'pub' && /^(ast_|upl_)/.test(r.id));
-    const imageRefs = own.filter((r) => r.glyph.type !== 'wave').map((r) => r.id);
-    let spec = run.spec ? { ...run.spec, prompt: brief, title: snapshot.title, ...(imageRefs.length ? { inputs: { referenceAssetIds: imageRefs } } : {}) } : undefined;
-    if (run.spec?.kind === 'avatar') {
-      // Avatar: the first `@` picture speaks the uploaded voice track (lip sync, D-009).
-      const photo = own.find((r) => r.glyph.type === 'icon' && r.glyph.icon === 'img') ?? own.find((r) => r.glyph.type !== 'wave' && !(r.glyph.type === 'icon' && r.glyph.icon === 'video'));
-      const voice = own.find((r) => r.glyph.type === 'wave');
-      if (!photo) return void toast.show({ message: t('home.avatar.needPhoto') });
-      if (!voice) return void toast.show({ message: t('home.avatar.needVoice') });
-      spec = { ...run.spec, prompt: brief, title: snapshot.title, inputs: { firstFrameAssetId: photo.id, audioAssetId: voice.id } };
-    }
-    const { kind, meta, modelName, aspect, params } = snapshot.run;
-    runGeneration({ mode, brief, title: snapshot.title, cost, actionLabel, run: { kind, meta, modelName, aspect, params }, refs: snapshot.refs, ...(spec ? { spec } : {}) });
+    const runTitle = title();
+    const spec = buildSpec(run, brief, runTitle);
+    if (typeof spec === 'string') return void toast.show({ message: spec });
+    const { kind, meta, modelName, aspect, params } = run;
+    startRun({ mode, brief, title: runTitle, cost: shownCredits ?? credits ?? 0, actionLabel: t(`home.send.${mode}`), run: { kind, meta, modelName, aspect, params }, refs, ...(spec ? { spec } : {}) });
   };
 
-  /** Real mode: the brief goes to a Home agent thread; the plan proposal shows below the prompt box. */
-  const askAgent = async (brief: string, refItems: RefItem[], skillName: string | null) => {
-    setAgent({ brief, text: '', pending: true, plan: null, notice: null });
-    try {
-      // `@` uploads still in flight resolve to their asset ids first.
-      const refIds = await Promise.all(refItems.map((r) => resolveAssetId(r.id)));
-      const thread = await createThread({ surface: 'home', skill: skillId(skillName) });
-      homeThread.current = thread.id;
-      const r = await sendTurn(thread.id, { text: brief, refs: refIds.filter((id) => id.startsWith('ast_')), llm: getAgentLlm() }, {
-        onDelta: (d) => setAgent((a) => (a ? { ...a, text: a.text + d } : a)),
-      });
-      const plan = r.proposal?.body.kind === 'plan' ? { proposalId: r.proposal.id, options: r.proposal.body.options } : null;
-      const notice = r.reason === 'safety_blocked' ? t('home.agent.safety') : r.error ? t('home.agent.error') : null;
-      setAgent({ brief, text: r.text, pending: false, plan, notice });
-    } catch (e) {
-      const f = agentFailure(e);
-      if (f.kind === 'join') {
+  /* ---------- Agent: a conversation under the prompt box ---------- */
+
+  const failureText = (f: AgentFailure, input: SendInput): { text: string; retryable: boolean } | null => {
+    switch (f.kind) {
+      case 'join':
         // D-007: keep the brief; it is sent again after checkout.
-        savePendingAction('home.agent', { brief, skill: skillName });
-        setAgent(null);
+        savePendingAction('home.agent', { brief: input.text, skill: input.skill ?? null });
+        setText(input.text);
         setPaywall(true);
-        return;
-      }
-      const notice =
-        f.kind === 'allowance'
-          ? t('home.agent.allowanceUsedUp', { date: f.resetsAt ? intl.formatDate(f.resetsAt, { month: 'short', day: 'numeric' }) : '' })
-          : f.kind === 'rateLimited'
-            ? t('home.agent.rateLimited', { seconds: f.retryAfter ?? 0 })
-            : t('home.agent.error');
-      setAgent({ brief, text: '', pending: false, plan: null, notice });
+        return null;
+      case 'allowance':
+        return { text: t('home.agent.allowanceUsedUp', { date: f.resetsAt ? intl.formatDate(f.resetsAt, { month: 'short', day: 'numeric' }) : '' }), retryable: false };
+      case 'rateLimited':
+        return { text: t('home.agent.rateLimited', { seconds: f.retryAfter ?? 0 }), retryable: true };
+      case 'busy':
+        return { text: t('home.agent.busy'), retryable: true };
+      case 'offline':
+        return { text: t('home.agent.offline'), retryable: true };
+      case 'stale':
+        return { text: t('home.agent.stale'), retryable: false };
+      default:
+        return { text: f.message === 'safety_blocked' ? t('home.agent.safety') : t('home.agent.error'), retryable: f.message !== 'safety_blocked' };
     }
   };
+  const thread = useHomeThread(failureText);
+  const askAgent = (brief: string, refIds: string[], skillName: string | null) => void thread.send({ text: brief, refs: refIds, skill: skillName, llm: llm.id });
 
-  const build = (optionIndex: number) => {
-    const plan = agent?.plan;
-    if (!plan) return;
-    setBuilding(true);
-    const option = plan.options[optionIndex];
-    applyProposal(plan.proposalId, { optionIndex, title: option?.title }).then(
+  const build = (proposalId: string, optionIndex: number, optionTitle?: string) => {
+    setBuilding(proposalId);
+    if (mock) {
+      // Mock: the plan becomes a project (no spend) and its canvas opens.
+      void thread.build(proposalId, optionIndex).then(() =>
+        createProject({ title: optionTitle ?? title(), kind: 'canvas' }).then(({ id }) => {
+          setBuilding(null);
+          void navigate({ to: '/p/$projectId', params: { projectId: id } });
+        }),
+      );
+      return;
+    }
+    thread.build(proposalId, optionIndex, optionTitle).then(
       (r) => {
-        setBuilding(false);
+        setBuilding(null);
         void qc.invalidateQueries({ queryKey: ['projects'] });
-        if (r.projectId) {
-          // The thread moves to the new project (surface canvas): the canvas panel continues it.
-          if (homeThread.current) rememberThread(`canvas:${r.projectId}`, homeThread.current);
-          void navigate({ to: '/p/$projectId', params: { projectId: r.projectId } });
-        }
+        if (r.projectId) void navigate({ to: '/p/$projectId', params: { projectId: r.projectId } });
       },
       (e: unknown) => {
-        setBuilding(false);
+        setBuilding(null);
         const f = agentFailure(e);
         if (f.kind === 'join') return setPaywall(true);
         toast.show({ message: t(f.kind === 'stale' ? 'home.agent.stale' : 'home.agent.error') });
@@ -241,13 +358,16 @@ export function HomePage() {
   // a brief for the agent, a generation, or a result viewer action.
   useCheckoutResume(() => {
     const pending = takePendingAction<{ brief: string; skill: string | null }>('home.agent');
-    if (pending) void askAgent(pending.brief, [], pending.skill);
+    if (pending) {
+      setText('');
+      askAgent(pending.brief, [], pending.skill);
+    }
     const gen = takePendingAction<PendingHomeRun>('home.run');
     if (gen) {
       setMode(gen.mode);
       setText(gen.brief);
       setRefs(gen.refs);
-      runGeneration(gen);
+      startRun(gen);
     }
     const viewer = takePendingAction<PendingHomeResult>('home.result');
     if (viewer) {
@@ -263,8 +383,15 @@ export function HomePage() {
       return;
     }
     if (mode !== 'agent') return generate();
-    if (!isMockApi()) return void askAgent(text.trim(), refs, skill?.name ?? null);
-    return isMember ? void start() : setPaywall(true);
+    if (thread.busy) return void toast.show({ message: t('home.agent.busy') });
+    // Mock non-members: the join paywall first (real mode: the API answers NO_PLAN).
+    if (mock && !isMember) return setPaywall(true);
+    const brief = text.trim() || skill?.name || '';
+    // The message moves into the conversation; the prompt box is free for the next one.
+    setText('');
+    const refIds = refs.map((r) => r.id);
+    setRefs([]);
+    askAgent(brief, refIds, skill?.name ?? null);
   };
 
   const onCommand = (c: PromptCommand) => {
@@ -277,6 +404,15 @@ export function HomePage() {
       toast.show({ message: t('home.cmd.storyboard') });
     }
   };
+
+  const llmAllowance = (() => {
+    if (!llm.id) return null;
+    if (allowance.isUnlimited(llm.id)) return t('home.agent.unlimited');
+    const left = allowance.turnsLeftFor(llm.id);
+    return left === null ? null : t('home.agent.turnsLeft', { count: left });
+  })();
+  const allowanceNotice = allowance.exhausted ? t('home.agent.allowanceUsedUp', { date: intl.formatDate(allowance.resetsAt, { month: 'short', day: 'numeric' }) }) : null;
+  const showThread = mode === 'agent' && thread.messages.length > 0;
 
   return (
     <>
@@ -328,18 +464,42 @@ export function HomePage() {
             ) : blocked ? (
               // Never a number when the quote is blocked: the reason instead (PROMPT-2).
               <CostLine label={blocked} />
-            ) : credits !== null ? (
-              <CostLine credits={credits} />
+            ) : shownCredits !== null ? (
+              <CostLine credits={shownCredits} />
+            ) : quote.loading ? (
+              <CostLine label={intl.formatMessage({ id: 'home.cost.quoting' })} />
             ) : null
           }
           onSubmit={submit}
         />
-        {mode === 'agent' && allowance.exhausted ? (
+        {mode === 'agent' && allowance.exhausted && !showThread ? (
           <p role="status" className={styles.allowanceNotice}>
-            <FormattedMessage id="home.agent.allowanceUsedUp" values={{ date: intl.formatDate(allowance.resetsAt, { month: 'short', day: 'numeric' }) }} />
+            {allowanceNotice}
           </p>
         ) : null}
-        <nav className={styles.entries} aria-label={intl.formatMessage({ id: 'home.start.label' })}>
+        {showThread ? (
+          <HomeThreadView
+            messages={thread.messages}
+            busy={thread.busy}
+            llm={{ id: llm.id, name: llm.name, allowance: llmAllowance }}
+            notice={allowanceNotice}
+            building={building}
+            onSend={(reply) => {
+              if (mock && !isMember) {
+                setText(reply);
+                return setPaywall(true);
+              }
+              askAgent(reply, [], null);
+            }}
+            onStop={thread.stop}
+            onRetry={thread.retry}
+            onBuild={(p, i) => build(p.id, i, p.body.kind === 'plan' ? p.body.options[i]?.title : undefined)}
+            onDiscard={(p) => void thread.discard(p.id)}
+            onNew={thread.reset}
+          />
+        ) : null}
+        {mode !== 'agent' || !showThread ? <HomeRunList cards={runs.cards} actions={cardActions} onClearFinished={() => runs.cards.filter((c) => !isActive(c)).forEach((c) => runs.remove(c.key))} /> : null}
+        <nav className={cx(styles.entries, (showThread || (mode !== 'agent' && runs.cards.length > 0)) && styles.entriesAfter)} aria-label={intl.formatMessage({ id: 'home.start.label' })}>
           {ENTRIES.map((e) => (
             <Link key={e.key} to={e.to} className={styles.entry}>
               <span className={styles.entryIcon}>
@@ -356,16 +516,39 @@ export function HomePage() {
         reason={{ kind: 'agent' }}
         onClose={() => setPaywall(false)}
         onJoined={() => {
-          if (isMockApi()) void start();
-          else {
-            takePendingAction('home.agent');
-            void askAgent(text.trim(), refs, skill?.name ?? null);
-          }
+          takePendingAction('home.agent');
+          const brief = text.trim();
+          if (!brief) return;
+          setText('');
+          askAgent(brief, refs.map((r) => r.id), skill?.name ?? null);
         }}
       />
       {flow.element}
-      {agent ? <HomeAgent state={agent} building={building} onBuild={build} onDismiss={() => setAgent(null)} /> : null}
-      <HomeResult result={result} onChange={setResult} onRun={runFlow} resumeAction={resumeAction} onResumed={() => setResumeAction(null)} />
+      {toCanvas.dialog}
+      <HomeResult
+        result={result}
+        onChange={setResult}
+        onRun={(req, done) => {
+          // The viewer's Regenerate is a run card too; its result becomes the viewer's next version.
+          const r = result;
+          if (!r) return;
+          startRun(
+            {
+              mode: r.kind === 'image' ? 'image' : 'video',
+              brief: r.prompt,
+              title: r.title,
+              cost: req.cost,
+              actionLabel: req.actionLabel,
+              run: { kind: r.kind, meta: req.meta, modelName: r.modelName, aspect: r.aspect, params: r.params },
+              refs: r.refs,
+              ...(req.spec ? { spec: req.spec } : {}),
+            },
+            { done: (runId, assetId) => done(runId, assetId), ...(req.resume ? { resume: req.resume } : {}) },
+          );
+        }}
+        resumeAction={resumeAction}
+        onResumed={() => setResumeAction(null)}
+      />
       <RecentProjects />
       <Inspiration />
     </>
@@ -377,7 +560,9 @@ function RecentProjects() {
   const navigate = useNavigate();
   const createProject = useCreateProject();
   const projectsQ = useRecentProjects();
-  const projects = projectsQ.data ?? [];
+  // An untitled canvas with no nodes (e.g. made by the nav's Canvas entry) has nothing to show: it stays off Recent.
+  const untitled = intl.formatMessage({ id: 'home.project.untitled' });
+  const projects = (projectsQ.data ?? []).filter((p) => !(p.nodeCount === 0 && (p.title === untitled || p.title === 'Untitled project'))).slice(0, 4);
   const meta = (p: ProjectSummary) => {
     const when = formatWhen(intl, p.updatedAt);
     const detail =

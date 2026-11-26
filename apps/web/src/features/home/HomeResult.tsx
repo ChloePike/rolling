@@ -7,6 +7,7 @@ import type { RefItem } from '@/features/prompt';
 import { useCreateProject } from './api';
 import { assetMediaUrl, isMockApi } from '@/features/overlays/backend';
 import { downloadAsset } from '@/features/overlays/media';
+import { useSendToCanvas } from '@/features/canvas/target';
 import type { PromptSpec } from '@/features/overlays/runs';
 
 export interface HomeResultState {
@@ -42,7 +43,7 @@ export function nextVersion(versions: ResultVersion[], runId: string): ResultVer
 }
 
 /** Saves the result's poster as a file (the mock has no media; the real download is a signed media URL, D-008). */
-function downloadPoster(name: string, tone: string, aspect: string) {
+export function downloadPoster(name: string, tone: string, aspect: string) {
   // Tones are CSS variables; a standalone file needs the resolved color.
   const v = /^var\((--[\w-]+)\)$/.exec(tone)?.[1];
   const fill = (v ? getComputedStyle(document.documentElement).getPropertyValue(v).trim() : tone) || 'currentColor';
@@ -84,6 +85,7 @@ export function HomeResult({
   const toast = useToast();
   const navigate = useNavigate();
   const createProject = useCreateProject();
+  const toCanvas = useSendToCanvas();
   const t = (id: string, v?: Record<string, string | number>) => intl.formatMessage({ id }, v);
 
   const onAction = (id: ResultActionId, versionId: string) => {
@@ -103,9 +105,16 @@ export function HomeResult({
       return;
     }
     if (id === 'edit' || id === 'sendToCanvas') {
+      // A new canvas titled after the result, with the result on it as an asset node (never an empty project).
+      const assetId = result.assets?.[versionId] ?? null;
       void createProject({ title: result.title, kind: 'canvas' }).then(({ id: projectId }) => {
         onChange(null);
-        void navigate({ to: '/p/$projectId', params: { projectId } });
+        if (!isMockApi() && !assetId) return void navigate({ to: '/p/$projectId', params: { projectId } });
+        const v = result.versions.find((x) => x.id === versionId);
+        toCanvas.send(
+          { name: `${result.title} ${v?.label ?? ''}`.trim(), media: result.kind, assetId, refId: assetId ?? versionId, source: 'generated', label: result.modelName, ...(v?.tone ? { tone: v.tone } : {}) },
+          { projectId },
+        );
       });
       return;
     }
