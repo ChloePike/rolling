@@ -67,7 +67,7 @@ describe('propose.plan', () => {
     expect(res.error).toContain('from 4 to 15');
   });
 
-  it('refuses unknown models and special-purpose models', async () => {
+  it('refuses unknown models and face/head swap models (not offered)', async () => {
     const res = await runPropose(
       'propose.plan',
       { seconds: 5, options: [{ title: 'A', ratio: '16:9', shots: [shot('x', 5, 'acme/video-9')] }, { title: 'B', ratio: '16:9', shots: [shot('x', 5, 'lumina/video-face-swap')] }] },
@@ -75,8 +75,8 @@ describe('propose.plan', () => {
     );
     expect(res.ok).toBe(false);
     if (res.ok) return;
-    expect(res.error).toContain('not in the catalog');
-    expect(res.error).toContain('special-purpose');
+    expect(res.error).toContain('model "acme/video-9" is not in the catalog');
+    expect(res.error).toContain('model "lumina/video-face-swap" is not in the catalog');
   });
 
   it('enforces plan resolution caps (D-006)', async () => {
