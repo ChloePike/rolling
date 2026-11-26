@@ -143,7 +143,8 @@ export function mergeModel(listing: ListingModel, overlay: OverlayEntry = {}): C
   const matureFamily = overlay.mature ?? (spicy || listing.supportsModeration);
   const matureRouting: MatureRouting =
     swap || !matureFamily ? 'never' : requiresIdentitySafety ? 'platform_assets_only' : 'allowed';
-  const hidden = overlay.hidden ?? false;
+  // Face/head swap is not offered at all (owner decision): always hidden, never resolvable for runs.
+  const hidden = swap || (overlay.hidden ?? false);
   const placement: ModelPlacement =
     overlay.placement ?? (requiresIdentitySafety || derivedToolOnly(listing) ? 'tool' : 'more');
   return {

@@ -1,3 +1,4 @@
+import { isSwapModel } from '../models/overlay';
 /**
  * Node params → generation settings. Canvas nodes carry UI-shaped params
  * (`model` as id or display name, `length`/`seconds`, `resolution`, `ratio`,
@@ -61,9 +62,11 @@ export function isAuto(ref: string): boolean {
  */
 export function findModel(catalog: Catalog, ref: string): CatalogModel | null {
   const byId = catalog.get(ref);
+  // Face/head swap models are not offered (owner decision): they never resolve.
+  if (byId && isSwapModel(byId)) return null;
   if (byId && byId.kind !== 'chat') return byId;
   const want = normalizeName(ref);
-  const media = catalog.models.filter((m) => m.kind !== 'chat');
+  const media = catalog.models.filter((m) => m.kind !== 'chat' && !isSwapModel(m));
   return (
     media.find((m) => !m.hidden && normalizeName(m.displayName) === want) ??
     media.find((m) => !m.hidden && m.substituteFor !== undefined && normalizeName(m.substituteFor) === want) ??
