@@ -73,14 +73,14 @@ function mockTemplates(): TemplatesPage {
 
 const EMPTY: TemplatesPage = { featured: [], items: [], total: 0 };
 
-export function useTemplates() {
-  const mock = isMockApi();
-  const q = useQuery({ queryKey: ['templates', 'list'], queryFn: fetchTemplates, ...(mock ? { initialData: mockTemplates } : { staleTime: 60_000 }) });
-  return { ...q, data: q.data ?? EMPTY };
 /**
  * Templates list. `data` is empty (never sample rows) until the list arrives;
  * read `isPending` for skeletons and `isError` for the retry state.
  */
+export function useTemplates() {
+  const mock = isMockApi();
+  const q = useQuery({ queryKey: ['templates', 'list'], queryFn: fetchTemplates, ...(mock ? { initialData: mockTemplates } : { staleTime: 60_000 }) });
+  return { ...q, data: q.data ?? EMPTY };
 }
 
 /** `GET /api/templates/:id`: the template with its graph. */
