@@ -78,7 +78,9 @@ test.describe('activity (Tasks.dc.html)', () => {
     await openApp(page, '/activity');
     await settle(page);
     const app = await measure(page, APP_PARTS);
-    expectBoxesClose(app, design);
+    // Owner change: the actions column is wider than the design's 110px (Cancel + Locate fit) and Credits keeps
+    // 16px before Time, so columns shift by a few px.
+    expectBoxesClose(app, design, 6);
   });
 
   for (const f of ['All', 'Running', 'Failed']) {
@@ -95,7 +97,8 @@ test.describe('activity (Tasks.dc.html)', () => {
           if (f !== 'All') await pickFilter(page, f);
         },
       });
-      expectDiffUnder(r);
+      // The wider actions column and Credits spacing (owner change) move every row a little in the All view.
+      expectDiffUnder(r, f === 'All' ? 0.04 : 0.01);
     });
   }
 
