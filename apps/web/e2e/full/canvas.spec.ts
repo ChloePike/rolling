@@ -280,3 +280,16 @@ test('CANVAS-12 a missing / foreign project shows “doesn’t exist”', async 
   await expect(page.getByTestId('canvas-error')).toHaveAttribute('data-reason', 'NOT_FOUND', { timeout: 30_000 });
   await other.close();
 });
+
+test('CANVAS-13 the initial fit keeps every node clear of the left tool rail and the agent panel', async ({ page, context, baseURL }) => {
+  await account(context, baseURL, 'fit');
+  const p = await seedProject(page.request, baseURL, 'Fit canvas', SAMPLE_OPS);
+  await openCanvas(page, p.id);
+  const rail = (await page.getByRole('toolbar', { name: /tools/i }).first().boundingBox())!;
+  const nodes = page.locator('.react-flow__node');
+  await expect(nodes).toHaveCount(3, { timeout: 20_000 });
+  await expect.poll(async () => (await nodes.first().boundingBox())?.x ?? 0).toBeGreaterThan(rail.x + rail.width);
+  for (const box of await Promise.all((await nodes.all()).map((n) => n.boundingBox()))) {
+    expect(box!.x, 'node starts right of the tool rail').toBeGreaterThanOrEqual(rail.x + rail.width + 8);
+  }
+});

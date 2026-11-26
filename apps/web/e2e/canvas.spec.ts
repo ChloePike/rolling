@@ -888,3 +888,25 @@ test.describe('canvas controls', () => {
     await expect(page.locator('.react-flow__node.selected')).toHaveAttribute('data-id', NODE.shotA);
   });
 });
+
+test.describe('light mode node cards', () => {
+  test('card bodies stand off the canvas: white token surface and a subtle border; dark keeps the design', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'light' });
+    await openApp(page);
+    const read = () =>
+      page.evaluate(() => {
+        const body = document.querySelector('[data-body]') as HTMLElement;
+        const canvasBg = getComputedStyle(document.documentElement).getPropertyValue('--c-canvas-bg').trim();
+        const s = getComputedStyle(body);
+        return { bg: s.backgroundColor, shadow: s.boxShadow, canvasBg };
+      });
+    const light = await read();
+    expect(light.canvasBg.toUpperCase()).toBe('#F4F4F5');
+    expect(light.bg).toBe('rgb(255, 255, 255)');
+    expect(light.shadow).toContain('rgb(228, 228, 231)');
+    await page.emulateMedia({ colorScheme: 'dark' });
+    // The shadow transitions (140ms): poll.
+    await expect.poll(async () => (await read()).shadow).toMatch(/rgba\(0, 0, 0, 0\)/);
+    expect((await read()).bg).toBe('rgb(22, 22, 24)');
+  });
+});

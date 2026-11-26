@@ -133,6 +133,9 @@
   /* Canvas board, its dot grid, and the translucent chrome floating on it. */
   --c-canvas-bg:#0B0B0C;
   --c-canvas-dot:#232326;
+  /* Node card bodies on the canvas: surface-3 in dark (the design); light lifts them off the canvas with white and a border. */
+  --c-node-card:#161618;
+  --c-node-border:rgba(0,0,0,0);
   --c-glass:#141416;
   --c-composer:#161618;
 
@@ -285,6 +288,8 @@
     --c-failed-bg:rgba(220,38,38,.07);
     --c-canvas-bg:#F4F4F5;
     --c-canvas-dot:#D4D4D8;
+    --c-node-card:#FFFFFF;
+    --c-node-border:#E4E4E7;
     --c-glass:#FFFFFF;
     --c-composer:#FFFFFF;
     --c-ink-shadow:rgba(17,17,19,.22);
@@ -422,6 +427,8 @@
   --c-failed-bg:rgba(220,38,38,.07);
   --c-canvas-bg:#F4F4F5;
   --c-canvas-dot:#D4D4D8;
+  --c-node-card:#FFFFFF;
+  --c-node-border:#E4E4E7;
   --c-glass:#FFFFFF;
   --c-composer:#FFFFFF;
   --c-ink-shadow:rgba(17,17,19,.22);

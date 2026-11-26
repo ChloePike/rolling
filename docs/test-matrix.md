@@ -73,6 +73,7 @@ Sources: **PRD** = `docs/PRD.md`, **M*n*** = `docs/milestones.md`, **CF*n*** = `
 | Delete project | API DELETE: an open tab shows “deleted”, after reload “doesn’t exist”, and the project leaves the index. The UI has a delete control. | API | CANVAS-9, CANVAS-10 |
 | Conflicts | A stale `baseRevision` returns `409 CONFLICT` with the snapshot | API | CANVAS-11 |
 | Missing / foreign project | “This canvas doesn’t exist” | API | CANVAS-12 |
+| Initial fit | The first fit keeps every node right of the left tool rail (and left of the agent panel) | HO Canvas | CANVAS-13 |
 | Versions, “Input changed” | Run node → done. An upstream edit marks the node outdated with “Input changed”. A rerun adds version 2. Switching to version 1 persists after reload. | M4, CF8 | GEN-5 |
 | Home cards | Node count follows the canvas | HO | LIB-8 |
 

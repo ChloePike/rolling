@@ -134,6 +134,13 @@ const ADD_AT = { x: 360, y: 500 };
 const ASSET_TONES = ['var(--c-tone-teal)', 'var(--c-tone-indigo)', 'var(--c-tone-plum)', 'var(--c-tone-sand)'];
 /** Right inset of the top-right cluster: clear of the 340px agent panel, or 16px. */
 const AGENT_INSET = 368;
+/** The left tool rail (canvas.module.css `.toolbar`: 16px from the edge, 40px tools + 6px padding each side) plus a gap. */
+const TOOLBAR_INSET = 16 + 52 + 16;
+
+/** Fit padding that keeps nodes clear of the left rail, the agent panel, the header row and the bottom controls. */
+function fitPadding(agentOpen: boolean) {
+  return { top: '96px', bottom: '120px', left: `${TOOLBAR_INSET + 24}px`, right: `${(agentOpen ? AGENT_INSET : 16) + 24}px` } as const;
+}
 /** Gap between a node and its prompt editor (Canvas.dc.html genY). */
 const PROMPT_GAP = { image: 10, video: 6 };
 const ZOOM_PRESETS = [0.5, 0.75, 1, 1.5, 2];
@@ -397,12 +404,8 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
   useEffect(() => {
     if (isMockApi() || framed.current || !rfNodes.length || !rfNodes.every((n) => n.measured?.width)) return;
     framed.current = true;
-    const b = flow.getNodesBounds(rfNodes);
-    const pad = 48;
-    const w = Math.max(200, size.w - (agentOpen ? AGENT_INSET : 16) - pad * 2);
-    const h = Math.max(200, size.h - 160 - pad);
-    const zoom = Math.min(1, w / Math.max(1, b.width), h / Math.max(1, b.height));
-    void flow.setViewport({ x: pad - b.x * zoom, y: 96 + (h - b.height * zoom) / 2 - b.y * zoom, zoom });
+    // Insets for the left tool rail and the agent panel, so the leftmost node never sits under the rail.
+    void flow.fitView({ padding: fitPadding(agentOpen), maxZoom: 1 });
   }, [rfNodes, flow, size, agentOpen]);
 
   // An item sent to this canvas: bring it into view once its card is measured (instead of framing the graph).
@@ -1663,7 +1666,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
                 checked: Math.abs(viewport.zoom - z) < 0.005,
                 onSelect: () => void flow.zoomTo(z, { duration: 200 }),
               })),
-              { key: 'fit', label: intl.formatMessage({ id: 'canvas.fitAll' }), onSelect: () => void flow.fitView({ duration: 320, padding: 0.15 }) },
+              { key: 'fit', label: intl.formatMessage({ id: 'canvas.fitAll' }), onSelect: () => void flow.fitView({ duration: 320, padding: fitPadding(agentOpen), maxZoom: 1 }) },
             ]}
             trigger={(t) => (
               <button {...t} type="button" className={cx(canvas.zoomValue, canvas.zoomValueBtn)} data-testid="zoom-value" aria-label={intl.formatMessage({ id: 'canvas.zoomLabel' }, { zoom: viewport.zoom })}>
@@ -1674,7 +1677,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
           <button type="button" className={canvas.zoomBtn} aria-label={intl.formatMessage({ id: 'canvas.zoomIn' })} onClick={() => flow.zoomIn({ duration: 200 })}>
             <CanvasIcon name="plus" size={16} />
           </button>
-          <button type="button" className={canvas.fit} onClick={() => flow.fitView({ duration: 320, padding: 0.15 })}>
+          <button type="button" className={canvas.fit} onClick={() => flow.fitView({ duration: 320, padding: fitPadding(agentOpen), maxZoom: 1 })}>
             <FormattedMessage id="canvas.fit" />
           </button>
         </div>
