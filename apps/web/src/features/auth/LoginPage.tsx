@@ -10,6 +10,7 @@ import { useSession } from '@/lib/session';
 import { authErrorMessage, CODE_LENGTH, fetchProviders, oauthErrorMessage, sendEmailCode, verifyEmailCode, type SendCodeResult } from './api';
 import { GooglePopupError, requestGoogleAccessToken, signInWithGoogleAccessToken, signInWithGoogleIdToken, startGoogleRedirect, useGoogleIdentity, useGoogleTokenClient } from './google';
 import type { AuthSearch } from './search';
+import { AuthShowcase } from './ShowcasePanel';
 import styles from './Login.module.css';
 
 export type AuthMode = 'login' | 'signup';
@@ -66,15 +67,7 @@ export function LoginPage({ mode }: { mode: AuthMode }) {
         </p>
       </main>
       <aside aria-hidden="true" className={styles.aside}>
-        <div className={styles.frames}>
-          <div className={cx(styles.frame, styles.frameA)} />
-          <div className={cx(styles.frame, styles.frameB)}>
-            <span className={styles.caption}>
-              <FormattedMessage id="auth.preview.caption" />
-            </span>
-          </div>
-          <div className={cx(styles.frame, styles.frameC)} />
-        </div>
+        <AuthShowcase />
         <p className={styles.pitch}>
           <FormattedMessage id="auth.preview.pitch" />
         </p>

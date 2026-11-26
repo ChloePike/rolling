@@ -20,6 +20,7 @@ import { media } from "./routes/media";
 import { models } from "./routes/models";
 import { runs } from "./routes/runs";
 import { templates } from "./routes/templates";
+import { showcase } from "./routes/showcase";
 import { agent } from "./routes/agent";
 import { hooks } from "./routes/hooks";
 import { realtime } from "./routes/realtime";
@@ -103,6 +104,7 @@ const api = new Hono<AppEnv>()
   .route("/models", models)
   .route("/runs", runs)
   .route("/templates", templates)
+  .route("/showcase", showcase)
   .route("/agent", agent)
   .route("/hooks", hooks)
   .route("/", realtime)

@@ -76,7 +76,7 @@ export interface TemplateCover {
 }
 
 /** Cover fields of a built-in's `meta` (migration 0020); keys live under `public/templates/<id>/`. */
-interface CoverMeta {
+export interface CoverMeta {
   coverKey?: unknown;
   coverWebpKey?: unknown;
   coverAvifKey?: unknown;
@@ -90,7 +90,7 @@ export interface TemplateDetail extends TemplateSummary {
   graph: TemplateGraph;
 }
 
-function parse<T>(raw: string | null, fallback: T): T {
+export function parse<T>(raw: string | null, fallback: T): T {
   if (!raw) return fallback;
   try {
     return JSON.parse(raw) as T;
@@ -105,7 +105,7 @@ function ownKey(row: TemplateRow, v: unknown): string | undefined {
 }
 
 /** Built-in covers live on the public bucket (migrations 0017, 0020): public media URLs (D-008). */
-function builtinCover(env: Env, row: TemplateRow, meta: CoverMeta): { cover: TemplateCover | null; coverUrl: string | null; previewUrl: string | null } {
+export function builtinCover(env: Env, row: TemplateRow, meta: CoverMeta): { cover: TemplateCover | null; coverUrl: string | null; previewUrl: string | null } {
   const url = (k: string | undefined) => (k ? publicMediaUrl(k, env.PUBLIC_MEDIA_BASE_URL) : null);
   const jpg = ownKey(row, meta.coverKey);
   const preview = url(ownKey(row, meta.previewKey));

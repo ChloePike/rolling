@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../env";
 import { getSessionUser } from "../lib/session";
+import { etagFor, notModified } from "../lib/httpCache";
 import { validate } from "../lib/validate";
 import { listPublicModels } from "../models/catalog";
 
@@ -9,16 +10,6 @@ const ModelsQuery = z.object({ kind: z.enum(["image", "video", "chat"]).optional
 
 /** Edge cache lifetime for anonymous responses; the catalog only changes on sync (every 6 hours). */
 const EDGE_TTL_SECONDS = 300;
-
-async function etagFor(body: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body));
-  const hex = [...new Uint8Array(digest).slice(0, 12)].map((b) => b.toString(16).padStart(2, "0")).join("");
-  return `"${hex}"`;
-}
-
-function notModified(request: Request, etag: string, headers: Headers): Response | null {
-  return request.headers.get("if-none-match") === etag ? new Response(null, { status: 304, headers }) : null;
-}
 
 /**
  * `GET /api/models?kind=` — the synced catalog (D-002). Public read; mature-only
