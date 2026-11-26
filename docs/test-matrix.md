@@ -203,7 +203,7 @@ Sources: **PRD** = `docs/PRD.md`, **M*n*** = `docs/milestones.md`, **CF*n*** = `
 |---|---|---|---|
 | Static legal pages | `/privacy`, `/terms`, `/acceptable-use`, `/subprocessors` return full HTML without JS (h1, > 2,000 characters of text, title, canonical) | D-016, owner | LEGAL-1, PROD-3 |
 | Rendered and redirects | The pages render signed out with no errors. `/legal/<doc>` redirects. | D-016 | LEGAL-2 |
-| robots / sitemap | robots has `User-agent` and a `Sitemap`; staging disallows all. The sitemap lists the legal pages. | owner | LEGAL-3, PROD-3 |
+| robots / sitemap | Production: robots has `User-agent` and a `Sitemap`, and the sitemap lists the legal pages. Staging: robots is `Disallow: /`, no sitemap (404), and every response carries `X-Robots-Tag: noindex`. | owner | LEGAL-3, PROD-3 |
 | Links | The login consent line and the plans page link the legal pages | D-016 | LEGAL-4 |
 | www → apex | `https://www.rolling.actor/…` returns 301 to the apex with path and query kept | D-015 | PROD-3 |
 

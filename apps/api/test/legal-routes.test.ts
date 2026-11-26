@@ -1,6 +1,9 @@
 import { env, SELF } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
+import { Hono } from "hono";
+import type { AppEnv } from "../src/env";
 import { serveSpaFromR2, WEB_PREFIX } from "../src/lib/r2Static";
+import { NOINDEX, NON_PRODUCTION_ROBOTS, robotsPolicy } from "../src/lib/robots";
 
 /**
  * `/terms` and `/privacy` are registered with Google OAuth and checked by
@@ -86,5 +89,38 @@ describe("www redirect (D-015)", () => {
     expect(res.headers.get("location")).toBe(`${new URL(env.PUBLIC_APP_URL).origin}/privacy?x=1`);
     const other = await SELF.fetch("https://www.example.com/terms", { redirect: "manual" });
     expect(other.status).toBe(200);
+  });
+});
+
+describe("indexing per environment (LEGAL-3)", () => {
+  it("outside production: robots.txt disallows all, no sitemap, X-Robots-Tag on every response", async () => {
+    expect(env.ENVIRONMENT).not.toBe("production");
+    const robots = await SELF.fetch("https://example.com/robots.txt");
+    expect(robots.status).toBe(200);
+    expect(robots.headers.get("content-type")).toBe("text/plain; charset=utf-8");
+    const txt = await robots.text();
+    expect(txt).toMatch(/^Disallow: \/$/m);
+    expect(txt).not.toMatch(/Sitemap:/);
+    expect((await SELF.fetch("https://example.com/sitemap.xml")).status).toBe(404);
+    for (const path of ["/api/health", "/api/nope", "/privacy"]) {
+      const res = await SELF.fetch(`https://example.com${path}`);
+      expect(res.headers.get("x-robots-tag"), path).toBe(NOINDEX);
+    }
+  });
+
+  it("production passes robots.txt and sitemap.xml through unchanged, without the noindex header", async () => {
+    const app = new Hono<AppEnv>();
+    app.use("*", robotsPolicy);
+    app.get("*", (c) => c.text(`file ${c.req.path}`));
+    const prod = { ENVIRONMENT: "production" } as unknown as AppEnv["Bindings"];
+    for (const path of ["/robots.txt", "/sitemap.xml", "/"]) {
+      const res = await app.request(path, {}, prod);
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe(`file ${path}`);
+      expect(res.headers.get("x-robots-tag")).toBeNull();
+    }
+    const staging = { ENVIRONMENT: "staging" } as unknown as AppEnv["Bindings"];
+    expect(await (await app.request("/robots.txt", {}, staging)).text()).toBe(NON_PRODUCTION_ROBOTS);
+    expect((await app.request("/", {}, staging)).headers.get("x-robots-tag")).toBe(NOINDEX);
   });
 });

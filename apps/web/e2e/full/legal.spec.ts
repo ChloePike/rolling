@@ -47,20 +47,30 @@ test('LEGAL-2 legal pages render in the browser signed out, with no console erro
   errs.assertClean();
 });
 
-test('LEGAL-3 robots.txt and sitemap.xml', async ({ request, baseURL }) => {
+test('LEGAL-3 robots.txt and sitemap.xml: production is indexed, staging never is', async ({ request, baseURL }) => {
   const robots = await request.get('/robots.txt');
   expect(robots.status()).toBe(200);
   expect(robots.headers()['content-type']).toContain('text/plain');
   const rt = await robots.text();
   expect(rt).toMatch(/User-agent:/i);
-  expect(rt).toMatch(/Sitemap:\s*https?:\/\/\S+\/sitemap\.xml/i);
   const sm = await request.get('/sitemap.xml');
+  if (/staging|localhost|workers\.dev/.test(baseURL ?? '')) {
+    // Staging: disallow all, no sitemap, X-Robots-Tag noindex on every response (pages, API, assets).
+    expect(rt).toMatch(/^Disallow:\s*\/\s*$/m);
+    expect(rt).not.toMatch(/Sitemap:/i);
+    expect(sm.status()).toBe(404);
+    for (const path of ['/', '/privacy', '/api/health', '/robots.txt']) {
+      const r = await request.get(path);
+      expect(r.headers()['x-robots-tag'], path).toMatch(/noindex/);
+    }
+    return;
+  }
+  expect(rt).toMatch(/Sitemap:\s*https?:\/\/\S+\/sitemap\.xml/i);
   expect(sm.status()).toBe(200);
   expect(sm.headers()['content-type']).toMatch(/xml/);
   const xml = await sm.text();
   for (const doc of LEGAL) expect(xml).toContain(`${doc.path}</loc>`);
-  // Staging must not be indexed.
-  if (/staging/.test(baseURL ?? '')) expect(rt).toMatch(/Disallow:\s*\/\s*$/m);
+  expect((await request.get('/privacy')).headers()['x-robots-tag']).toBeUndefined();
 });
 
 test('LEGAL-4 the login consent line and the plans page link the legal pages', async ({ page }) => {

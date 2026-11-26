@@ -6,6 +6,7 @@ import { ApiError, errorResponse } from "./lib/errors";
 import { isWebSocketUpgrade, refuseWebSocket } from "./lib/wsRefusal";
 import { authMiddleware } from "./auth/context";
 import { serveSpaFromR2 } from "./lib/r2Static";
+import { robotsPolicy } from "./lib/robots";
 import { isPrivateMediaHost, mediaPreflight, withMediaCors } from "./lib/privateMediaHost";
 import { handleQueue } from "./queues";
 import { handleScheduled } from "./scheduled";
@@ -47,6 +48,9 @@ export { DataExportWorkflow } from "./workflows/DataExport";
 export const app = new Hono<AppEnv>();
 
 // `www.<app host>` (custom domain on this Worker) redirects to the apex app URL (D-015).
+// Only production is indexed: elsewhere robots.txt disallows all, no sitemap, X-Robots-Tag on every response (LEGAL-3).
+app.use("*", robotsPolicy);
+
 app.use("*", async (c, next) => {
   const url = new URL(c.req.url);
   if (url.hostname.startsWith("www.") && c.env.PUBLIC_APP_URL) {
