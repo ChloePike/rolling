@@ -13,7 +13,7 @@ import { personalWorkspaceId } from "../src/auth/workspace";
 import { projectRoom } from "../src/lib/access";
 import { syncModels } from "../src/models/sync";
 import { setGatewayFetchForTests } from "../src/runs/provider";
-import { agentSafetyGate, rateAsset, setSafetyLlmForTests } from "../src/safety/service";
+import { agentSafetyGate, faceResultFromMeta, rateAsset, setSafetyLlmForTests } from "../src/safety/service";
 import { processAsset } from "../src/queues/mediaProcess";
 
 const BASE = "https://example.com";
@@ -81,10 +81,12 @@ const SAFE_IMAGE: ImageAssessment = {
 const safety = {
   text: SAFE_TEXT as Partial<TextAssessment> | "error",
   image: SAFE_IMAGE as Partial<ImageAssessment> | "error",
+  faces: [] as unknown[] | "error",
   calls: [] as string[],
   reset() {
     this.text = SAFE_TEXT;
     this.image = SAFE_IMAGE;
+    this.faces = [];
     this.calls = [];
   },
 };
@@ -97,7 +99,10 @@ const fakeSafetyLlm: LlmProvider = {
     const kind = req.model === FACE_DETECT_MODEL ? "faces" : images > 0 ? "vision" : "text";
     safety.calls.push(kind);
     let answer: string;
-    if (kind === "faces") answer = JSON.stringify({ faces: [] });
+    if (kind === "faces") {
+      if (safety.faces === "error") return yield { type: "error", error: { code: "upstream_error", message: "down", retryable: true } };
+      answer = JSON.stringify({ faces: safety.faces });
+    }
     else if (kind === "vision") {
       if (safety.image === "error") return yield { type: "error", error: { code: "upstream_error", message: "down", retryable: true } };
       answer = JSON.stringify({ images: Array.from({ length: images }, () => ({ ...SAFE_IMAGE, ...(safety.image as object) })) });
@@ -369,7 +374,7 @@ describe("safety: upload rating hook (media.process)", () => {
     const { user, ws } = await member("su");
     const id = await uploaded(ws, user);
     safety.image = { rating: "explicit", confidence: 0.92 };
-    expect(await rateAsset(env, id)).toEqual({ rating: "explicit", blocked: false });
+    expect(await rateAsset(env, id)).toMatchObject({ rating: "explicit", blocked: false });
     expect(await env.DB.prepare("SELECT rating, mature, status FROM assets WHERE id = ?").bind(id).first()).toEqual({ rating: "explicit", mature: 1, status: "ready" });
   });
 
@@ -396,7 +401,84 @@ describe("safety: upload rating hook (media.process)", () => {
     const { user, ws } = await member("sud");
     const id = await uploaded(ws, user);
     safety.image = "error";
-    expect(await rateAsset(env, id)).toEqual({ rating: null, blocked: false });
+    expect(await rateAsset(env, id)).toMatchObject({ rating: null, blocked: false });
+  });
+});
+
+describe("safety: face detection on upload (UP-4)", () => {
+  async function asset(ws: string, user: string, kind: "image" | "video", source = "mine"): Promise<string> {
+    const id = `ast_${crypto.randomUUID().replace(/-/g, "").slice(0, 26)}`;
+    const key = `ws/${ws}/uploads/${id}.${kind === "image" ? "png" : "mp4"}`;
+    let meta = "{}";
+    if (kind === "image") await env.MEDIA.put(key, uniquePng(id), { httpMetadata: { contentType: "image/png" } });
+    else {
+      await env.MEDIA.put(key, new Uint8Array([0, 0, 0, 24]), { httpMetadata: { contentType: "video/mp4" } });
+      const thumbKey = `ws/${ws}/uploads/${id}/thumb.png`;
+      await env.MEDIA.put(thumbKey, uniquePng(`${id}p`), { httpMetadata: { contentType: "image/png" } });
+      meta = JSON.stringify({ thumbKey, durationSec: 3 });
+    }
+    await env.DB.prepare("INSERT INTO assets (id, workspace_id, kind, source, name, r2_key, meta, created_by, created_at, status, mature) VALUES (?, ?, ?, ?, 'clip', ?, ?, ?, ?, 'ready', 0)")
+      .bind(id, ws, kind, source, key, meta, user, Date.now())
+      .run();
+    return id;
+  }
+  const metaOf = async (id: string) => JSON.parse((await env.DB.prepare("SELECT meta FROM assets WHERE id = ?").bind(id).first<{ meta: string }>())!.meta);
+
+  it("stores face count, boxes and the apparent-minor flag in asset meta", async () => {
+    const { user, ws } = await member("fd");
+    const id = await asset(ws, user, "image");
+    safety.faces = [{ confidence: 99.2, box: { x: 12, y: 8, width: 40, height: 52 }, age: 34 }];
+    const out = await rateAsset(env, id);
+    expect(out).toMatchObject({ blocked: false, faces: { status: "done", count: 1 } });
+    expect(safety.calls).toContain("faces");
+    expect((await metaOf(id)).faces).toMatchObject({
+      status: "done",
+      count: 1,
+      maxConfidence: 99.2,
+      boxes: [{ x: 12, y: 8, width: 40, height: 52 }],
+      apparentMinor: false,
+      model: "lumina/face-detect",
+      source: "image",
+    });
+  });
+
+  it("runs on a video's poster frame", async () => {
+    const { user, ws } = await member("fdv");
+    const id = await asset(ws, user, "video");
+    safety.faces = [{ confidence: 97 }, { confidence: 91 }];
+    await rateAsset(env, id);
+    const meta = await metaOf(id);
+    expect(meta.faces).toMatchObject({ status: "done", count: 2, maxConfidence: 97, apparentMinor: null, source: "poster" });
+    expect(meta.durationSec).toBe(3);
+  });
+
+  it("a face estimated under 18 on a suggestive upload blocks it (minor rule)", async () => {
+    const { user, ws } = await member("fdm");
+    const id = await asset(ws, user, "image");
+    safety.image = { rating: "suggestive", photographic: true };
+    safety.faces = [{ confidence: 98, age_range: { low: 13, high: 17 } }];
+    expect((await rateAsset(env, id)).blocked).toBe(true);
+    expect((await env.DB.prepare("SELECT status FROM assets WHERE id = ?").bind(id).first<any>()).status).toBe("failed");
+    expect((await metaOf(id)).faces).toMatchObject({ apparentMinor: true });
+  });
+
+  it("records an outage as unavailable (never as face-free) and reads back only finished detections", async () => {
+    const { user, ws } = await member("fde");
+    const id = await asset(ws, user, "image");
+    safety.faces = "error";
+    expect((await rateAsset(env, id)).faces).toMatchObject({ status: "unavailable" });
+    const meta = await metaOf(id);
+    expect(meta.faces.status).toBe("unavailable");
+    expect(faceResultFromMeta(meta)).toBeNull();
+    expect(faceResultFromMeta({ faces: { status: "done", count: 1, maxConfidence: 95, apparentMinor: null } })).toEqual({ faces: 1, maxConfidence: 95, apparentMinor: null });
+  });
+
+  it("skips generated media", async () => {
+    const { user, ws } = await member("fdg");
+    const id = await asset(ws, user, "image", "generated");
+    await rateAsset(env, id);
+    expect(safety.calls).not.toContain("faces");
+    expect((await metaOf(id)).faces).toBeUndefined();
   });
 });
 

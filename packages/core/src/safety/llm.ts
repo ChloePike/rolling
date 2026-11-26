@@ -65,10 +65,72 @@ const VisionAnswerSchema = z.object({ images: z.array(ImageAssessmentSchema) });
 const FaceAnswerSchema = z.object({
   faces: z.array(z.object({ confidence: z.number() }).passthrough()).default([]),
 });
+/** A face's bounding box as the detector reports it (pixels of the image sent, or 0..1 when it reports ratios). */
+export interface FaceBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface FaceResult {
   faces: number;
   /** 0..100, highest face confidence. */
   maxConfidence: number;
+  /** One box per face, when the detector reports them. */
+  boxes?: FaceBox[];
+  /** True when any face's estimated age is under 18; null when the detector reports no age. */
+  apparentMinor?: boolean | null;
+}
+
+function num(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+/** Normalizes the common box shapes: {x,y,width,height}, {x,y,w,h}, {left,top,right,bottom}, {x1,y1,x2,y2}, [x1,y1,x2,y2]. */
+export function faceBoxOf(face: Record<string, unknown>): FaceBox | null {
+  const raw = face.box ?? face.bbox ?? face.bounding_box ?? face.boundingBox ?? face.rect;
+  if (Array.isArray(raw) && raw.length === 4 && raw.every((v) => num(v) !== null)) {
+    const [x1, y1, x2, y2] = raw as number[];
+    return { x: x1!, y: y1!, width: x2! - x1!, height: y2! - y1! };
+  }
+  if (!raw || typeof raw !== 'object') return null;
+  const b = raw as Record<string, unknown>;
+  const x = num(b.x) ?? num(b.left) ?? num(b.x1);
+  const y = num(b.y) ?? num(b.top) ?? num(b.y1);
+  if (x === null || y === null) return null;
+  const width = num(b.width) ?? num(b.w) ?? (num(b.right) ?? num(b.x2) ?? NaN) - x;
+  const height = num(b.height) ?? num(b.h) ?? (num(b.bottom) ?? num(b.y2) ?? NaN) - y;
+  return Number.isFinite(width) && Number.isFinite(height) ? { x, y, width, height } : null;
+}
+
+/** Estimated age of a face: `age`, or the middle of `age_range` / `ageRange` ({low,high} or [low,high]). Null when absent. */
+export function faceAgeOf(face: Record<string, unknown>): number | null {
+  const age = num(face.age) ?? num(face.estimated_age);
+  if (age !== null) return age;
+  const range = face.age_range ?? face.ageRange;
+  if (Array.isArray(range) && range.length === 2 && num(range[0]) !== null && num(range[1]) !== null) return ((range[0] as number) + (range[1] as number)) / 2;
+  if (range && typeof range === 'object') {
+    const r = range as Record<string, unknown>;
+    const low = num(r.low) ?? num(r.Low) ?? num(r.min);
+    const high = num(r.high) ?? num(r.High) ?? num(r.max);
+    if (low !== null && high !== null) return (low + high) / 2;
+  }
+  return null;
+}
+
+/** Face-detect answer → FaceResult (count, best confidence, boxes, apparent-minor flag when ages are reported). */
+export function faceResultOf(faces: ReadonlyArray<Record<string, unknown> & { confidence: number }>): FaceResult {
+  const boxes = faces.map(faceBoxOf).filter((b): b is FaceBox => b !== null);
+  const minorFlags = faces.map((f) => (typeof f.minor === 'boolean' ? f.minor : typeof f.is_minor === 'boolean' ? f.is_minor : null));
+  const ages = faces.map(faceAgeOf);
+  const known = faces.map((_, i) => minorFlags[i] ?? (ages[i] !== null ? ages[i]! < 18 : null)).filter((v): v is boolean => v !== null);
+  return {
+    faces: faces.length,
+    maxConfidence: faces.reduce((m, f) => Math.max(m, f.confidence), 0),
+    ...(boxes.length > 0 && { boxes }),
+    apparentMinor: known.length > 0 ? known.some(Boolean) : null,
+  };
 }
 
 export const HARD_LIMITS_TEXT = [
@@ -270,9 +332,8 @@ export async function detectFaces(llm: LlmProvider, url: string, key: string, ti
   );
   const parsed = FaceAnswerSchema.safeParse(parseJsonObject(res.text));
   if (!parsed.success) throw new SafetyLlmError('invalid', 'face-detect answer failed validation');
-  const faces = parsed.data.faces;
   return {
-    value: { faces: faces.length, maxConfidence: faces.reduce((m, f) => Math.max(m, f.confidence), 0) },
+    value: faceResultOf(parsed.data.faces),
     model: FACE_DETECT_MODEL,
     ms: res.ms,
     ...(res.costUsd !== undefined && { costUsd: res.costUsd }),

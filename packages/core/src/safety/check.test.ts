@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { fixtureCatalog, fixtureModel } from '../models/__fixtures__/catalog';
 import type { ChatEvent, ChatRequest, LlmProvider } from '../models/types';
-import { isMatureRating, postCheck, preCheck, quickCheck, rateMedia, type SafetyDeps } from './check';
+import { detectUploadFaces, isMatureRating, postCheck, preCheck, quickCheck, rateMedia, type SafetyDeps } from './check';
 import { createSafetyGate } from './gate';
-import { FACE_DETECT_MODEL, visionModelsFor, type ImageAssessment, type TextAssessment } from './llm';
+import { FACE_DETECT_MODEL, faceBoxOf, faceResultOf, visionModelsFor, type ImageAssessment, type TextAssessment } from './llm';
 import type { VerdictCache } from './types';
 
 const chatModels = fixtureCatalog.list({ kind: 'chat', includeMatureOnly: true });
@@ -282,5 +282,62 @@ describe('quickCheck and SafetyGate', () => {
     // Mature proposals: one classifier call for all prompts.
     await gate.checkProposal({ mature: true, prompts: [{ prompt: 'shot 1' }, { prompt: 'shot 2' }, { prompt: 'shot 3' }] });
     expect(f.calls).toHaveLength(1);
+  });
+});
+
+describe('face metadata (upload processing, UP-4)', () => {
+  const upload = { kind: 'image' as const, source: 'upload' as const, url: 'data:image/png;base64,AAAA', hash: 'hface' };
+
+  it('parses count, best confidence, boxes and the apparent-minor flag from the face-detect answer', () => {
+    expect(faceResultOf([])).toEqual({ faces: 0, maxConfidence: 0, apparentMinor: null });
+    const r = faceResultOf([
+      { confidence: 99.1, box: { x: 10, y: 20, width: 30, height: 40 }, age: 31 },
+      { confidence: 80, bbox: [100, 50, 140, 110], age_range: { low: 12, high: 16 } },
+    ]);
+    expect(r).toEqual({
+      faces: 2,
+      maxConfidence: 99.1,
+      boxes: [
+        { x: 10, y: 20, width: 30, height: 40 },
+        { x: 100, y: 50, width: 40, height: 60 },
+      ],
+      apparentMinor: true,
+    });
+    expect(faceResultOf([{ confidence: 95, age: 40 }]).apparentMinor).toBe(false);
+    expect(faceResultOf([{ confidence: 95, minor: true }]).apparentMinor).toBe(true);
+    expect(faceBoxOf({ rect: { left: 1, top: 2, right: 11, bottom: 22 } })).toEqual({ x: 1, y: 2, width: 10, height: 20 });
+    expect(faceBoxOf({})).toBeNull();
+  });
+
+  it('detectUploadFaces caches under the preCheck key and reports outages', async () => {
+    const cache = memoryCache();
+    const f = fakeLlm({ faces: JSON.stringify({ faces: [{ confidence: 97, box: { x: 0, y: 0, w: 5, h: 5 } }] }) });
+    const d = deps(f.llm, cache);
+    const out = await detectUploadFaces({ url: upload.url, hash: upload.hash }, d);
+    expect(out).toMatchObject({ ok: true, cached: false, value: { faces: 1, maxConfidence: 97, boxes: [{ x: 0, y: 0, width: 5, height: 5 }] } });
+    expect(cache.map.has('face:hface')).toBe(true);
+    expect(await detectUploadFaces({ url: upload.url, hash: upload.hash }, d)).toMatchObject({ ok: true, cached: true });
+    expect(f.calls).toHaveLength(1);
+    expect(await detectUploadFaces({ url: upload.url, hash: 'other' }, deps(fakeLlm({ faces: new Error('down') }).llm))).toMatchObject({ ok: false });
+    expect(await detectUploadFaces({ url: upload.url }, deps(null))).toEqual({ ok: false, note: 'unavailable' });
+  });
+
+  it('preCheck uses face metadata stored at upload instead of detecting again', async () => {
+    const f = fakeLlm({ text: text({ sexualLevel: 'explicit' }), vision: vision({ photographic: true }) });
+    const v = await preCheck({ prompt: 'adult scene', references: [{ ...upload, face: { faces: 1, maxConfidence: 99 } }], mature: true }, deps(f.llm));
+    expect(v.reasons.map((r) => r.code)).toEqual(['REAL_PERSON_SEXUAL']);
+    expect(f.calls.some((c) => c.model === FACE_DETECT_MODEL)).toBe(false);
+    expect(v.checks.find((c) => c.name === 'faces')).toMatchObject({ status: 'pass', cached: true });
+  });
+
+  it('an apparent minor from face detection blocks mature runs and sexual uploads', async () => {
+    const minorFace = { faces: 1, maxConfidence: 98, apparentMinor: true };
+    const f = fakeLlm({ text: text({}), vision: vision({ photographic: false }) });
+    const v = await preCheck({ prompt: 'adult scene', references: [{ ...upload, face: minorFace }], mature: true }, deps(f.llm));
+    expect(v.reasons.map((r) => r.code)).toContain('MINOR_SEXUAL');
+    const rated = await rateMedia({ kind: 'image', source: 'upload', url: upload.url, hash: 'hm', face: minorFace }, deps(fakeLlm({ vision: vision({ rating: 'suggestive' }) }).llm));
+    expect(rated.reasons.map((r) => r.code)).toContain('MINOR_SEXUAL');
+    const safe = await rateMedia({ kind: 'image', source: 'upload', url: upload.url, hash: 'hs', face: minorFace }, deps(fakeLlm({ vision: vision({}) }).llm));
+    expect(safe.verdict).toBe('allow');
   });
 });

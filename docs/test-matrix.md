@@ -131,7 +131,7 @@ Sources: **PRD** = `docs/PRD.md`, **M*n*** = `docs/milestones.md`, **CF*n*** = `
 | Chunked, direct to R2, resumable | 17 MiB → 3 × 8 MiB parts with presigned R2 URLs (`direct: true`). Kill after 2 parts: the server lists them and the same fingerprint resumes the same upload. An early complete is refused. Then complete and check the size. Abort. | D-011 | UP-1 |
 | SharedWorker queue, concurrent files | The SharedWorker exists. Three files upload concurrently through the dock and appear in Assets. No upload bytes go through `/api`. | D-011 | UP-2 |
 | Resume after reload | Kill the tab mid-upload (40 MiB). The queue finishes it from IndexedDB. | D-011 | UP-3 |
-| Face detect on upload | An uploaded portrait gets a rating and face metadata | owner | UP-4 |
+| Face detect on upload | An uploaded portrait gets a rating and `meta.faces` from `lumina/face-detect` (status `done`, count ≥ 1, boxes, apparent-minor flag); videos use the poster frame. An outage is stored as `unavailable`, and mature runs then detect again and fail closed. | owner, D-005 | UP-4 |
 | Background download | Asset details → Download goes through the queue and saves the file | D-011 | UP-5 |
 
 ## Assets, library, templates

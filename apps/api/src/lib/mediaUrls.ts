@@ -107,7 +107,29 @@ export interface AssetView {
   url: string | null;
   thumbUrl: string | null;
   waveformUrl: string | null;
-  meta: { width?: number; height?: number; durationSec?: number; processing?: string; tags?: string[]; sceneCuts?: number[] };
+  meta: {
+    width?: number;
+    height?: number;
+    durationSec?: number;
+    processing?: string;
+    tags?: string[];
+    sceneCuts?: number[];
+    /** Face detection of an upload (UP-4): `done` with count, boxes and the apparent-minor flag, or `unavailable`. */
+    faces?: { status: "done" | "unavailable"; count?: number; boxes?: Array<{ x: number; y: number; width: number; height: number }>; apparentMinor?: boolean | null; source?: string };
+  };
+}
+
+function facesOf(v: unknown): AssetView["meta"]["faces"] {
+  if (!v || typeof v !== "object") return undefined;
+  const f = v as Record<string, unknown>;
+  if (f.status !== "done" && f.status !== "unavailable") return undefined;
+  return {
+    status: f.status,
+    ...(typeof f.count === "number" && { count: f.count }),
+    ...(Array.isArray(f.boxes) && { boxes: f.boxes as Array<{ x: number; y: number; width: number; height: number }> }),
+    ...(f.apparentMinor !== undefined && { apparentMinor: f.apparentMinor === true ? true : f.apparentMinor === false ? false : null }),
+    ...(typeof f.source === "string" && { source: f.source }),
+  };
 }
 
 export async function assetView(env: Env, row: AssetRow, viewer: { mayViewMature: boolean }): Promise<AssetView> {
@@ -145,6 +167,7 @@ export async function assetView(env: Env, row: AssetRow, viewer: { mayViewMature
       processing: pick<string>("processing", "string"),
       tags: Array.isArray(meta.tags) ? (meta.tags as unknown[]).filter((t): t is string => typeof t === "string") : undefined,
       sceneCuts: Array.isArray(meta.sceneCuts) ? (meta.sceneCuts as unknown[]).filter((t): t is number => typeof t === "number") : undefined,
+      faces: facesOf(meta.faces),
     },
   };
 }

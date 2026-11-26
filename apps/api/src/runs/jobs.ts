@@ -15,9 +15,9 @@ import { loadCatalog } from "../models/catalog";
 import { gatewayFetch, generationProvider, hyperouterClient } from "./provider";
 import { ports, quietly } from "./ports";
 import { advanceRun, advanceWorkspace, pushCredits } from "./service";
-import { isMatureRating, type SafetyOutput, type SafetyReference } from "@rolling/core/safety";
+import { isMatureRating, type FaceResult, type SafetyOutput, type SafetyReference } from "@rolling/core/safety";
 import { jobPostCheck, jobPreCheck, referenceSource } from "../safety/pipeline";
-import { pictureDataUrl, r2Picture, sha256OfBytes } from "../safety/service";
+import { faceResultFromMeta, pictureDataUrl, r2Picture, sha256OfBytes } from "../safety/service";
 import { getItem, getJob, getRun, parseJson, refreshRun, type RunOptions } from "./store";
 import { ensureFrame } from "./frames";
 
@@ -94,10 +94,15 @@ async function modelFor(env: Env, modelId: string): Promise<CatalogModel> {
 
 const SIGNED_INPUT_TTL = 6 * 3600;
 
-async function assetUrl(env: Env, ctx: JobContext, assetId: string): Promise<{ url: string; origin: ImageSource; key: string; name: string } | null> {
-  const row = await env.DB.prepare("SELECT r2_key, workspace_id, source, status, name, mature FROM assets WHERE id = ?").bind(assetId).first<{
+/** A resolved input file; `face` is the face metadata stored at upload for exactly this picture (UP-4). */
+type InputFile = { url: string; origin: ImageSource; key: string; name: string; face?: FaceResult | null };
+
+async function assetUrl(env: Env, ctx: JobContext, assetId: string): Promise<InputFile | null> {
+  const row = await env.DB.prepare("SELECT r2_key, workspace_id, source, status, name, mature, kind, meta FROM assets WHERE id = ?").bind(assetId).first<{
     r2_key: string;
     mature: number | null;
+    kind: string;
+    meta: string | null;
     workspace_id: string | null;
     source: string;
     status: string;
@@ -111,18 +116,21 @@ async function assetUrl(env: Env, ctx: JobContext, assetId: string): Promise<{ u
   const ws = row.workspace_id && keyBelongsTo(row.r2_key, row.workspace_id) ? row.workspace_id : "_";
   if (!keyBelongsTo(row.r2_key, ws)) return null;
   const url = await signMediaUrl(env, row.r2_key, { workspaceId: ws, expiresIn: SIGNED_INPUT_TTL, absolute: true });
-  return { url: url.startsWith("http") ? url : new URL(url, env.PUBLIC_APP_URL).toString(), origin, key: row.r2_key, name: row.name };
+  const face = row.kind === "image" ? faceResultFromMeta(parseJson(row.meta, {})) : null;
+  return { url: url.startsWith("http") ? url : new URL(url, env.PUBLIC_APP_URL).toString(), origin, key: row.r2_key, name: row.name, face };
 }
 
 /** The poster frame (thumbnail) of a video asset as a signed picture URL (Remix on models without reference-video input). */
-async function posterUrl(env: Env, ctx: JobContext, assetId: string): Promise<{ url: string; origin: ImageSource; key: string; name: string } | null> {
+async function posterUrl(env: Env, ctx: JobContext, assetId: string): Promise<InputFile | null> {
   const row = await env.DB.prepare("SELECT workspace_id, meta, status, name, source FROM assets WHERE id = ?").bind(assetId).first<{ workspace_id: string | null; meta: string | null; status: string; name: string; source: string }>();
   if (!row || row.status !== "ready" || row.workspace_id !== ctx.workspaceId) return null;
-  const key = parseJson<{ thumbKey?: unknown }>(row.meta, {}).thumbKey;
+  const meta = parseJson<{ thumbKey?: unknown }>(row.meta, {});
+  const key = meta.thumbKey;
   if (typeof key !== "string" || !keyBelongsTo(key, ctx.workspaceId)) return null;
   const url = await signMediaUrl(env, key, { workspaceId: ctx.workspaceId, expiresIn: SIGNED_INPUT_TTL, absolute: true });
   const origin: ImageSource = row.source === "generated" ? "generated" : row.source === "team" ? "team" : "upload";
-  return { url: url.startsWith("http") ? url : new URL(url, env.PUBLIC_APP_URL).toString(), origin, key, name: `${row.name} (poster)` };
+  // Face detection of a video upload ran on this poster frame.
+  return { url: url.startsWith("http") ? url : new URL(url, env.PUBLIC_APP_URL).toString(), origin, key, name: `${row.name} (poster)`, face: faceResultFromMeta(meta) };
 }
 
 /** The reference video's frame at `atSec` as a signed picture URL (Remix shots without their own frame). */
@@ -220,6 +228,8 @@ export async function prepareJob(env: Env, ctx: JobContext, modelId: string): Pr
     if (ctx.spec.mature && input.media === "image") {
       const pic = await r2Picture(env, a.key);
       if (pic) Object.assign(ref, { url: pic.url, hash: pic.hash });
+      // Stored at upload; absent (or "unavailable") means preCheck detects again and fails closed if it cannot.
+      if (a.face) ref.face = a.face;
     }
     references.push(ref);
   }

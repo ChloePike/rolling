@@ -22,6 +22,9 @@ import {
   type SafetyVerdict,
   type VerdictCache,
   createSafetyGate,
+  detectUploadFaces,
+  FACE_DETECT_MODEL,
+  type FaceResult,
   type SafetyGate,
 } from "@rolling/core/safety";
 import { newId } from "@rolling/core/ids";
@@ -175,14 +178,32 @@ export async function r2Picture(env: Env, key: string): Promise<{ url: string; h
 }
 
 /**
+ * Face metadata of an upload (`assets.meta.faces`, D-005 / UP-4): from `lumina/face-detect` on the image, or on
+ * a video's poster frame. `status: "unavailable"` when detection could not run; such an upload is never
+ * treated as face-free: a mature run that uses it detects again and fails closed if it still cannot.
+ */
+export type StoredFaces =
+  | { status: "done"; count: number; maxConfidence: number; boxes?: FaceResult["boxes"]; apparentMinor: boolean | null; model: string; source: "image" | "poster"; at: number }
+  | { status: "unavailable"; reason: string; source: "image" | "poster"; at: number };
+
+/** The stored face metadata as a FaceResult for the safety checks (null unless detection ran). */
+export function faceResultFromMeta(meta: unknown): FaceResult | null {
+  const f = (meta as { faces?: Partial<StoredFaces> } | null)?.faces;
+  if (!f || f.status !== "done" || typeof f.count !== "number") return null;
+  return { faces: f.count, maxConfidence: typeof f.maxConfidence === "number" ? f.maxConfidence : 0, ...(f.boxes && { boxes: f.boxes }), apparentMinor: f.apparentMinor ?? null };
+}
+
+/**
  * Upload hook for the `media.process` consumer (M3): rates a ready asset and
  * stores `rating`, `rating_confidence`, `rating_model` and the derived
  * `mature` flag (D-005 visibility). Images are rated from their bytes, videos
- * from `meta.thumbKey` (the poster frame) when present. An upload that shows a
+ * from `meta.thumbKey` (the poster frame) when present. Uploads also get face
+ * detection on the same picture (`meta.faces`, see StoredFaces), which feeds the
+ * minor and real-person rules here and in later runs. An upload that shows a
  * hard-limit violation is marked `failed` (never usable as an input) and logged
  * with stage `upload`. Unrated (classifier down) leaves the columns untouched.
  */
-export async function rateAsset(env: Env, assetId: string): Promise<{ rating: string | null; blocked: boolean }> {
+export async function rateAsset(env: Env, assetId: string): Promise<{ rating: string | null; blocked: boolean; faces?: StoredFaces }> {
   const row = await env.DB.prepare("SELECT id, workspace_id, kind, source, r2_key, meta, created_by FROM assets WHERE id = ?").bind(assetId).first<{
     id: string;
     workspace_id: string | null;
@@ -203,10 +224,39 @@ export async function rateAsset(env: Env, assetId: string): Promise<{ rating: st
   const picture = pictureKey ? await r2Picture(env, pictureKey) : null;
   const deps = await safetyDeps(env);
   const source = row.source === "generated" ? "generated" : "upload";
+
+  // Face detection on uploads (generated media has no real face to protect; platform assets are curated).
+  let faces: StoredFaces | undefined;
+  let face: FaceResult | null = null;
+  const isUpload = row.source === "mine" || row.source === "team";
+  if (isUpload && (row.kind === "image" || pictureKey)) {
+    const faceSource = row.kind === "image" ? "image" : "poster";
+    const at = Date.now();
+    const detected = picture ? await detectUploadFaces(picture, deps) : ({ ok: false, note: "picture unavailable" } as const);
+    if (detected.ok) {
+      face = detected.value;
+      faces = {
+        status: "done",
+        count: face.faces,
+        maxConfidence: face.maxConfidence,
+        ...(face.boxes && { boxes: face.boxes }),
+        apparentMinor: face.apparentMinor ?? null,
+        model: FACE_DETECT_MODEL,
+        source: faceSource,
+        at,
+      };
+    } else {
+      faces = { status: "unavailable", reason: detected.note, source: faceSource, at };
+      console.warn(JSON.stringify({ msg: "safety: upload face detection unavailable", assetId, reason: detected.note }));
+    }
+    // Merge into the current meta (processing may have written since we read it).
+    await env.DB.prepare("UPDATE assets SET meta = json_set(COALESCE(meta, '{}'), '$.faces', json(?)) WHERE id = ?").bind(JSON.stringify(faces), assetId).run();
+  }
+
   const verdict = await rateMedia(
     row.kind === "image"
-      ? { kind: "image", source, ...(picture && { url: picture.url, hash: picture.hash }) }
-      : { kind: "video", source, frames: picture ? [picture.url] : [], ...(picture && { hash: picture.hash }) },
+      ? { kind: "image", source, face, ...(picture && { url: picture.url, hash: picture.hash }) }
+      : { kind: "video", source, face, frames: picture ? [picture.url] : [], ...(picture && { hash: picture.hash }) },
     deps,
   );
   const blocked = verdict.verdict === "block" && verdict.reasons.some((r) => HARD_LIMIT_CODES.has(r.code));
@@ -220,7 +270,7 @@ export async function rateAsset(env: Env, assetId: string): Promise<{ rating: st
   if (row.workspace_id && shouldLog(verdict)) {
     await logSafety(env, { id: `${assetId}:upload`, workspaceId: row.workspace_id, userId: row.created_by, stage: "upload", verdict });
   }
-  return { rating: rating?.rating ?? null, blocked };
+  return { rating: rating?.rating ?? null, blocked, ...(faces && { faces }) };
 }
 
 /**

@@ -112,6 +112,10 @@ export function imageReasons(a: ImageAssessment, opts: { mature: boolean; upload
     out.push({ code: 'MINOR_SEXUAL', detail: `${opts.label}: apparent minor, rating ${a.rating}${opts.mature ? ', mature run' : ''}` });
   }
   if (a.knownPerson && (sexual || opts.mature)) out.push({ code: 'REAL_PERSON_SEXUAL', detail: `${opts.label}: recognizable person, rating ${a.rating}` });
+  // Face-detect age estimates feed the minor rule too (any face under 18 on sexual media or a mature run).
+  if (opts.face?.apparentMinor && opts.face.faces > 0 && (sexual || opts.mature)) {
+    out.push({ code: 'MINOR_SEXUAL', detail: `${opts.label}: face detection estimates a minor${opts.mature ? ', mature run' : ''}` });
+  }
   const realFace = opts.upload && opts.face && opts.face.faces > 0 && opts.face.maxConfidence >= (opts.threshold ?? FACE_THRESHOLD) && a.photographic;
   if (realFace && opts.mature) out.push({ code: 'REAL_PERSON_SEXUAL', detail: `${opts.label}: uploaded photo of a real face on a mature run` });
   if (a.extremeViolence) out.push({ code: 'EXTREME_VIOLENCE', detail: `${opts.label}: extreme violence or gore` });
@@ -242,7 +246,11 @@ export async function preCheck(input: PreCheckInput, deps: SafetyDeps): Promise<
       for (const [i, ref] of images.entries()) {
         let face: FaceResult | null = null;
         // Face detection (the costliest check, ~$0.0013) only for uploaded photographs.
-        if (ref.source === 'upload' && rated.assessments[i]!.photographic) {
+        if (ref.source === 'upload' && ref.face) {
+          // Stored at upload (media processing): no second detection.
+          face = ref.face;
+          checks.push({ name: 'faces', status: 'pass', model: 'lumina/face-detect', cached: true, note: `${face.faces} face(s), stored at upload` });
+        } else if (ref.source === 'upload' && rated.assessments[i]!.photographic) {
           try {
             const key = `face:${ref.hash ?? (await sha256Hex(ref.url!))}`;
             const t0 = Date.now();
@@ -318,7 +326,7 @@ export async function postCheck(input: PostCheckInput, deps: SafetyDeps): Promis
  * limits visible in the media itself (an upload never blocks a run by itself;
  * the caller decides). Rating is null when the classifier is unavailable.
  */
-export async function rateMedia(media: SafetyOutput & { source?: 'upload' | 'generated' }, deps: SafetyDeps): Promise<SafetyVerdict> {
+export async function rateMedia(media: SafetyOutput & { source?: 'upload' | 'generated'; face?: FaceResult | null }, deps: SafetyDeps): Promise<SafetyVerdict> {
   const checks: CheckRecord[] = [];
   const { pictures, unframed } = picturesOf([media]);
   if (unframed > 0) checks.push({ name: 'vision', status: 'skipped', note: 'video without frames' });
@@ -326,8 +334,31 @@ export async function rateMedia(media: SafetyOutput & { source?: 'upload' | 'gen
   const rated = await rateImages(deps, pictures, '', checks);
   if (!rated) return verdictOf([], checks, null);
   const reasons: SafetyReason[] = [];
-  rated.assessments.forEach((a) => reasons.push(...imageReasons(a, { mature: false, upload: media.source === 'upload', label: media.source ?? 'media' })));
+  rated.assessments.forEach((a) => reasons.push(...imageReasons(a, { mature: false, upload: media.source === 'upload', face: media.face ?? null, label: media.source ?? 'media' })));
   return verdictOf(reasons, checks, maxRating(rated.assessments, rated.model));
+}
+
+/** Face detection of one picture for asset processing; `ok: false` when the detector is unavailable or answers badly. */
+export type FaceDetection = { ok: true; value: FaceResult; cached: boolean; costUsd?: number } | { ok: false; note: string };
+
+/**
+ * `lumina/face-detect` on an uploaded picture (an image, or a video's poster frame), for `assets.meta.faces`.
+ * Shares the verdict cache key with `preCheck` (`face:<content hash>`), so a run that uses the upload reuses it.
+ */
+export async function detectUploadFaces(picture: { url: string; hash?: string }, deps: SafetyDeps): Promise<FaceDetection> {
+  if (!deps.llm) return { ok: false, note: 'unavailable' };
+  try {
+    const key = `face:${picture.hash ?? (await sha256Hex(picture.url))}`;
+    let costUsd: number | undefined;
+    const { value, hit } = await cached(deps, key, async () => {
+      const res = await detectFaces(deps.llm!, picture.url, deps.newKey(), deps.visionTimeoutMs);
+      costUsd = res.costUsd;
+      return res.value;
+    });
+    return { ok: true, value, cached: hit, ...(costUsd !== undefined && { costUsd }) };
+  } catch (err) {
+    return { ok: false, note: errorNote(err) };
+  }
 }
 
 /** D-005 visibility: suggestive and explicit media are mature (blurred, never public, signed only for allowed viewers). */

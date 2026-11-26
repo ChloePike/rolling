@@ -180,7 +180,7 @@ test('UP-4 face detection on uploaded photos: an uploaded portrait gets a conten
   const up = await startUpload(req, baseURL, { filename: 'portrait.webp', contentType: ct, size: bytes.length });
   await putParts(req, baseURL, up.assetId, bytes, up.partSize, [1]);
   expect((await api(req, baseURL, 'POST', `/api/assets/uploads/${up.assetId}/complete`)).status()).toBe(200);
-  let asset: { status: string; rating: string | null; meta: Record<string, unknown> } | null = null;
+  let asset: { status: string; rating: string | null; meta: { faces?: { status: string; count?: number; boxes?: unknown[]; apparentMinor?: boolean | null; source?: string } } } | null = null;
   await expect
     .poll(async () => {
       asset = (await getJson<{ asset: typeof asset }>(req, `/api/assets/${up.assetId}`)).asset;
@@ -188,8 +188,13 @@ test('UP-4 face detection on uploaded photos: an uploaded portrait gets a conten
     }, { timeout: 90_000, intervals: [3000] })
     .not.toBeNull();
   testInfo.annotations.push({ type: 'asset', description: JSON.stringify(asset) });
-  const meta = asset!.meta;
-  expect(Object.keys(meta).some((k) => /face/i.test(k)), `face metadata on upload: meta=${JSON.stringify(meta)}`).toBe(true);
+  // lumina/face-detect ran during processing (D-005): count, boxes and the apparent-minor flag in meta.faces.
+  const faces = asset!.meta.faces;
+  expect(faces, `face metadata on upload: meta=${JSON.stringify(asset!.meta)}`).toBeTruthy();
+  expect(faces!.status).toBe('done');
+  expect(faces!.source).toBe('image');
+  expect(faces!.count ?? 0).toBeGreaterThanOrEqual(1);
+  expect('apparentMinor' in faces!).toBe(true);
 });
 
 test('UP-5 background download: Download in the asset viewer goes through the transfer queue and saves the file', async ({ page, context, baseURL }, testInfo) => {

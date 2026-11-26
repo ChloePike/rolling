@@ -2,6 +2,7 @@
  * D-005 hard-limit safety layer: shared types. Nothing here is configurable by
  * any setting (plan, preference, workspace, environment).
  */
+import type { FaceResult } from './llm';
 
 /** Why a check blocks. Hard-limit codes count toward the workspace review flag. */
 export type SafetyCode =
@@ -85,6 +86,8 @@ export interface SafetyReference {
   caption?: string;
   /** Content hash (hex) for the verdict cache. */
   hash?: string;
+  /** Face metadata stored when the upload was processed (`assets.meta.faces`); detection runs live when absent. */
+  face?: FaceResult;
 }
 
 /** The parts of a catalog model the checks need. */
