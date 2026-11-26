@@ -9,7 +9,7 @@ import { account, env, SAMPLE_OPS, seedProject, shot, watchErrors } from './supp
 test.skip(!env.inboxToken, 'TEST_INBOX_TOKEN (or PW_TEST_INBOX_TOKEN_FILE) is required');
 
 const PAGES = ['/', '/create/quick', '/create/remix', '/create/avatar', '/create/character', '/templates', '/assets', '/assets/public', '/activity', '/upgrade', '/settings/account', '/settings/preferences', '/settings/billing', '/settings/team', '/settings/notifications', 'CANVAS'];
-const SKIP = /Log out|Delete|Remove|Cancel plan|Switch to|Buy |Continue with|Send feedback|Top up \$|Export MP4|Discard|^Account$/;
+const SKIP = /Skip to content|Log out|Delete|Remove|Cancel plan|Switch to|Buy |Continue with|Send feedback|Top up \$|Export MP4|Discard|^Account$/;
 const NOT_IMPLEMENTED = /not implemented|coming soon|todo|lorem ipsum|\bmock\b/i;
 const AXE = process.env.PW_AXE_PATH ?? '';
 
@@ -61,11 +61,10 @@ for (const path of PAGES) {
     const controls = await tag(page);
     const dead: string[] = [];
     const notImpl: string[] = [];
-    for (const c of controls) {
-      if (SKIP.test(c.name)) continue;
-      if (page.url() !== home) await open(page, path, canvasPath).then(() => tag(page));
+    const tryControl = async (c: { id: number; name: string }, attempt: number): Promise<void> => {
+      if (page.url() !== home || attempt > 0) await open(page, path, canvasPath).then(() => tag(page));
       const el = page.locator(`[data-crawl="${c.id}"]`);
-      if (!(await el.isVisible().catch(() => false)) || !(await el.isEnabled().catch(() => false))) continue;
+      if (!(await el.isVisible().catch(() => false)) || !(await el.isEnabled().catch(() => false))) return;
       await page.evaluate(() => {
         const w = window as unknown as { __m: number; __o?: MutationObserver };
         w.__m = 0;
@@ -79,16 +78,25 @@ for (const path of PAGES) {
       let downloaded = false;
       const onDl = () => (downloaded = true);
       page.once('download', onDl);
-      await el.click({ timeout: 5000 }).catch(() => undefined);
+      // A click blocked by a layer left open by an earlier control is retried once on a fresh page.
+      const clicked = await el.click({ timeout: 5000 }).then(() => true, () => false);
+      if (!clicked && attempt === 0) {
+        page.off('download', onDl);
+        return tryControl(c, 1);
+      }
       await page.waitForTimeout(700);
       page.off('download', onDl);
       const muts = await page.evaluate(() => (window as unknown as { __m: number }).__m);
       const focus1 = await page.evaluate(() => document.activeElement?.outerHTML.slice(0, 80) ?? '');
-      if (muts === 0 && requests === req0 && page.url() === url0 && !downloaded && focus0 === focus1) dead.push(c.name || `#${c.id}`);
+      if (muts === 0 && requests === req0 && page.url() === url0 && !downloaded && focus0 === focus1) dead.push(`${c.name || `#${c.id}`}${clicked ? '' : ' (not clickable)'}`);
       const body = await page.locator('[role="status"], [role="alert"], [role="dialog"]').allInnerTexts().catch(() => []);
       if (body.some((t) => NOT_IMPLEMENTED.test(t))) notImpl.push(`${c.name}: ${body.find((t) => NOT_IMPLEMENTED.test(t))!.slice(0, 80)}`);
       await page.keyboard.press('Escape').catch(() => undefined);
       await page.keyboard.press('Escape').catch(() => undefined);
+    };
+    for (const c of controls) {
+      if (SKIP.test(c.name)) continue;
+      await tryControl(c, 0);
     }
     await shot(page, testInfo, 'end');
     testInfo.annotations.push({ type: 'controls', description: `${controls.length} controls, dead: ${JSON.stringify(dead)}, notImpl: ${JSON.stringify(notImpl)}` });

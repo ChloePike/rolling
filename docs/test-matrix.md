@@ -41,7 +41,7 @@ Sources: **PRD** = `docs/PRD.md`, **M*n*** = `docs/milestones.md`, **CF*n*** = `
 | Resolution caps (API) | Video caps: Starter 720p, Plus 1080p, Pro 4K. Locked rows are `resolution_locked` with `lowestPlan` and nothing to start. MiniMax 768p needs Plus. Unknown labels are refused. | D-006 | GATE-4 |
 | Resolution caps (UI) | For Starter, 1080p is shown locked with “Available on Plus” | D-006, HO | GATE-5 |
 | Team required | Inviting without Team returns `402 TEAM_REQUIRED {currentPlan}`. The UI points to Team. | D-013 | GATE-6 |
-| Seats, roles, member limits | Inviting past the purchased seats returns `SEATS_REQUIRED {seats, used, needed}`. The invite email’s link is accepted. A per-member monthly limit refuses the start with `MEMBER_LIMIT_REACHED`. A viewer can’t spend (`FORBIDDEN`) or edit (403) but can read. Lowering seats below use returns `SEATS_IN_USE`. | D-013, PRD 7 | GATE-7 |
+| Seats, roles, member limits | Inviting past the purchased seats returns `SEATS_REQUIRED {seats, used, needed}`. The invite email’s link is accepted. A per-member monthly limit refuses the start with `MEMBER_LIMIT_REACHED`. A viewer can’t quote or spend (`403 FORBIDDEN`) or edit (403) but can read. Lowering seats below use returns `SEATS_IN_USE`. | D-013, PRD 7 | GATE-7 |
 | Team settings | Seats panel, roles, invite dialog sends | HO Settings → Team | GATE-8 |
 
 ## Billing and credits
@@ -121,7 +121,8 @@ Sources: **PRD** = `docs/PRD.md`, **M*n*** = `docs/milestones.md`, **CF*n*** = `
 | Assemble | Script rows become shots in order, lines become captions, and the duration equals the script | M7 | EDIT-1 |
 | Clip ops | Trim, speed, fade and dissolve persist. A stale revision gets 409; an invalid speed gets 4xx. | M7 | EDIT-2 |
 | Editor UI | Timeline canvas, monitor timecode, placeholder clips with Generate. The inspector speed control persists. | HO Editor | EDIT-3 |
-| Export | Three 1 s shots → Export 720p via the FFmpeg container → done → Download `.mp4` | M7, CF11 | EDIT-4 |
+| Export | Three 1 s shots → Export 720p via the FFmpeg container → done → Download `.mp4`. Generated clips show their controls (transform, speed, volume, fade) in the inspector. | M7, CF11 | EDIT-4 |
+| Non-member Generate in the editor | A placeholder clip’s Generate opens the join paywall (“Pick a plan to generate”), shows no saved card and starts nothing | D-007 | EDIT-5 |
 
 ## Uploads and downloads
 
@@ -141,7 +142,7 @@ Sources: **PRD** = `docs/PRD.md`, **M*n*** = `docs/milestones.md`, **CF*n*** = `
 | Mature hidden | Signed-out and member counts match, and no mature public assets appear | D-005 | LIB-2 |
 | Public library page | Grid images load, “Show more” loads more, search works | HO | LIB-3 |
 | Assets page, characters | An upload appears. Kind filter and search narrow the list. Characters is empty for a new account; nav goes to Characters. | HO | LIB-4 |
-| Templates | Every template has a cover that loads. Search works. Preview → “Use template” creates a canvas with nodes and spends nothing. | HO, owner | LIB-5 |
+| Templates | Every template has a cover that loads. Search works. Preview → “Use template” (Quick Create, then “Open on canvas”) creates a canvas with nodes and spends nothing. | HO, owner | LIB-5 |
 | Inspiration grid | Cards show covers and tabs switch | HO | LIB-6 |
 | Send to canvas | “Add to canvas” opens the canvas picker. Picking a canvas adds a node; “New canvas” creates one. | HO | LIB-7 |
 

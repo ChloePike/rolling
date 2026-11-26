@@ -170,9 +170,10 @@ test('UP-4 face detection on uploaded photos: an uploaded portrait gets a conten
   await account(context, baseURL, 'face');
   const req = context.request;
   // A PoseWear portrait (a real face) from the public library.
-  const pub = await getJson<{ items: Array<{ url: string; name: string }> }>(req, '/api/assets?scope=public&q=portrait&first=1');
-  test.skip(pub.items.length === 0, 'no public portrait to use');
-  const img = await req.get(new URL(pub.items[0]!.url, baseURL).href);
+  const g = await req.post('/api/graphql', { data: { query: '{ publicItems(category: "portrait", first: 1) { edges { node { thumbUrl angles { url } } } } }' } });
+  const node = ((await g.json()) as { data: { publicItems: { edges: Array<{ node: { thumbUrl: string; angles: Array<{ url: string }> | null } }> } } }).data.publicItems.edges[0]?.node;
+  test.skip(!node, 'no public portrait to use');
+  const img = await req.get(new URL(node!.angles?.[0]?.url ?? node!.thumbUrl, baseURL).href);
   expect(img.status()).toBe(200);
   const bytes = await img.body();
   const ct = img.headers()['content-type'] ?? 'image/webp';
