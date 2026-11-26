@@ -1,3 +1,4 @@
+import { posterUrl } from './backend';
 import { cx, Dialog, staggerStyle } from '@rolling/ui';
 import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
 import { FormattedMessage, FormattedNumber, useIntl, type IntlShape } from 'react-intl';
@@ -164,6 +165,7 @@ export function ResultViewerContent({
                 ref={videoRef}
                 className={cx('rl-reveal', styles.mediaEl)}
                 src={src}
+                poster={posterUrl(src)}
                 muted={muted}
                 playsInline
                 onTimeUpdate={(e) => setPos(e.currentTarget.currentTime)}

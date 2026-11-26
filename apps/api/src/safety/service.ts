@@ -261,7 +261,13 @@ export async function rateAsset(env: Env, assetId: string): Promise<{ rating: st
   );
   const blocked = verdict.verdict === "block" && verdict.reasons.some((r) => HARD_LIMIT_CODES.has(r.code));
   const rating = verdict.rating ?? null;
-  if (rating) {
+  const pending = (meta as { reviewPending?: unknown }).reviewPending === true;
+  if (rating && pending) {
+    // A generated clip that waited for review (D-005): rated now, visibility follows the rating as at `store`.
+    await env.DB.prepare("UPDATE assets SET rating = ?, rating_confidence = ?, rating_model = ?, mature = ?, meta = json_remove(meta, '$.reviewPending') WHERE id = ?")
+      .bind(rating.rating, rating.confidence, rating.model, isMatureRating(rating.rating) ? 1 : 0, assetId)
+      .run();
+  } else if (rating) {
     await env.DB.prepare("UPDATE assets SET rating = ?, rating_confidence = ?, rating_model = ?, mature = CASE WHEN ? THEN 1 ELSE mature END WHERE id = ?")
       .bind(rating.rating, rating.confidence, rating.model, isMatureRating(rating.rating) ? 1 : 0, assetId)
       .run();

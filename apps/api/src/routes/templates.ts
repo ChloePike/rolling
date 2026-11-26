@@ -14,7 +14,7 @@ import { projectAccess, projectRoom, requireAuth, requireEditor, roomCaller } fr
 import { ApiError } from "../lib/errors";
 import { isRoomError, roomFailure } from "../lib/room";
 import { validate } from "../lib/validate";
-import { signMediaUrl } from "../lib/mediaUrls";
+import { reviewPending, signMediaUrl } from "../lib/mediaUrls";
 import { publicMediaUrl } from "./media";
 
 export interface TemplateRow {
@@ -129,14 +129,15 @@ export function builtinCover(env: Env, row: TemplateRow, meta: CoverMeta): { cov
 
 async function previewAssetUrl(env: Env, row: TemplateRow): Promise<string | null> {
   if (!row.preview_asset_id) return null;
-  const a = await env.DB.prepare("SELECT r2_key, workspace_id, mature, status FROM assets WHERE id = ?").bind(row.preview_asset_id).first<{
+  const a = await env.DB.prepare("SELECT r2_key, workspace_id, mature, status, meta FROM assets WHERE id = ?").bind(row.preview_asset_id).first<{
     r2_key: string;
     workspace_id: string | null;
     mature: number;
     status: string;
+    meta: string;
   }>();
-  // Mature outputs are never template covers (D-005).
-  if (!a || a.mature || a.status !== "ready") return null;
+  // Mature and review-pending outputs are never template covers (D-005).
+  if (!a || a.mature || a.status !== "ready" || reviewPending(a)) return null;
   return signMediaUrl(env, a.r2_key, { workspaceId: a.workspace_id ?? "_", expiresIn: 3600 });
 }
 

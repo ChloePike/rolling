@@ -79,6 +79,16 @@ function ratingOf(v: unknown): AssetRating | null {
   return v === "safe" || v === "suggestive" || v === "explicit" ? v : null;
 }
 
+/**
+ * D-005: a generated clip whose stills could not be made (container down) is
+ * unrated and waits for review (`meta.reviewPending`): its owner can use it,
+ * but it stays off every public surface (share links, templates, project
+ * thumbnails, profiles) until the re-queue rates it.
+ */
+export function reviewPending(row: Pick<AssetRow, "meta">): boolean {
+  return assetMeta(row).reviewPending === true;
+}
+
 export function assetMeta(row: Pick<AssetRow, "meta">): Record<string, unknown> {
   try {
     const v: unknown = JSON.parse(row.meta);

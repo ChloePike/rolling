@@ -11,7 +11,7 @@
 import type { GraphState } from "@rolling/core/graph";
 import { newId } from "@rolling/core/ids";
 import type { ProjectRow } from "./access";
-import { assetMeta, mediaUrlFor, type AssetRow } from "./mediaUrls";
+import { assetMeta, mediaUrlFor, reviewPending, type AssetRow } from "./mediaUrls";
 
 export const SHARE_URL_TTL_SECONDS = 3600;
 
@@ -69,7 +69,8 @@ async function loadAssets(env: Env, ids: string[]): Promise<Map<string, AssetRow
     const res = await env.DB.prepare(`SELECT * FROM assets WHERE id IN (${chunk.map(() => "?").join(",")})`).bind(...chunk).all<AssetRow>();
     rows.push(...res.results);
   }
-  return new Map(rows.map((r) => [r.id, r]));
+  // Review-pending clips (unrated, D-005) never leave through a share: treated as mature here.
+  return new Map(rows.map((r) => [r.id, reviewPending(r) ? { ...r, mature: 1 } : r]));
 }
 
 function referencedAssetIds(params: Record<string, unknown>): string[] {

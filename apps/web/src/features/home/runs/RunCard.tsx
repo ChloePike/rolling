@@ -1,7 +1,7 @@
 import { cx } from '@rolling/ui';
 import { useEffect, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
-import { assetMediaUrl, isMockApi } from '@/features/overlays/backend';
+import { assetMediaUrl, isMockApi, posterUrl } from '@/features/overlays/backend';
 import { PromptIcon } from '@/features/prompt';
 import { clock, isActive, remainingSeconds, type HomeRunCard } from './model';
 import styles from './RunCard.module.css';
@@ -101,6 +101,7 @@ export function RunCard({ card, actions, index }: { card: HomeRunCard; actions: 
               key={media[0]}
               className={cx(styles.video, 'rl-reveal')}
               src={assetMediaUrl(media[0]!)}
+              poster={posterUrl(assetMediaUrl(media[0]!))}
               muted
               playsInline
               loop

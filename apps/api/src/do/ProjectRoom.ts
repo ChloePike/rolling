@@ -1225,7 +1225,7 @@ export class ProjectRoom extends DurableObject<Env> {
       .slice(0, 30);
     if (!candidates.length) return null;
     const rows = await this.env.DB.prepare(
-      `SELECT id, kind, r2_key, meta, mature FROM assets WHERE id IN (${candidates.map(() => "?").join(",")}) AND mature = 0 AND status IN ('ready','processing')`,
+      `SELECT id, kind, r2_key, meta, mature FROM assets WHERE id IN (${candidates.map(() => "?").join(",")}) AND mature = 0 AND status IN ('ready','processing') AND json_extract(meta, '$.reviewPending') IS NULL`,
     )
       .bind(...candidates)
       .all<{ id: string; kind: string; r2_key: string; meta: string; mature: number }>();

@@ -1,3 +1,4 @@
+import { posterUrl } from '@/features/overlays/backend';
 import type { CSSProperties } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import type { FeedItem, MediaRun, ScriptDraft } from '../types';
@@ -74,7 +75,7 @@ function Media({
         <div className={styles.tiles} style={{ gridTemplateColumns: item.tiles.length > 1 ? '1fr 1fr' : '1fr' }}>
           {item.tiles.map((t, i) => (
             <div key={i} className={styles.tile} style={{ aspectRatio: item.aspect, background: t.tone }}>
-              {t.src ? (item.video ? <video className={styles.tileMedia} src={t.src} muted playsInline preload="metadata" /> : <img className={styles.tileMedia} src={t.src} alt="" />) : null}
+              {t.src ? (item.video ? <video className={styles.tileMedia} src={t.src} poster={posterUrl(t.src)} muted playsInline preload="metadata" /> : <img className={styles.tileMedia} src={t.src} alt="" />) : null}
               {t.label && <span className={styles.tileLabel}>{t.label}</span>}
               {!running && item.video && (
                 <span className={styles.play}>

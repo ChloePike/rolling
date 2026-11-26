@@ -442,6 +442,8 @@ Job error codes (run item / job `errorCode`, node `job.failed.reason`; the hold 
 - `safety_unavailable` — a classifier failed or timed out on a mature run (fail closed). Non-mature runs continue when the rules pass; the outage is logged.
 - `safety_review` — mature job of a flagged workspace.
 
+Video outputs without a provider poster: `store` takes stills from the stored clip (FfmpegRenderer `/frames` at 0.5 s and the midpoint; `meta.thumbKey` = `gen/<job>/<i>.frame-<ms>.png`, `meta.posterSource: "frames"`) for the poster, the post-check and the rating. Container unavailable → the asset is registered unrated with `meta.reviewPending: true` and `meta.processing: "pending"` (mature runs keep `mature = 1`; non-mature clips stay usable by their owner but never reach share links, template covers, project thumbnails or profiles) until the media re-queue rates it (D-005). `GET /api/media/private/:assetId?variant=poster` redirects to the asset's poster (`meta.thumbKey`; images: the image), 404 when a video has none.
+
 Content rating: every generated output gets `assets.rating` (`safe | suggestive | explicit`), `rating_confidence`, `rating_model`; `assets.mature` follows the rating (`suggestive`/`explicit` → 1), or the run's mature flag when unrated. Share links, public surfaces and the media signer read `assets.mature`, so they follow the rating. Versions store it in the ProjectRoom `node_versions.rating` column (also kept in `output.rating`); share snapshots drop nodes whose active version is `suggestive`/`explicit` and project thumbnails skip them, even before the asset row is marked mature.
 
 Hooks for other areas (no messages needed; call them):

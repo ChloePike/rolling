@@ -52,17 +52,22 @@ async function processImage(env: Env, row: AssetRow, meta: Record<string, unknow
 }
 
 /** POSTs JSON to the FFmpeg container; `ContainerUnavailable` when it is off, unreachable or not deployed. */
-export async function container(env: Env, path: string, body: unknown): Promise<Response> {
+export async function container(env: Env, path: string, body: unknown, timeoutMs = CONTAINER_TIMEOUT_MS): Promise<Response> {
   if (env.MEDIA_CONTAINER === "off") throw new ContainerUnavailable("MEDIA_CONTAINER=off");
   let res: Response;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const stub = env.FFMPEG.get(env.FFMPEG.idFromName("media"));
     res = await Promise.race([
       stub.fetch(new Request(`http://container${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("container timeout")), CONTAINER_TIMEOUT_MS)),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("container timeout")), timeoutMs);
+      }),
     ]);
   } catch (err) {
     throw new ContainerUnavailable(String(err));
+  } finally {
+    clearTimeout(timer);
   }
   if (res.status === 501 || res.status === 502 || res.status === 503) throw new ContainerUnavailable(`container answered ${res.status}`);
   if (!res.ok) throw new Error(`container ${path} failed: ${res.status}`);

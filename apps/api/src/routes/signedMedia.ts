@@ -7,13 +7,15 @@
  *
  * `GET /api/media/private/:assetId` is a convenience for signed-in clients: it
  * checks access and redirects (302) to a signed URL. It never carries bytes.
+ * `?variant=poster`: the asset's poster/thumbnail (`meta.thumbKey`: a video's
+ * provider poster or a still taken from the clip; an image itself), 404 when none.
  */
 import { Hono } from "hono";
-import { verifyMediaSignature } from "@rolling/core/media";
+import { keyBelongsTo, verifyMediaSignature } from "@rolling/core/media";
 import type { AppEnv } from "../env";
 import { membershipFor, matureAllowedIn, requireAuth } from "../lib/access";
 import { errorResponse } from "../lib/errors";
-import { mediaSigningKey, mediaUrlFor } from "../lib/mediaUrls";
+import { assetMeta, mediaSigningKey, mediaUrlFor } from "../lib/mediaUrls";
 import { visibleAsset } from "./assets";
 import { readShare } from "../lib/share";
 import { serveR2 } from "../lib/serveR2";
@@ -78,7 +80,13 @@ export const privateMedia = new Hono<AppEnv>().get("/:assetId", async (c) => {
   const row = await visibleAsset(c.env, auth, c.req.param("assetId"));
   if (!row || row.status === "uploading") return errorResponse(c, 404, "NOT_FOUND", "Not found");
   const m = membershipFor(auth, row.workspace_id);
-  const signed = await mediaUrlFor(c.env, { key: row.r2_key, workspaceId: row.workspace_id, mature: row.mature === 1 }, { mayViewMature: m ? matureAllowedIn(auth, m) : auth.matureAllowed });
+  let key = row.r2_key;
+  if (c.req.query("variant") === "poster") {
+    const thumb = assetMeta(row).thumbKey;
+    if (typeof thumb === "string" && (row.workspace_id === null || keyBelongsTo(thumb, row.workspace_id))) key = thumb;
+    else if (row.kind !== "image") return errorResponse(c, 404, "NOT_FOUND", "Not found");
+  }
+  const signed = await mediaUrlFor(c.env, { key, workspaceId: row.workspace_id, mature: row.mature === 1 }, { mayViewMature: m ? matureAllowedIn(auth, m) : auth.matureAllowed });
   if (!signed) return errorResponse(c, 404, "NOT_FOUND", "Not found");
   return c.redirect(signed, 302);
 });

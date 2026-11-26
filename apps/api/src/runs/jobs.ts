@@ -19,7 +19,7 @@ import { isMatureRating, type FaceResult, type SafetyOutput, type SafetyReferenc
 import { jobPostCheck, jobPreCheck, referenceSource } from "../safety/pipeline";
 import { faceResultFromMeta, pictureDataUrl, r2Picture, sha256OfBytes } from "../safety/service";
 import { getItem, getJob, getRun, parseJson, refreshRun, type RunOptions } from "./store";
-import { ensureFrame } from "./frames";
+import { ensureFrame, extractFrames } from "./frames";
 import { loadAccount } from "../auth/workspace";
 
 export interface GenerateParams {
@@ -423,7 +423,23 @@ export async function storeOutputs(env: Env, ctx: JobContext, status: JobStatus,
           console.warn(JSON.stringify({ msg: "runs: poster failed", jobId: ctx.jobId, error: String(err) }));
         }
       }
-      review.push({ kind: "video", frames: frame ? [frame] : [], hash });
+      const frames = frame ? [frame] : [];
+      if (!frame) {
+        // No poster from the provider (e.g. the spicy image-to-video models): stills from the stored clip itself, for the
+        // poster, the hard-limit check and the rating. Container down → the clip waits for review (D-005, below).
+        const got = await outputFrames(env, ctx, key, `${base}/${i}`);
+        if (got) {
+          for (const f of got) {
+            written.push(f.key);
+            const pic = await pictureDataUrl(env, f.bytes, "image/png");
+            if (pic) frames.push(pic);
+          }
+          meta.thumbKey = got[0]!.key;
+          meta.posterSource = "frames";
+        }
+        if (!got || frames.length === 0) Object.assign(meta, { processing: "pending", reviewPending: true });
+      }
+      review.push({ kind: "video", frames, hash });
     }
     if (ctx.spec.kind === "video" && ctx.spec.seconds) meta.durationSec = ctx.spec.seconds;
     files.push({ key, meta, size: file.body.byteLength, contentType: file.contentType });
@@ -435,7 +451,8 @@ export async function storeOutputs(env: Env, ctx: JobContext, status: JobStatus,
     fail(checked.error.code, checked.error.message);
   }
   const rating = checked.verdict.rating ?? null;
-  // D-005 visibility follows the rating; unrated outputs keep the run's mature flag.
+  // D-005 visibility follows the rating; unrated outputs keep the run's mature flag (review-pending clips also stay off
+  // public surfaces until the media re-queue rates them, `reviewPending`).
   const mature = rating ? isMatureRating(rating.rating) : ctx.spec.mature;
   const assetIds: string[] = [];
   for (const [i, f] of files.entries()) {
@@ -464,6 +481,27 @@ export async function storeOutputs(env: Env, ctx: JobContext, status: JobStatus,
     assetIds.push(assetId);
   }
   return { assetIds, kind: ctx.spec.kind, rating };
+}
+
+/** Frame extraction budget per output: the `store` step has 2 minutes for download, frames and checks. */
+const OUTPUT_FRAMES_TIMEOUT_MS = 40_000;
+const OUTPUT_FRAME_WIDTH = 640;
+
+/** Seconds of a clip to take stills at: 0.5 s in and the midpoint (one still for very short clips). */
+export function outputFrameTimes(durationSec: number | undefined): number[] {
+  const d = durationSec && durationSec > 0 ? durationSec : 5;
+  const first = Math.round(Math.min(0.5, d / 2) * 100) / 100;
+  const mid = Math.round((d / 2) * 100) / 100;
+  return mid - first >= 0.25 ? [first, mid] : [first];
+}
+
+/** Stills of a stored output clip (FfmpegRenderer `/frames`), or null when the container can't make them. */
+async function outputFrames(env: Env, ctx: JobContext, videoKey: string, prefix: string) {
+  const times = outputFrameTimes(ctx.spec.seconds);
+  return extractFrames(env, { r2_key: videoKey, workspace_id: ctx.workspaceId }, times, (at) => `${prefix}.frame-${Math.round(at * 1000)}.png`, {
+    width: OUTPUT_FRAME_WIDTH,
+    timeoutMs: OUTPUT_FRAMES_TIMEOUT_MS,
+  });
 }
 
 /** Credits actually charged: the provider's cost through creditsFor (D-006), else the quoted price for the model used. */

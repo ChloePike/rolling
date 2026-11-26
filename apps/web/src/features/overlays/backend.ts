@@ -214,6 +214,15 @@ export function assetMediaUrl(assetId: string): string {
   return `/api/media/private/${encodeURIComponent(assetId)}${dev ? `?devUser=${encodeURIComponent(dev)}` : ''}`;
 }
 
+/**
+ * Poster of a video served through `assetMediaUrl` (`?variant=poster`: the provider's poster or a still taken from
+ * the clip). Undefined for any other URL, so `<video poster>` is simply left out.
+ */
+export function posterUrl(src: string | null | undefined): string | undefined {
+  if (!src || !src.startsWith('/api/media/private/')) return undefined;
+  return `${src}${src.includes('?') ? '&' : '?'}variant=poster`;
+}
+
 /* ---------- Resume after checkout ---------- */
 
 /**
