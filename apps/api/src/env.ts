@@ -27,6 +27,8 @@ interface RollingSecrets {
   RESEND_API_KEY?: string;
   /** Bearer token for `GET /api/test/inbox` (only with EMAIL_PROVIDER=test-inbox, never production). */
   TEST_INBOX_TOKEN?: string;
+  /** Bearer token for owner-only `POST /api/admin/grant` (comp plans and credits); the route is 404 without it. */
+  ADMIN_TOKEN?: string;
   /** `off` silences the development email log (not a secret; optional). */
   EMAIL_LOG?: string;
   // Media (M3, D-008). HMAC key for signed private media URLs; required outside development.
