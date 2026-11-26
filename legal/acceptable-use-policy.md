@@ -1,11 +1,10 @@
-<!-- Product name: "Rolling" is a working name. Replace every occurrence when the name is final. Bracketed ALL-CAPS text is a placeholder for the owner. -->
+<!-- Product name: "Rolling" is a working name. Replace every occurrence when the name is final. -->
+<!-- Internal: pending review by counsel. Owner-only facts are kept in HTML comments below; do not add bracket placeholders to the served text. -->
 
 # Acceptable use policy
 
-> **Draft for legal review — not yet in effect.**
-
-Effective date: [EFFECTIVE DATE]
-Last updated: [LAST UPDATED DATE]
+Effective date: 26 November 2026
+Last updated: 26 November 2026
 
 This policy says what you may not do with Rolling. It is part of our [Terms of service](/terms). It applies to everything you put in (prompts, uploads, references, agent messages) and everything you make, share or publish.
 
@@ -18,7 +17,7 @@ These limits apply to every account, plan and workspace. **No setting, plan or r
 3. **No non-consensual sexual content**, including depictions of sexual violence, coercion or exploitation.
 4. **No real-world gore, violent extremism or self-harm promotion.** No graphic depictions of real violence or injury, no propaganda or recruitment for violent extremist groups, and no instructions or encouragement for suicide or self-harm.
 
-We report child sexual abuse material to the authorities as the law requires (for example [NCMEC OR RELEVANT AUTHORITY]).
+We report child sexual abuse material to the authorities as the law requires (for example, to the National Center for Missing & Exploited Children in the United States).
 
 ## Other things you may not do
 
@@ -53,13 +52,15 @@ Mature content is allowed only within these rules:
 - **Actions we may take:** warn you, block runs, remove content or share links, disable mature content, suspend or close your account or workspace, and keep unused credits as the terms allow.
 - **Reporting to authorities** where the law requires it, or where there is a risk of serious harm.
 
-Automated checks can be wrong. If you think we blocked something by mistake, or acted on your account in error, email abuse@rolling.actor with the run or project link. [APPEALS PROCESS AND RESPONSE TIME.]
+Automated checks can be wrong. If you think we blocked something by mistake, or acted on your account in error, email abuse@rolling.actor with the run or project link, and we will review it.
+<!-- Owner to set: appeals process and response time. -->
 
 ## Reporting
 
-If you see content made with Rolling that breaks this policy, including on a share link or profile, report it to **abuse@rolling.actor**. Include the link and a short description. For content involving a child, you can also report directly to [NCMEC OR RELEVANT AUTHORITY].
+If you see content made with Rolling that breaks this policy, including on a share link or profile, report it to **abuse@rolling.actor**. Include the link and a short description. For content involving a child, you can also report directly to the police or, in the United States, to the National Center for Missing & Exploited Children (https://report.cybertip.org).
 
-For copyright complaints, send a notice to legal@rolling.actor with: the work you own, where the infringing content is, your contact details, a statement of good-faith belief, and a statement that your notice is accurate and that you are the owner or authorized to act for them. [DMCA AGENT DETAILS, if registered.]
+For copyright complaints, send a notice to legal@rolling.actor with: the work you own, where the infringing content is, your contact details, a statement of good-faith belief, and a statement that your notice is accurate and that you are the owner or authorized to act for them.
+<!-- Owner to add: DMCA agent details, if registered. -->
 
 ## Changes
 

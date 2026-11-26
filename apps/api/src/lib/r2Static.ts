@@ -19,6 +19,7 @@ const CONTENT_TYPES: Record<string, string> = {
   ico: "image/x-icon",
   woff2: "font/woff2",
   txt: "text/plain; charset=utf-8",
+  xml: "application/xml; charset=utf-8",
 };
 
 export const WEB_PREFIX = "_web";
@@ -52,6 +53,11 @@ export async function serveSpaFromR2(bucket: R2Bucket, request: Request): Promis
 
   let object = await bucket.get(`${WEB_PREFIX}/${path}`);
   let servedPath = path;
+  // Build-time static pages (`/privacy` → `privacy.html`, apps/web/scripts/prerender-legal.mjs), as Workers assets do.
+  if (!object && !/\.[a-z0-9]+$/i.test(path)) {
+    object = await bucket.get(`${WEB_PREFIX}/${path}.html`);
+    if (object) servedPath = `${path}.html`;
+  }
   // SPA fallback: unknown paths without a file extension get index.html.
   if (!object && !/\.[a-z0-9]+$/i.test(path)) {
     object = await bucket.get(`${WEB_PREFIX}/index.html`);

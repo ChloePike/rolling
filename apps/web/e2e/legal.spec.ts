@@ -22,7 +22,7 @@ test.describe('legal pages', () => {
       await openApp(page, d.path);
       await expect(page).toHaveURL(new RegExp(`${d.path}$`));
       await expect(page.getByRole('heading', { level: 1 })).toHaveText(d.title);
-      await expect(page.getByRole('note')).toContainText('Draft for legal review — not yet in effect.');
+      await expect(page.getByText('Effective date: 26 November 2026').or(page.getByText('Last updated: 26 November 2026')).first()).toBeVisible();
       await expect(page).toHaveTitle(`${d.title} · Rolling`);
       const nav = page.getByRole('navigation', { name: 'Legal' });
       await expect(nav.getByRole('link', { name: d.nav })).toHaveAttribute('aria-current', 'page');
@@ -36,7 +36,7 @@ test.describe('legal pages', () => {
     await toc.getByRole('link', { name: 'Your rights' }).click();
     await expect(page).toHaveURL(/\/privacy#your-rights$/);
     await expect(page.locator('#your-rights')).toBeInViewport();
-    await expect(page.locator('[data-placeholder]').first()).toBeVisible();
+    await expect(page.locator('[data-placeholder]')).toHaveCount(0);
     await page.locator('article').getByRole('link', { name: 'Subprocessors' }).first().click();
     await expect(page).toHaveURL(/\/subprocessors$/);
     await expect(page.getByRole('table').first()).toBeVisible();

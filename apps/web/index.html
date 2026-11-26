@@ -43,9 +43,36 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <meta name="application-name" content="Rolling" />
     <title>Rolling</title>
+    <meta name="description" content="Rolling is a video studio for creators and small brand teams: describe a video, an agent plans the shots on a canvas, models generate images, video and voice, and you edit and export the cut." />
+    <link rel="canonical" href="https://rolling.actor/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Rolling" />
+    <meta property="og:title" content="Rolling" />
+    <meta property="og:description" content="A video studio for creators and small brand teams. Describe a video; an agent plans the shots; models generate them; you edit and export." />
+    <meta property="og:url" content="https://rolling.actor/" />
+    <meta property="og:image" content="https://rolling.actor/icons/app-icon-512.png" />
+    <!-- The static description below is for visitors and crawlers without JavaScript; with scripts on it stays hidden and React replaces it on mount. -->
+    <script>document.documentElement.classList.add('js');</script>
+    <style>
+      .js #static-home{display:none}
+      #static-home{max-width:720px;margin:0 auto;padding:48px 20px;font:15px/1.65 system-ui,sans-serif}
+      #static-home a{color:inherit}
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><main id="static-home">
+      <h1>Rolling</h1>
+      <p>Rolling is a video studio for creators and small brand teams, in your browser. Describe the video you want and an agent turns your brief into a plan of shots on a canvas. You review the plan, AI models generate the images, video and voice, and the editor assembles the cut for export.</p>
+      <ul>
+        <li>Agent: plans shots and proposes edits; nothing runs until you approve it.</li>
+        <li>Canvas: script, image, video and audio nodes you can edit and re-run.</li>
+        <li>Editor: a timeline for captions, video, voice and music, with export.</li>
+        <li>Credits: every run shows its price in credits first; failed runs are refunded automatically. Signing up is free; generating needs a paid plan.</li>
+      </ul>
+      <p>Sign in with an email code or your Google account. We use your Google name, email address and profile picture only to create your account and sign you in.</p>
+      <p><a href="/signup">Create an account</a> · <a href="/login">Log in</a> · <a href="/upgrade">Plans</a></p>
+      <footer><p><a href="/privacy">Privacy policy</a> · <a href="/terms">Terms of service</a> · <a href="/acceptable-use">Acceptable use</a> · <a href="/subprocessors">Subprocessors</a> · Contact: <a href="mailto:support@rolling.actor">support@rolling.actor</a></p></footer>
+    </main></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

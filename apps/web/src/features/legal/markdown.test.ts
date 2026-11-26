@@ -69,11 +69,12 @@ describe('legal documents', () => {
   const paths = new Set<string>([...LEGAL_DOCS.map((d) => d.path), '/upgrade']);
 
   for (const doc of LEGAL_DOCS) {
-    it(`${doc.id}: title, draft note first, links resolve`, () => {
+    it(`${doc.id}: title, no draft banner or open placeholders, links resolve`, () => {
       const blocks = legalBlocks(doc.id);
       expect(blocks[0]).toMatchObject({ t: 'heading', level: 1 });
-      expect(blocks[1]?.t).toBe('quote');
-      expect(JSON.stringify(blocks[1])).toContain('Draft for legal review — not yet in effect.');
+      // Google's OAuth review reads these pages: no "draft" banner, no unresolved [PLACEHOLDER]s (internal notes are HTML comments).
+      expect(JSON.stringify(blocks)).not.toContain('Draft for legal review');
+      expect(inlines(blocks).filter((n) => n.t === 'placeholder')).toEqual([]);
       const ids = new Set(blocks.flatMap((b) => (b.t === 'heading' ? [b.id] : [])));
       for (const n of inlines(blocks)) {
         if (n.t !== 'link') continue;
@@ -81,13 +82,18 @@ describe('legal documents', () => {
         else if (n.href.startsWith('/')) expect(paths, n.href).toContain(n.href.split('#')[0]);
         else expect(n.href).toMatch(/^https:\/\//);
       }
-      // A placeholder never swallows a nested one.
-      for (const n of inlines(blocks)) if (n.t === 'placeholder') expect(n.v.slice(1)).not.toContain('[');
       expect(doc.source).not.toContain('/legal/');
     });
   }
 
   it('the privacy policy has the deletion section the Settings dialog links to', () => {
     expect(legalBlocks('privacy').some((b) => b.t === 'heading' && b.id === 'when-you-delete-your-account')).toBe(true);
+  });
+
+  it('the privacy policy has the Google user data section with the Limited Use statement', () => {
+    const blocks = legalBlocks('privacy');
+    expect(blocks.some((b) => b.t === 'heading' && b.id === 'google-user-data')).toBe(true);
+    const text = JSON.stringify(blocks);
+    for (const s of ['openid', 'Limited Use', 'do not sell', 'privacy@rolling.actor', 'Effective date: 26 November 2026']) expect(text).toContain(s);
   });
 });

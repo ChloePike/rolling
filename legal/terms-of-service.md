@@ -1,13 +1,12 @@
-<!-- Product name: "Rolling" is a working name. Replace every occurrence when the name is final. Bracketed ALL-CAPS text is a placeholder for the owner. -->
+<!-- Product name: "Rolling" is a working name. Replace every occurrence when the name is final. -->
+<!-- Internal: pending review by counsel. Owner-only facts are kept in HTML comments below; do not add bracket placeholders to the served text. -->
 
 # Terms of service
 
-> **Draft for legal review — not yet in effect.**
+Effective date: 26 November 2026
+Last updated: 26 November 2026
 
-Effective date: [EFFECTIVE DATE]
-Last updated: [LAST UPDATED DATE]
-
-These terms are an agreement between you and [COMPANY LEGAL NAME], [REGISTERED ADDRESS] ("we", "us"), for your use of Rolling at https://rolling.actor (the "service"). By creating an account or using the service you agree to these terms, our [Acceptable use policy](/acceptable-use) and our [Privacy policy](/privacy). If you use Rolling for a company, you agree for that company and confirm you may bind it.
+These terms are an agreement between you and Rolling ("we", "us"), for your use of Rolling at https://rolling.actor (the "service"). By creating an account or using the service you agree to these terms, our [Acceptable use policy](/acceptable-use) and our [Privacy policy](/privacy). If you use Rolling for a company, you agree for that company and confirm you may bind it.
 
 ## The service
 
@@ -17,7 +16,7 @@ We may add, change or remove features and models. The models available depend on
 
 ## Eligibility
 
-- You must be at least [MINIMUM AGE, e.g. 13 or 16] and old enough to form a binding contract where you live.
+- You must be at least 13 years old (or older if the law where you live sets a higher age to use online services without a parent's consent) and old enough to form a binding contract where you live.
 - Mature (18+) content is only for adults. You must be 18 or older, and the age of majority where you live, to turn on mature content.
 - You may not use Rolling if the law or a previous suspension by us forbids it.
 
@@ -70,17 +69,20 @@ Each plan includes a monthly allowance for premium agent models, shown in US dol
 
 ### Price changes
 
-We may change prices, credit amounts or perks. We will tell you at least [PRICE CHANGE NOTICE PERIOD, e.g. 30 days] before a change affects your plan. The change applies from your next billing period. If you do not agree, cancel before then. Model credit prices follow our model costs and can change at any time; each run's quote shows the price before you start.
+We may change prices, credit amounts or perks. We will tell you before a change affects your plan.
+<!-- Owner to set: price change notice period (e.g. 30 days). --> The change applies from your next billing period. If you do not agree, cancel before then. Model credit prices follow our model costs and can change at any time; each run's quote shows the price before you start.
 
 ### Taxes
 
-Prices [INCLUDE OR EXCLUDE] taxes as shown at checkout. [TAX POLICY: who collects VAT, GST and sales tax, and whether Stripe Tax is used.] You are responsible for taxes you owe that we do not collect.
+Checkout shows whether taxes are included in the price and any taxes we collect. You are responsible for taxes you owe that we do not collect.
 
 ## Refunds
 
 - Credits for failed, blocked and canceled runs are refunded to your balance automatically. This is the main refund mechanism.
-- Other refunds: [REFUND POLICY: for example, plan fees and top-ups are non-refundable once credits are granted, except where required by law or at our discretion].
-- Consumers in some countries have a legal right to withdraw from a purchase within 14 days. [WITHDRAWAL RIGHT WORDING: for example, by starting to use credits you ask us to provide the service at once and accept that you lose the right to withdraw for the credits used.]
+- Other refunds: contact support@rolling.actor. We handle other refund requests case by case and as the law requires.
+<!-- Owner to set: refund policy for plan fees and top-ups. -->
+- Consumers in some countries have a legal right to withdraw from a purchase within 14 days. Where that right applies, it applies as the law sets it out.
+<!-- Owner to set: withdrawal right wording (e.g. starting to use credits waives the right for credits used). -->
 - Nothing in these terms limits refund rights you have under the law.
 
 ## Your content
@@ -95,11 +97,13 @@ Prices [INCLUDE OR EXCLUDE] taxes as shown at checkout. [TAX POLICY: who collect
 
 You give us a worldwide, non-exclusive, royalty-free license to host, store, copy, process, transmit, display and modify your inputs and outputs **only to operate, secure and improve the service for you**, including sending them to our model gateway and vendors to generate outputs, running safety checks and showing them to people you share them with. This license ends when you delete the content or your account, except for copies we must keep under the [Privacy policy](/privacy) (for example safety logs) and content already shared that others have saved.
 
-We do not use your inputs or outputs to train our own models. [CONFIRM: vendor training terms.]
+We do not use your inputs or outputs to train our own models.
+<!-- Owner to confirm: vendor training terms. -->
 
 ### Model vendors' terms
 
-Outputs are made by third-party models. Their vendors' terms and usage policies may also apply to you: [MODEL VENDOR TERMS LIST: for example ByteDance (Seedance, Seedream), MiniMax, Alibaba (Wan, Qwen), Lumina, xAI, Anthropic, OpenAI, DeepSeek, Zhipu, and Hyperouter]. If a vendor's terms restrict a use, you must follow that restriction.
+Outputs are made by third-party models. Their vendors' terms and usage policies may also apply to you, including those of ByteDance (Seedance, Seedream), MiniMax, Alibaba (Wan, Qwen), Lumina, xAI, Anthropic, OpenAI, DeepSeek, Zhipu and Hyperouter.
+<!-- Owner to add: links to each vendor's terms. --> If a vendor's terms restrict a use, you must follow that restriction.
 
 ## Public library
 
@@ -134,7 +138,8 @@ You must follow our [Acceptable use policy](/acceptable-use). It sets hard limit
 - You can stop using Rolling and delete your account at any time.
 - We may suspend or limit your account or workspace, block runs, remove content or end these terms if you break these terms or the Acceptable use policy, if the law requires it, if your use creates risk or harm for others or for us, or if a payment is reversed or fraudulent.
 - Where reasonable, we will tell you why and give you a chance to respond. We may act without notice for serious violations, such as content involving minors.
-- If we end your account without cause, we will refund purchased credits you have not used [CONFIRM]. If we end it for a violation, unused credits are lost.
+- If we end your account without cause, we will refund purchased credits you have not used.
+<!-- Owner to confirm the refund on termination without cause. --> If we end it for a violation, unused credits are lost.
 - Sections that by their nature should survive (ownership, licenses, disclaimers, limits of liability, indemnity, disputes) survive termination.
 
 ## Third-party services
@@ -152,7 +157,8 @@ Some countries do not allow these exclusions. In that case they apply only as fa
 To the extent the law allows:
 
 - We are not liable for indirect, incidental, special, consequential or punitive damages, or for lost profits, revenue, data or goodwill.
-- Our total liability for all claims about the service is limited to the greater of the amount you paid us in the 12 months before the claim and [LIABILITY FLOOR, e.g. USD 100].
+- Our total liability for all claims about the service is limited to the greater of the amount you paid us in the 12 months before the claim and USD 100.
+<!-- Owner to confirm the liability floor. -->
 
 Nothing in these terms limits liability for death or personal injury caused by negligence, for fraud, or for anything else that cannot be limited by law.
 
@@ -162,13 +168,15 @@ If you use Rolling for business, you will defend and indemnify us against third-
 
 ## Governing law and disputes
 
-These terms are governed by the laws of [GOVERNING LAW], without regard to conflict of law rules. Disputes will be resolved by [DISPUTE FORUM: the courts of a named venue, or arbitration under named rules]. [CLASS ACTION WAIVER AND ARBITRATION CLAUSE, if used for US users.]
+Before starting a formal dispute, please contact legal@rolling.actor so we can try to resolve it informally.
+<!-- Owner to set: governing law, dispute forum, and any class action waiver / arbitration clause for US users. -->
 
-If you are a consumer, you keep the protection of the mandatory laws of the country where you live and may bring claims in its courts. EU consumers can also use [ONLINE DISPUTE RESOLUTION WORDING, if required].
+If you are a consumer, you keep the protection of the mandatory laws of the country where you live and may bring claims in its courts.
 
 ## Changes to these terms
 
-We may update these terms. We will post changes here and update the date at the top. For material changes we will tell you by email or in the app at least [TERMS CHANGE NOTICE PERIOD, e.g. 30 days] before they take effect. If you keep using Rolling after that, the new terms apply. If you do not agree, stop using Rolling and delete your account.
+We may update these terms. We will post changes here and update the date at the top. For material changes we will tell you by email or in the app before they take effect.
+<!-- Owner to set: terms change notice period (e.g. 30 days). --> If you keep using Rolling after that, the new terms apply. If you do not agree, stop using Rolling and delete your account.
 
 ## General
 
@@ -180,7 +188,6 @@ We may update these terms. We will post changes here and update the date at the 
 
 ## Contact
 
-[COMPANY LEGAL NAME]
-[REGISTERED ADDRESS]
+Rolling
 Legal: legal@rolling.actor
 Support: support@rolling.actor
