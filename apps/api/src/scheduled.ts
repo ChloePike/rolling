@@ -4,13 +4,17 @@ import { reconcileLedgers } from "./ops/reconcile";
 import { requeuePendingMedia } from "./queues/mediaProcess";
 import { cleanupExpiredUploads } from "./routes/uploads";
 import { advanceStalledRuns } from "./runs/service";
+import { failStalledJobs } from "./runs/sweep";
 import { runR2Cleanup } from "./auth/deleteAccount";
 import { resumeAccountDeletions } from "./auth/deletionJob";
 import { runRetentionPurge } from "./ops/retention";
 
 /** Model catalog sync (D-002) and expired upload cleanup (D-011). */
 export const MODEL_SYNC_CRON = "0 */6 * * *";
-/** Safety net: stalled runs (items waiting on CONCURRENCY_LIMIT > 2 min) and uploads left `processing: pending`. */
+/**
+ * Safety net: stalled runs (items waiting on CONCURRENCY_LIMIT > 2 min), running jobs whose Workflow instance
+ * is gone or that never reached the gateway (failed and refunded, runs/sweep.ts), and uploads left `processing: pending`.
+ */
 export const SWEEP_CRON = "*/5 * * * *";
 /**
  * Nightly ledger reconcile: CreditAccount vs. the D1 `ledger_lines` mirror for workspaces touched in the last day.
@@ -35,6 +39,7 @@ export async function handleScheduled(controller: ScheduledController, env: Env,
       return;
     case SWEEP_CRON:
       run(ctx, "runs: stalled sweep", () => advanceStalledRuns(env));
+      run(ctx, "runs: stalled jobs", () => failStalledJobs(env));
       run(ctx, "media: requeue pending", () => requeuePendingMedia(env));
       // Account deletion: private media of removed workspaces.
       run(ctx, "r2: cleanup", () => runR2Cleanup(env));

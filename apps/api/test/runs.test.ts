@@ -12,6 +12,7 @@ import { syncModels } from "../src/models/sync";
 import { setGatewayFetchForTests } from "../src/runs/provider";
 import { setFramesContainerForTests } from "../src/runs/frames";
 import { ContainerUnavailable } from "../src/queues/mediaProcess";
+import { failStalledJobs, NO_EXTERNAL_ID_MS, STALLED_JOB_GRACE_MS } from "../src/runs/sweep";
 
 const BASE = "https://example.com";
 const DAY = 86_400_000;
@@ -965,3 +966,83 @@ describe("runs: retry and single read", () => {
     expect(saved.versions[1].assetIds[0]).toBe(bodyAsset);
   });
 });
+
+describe("runs: stalled job sweep (cron safety net)", () => {
+  async function heldRun(tag: string) {
+    const { user, ws } = await member(tag);
+    const { id, ids } = await project(
+      user,
+      ws,
+      [
+        { kind: "image", title: "Key", params: KEYFRAME },
+        { kind: "video", title: "Shot", params: SHOT },
+      ],
+      [["Key", "Shot", "frame"]],
+    );
+    fake.rules.push({ hold: true });
+    const q = await quote(user, { projectId: id, scope: "all" });
+    const before = await available(ws);
+    const { runId } = (await (await start(user, q.quoteId)).json()) as { runId: string };
+    await waitFor("submit", async () => fake.jobs.length === 1);
+    const [job] = await jobsOf(runId);
+    return { user, ws, runId, job, before };
+  }
+
+  async function expectFailedAndRefunded(runId: string, ws: string, before: number) {
+    const run = await runRow(runId);
+    expect(run.status).toBe("failed");
+    const [job] = await jobsOf(runId);
+    expect(job).toMatchObject({ status: "failed", refunded: 1, error_code: "stalled" });
+    const items = (await env.DB.prepare("SELECT status, error_code FROM run_items WHERE run_id = ? ORDER BY ord").bind(runId).all()).results;
+    expect(items).toEqual([
+      { status: "failed", error_code: "stalled" },
+      { status: "skipped", error_code: "upstream_failed" },
+    ]);
+    expect(await available(ws)).toBe(before);
+  }
+
+  it("leaves a healthy waiting job alone", async () => {
+    const { runId, job } = await heldRun("sweepok");
+    const res = await failStalledJobs(env, Date.now() + 3 * 60_000);
+    expect(res.failed).not.toContain(job.id);
+    expect((await runRow(runId)).status).toBe("running");
+    await cancelQuietly(runId);
+  });
+
+  it("fails and refunds a running job whose Workflow instance was terminated", async () => {
+    const { ws, runId, job, before } = await heldRun("sweepterm");
+    await (await env.GENERATE.get(job.id)).terminate();
+    await waitFor("terminated", async () => (await (await env.GENERATE.get(job.id)).status()).status === "terminated");
+    // Too young: untouched.
+    expect((await failStalledJobs(env, Date.now())).failed).toEqual([]);
+    const res = await failStalledJobs(env, Date.now() + STALLED_JOB_GRACE_MS + 1000);
+    expect(res.failed).toEqual([job.id]);
+    await expectFailedAndRefunded(runId, ws, before);
+    // Idempotent: a second sweep changes nothing.
+    expect((await failStalledJobs(env, Date.now() + STALLED_JOB_GRACE_MS + 1000)).failed).toEqual([]);
+    expect(await available(ws)).toBe(before);
+  });
+
+  it("fails and refunds a running job with no Workflow instance", async () => {
+    const { ws, runId, job, before } = await heldRun("sweepmissing");
+    await (await env.GENERATE.get(job.id)).terminate();
+    await env.DB.prepare("UPDATE jobs SET workflow_id = ? WHERE id = ?").bind(`job_missing_${job.id}`, job.id).run();
+    expect((await failStalledJobs(env, Date.now() + STALLED_JOB_GRACE_MS + 1000)).failed).toEqual([job.id]);
+    await expectFailedAndRefunded(runId, ws, before);
+  });
+
+  it("fails and refunds a job that never got a gateway id, terminating its instance", async () => {
+    const { ws, runId, job, before } = await heldRun("sweepnoext");
+    await env.DB.prepare("UPDATE jobs SET external_id = NULL, status = 'queued' WHERE id = ?").bind(job.id).run();
+    // Within NO_EXTERNAL_ID_MS the instance is alive (waiting): untouched.
+    expect((await failStalledJobs(env, Date.now() + STALLED_JOB_GRACE_MS + 1000)).failed).toEqual([]);
+    expect((await failStalledJobs(env, Date.now() + NO_EXTERNAL_ID_MS + 1000)).failed).toEqual([job.id]);
+    await expectFailedAndRefunded(runId, ws, before);
+    expect((await (await env.GENERATE.get(job.id)).status()).status).toBe("terminated");
+  });
+});
+
+async function cancelQuietly(runId: string) {
+  const run = await runRow(runId);
+  await api(run.created_by, `/api/runs/${runId}/cancel`, { method: "POST" });
+}
