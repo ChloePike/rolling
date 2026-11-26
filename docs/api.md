@@ -447,7 +447,7 @@ GraphQL: `runs(filter: { status, projectId, model, from, to }, first, after) { n
 
 Live events (D-003):
 - Project socket: `job.progress { jobId, nodeId, progress /* 0..1 */, status: 'queued'|'generating' }` (queued on start with `jobId: ''`), `node.version` (from `addVersion`), `job.done { jobId, nodeId, version: { n, total }, assetId }`, `job.failed { jobId, nodeId, refunded, reason }` (`reason` is English, e.g. “The provider rejected the content.”; the node shows “Refunded {refunded} credits”), `credits.changed { workspaceId, balance, held, plan, purchased }` after every hold, settle and release.
-- User socket (`/api/ws`): `credits.changed` (same payload) and `activity.updated { runId, jobId? }`.
+- User socket (`/api/ws`): `credits.changed` (same payload) and `activity.updated { runId, jobId?, progress? }`. Runs without a canvas (Home, tools) have no room to stream `job.progress`, so each provider poll sends `activity.updated` with `progress` (0–0.99); other updates carry no `progress` and mean “read `GET /api/runs/:id` again”.
 
 Provider webhooks: `POST /api/hooks/hyperouter` (no session). Standard Webhooks signature with `HYPEROUTER_WEBHOOK_SECRET` (`whsec_…`); bad signature → 401, stale timestamp → 401, malformed → 400; deduped on `webhook-id` (`{ ok: true, duplicate: true }`). The job's status is fetched from the gateway and sent to the job's GenerateWorkflow as `provider-done`; the workflow also polls (backoff from 3 s for images / 10 s for video up to 60 s), so a missed webhook only delays a job.
 

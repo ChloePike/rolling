@@ -77,32 +77,49 @@ export interface PublicModel {
     inputImages: number;
     imagesPerRequest: number;
   };
-  /** Indicative credits: per resolution, for 5 s of video (or the model default) or one image. Quotes are exact. */
+  /**
+   * Credits per resolution: one image, or video at 5 s (or the model default) first and then every other whole
+   * length the model takes, each priced on its own as a quote would price it.
+   */
   credits: CreditSample[];
 }
 
 const SAMPLE_SECONDS = 5;
 
+/** Longest range of whole seconds listed one by one; longer ranges list only the 5 s sample and the default. */
+const MAX_SECOND_SAMPLES = 60;
+
+/**
+ * Lengths a video model is sampled at: the 5 s sample (or the default) first, then every other whole
+ * length it takes. Each is priced on its own (`creditsFor` rounds up once per request), so a client
+ * never scales a rounded 5 s price: 10 s of a model at 182 credits per 5 s can be 363, not 364.
+ */
+function sampleSeconds(m: CatalogModel): (number | null)[] {
+  if (m.kind !== "video") return [null];
+  const s = m.seconds;
+  const fits = !s || (s.allowed ? s.allowed.includes(SAMPLE_SECONDS) : SAMPLE_SECONDS >= s.min && SAMPLE_SECONDS <= s.max);
+  const first = fits ? SAMPLE_SECONDS : (m.defaultSeconds ?? s!.min);
+  if (!s) return [first];
+  const all = s.allowed ?? (s.max - s.min < MAX_SECOND_SAMPLES ? Array.from({ length: Math.floor(s.max) - Math.ceil(s.min) + 1 }, (_, i) => Math.ceil(s.min) + i) : []);
+  return [first, ...all.filter((x) => x !== first && Number.isInteger(x) && x > 0)];
+}
+
 function creditSamples(m: CatalogModel): CreditSample[] {
   if (m.kind === "chat") return [];
   const samples: CreditSample[] = [];
   const resolutions: (string | null)[] = m.resolutions.length ? m.resolutions : [null];
-  let seconds: number | null = null;
-  if (m.kind === "video") {
-    const s = m.seconds;
-    const fits = !s || (s.allowed ? s.allowed.includes(SAMPLE_SECONDS) : SAMPLE_SECONDS >= s.min && SAMPLE_SECONDS <= s.max);
-    seconds = fits ? SAMPLE_SECONDS : (m.defaultSeconds ?? s!.min);
-  }
   for (const resolution of resolutions) {
-    try {
-      const credits = creditsFor(m, {
-        ...(resolution !== null && { resolution }),
-        ...(seconds !== null && { seconds }),
-        ...(m.kind === "image" && !m.operations.includes("t2i") && { inputImages: Math.max(1, m.minInputImages) }),
-      });
-      samples.push({ resolution, seconds, credits });
-    } catch {
-      // Not priceable at this resolution: leave it out; quotes refuse it too.
+    for (const seconds of sampleSeconds(m)) {
+      try {
+        const credits = creditsFor(m, {
+          ...(resolution !== null && { resolution }),
+          ...(seconds !== null && { seconds }),
+          ...(m.kind === "image" && !m.operations.includes("t2i") && { inputImages: Math.max(1, m.minInputImages) }),
+        });
+        samples.push({ resolution, seconds, credits });
+      } catch {
+        // Not priceable at this resolution: leave it out; quotes refuse it too.
+      }
     }
   }
   return samples;

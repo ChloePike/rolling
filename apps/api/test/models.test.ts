@@ -116,11 +116,17 @@ describe("model catalog reads", () => {
     expect(body.models.every((m) => m.kind === "video")).toBe(true);
     const s25 = body.models.find((m) => m.id === "bytedance/seedance-2.5");
     expect(s25).toMatchObject({ name: "Seedance 2.5", default: true, auto: true, mature: false, defaultResolution: "480p" });
-    expect(s25.credits).toEqual([
+    expect(s25.credits.filter((c: { seconds: number }) => c.seconds === 5)).toEqual([
       { resolution: "480p", seconds: 5, credits: 162 },
       { resolution: "720p", seconds: 5, credits: 347 },
       { resolution: "1080p", seconds: 5, credits: 853 },
     ]);
+    // Every other whole length is priced on its own (a quote for 10 s rounds once, not 2 x the rounded 5 s).
+    expect(s25.credits[0]).toEqual({ resolution: "480p", seconds: 5, credits: 162 });
+    const lengths = s25.credits.filter((c: { resolution: string }) => c.resolution === "720p").map((c: { seconds: number }) => c.seconds);
+    expect(lengths.length).toBe(s25.seconds.max - s25.seconds.min + 1);
+    const ten = s25.credits.find((c: { resolution: string; seconds: number }) => c.resolution === "720p" && c.seconds === 10);
+    expect(ten.credits).toBeLessThanOrEqual(2 * 347);
     // No USD leaves the API.
     expect(JSON.stringify(body)).not.toContain("usd");
   });

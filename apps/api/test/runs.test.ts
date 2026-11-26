@@ -679,6 +679,23 @@ describe("runs: live events", () => {
     hub.close();
   });
 
+  it("pushes the progress of a run without a canvas (Home, tools) on the user channel", async () => {
+    const { user } = await member("liveprogress");
+    fake.rules.push({ runningPolls: 1 });
+    await introspector.modifyAll(async (m) => {
+      await m.forceEventTimeout({ name: "wait-1-2" });
+    });
+    const hub = await socket(user, "/api/ws");
+    const q = await quote(user, { promptSpec: { kind: "video", model: "Seedance 2.0 Mini", prompt: "A slow push-in on a lamp", seconds: 5, resolution: "480p" } });
+    const { runId } = (await (await start(user, q.quoteId)).json()) as { runId: string };
+    expect((await finalRun(runId)).status).toBe("succeeded");
+    const progress = await waitFor("progress event", async () =>
+      hub.messages.find((m) => m.type === "activity.updated" && m.payload.runId === runId && typeof m.payload.progress === "number"),
+    );
+    expect(progress.payload.progress).toBe(0.4);
+    hub.close();
+  });
+
   it("sends job.failed with the refunded credits the node shows", async () => {
     const { user, ws } = await member("livefail");
     const { id, ids } = await project(user, ws, [{ kind: "image", title: "Key", params: KEYFRAME }], []);

@@ -324,6 +324,10 @@ export async function reportProgress(env: Env, ctx: JobContext, status: JobStatu
   if (ctx.projectId && ctx.nodeId) {
     const room = ports(env).room(ctx.projectId);
     await quietly("progress", () => room.markRunning({ nodeId: ctx.nodeId!, jobId: ctx.jobId, progress, status: "generating" }));
+  } else {
+    // Runs without a canvas (Home, tools) have no room to stream through: their progress goes to the
+    // user channel (D-014), so the run card moves without polling.
+    await quietly("progress", () => ports(env).hub(ctx.createdBy).broadcast("activity.updated", { runId: ctx.runId, jobId: ctx.jobId, progress }));
   }
 }
 
