@@ -157,3 +157,33 @@ test.describe('Quick Create /create/quick', () => {
     await expect(paywall).toBeVisible();
   });
 });
+
+test.describe('Quick Create template card', () => {
+  test('keeps the design layout with a long name: chip on the right, no overlap, name clamped with an ellipsis and a title; no 0s', async ({ page }) => {
+    await setMode(page, 'simple');
+    await page.goto('/create/quick?template=tpl_03');
+    const card = page.locator('[data-card="template"]');
+    await expect(card).toBeVisible();
+    const name = card.locator('span[title]').first();
+    await expect(name).toHaveAttribute('title', 'Unboxing close-ups');
+    await expect(card).not.toContainText(/(^|\s|·)0s/);
+    const heightBefore = (await card.boundingBox())!.height;
+    const long = 'An exceptionally long template name that keeps going well past what fits in three lines of this narrow card';
+    await name.evaluate((el, v) => {
+      el.textContent = v;
+      el.setAttribute('title', v);
+    }, long);
+    const m = await card.evaluate((el) => {
+      const n = el.querySelector('span[title]') as HTMLElement;
+      const chip = el.querySelector('a') as HTMLElement;
+      const nr = n.getBoundingClientRect();
+      const cr = chip.getBoundingClientRect();
+      return { clamped: n.scrollHeight > n.clientHeight + 1, overlap: nr.right > cr.left, chipWidth: cr.width, height: el.getBoundingClientRect().height };
+    });
+    expect(m.clamped).toBe(true);
+    expect(m.overlap).toBe(false);
+    expect(m.chipWidth).toBeGreaterThan(90);
+    // Three lines at most: the card grows no more than the design's own wrap allows.
+    expect(m.height).toBeLessThanOrEqual(Math.max(heightBefore, 140) + 2);
+  });
+});

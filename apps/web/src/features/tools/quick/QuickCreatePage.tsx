@@ -194,9 +194,13 @@ export function QuickCreatePage({ initialOverlay, models: modelsOverride, plan: 
           <span className={styles.tplKicker}>
             <FormattedMessage id="tools.quick.templates" />
           </span>
-          <span className={styles.tplName}>{template?.name ?? t('tools.quick.noTemplate')}</span>
+          {/* Design layout (chip on the right): long names wrap by word and clamp with an ellipsis; the full name is the tooltip. */}
+          <span className={styles.tplName} title={template?.name}>
+            {template?.name ?? t('tools.quick.noTemplate')}
+          </span>
           <span className={styles.tplMeta}>
             {template ? (
+              // Only real parts: the template's own ratio (never the cover's pixel size), no "0s".
               [
                 ratio,
                 template.durationSec > 0 ? t('tools.seconds', { n: template.durationSec }) : null,
@@ -209,16 +213,16 @@ export function QuickCreatePage({ initialOverlay, models: modelsOverride, plan: 
               <FormattedMessage id="tools.quick.noTemplate.hint" />
             )}
           </span>
-          <span className={styles.tplActions}>
-            <Link to="/templates" className={layout.chipBtn}>
-              <FormattedMessage id={template ? 'tools.quick.changeTemplate' : 'tools.quick.pickTemplate'} />
-            </Link>
-            {!demo && templateId ? (
-              <button type="button" className={layout.chipBtn} data-open-canvas="" disabled={opening} onClick={() => void openOnCanvas()}>
-                <FormattedMessage id="tools.quick.openOnCanvas" />
-              </button>
-            ) : null}
-          </span>
+        </div>
+        <div className={styles.tplActions}>
+          <Link to="/templates" className={layout.chipBtn}>
+            <FormattedMessage id={template ? 'tools.quick.changeTemplate' : 'tools.quick.pickTemplate'} />
+          </Link>
+          {!demo && templateId ? (
+            <button type="button" className={layout.chipBtn} data-open-canvas="" disabled={opening} onClick={() => void openOnCanvas()}>
+              <FormattedMessage id="tools.quick.openOnCanvas" />
+            </button>
+          ) : null}
         </div>
       </AsideCard>
       {slots.length > 0 && (
