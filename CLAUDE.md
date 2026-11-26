@@ -28,7 +28,7 @@ Design source: `docs/design/screens/*.dc.html` are the approved screens (one fil
 - **Background work**: Cloudflare Workflows for each generation and export (durable steps, `waitForEvent` for provider webhooks, `sleep` for polling); Queues for fan-out (media processing, ledger mirroring, notifications).
 - **FFmpeg**: Cloudflare Containers (`FfmpegRenderer`) for exports, probing, thumbnails and waveforms of uploaded video/audio.
 - Drizzle ORM for D1 and DO SQLite. Zod for validation.
-- Auth: Better Auth on D1 (Google, Apple, email one-time code).
+- Auth: Better Auth on D1 (Google via popup / One Tap ID tokens, no client secret — D-017; email one-time code). No Apple sign-in.
 - Payments: Stripe via its fetch client; webhook verification with `constructEventAsync`. Stripe is the only payment provider.
 - Canvas: `@xyflow/react`. Timeline editor: custom, drawn on `<canvas>`.
 - API style (D-003): REST for commands, WebSocket-first for live state (`ProjectRoom` per project, `UserHub` per user, hibernation API; agent streams over the socket), GraphQL Yoga at `/api/graphql` for read-only queries. No SSE, no Redis.
