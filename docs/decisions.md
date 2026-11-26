@@ -2,6 +2,21 @@
 
 Decisions made after the original spec. Where this file disagrees with `PRD.md`, `architecture.md`, `api.md` or `harness.md`, this file wins. Newest first.
 
+## D-015 — Domain: rolling.actor (2026-11-26)
+
+The product domain is `rolling.actor` (Cloudflare zone in the account; product name stays “Rolling” pending a rename).
+
+| Host | Purpose |
+|---|---|
+| `rolling.actor` | Production app + API (Worker custom domain); `www.rolling.actor` redirects to it |
+| `staging.rolling.actor` | Staging app + API (replaces the workers.dev URL) |
+| `media.rolling.actor` | Public media bucket via CDN (D-008); `PUBLIC_MEDIA_BASE_URL` |
+| `cdn-private.rolling.actor` | Signed private media (D-008); `PRIVATE_MEDIA_BASE_URL` (staging: `media-staging.` / `cdn-private-staging.`) |
+
+- **Email (Cloudflare Email Service):** send from `no-reply@rolling.actor` (sign-in codes, invites, receipts); Email Preview off (sign-in codes); DMARC starts at `p=none` while sending is verified, then tightens. Inbound via Email Routing: `support@`, `privacy@`, `legal@`, `abuse@` forward to the owner.
+- **OAuth redirect URIs:** `https://rolling.actor/api/auth/callback/{google,apple}` (production) and `https://staging.rolling.actor/api/auth/callback/{google,apple}` (staging).
+- **Stripe webhooks:** `https://rolling.actor/api/stripe/webhook`, staging equivalent. **Hyperouter webhook:** `https://rolling.actor/api/hooks/hyperouter` (and staging).
+
 ## D-014 — One global WebSocket per browser, multiplexed by channel (2026-11-25)
 
 Owner decision; refines D-003 (WebSocket-first realtime).

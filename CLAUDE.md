@@ -65,4 +65,4 @@ Repo: `apps/api` (Worker + DO classes + Workflows), `apps/web` (SPA), `container
 
 ## Open decisions (use the placeholder, don’t invent)
 
-Product name and domain, avatar / TTS / voice-clone provider (not on Hyperouter), Stripe acceptance of adult content, plan prices, credits per plan, credit pack prices, yearly discount, per-model credit prices. Use the values in `packages/core/pricing/config.ts`, which ships with the placeholders listed in `docs/PRD.md` → Open decisions.
+Product name (domain decided: rolling.actor, D-015), avatar / TTS / voice-clone provider (not on Hyperouter), Stripe acceptance of adult content, plan prices, credits per plan, credit pack prices, yearly discount, per-model credit prices. Use the values in `packages/core/pricing/config.ts`, which ships with the placeholders listed in `docs/PRD.md` → Open decisions.
