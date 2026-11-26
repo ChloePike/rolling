@@ -119,6 +119,20 @@ export class UserHub extends DurableObject<Env> {
     if (state) await this.releaseProjects(ws, state.userId, Object.keys(state.subs));
   }
 
+  /** Account deletion: closes every socket of the user and wipes the hub's storage. Idempotent. */
+  async purge(): Promise<{ ok: true }> {
+    for (const socket of this.ctx.getWebSockets()) {
+      try {
+        socket.close(4401, "Account deleted");
+      } catch {
+        // Already closing.
+      }
+    }
+    await this.ctx.storage.deleteAlarm();
+    await this.ctx.storage.deleteAll();
+    return { ok: true };
+  }
+
   // ---------------------------------------------------------------- user channel
 
   /** RPC: push one envelope to every socket of this user (`channel: 'user'`). Returns the number of sockets reached. */

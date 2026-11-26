@@ -9,6 +9,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import listing from "../../../packages/core/src/models/__fixtures__/hyperouter-models.json";
 import type { ChatEvent, ChatRequest, LlmProvider } from "@rolling/core";
 import { RecordingEmailProvider } from "@rolling/core/email/recording";
+import { tombstoneUserId } from "@rolling/core/privacy";
 import worker from "../src/index";
 import { personalWorkspaceId } from "../src/auth/workspace";
 import { runR2Cleanup } from "../src/auth/deleteAccount";
@@ -430,7 +431,7 @@ describe("account deletion", () => {
     expect(await env.DB.prepare("SELECT user_id FROM workspace_members WHERE workspace_id = ?").bind(owner.ws).all().then((r) => r.results)).toEqual([{ user_id: "usr_other_member" }]);
   });
 
-  it("verifies the code, cancels the plan at period end, removes data, anonymises ledger lines and ends sessions", async () => {
+  it("verifies the code, cancels the plan at period end, removes data, pseudonymises ledger lines and ends sessions", async () => {
     const a = await user("del");
     await env.DB.exec("DELETE FROM auth_email_sends");
     const second = await signIn(a.email, { "cf-connecting-ip": freshIp() });
@@ -469,7 +470,8 @@ describe("account deletion", () => {
     expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM projects WHERE workspace_id = ?").bind(a.ws).first()).toEqual({ n: 0 });
     expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM assets WHERE id = ?").bind(assetId).first()).toEqual({ n: 0 });
     expect((await SELF.fetch(`${BASE}/api/share/${shareId}`)).status).toBe(404);
-    expect(await env.DB.prepare("SELECT user_id FROM ledger_lines WHERE id = ?").bind(`led_del_${a.userId}`).first()).toEqual({ user_id: null });
+    // Ledger lines are kept (financial records) under the user's tombstone (@rolling/core/privacy).
+    expect(await env.DB.prepare("SELECT user_id FROM ledger_lines WHERE id = ?").bind(`led_del_${a.userId}`).first()).toEqual({ user_id: await tombstoneUserId(a.userId) });
     expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM feedback WHERE user_id = ?").bind(a.userId).first()).toEqual({ n: 0 });
     expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM user_prefs WHERE user_id = ?").bind(a.userId).first()).toEqual({ n: 0 });
     expect(await env.DB.prepare("SELECT cancel_at_period_end FROM subscriptions WHERE id = ?").bind(sub.id).first()).toEqual({ cancel_at_period_end: 1 });

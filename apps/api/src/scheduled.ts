@@ -5,12 +5,17 @@ import { requeuePendingMedia } from "./queues/mediaProcess";
 import { cleanupExpiredUploads } from "./routes/uploads";
 import { advanceStalledRuns } from "./runs/service";
 import { runR2Cleanup } from "./auth/deleteAccount";
+import { resumeAccountDeletions } from "./auth/deletionJob";
+import { runRetentionPurge } from "./ops/retention";
 
 /** Model catalog sync (D-002) and expired upload cleanup (D-011). */
 export const MODEL_SYNC_CRON = "0 */6 * * *";
 /** Safety net: stalled runs (items waiting on CONCURRENCY_LIMIT > 2 min) and uploads left `processing: pending`. */
 export const SWEEP_CRON = "*/5 * * * *";
-/** Nightly ledger reconcile: CreditAccount vs. the D1 `ledger_lines` mirror for workspaces touched in the last day. */
+/**
+ * Nightly ledger reconcile: CreditAccount vs. the D1 `ledger_lines` mirror for workspaces touched in the last day.
+ * Also the retention purge (`@rolling/core/privacy`) and restarting unfinished account deletion jobs.
+ */
 export const RECONCILE_CRON = "17 3 * * *";
 
 function run(ctx: ExecutionContext, name: string, task: () => Promise<unknown>): void {
@@ -36,6 +41,8 @@ export async function handleScheduled(controller: ScheduledController, env: Env,
       return;
     case RECONCILE_CRON:
       run(ctx, "ledger: reconcile", () => reconcileLedgers(env));
+      run(ctx, "privacy: retention purge", () => runRetentionPurge(env));
+      run(ctx, "privacy: resume account deletions", () => resumeAccountDeletions(env));
       return;
     default:
       console.warn(JSON.stringify({ msg: "scheduled: unknown cron", cron: controller.cron }));

@@ -17,6 +17,8 @@ export const EmailTemplates = {
   'change-email-code': z.object({ code: z.string().regex(/^\d{4,10}$/), expiresInMinutes: z.number().int().positive() }),
   /** Account deletion confirmation code: sent to the account's address. */
   'delete-account-code': z.object({ code: z.string().regex(/^\d{4,10}$/), expiresInMinutes: z.number().int().positive() }),
+  /** Settings → Account → Export my data: the bundle is ready (signed link, `DATA_EXPORT_LINK_TTL_DAYS`). */
+  'data-export-ready': z.object({ downloadUrl: z.string().url(), expiresInDays: z.number().int().positive() }),
   /** Help → Send feedback, forwarded to `FEEDBACK_TO`. */
   feedback: z.object({
     id: z.string().min(1).max(80),
@@ -137,6 +139,25 @@ function renderBody<T extends EmailTemplateId>(template: T, data: unknown, appNa
           `Enter <strong style="font-size:20px;letter-spacing:2px">${d.code}</strong> in ${app} to delete your account. This can't be undone.`,
           `The code expires in ${d.expiresInMinutes} minutes.`,
           `If you didn't ask to delete your account, ignore this email; nothing changes.`,
+        ]),
+      };
+    }
+    case 'data-export-ready': {
+      const d = EmailTemplates['data-export-ready'].parse(data);
+      const url = escapeHtml(d.downloadUrl);
+      return {
+        subject: `Your ${appName} data export is ready`,
+        text: [
+          `The copy of your ${appName} data you asked for is ready.`,
+          `Download it: ${d.downloadUrl}`,
+          `The link works for ${d.expiresInDays} days. After that, ask for a new export in Settings → Account.`,
+          `If you didn't ask for this export, reply to this email.`,
+        ].join('\n\n'),
+        html: html([
+          `The copy of your ${app} data you asked for is ready.`,
+          `<a href="${url}">Download your data</a>`,
+          `The link works for ${d.expiresInDays} days. After that, ask for a new export in Settings → Account.`,
+          `If you didn't ask for this export, reply to this email.`,
         ]),
       };
     }

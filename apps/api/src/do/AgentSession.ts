@@ -199,6 +199,26 @@ export class AgentSession extends DurableObject<Env> {
     return this.denied(workspaceId) ?? this.view();
   }
 
+  /**
+   * Account deletion (AccountDeletionWorkflow): stops a running turn, closes
+   * thread sockets and wipes the thread's storage. No caller check (Worker-only
+   * RPC); idempotent.
+   */
+  async purge(): Promise<{ ok: true }> {
+    this.running?.controller.abort();
+    this.running = null;
+    for (const ws of this.ctx.getWebSockets()) {
+      try {
+        ws.close(4410, "Thread deleted");
+      } catch {
+        // Already closing.
+      }
+    }
+    await this.ctx.storage.deleteAlarm();
+    await this.ctx.storage.deleteAll();
+    return { ok: true };
+  }
+
   // ---------------------------------------------------------------- turns
 
   async send(input: SendInput): Promise<TurnSummary | AgentError> {

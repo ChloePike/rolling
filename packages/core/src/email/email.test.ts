@@ -36,6 +36,15 @@ describe('email templates', () => {
 });
 
 describe('legal footer', () => {
+  it('renders the data export link and validates the URL', () => {
+    const e = renderEmail('data-export-ready', { downloadUrl: 'https://rolling.actor/media/x?t=1&a=2', expiresInDays: 7 });
+    expect(e.subject).toBe('Your Rolling data export is ready');
+    expect(e.text).toContain('https://rolling.actor/media/x?t=1&a=2');
+    expect(e.text).toContain('7 days');
+    expect(e.html).toContain('href="https://rolling.actor/media/x?t=1&amp;a=2"');
+    expect(() => renderEmail('data-export-ready', { downloadUrl: 'nope', expiresInDays: 7 })).toThrow();
+  });
+
   it('links /terms and /privacy on user emails when the app URL is known; never on feedback', () => {
     const e = renderEmail('sign-in-code', { code: '123456', expiresInMinutes: 10 }, 'Rolling', 'https://rolling.actor/');
     expect(e.text).toContain('Terms: https://rolling.actor/terms · Privacy Policy: https://rolling.actor/privacy');

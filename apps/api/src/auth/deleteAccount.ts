@@ -12,16 +12,27 @@
  *   (`deleted_at`, members, invites, projects, assets, characters, voices,
  *   share links removed) after its live Stripe subscription is set to cancel
  *   at period end, and its R2 prefix is queued for cleanup (`r2_cleanup`);
- * - memberships elsewhere are removed; ledger lines, assets, share links,
- *   templates, characters and feedback lose the user id (anonymised);
+ * - memberships elsewhere are removed; assets, share links, templates,
+ *   characters and feedback lose the user id; retained records (credit ledger
+ *   mirror, safety log, agent usage, run/job/export/project authorship) carry
+ *   the user's tombstone instead (`@rolling/core/privacy`);
+ * - the user's agent threads (anywhere) are removed;
+ * - Durable Object storage is wiped or pseudonymised in the background by
+ *   `AccountDeletionWorkflow` (`deletionJob.ts`): ProjectRooms and
+ *   AgentSessions of closed workspaces, the user's own threads, the UserHub,
+ *   and the CreditAccount ledgers (kept, pseudonymised);
  * - prefs and avatar go; Better Auth then deletes the user, its accounts and
  *   every session, and clears the cookie.
+ *
+ * Everything here is idempotent: running `purgeAccount` again for the same
+ * user changes nothing more and restarts the background job if needed.
  */
 import { ApiError } from "../lib/errors";
 import { isLive, latestSubscription, stripeConfigured, stripeFor } from "../billing/stripe";
 import { revokeShares } from "../lib/share";
 import { sha256Hex } from "./rateLimit";
 import { personalWorkspaceId } from "./workspace";
+import { createDeletionJob, pseudonymizeD1, startDeletionWorkflow } from "./deletionJob";
 
 export const DELETE_CODE_TTL_SECONDS = 600;
 export const DELETE_CODE_ATTEMPTS = 5;
@@ -156,7 +167,11 @@ async function removeWorkspace(env: Env, workspaceId: string, now: number): Prom
     db.prepare("DELETE FROM characters WHERE workspace_id = ?").bind(workspaceId),
     db.prepare("DELETE FROM voices WHERE workspace_id = ?").bind(workspaceId),
     db.prepare("DELETE FROM templates WHERE workspace_id = ?").bind(workspaceId),
+    db.prepare("DELETE FROM agent_proposals WHERE workspace_id = ?").bind(workspaceId),
     db.prepare("DELETE FROM agent_threads WHERE workspace_id = ?").bind(workspaceId),
+    db.prepare("DELETE FROM exports WHERE workspace_id = ?").bind(workspaceId),
+    // Run history stays for billing; the prompts in it go.
+    db.prepare("UPDATE runs SET request = NULL WHERE workspace_id = ?").bind(workspaceId),
     db.prepare("DELETE FROM projects WHERE workspace_id = ?").bind(workspaceId),
     // Private media of the workspace: deleted in the background by the sweep cron.
     db.prepare("INSERT OR IGNORE INTO r2_cleanup (prefix, reason, created_at) VALUES (?, 'account_deleted', ?)").bind(`ws/${workspaceId}/`, now),
@@ -167,12 +182,17 @@ async function removeWorkspace(env: Env, workspaceId: string, now: number): Prom
 export async function purgeAccount(env: Env, userId: string, now = Date.now()): Promise<DeletionPlan> {
   const plan = await deletionPlan(env, userId);
   for (const ws of plan.remove) await cancelSubscription(env, ws, userId);
+  // Durable Objects to wipe are listed before their D1 index rows go.
+  const job = await createDeletionJob(env, userId, plan, now);
   for (const ws of plan.remove) await removeWorkspace(env, ws, now);
   const prefs = await env.DB.prepare("SELECT avatar_key FROM user_prefs WHERE user_id = ?").bind(userId).first<{ avatar_key: string | null }>();
+  await pseudonymizeD1(env, userId, job.tombstone);
   const db = env.DB;
   await db.batch([
     db.prepare("DELETE FROM workspace_members WHERE user_id = ?").bind(userId),
-    db.prepare("UPDATE ledger_lines SET user_id = NULL WHERE user_id = ?").bind(userId),
+    db.prepare("DELETE FROM agent_proposals WHERE thread_id IN (SELECT id FROM agent_threads WHERE created_by = ?)").bind(userId),
+    db.prepare("DELETE FROM agent_threads WHERE created_by = ?").bind(userId),
+    db.prepare("DELETE FROM data_exports WHERE user_id = ?").bind(userId),
     db.prepare("UPDATE assets SET created_by = NULL WHERE created_by = ?").bind(userId),
     // Links in workspaces that stay keep working but leave the deleted user's profile.
     db.prepare("UPDATE share_links SET created_by = NULL, show_on_profile = 0 WHERE created_by = ?").bind(userId),
@@ -183,7 +203,9 @@ export async function purgeAccount(env: Env, userId: string, now = Date.now()): 
     db.prepare("DELETE FROM verifications WHERE identifier = ?").bind(`${CODE_PREFIX}${userId}`),
   ]);
   if (prefs?.avatar_key && !plan.remove.includes(personalWorkspaceId(userId))) await env.MEDIA.delete(prefs.avatar_key).catch(() => undefined);
-  console.log(JSON.stringify({ msg: "account deleted", userId, removed: plan.remove.length, left: plan.leave.length }));
+  // Durable Object storage: background job (restarted by the daily cron if this start fails).
+  await startDeletionWorkflow(env, job, now);
+  console.log(JSON.stringify({ msg: "account deleted", deletionId: job.id, removed: plan.remove.length, left: plan.leave.length }));
   return plan;
 }
 

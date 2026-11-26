@@ -440,7 +440,7 @@ export const ledgerLines = sqliteTable(
     /** Refund reason / note (migration 0005). */
     note: text("note"),
   },
-  (t) => [index("ledger_ws").on(t.workspaceId, sql`${t.createdAt} DESC`)],
+  (t) => [index("ledger_ws").on(t.workspaceId, sql`${t.createdAt} DESC`), index("ledger_lines_user").on(t.userId)],
 );
 
 export const assetKinds = ["image", "video", "audio", "text"] as const;
@@ -735,7 +735,13 @@ export const agentUsage = sqliteTable("agent_usage", {
   /** `settled`, `released` or `unmetered` (DeepSeek, D-012 amendment: cost recorded, no allowance hold). */
   status: text("status").notNull().default("settled"),
   createdAt: integer("created_at").notNull(),
-}, (t) => [index("agent_usage_ws").on(t.workspaceId, t.periodStart), index("agent_usage_ws_llm").on(t.workspaceId, t.llm, sql`${t.createdAt} DESC`)]);
+}, (t) => [
+  index("agent_usage_ws").on(t.workspaceId, t.periodStart),
+  index("agent_usage_ws_llm").on(t.workspaceId, t.llm, sql`${t.createdAt} DESC`),
+  // Migration 0018: retention purge and pseudonymisation.
+  index("agent_usage_time").on(t.createdAt),
+  index("agent_usage_user").on(t.userId),
+]);
 
 /** D-002: model catalog synced from the gateway listing (migration 0002). */
 export const modelKinds = ["image", "video", "chat"] as const;
@@ -781,7 +787,7 @@ export const safetyEvents = sqliteTable(
     hard: integer("hard", { mode: "boolean" }).notNull().default(false),
     createdAt: integer("created_at").notNull(),
   },
-  (t) => [index("safety_events_ws").on(t.workspaceId, t.hard, sql`${t.createdAt} DESC`), index("safety_events_time").on(sql`${t.createdAt} DESC`)],
+  (t) => [index("safety_events_ws").on(t.workspaceId, t.hard, sql`${t.createdAt} DESC`), index("safety_events_time").on(sql`${t.createdAt} DESC`), index("safety_events_user").on(t.userId)],
 );
 
 /** Classifier assessments by content hash (migration 0009). */
@@ -794,6 +800,57 @@ export const safetyCache = sqliteTable(
     expiresAt: integer("expires_at").notNull(),
   },
   (t) => [index("safety_cache_expiry").on(t.expiresAt)],
+);
+
+/**
+ * Migration 0018: one row per deleted account (durable deletion job, AccountDeletionWorkflow).
+ * `userId` holds the raw id only while the job runs; it becomes the tombstone when done.
+ */
+export const accountDeletions = sqliteTable(
+  "account_deletions",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    tombstone: text("tombstone").notNull(),
+    status: text("status", { enum: ["pending", "done"] }).notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    lastError: text("last_error"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+    doneAt: integer("done_at"),
+  },
+  (t) => [index("account_deletions_pending").on(t.status, t.updatedAt), check("account_deletions_status_check", sql`${t.status} IN ('pending','done')`)],
+);
+
+export const accountDeletionItemKinds = ["project_room", "project_pseudonymize", "agent_session", "credit_account", "user_hub"] as const;
+
+/** Migration 0018: Durable Objects a deletion job wipes or pseudonymises. */
+export const accountDeletionItems = sqliteTable(
+  "account_deletion_items",
+  {
+    deletionId: text("deletion_id").notNull(),
+    kind: text("kind", { enum: accountDeletionItemKinds }).notNull(),
+    ref: text("ref").notNull(),
+    doneAt: integer("done_at"),
+  },
+  (t) => [primaryKey({ columns: [t.deletionId, t.kind, t.ref] }), index("account_deletion_items_pending").on(t.deletionId, t.doneAt)],
+);
+
+/** Migration 0018: Settings → Account → Export my data (DataExportWorkflow). */
+export const dataExports = sqliteTable(
+  "data_exports",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    status: text("status", { enum: ["queued", "running", "done", "failed", "expired"] }).notNull().default("queued"),
+    r2Key: text("r2_key"),
+    size: integer("size"),
+    error: text("error"),
+    createdAt: integer("created_at").notNull(),
+    finishedAt: integer("finished_at"),
+    expiresAt: integer("expires_at"),
+  },
+  (t) => [index("data_exports_user").on(t.userId, sql`${t.createdAt} DESC`)],
 );
 
 export type Workspace = typeof workspaces.$inferSelect;

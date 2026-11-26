@@ -35,6 +35,7 @@ export const ID_PREFIXES = {
   invite: 'inv',
   feedback: 'fbk',
   export: 'exp',
+  dataExport: 'dex',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIXES;

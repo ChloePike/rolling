@@ -2,6 +2,16 @@
 
 Decisions made after the original spec. Where this file disagrees with `PRD.md`, `architecture.md`, `api.md` or `harness.md`, this file wins. Newest first.
 
+## D-018 — Privacy: durable deletion, pseudonymised records, retention purge, self-serve export (2026-11-26)
+
+From the legal review of `legal/privacy-policy.md` against the code. Values live in `packages/core/src/privacy.ts`; the policy quotes them.
+
+- **Deletion is complete within 30 days** (`ACCOUNT_DELETION_DEADLINE_DAYS`). The request deletes or pseudonymises D1 at once; a durable job (`AccountDeletionWorkflow`, items in `account_deletion_items`, restarted by the daily cron) wipes Durable Object storage: ProjectRooms of closed workspaces (deleteAll, alarm cleared), every AgentSession of closed workspaces and every thread the user started anywhere, the UserHub. Idempotent end to end.
+- **Ownership rule (unchanged, now documented):** a workspace the user owns with no other owner is closed (personal, or a Team with no other members); a Team with another owner is left; a Team with other members and no other owner blocks deletion with `409 OWNER_OF_TEAM` until ownership is transferred. Projects and assets of workspaces the user leaves stay with the workspace.
+- **Retained records are pseudonymised, not anonymised to NULL:** the user id becomes a stable tombstone `usr_deleted_<sha256 prefix>` in the CreditAccount ledger, holds and member usage (financial records, legal retention), D1 `ledger_lines`, `safety_events` (abuse prevention), `agent_usage`, and authorship of runs, jobs, quotes, exports and projects in shared workspaces (also inside their ProjectRooms). The raw id is dropped from the deletion job when it finishes.
+- **Retention:** safety events 365 days (`SAFETY_LOG_RETENTION_DAYS`), their excerpts 90 days; agent usage 400 days; data export bundles 7 days. Purged by the daily `17 3 * * *` cron.
+- **Export:** Settings → Account → Export my data (`POST /api/account/export`), one per 24 h, ZIP of JSON files built by `DataExportWorkflow` into private R2 under the personal workspace prefix, link emailed (signed, 7 days).
+
 ## D-017 — Google sign-in uses popups / One Tap; redirect is the fallback; no Apple (2026-11-26)
 
 Owner decision. Social sign-in does not leave the page, Google is the only social provider (Apple is removed: button, SDK, provider, client-secret signing, env, copy) and Google needs **only the public Client ID** (no `GOOGLE_CLIENT_SECRET`, no OAuth code exchange).

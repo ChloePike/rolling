@@ -106,6 +106,37 @@ export class CreditAccount extends DurableObject<Env> {
     return { ok: true, schemaVersion: this.schemaVersion };
   }
 
+  /**
+   * Account deletion: keeps every financial record (legal retention) but
+   * replaces `userId` with its tombstone in the ledger, holds, member usage,
+   * agent holds and stored idempotency results. Idempotent; balances are untouched.
+   */
+  async pseudonymizeUser(userId: string, tombstone: string): Promise<{ ok: true; changed: number }> {
+    const sql = this.ctx.storage.sql;
+    const like = `%${userId}%`;
+    let changed = 0;
+    this.ctx.storage.transactionSync(() => {
+      changed += sql.exec("UPDATE ledger SET user_id = ? WHERE user_id = ?", tombstone, userId).rowsWritten;
+      changed += sql.exec("UPDATE holds SET user_id = ? WHERE user_id = ?", tombstone, userId).rowsWritten;
+      changed += sql.exec("UPDATE agent_holds SET user_id = ? WHERE user_id = ?", tombstone, userId).rowsWritten;
+      // (user_id, month) is the key: fold into any tombstone row (none unless a run was interrupted).
+      changed += sql.exec(
+        `INSERT INTO member_usage (user_id, month, spent) SELECT ?, month, spent FROM member_usage WHERE user_id = ?
+         ON CONFLICT (user_id, month) DO UPDATE SET spent = member_usage.spent + excluded.spent`,
+        tombstone,
+        userId,
+      ).rowsWritten;
+      sql.exec("DELETE FROM member_usage WHERE user_id = ?", userId);
+      changed += sql.exec(
+        "UPDATE idempotency SET result = REPLACE(result, ?1, ?2), fingerprint = REPLACE(fingerprint, ?1, ?2) WHERE result LIKE ?3 OR fingerprint LIKE ?3",
+        userId,
+        tombstone,
+        like,
+      ).rowsWritten;
+    });
+    return { ok: true, changed };
+  }
+
   // --- reads ---------------------------------------------------------------
 
   async balance(): Promise<Balance> {

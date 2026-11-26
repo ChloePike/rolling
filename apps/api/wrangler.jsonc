@@ -20,7 +20,8 @@
   ],
   "workers_dev": true,
   // Crons (apps/api/src/scheduled.ts), repeated in each env: model catalog sync + upload cleanup every 6 hours;
-  // safety-net sweep every 5 minutes (stalled runs, uploads left processing: pending); nightly ledger reconcile 03:17 UTC.
+  // safety-net sweep every 5 minutes (stalled runs, uploads left processing: pending); nightly ledger reconcile 03:17 UTC,
+  // which also runs the retention purge and restarts unfinished account deletions (packages/core/src/privacy.ts).
   "triggers": {
     "crons": [
       "0 */6 * * *",
@@ -120,6 +121,16 @@
       "binding": "BILLING",
       "name": "rolling-dev-billing",
       "class_name": "BillingWorkflow"
+    },
+    {
+      "binding": "ACCOUNT_DELETION",
+      "name": "rolling-dev-account-deletion",
+      "class_name": "AccountDeletionWorkflow"
+    },
+    {
+      "binding": "DATA_EXPORT",
+      "name": "rolling-dev-data-export",
+      "class_name": "DataExportWorkflow"
     }
   ],
   "queues": {
@@ -295,6 +306,16 @@
           "binding": "BILLING",
           "name": "rolling-staging-billing",
           "class_name": "BillingWorkflow"
+        },
+        {
+          "binding": "ACCOUNT_DELETION",
+          "name": "rolling-staging-account-deletion",
+          "class_name": "AccountDeletionWorkflow"
+        },
+        {
+          "binding": "DATA_EXPORT",
+          "name": "rolling-staging-data-export",
+          "class_name": "DataExportWorkflow"
         }
       ],
       "queues": {
@@ -468,6 +489,16 @@
           "binding": "BILLING",
           "name": "rolling-production-billing",
           "class_name": "BillingWorkflow"
+        },
+        {
+          "binding": "ACCOUNT_DELETION",
+          "name": "rolling-production-account-deletion",
+          "class_name": "AccountDeletionWorkflow"
+        },
+        {
+          "binding": "DATA_EXPORT",
+          "name": "rolling-production-data-export",
+          "class_name": "DataExportWorkflow"
         }
       ],
       "queues": {

@@ -31,6 +31,8 @@ interface __BaseEnv_Env {
 	GENERATE: Workflow<Parameters<import("./src/index").GenerateWorkflow['run']>[0]['payload']>;
 	EXPORT: Workflow<Parameters<import("./src/index").ExportWorkflow['run']>[0]['payload']>;
 	BILLING: Workflow<Parameters<import("./src/index").BillingWorkflow['run']>[0]['payload']>;
+	ACCOUNT_DELETION: Workflow<Parameters<import("./src/index").AccountDeletionWorkflow['run']>[0]['payload']>;
+	DATA_EXPORT: Workflow<Parameters<import("./src/index").DataExportWorkflow['run']>[0]['payload']>;
 }
 declare namespace Cloudflare {
 	interface GlobalProps {
@@ -67,6 +69,8 @@ declare namespace Cloudflare {
 		GENERATE: Workflow<Parameters<import("./src/index").GenerateWorkflow['run']>[0]['payload']>;
 		EXPORT: Workflow<Parameters<import("./src/index").ExportWorkflow['run']>[0]['payload']>;
 		BILLING: Workflow<Parameters<import("./src/index").BillingWorkflow['run']>[0]['payload']>;
+		ACCOUNT_DELETION: Workflow<Parameters<import("./src/index").AccountDeletionWorkflow['run']>[0]['payload']>;
+		DATA_EXPORT: Workflow<Parameters<import("./src/index").DataExportWorkflow['run']>[0]['payload']>;
 	}
 	interface ProductionEnv {
 		MEDIA: R2Bucket;
@@ -98,6 +102,8 @@ declare namespace Cloudflare {
 		GENERATE: Workflow<Parameters<import("./src/index").GenerateWorkflow['run']>[0]['payload']>;
 		EXPORT: Workflow<Parameters<import("./src/index").ExportWorkflow['run']>[0]['payload']>;
 		BILLING: Workflow<Parameters<import("./src/index").BillingWorkflow['run']>[0]['payload']>;
+		ACCOUNT_DELETION: Workflow<Parameters<import("./src/index").AccountDeletionWorkflow['run']>[0]['payload']>;
+		DATA_EXPORT: Workflow<Parameters<import("./src/index").DataExportWorkflow['run']>[0]['payload']>;
 	}
 	interface Env extends __BaseEnv_Env {}
 }

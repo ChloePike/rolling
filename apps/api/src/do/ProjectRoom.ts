@@ -256,6 +256,68 @@ export class ProjectRoom extends DurableObject<Env> {
     return { ok: true };
   }
 
+  /**
+   * Account deletion (AccountDeletionWorkflow): wipes the room without a caller
+   * check (only the Worker can reach this RPC). Idempotent: a wiped or never
+   * created room just stays empty. Sockets are closed with 4410.
+   */
+  async purge(): Promise<{ ok: true }> {
+    if (this.threadTimer) clearTimeout(this.threadTimer);
+    this.threadTimer = null;
+    for (const ws of this.ctx.getWebSockets()) {
+      try {
+        ws.send(envelope("error", { code: "PROJECT_DELETED", message: "This project was deleted" }));
+        ws.close(4410, "Project deleted");
+      } catch {
+        // Already closing.
+      }
+    }
+    let subscribers: string[] = [];
+    let projectId = "";
+    try {
+      subscribers = this.subscriberIds();
+      projectId = this.getMeta("project_id") ?? "";
+    } catch {
+      // Storage already wiped by an earlier attempt.
+    }
+    await Promise.all(
+      subscribers.map((userId) =>
+        this.hub(userId)
+          .deliver({ projectId, type: "error", payload: { projectId, code: "PROJECT_DELETED", message: "This project was deleted" }, drop: true })
+          .catch(() => undefined),
+      ),
+    );
+    await this.ctx.storage.deleteAlarm();
+    await this.ctx.storage.deleteAll();
+    return { ok: true };
+  }
+
+  /**
+   * Account deletion, project in a workspace the user leaves: replaces the
+   * user's id with its tombstone in node authorship, the patch log, the event
+   * ring and agent-thread registrations, and drops their hub subscription. Idempotent.
+   */
+  async pseudonymizeUser(userId: string, tombstone: string): Promise<{ ok: true; changed: number }> {
+    if (!this.getMeta("workspace_id")) return { ok: true, changed: 0 };
+    const sql = this.ctx.storage.sql;
+    let changed = 0;
+    this.ctx.storage.transactionSync(() => {
+      changed += sql.exec("UPDATE nodes SET created_by = ? WHERE created_by = ?", tombstone, userId).rowsWritten;
+      changed += sql.exec("UPDATE patch_log SET actor = ? WHERE actor = ?", tombstone, userId).rowsWritten;
+      const like = `%${userId}%`;
+      changed += sql.exec("UPDATE patch_log SET ops = REPLACE(ops, ?, ?) WHERE ops LIKE ?", userId, tombstone, like).rowsWritten;
+      changed += sql.exec("UPDATE event_ring SET payload = REPLACE(payload, ?, ?) WHERE payload LIKE ?", userId, tombstone, like).rowsWritten;
+      changed += sql.exec("UPDATE agent_threads SET caller = REPLACE(caller, ?, ?) WHERE caller LIKE ?", userId, tombstone, like).rowsWritten;
+      changed += sql.exec("DELETE FROM hub_subscribers WHERE user_id = ?", userId).rowsWritten;
+      if (this.getMeta("created_by") === userId) {
+        this.setMeta("created_by", tombstone);
+        changed++;
+      }
+    });
+    this.hubStubs.delete(userId);
+    return { ok: true, changed };
+  }
+
   // ---------------------------------------------------------------- graph
 
   async getSnapshot(caller: RoomCaller): Promise<RoomSnapshot | RoomError> {

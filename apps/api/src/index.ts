@@ -13,6 +13,7 @@ import { billing } from "./routes/billing";
 import { stripeWebhook } from "./routes/stripe";
 import { health } from "./routes/health";
 import { me } from "./routes/me";
+import { account } from "./routes/account";
 import { media } from "./routes/media";
 import { models } from "./routes/models";
 import { runs } from "./routes/runs";
@@ -39,6 +40,8 @@ export { FfmpegRenderer } from "./containers/FfmpegRenderer";
 export { GenerateWorkflow } from "./workflows/Generate";
 export { ExportWorkflow } from "./workflows/Export";
 export { BillingWorkflow } from "./workflows/Billing";
+export { AccountDeletionWorkflow } from "./workflows/AccountDeletion";
+export { DataExportWorkflow } from "./workflows/DataExport";
 
 export const app = new Hono<AppEnv>();
 
@@ -60,6 +63,7 @@ const api = new Hono<AppEnv>()
   .route("/health", health)
   .route("/auth", authRoutes)
   .route("/me", me)
+  .route("/account", account)
   .route("/workspace", workspace)
   .route("/billing", billing)
   .route("/stripe", stripeWebhook)
