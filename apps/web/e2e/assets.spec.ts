@@ -17,7 +17,8 @@ test.describe('assets (Assets.dc.html)', () => {
     await expect(page.getByRole('status').filter({ hasText: 'Uploading' })).toContainText('Uploading · product_shoot_03.mov');
     const details = page.getByRole('complementary', { name: 'Asset details' });
     await expect(details).toContainText('Product photo.png');
-    await expect(details).toContainText('11-23 14:20');
+    // Intl date and time in the locale, not the old `11-23 14:20`.
+    await expect(details).toContainText(new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', ...(new Date().getFullYear() !== 2026 && { year: 'numeric' }), hour: 'numeric', minute: '2-digit' }).format(new Date('2026-11-23T14:20:00')));
     await page.locator('[data-asset]').nth(1).click();
     await expect(details).toContainText('Shot A · v2.mp4');
     await expect(details).toContainText('Made on canvas');

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
-import { useIntl } from 'react-intl';
+import { useIntl, type IntlShape } from 'react-intl';
 import styles from './Editor.module.css';
 import type { EditorProject } from './mocks';
 import { formatClipLength, formatTimecode } from '@rolling/core/timeline';
@@ -8,6 +8,21 @@ import { clipEnd, IDENTITY_TRANSFORM, isCaptionClip, MIN_SPEED, type Clip, type 
 /** Volume fader range in dB (−6 dB sits at 62.5%). */
 const DB_MIN = -26;
 const DB_MAX = 6;
+
+
+/**
+ * “Model, 720p, 5s” from the parts a shot has (no “, , 0s” for a shot without a
+ * model, resolution or length yet): an Intl list of the present parts, or ''.
+ */
+export function shotMetaLine(intl: Pick<IntlShape, 'formatMessage' | 'formatList'>, shot: { model?: string | null; resolution?: string | null; seconds?: number | null } | undefined): string {
+  if (!shot) return '';
+  const parts = [
+    shot.model?.trim() || null,
+    shot.resolution?.trim() || null,
+    typeof shot.seconds === 'number' && shot.seconds > 0 ? intl.formatMessage({ id: 'editor.inspector.seconds' }, { seconds: shot.seconds }) : null,
+  ].filter((p): p is string => !!p);
+  return parts.length ? intl.formatList(parts, { type: 'unit', style: 'short' }) : '';
+}
 
 export interface InspectorProps {
   project: EditorProject;
@@ -110,7 +125,7 @@ function MediaPanel(props: InspectorProps & { clip: MediaClip; track: Track }) {
   const meta = isVideo
     ? clip.assetId === null
       ? t('editor.bin.notGenerated')
-      : t('editor.inspector.shotMeta', { model: shot?.model ?? '', resolution: shot?.resolution ?? '', seconds: shot?.seconds ?? 0 })
+      : shotMetaLine(intl, shot)
     : t('editor.inspector.audioMeta', { length: formatClipLength(audio?.seconds ?? clipEnd(clip) - clip.start) });
   const dbText = t('editor.inspector.db', {
     value: intl.formatNumber(gain, { maximumFractionDigits: 1, signDisplay: 'negative' }).replace('-', '−'),

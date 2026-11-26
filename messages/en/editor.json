@@ -25,7 +25,7 @@
   "editor.monitor.pause": "Pause",
   "editor.monitor.notGenerated": "Not generated",
   "editor.inspector.label": "Inspector",
-  "editor.inspector.shotMeta": "{model}, {resolution}, {seconds, number}s",
+  "editor.inspector.seconds": "{seconds, number}s",
   "editor.inspector.audioMeta": "Audio, {length}",
   "editor.inspector.captionTitle": "Caption",
   "editor.inspector.captionMeta": "{start} to {end}",

@@ -41,11 +41,11 @@ function folderLabel(f: FolderItem, intl: ReturnType<typeof useIntl>) {
   return f.kind === 'project' ? (f.title ?? '') : intl.formatMessage({ id: `library.assets.folder.${f.kind}` });
 }
 
-/** `MM-DD HH:mm` built from Intl parts (the design’s compact upload time). */
+/** The upload time through Intl in the viewer's locale (“Nov 23, 2:20 PM”; the year only when it is not this year). */
 function compactDate(iso: string, locale: string) {
-  const parts = new Intl.DateTimeFormat(locale, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(iso));
-  const get = (t: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === t)?.value ?? '';
-  return `${get('month')}-${get('day')} ${get('hour')}:${get('minute')}`;
+  const d = new Date(iso);
+  const otherYear = d.getFullYear() !== new Date().getFullYear();
+  return new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric', ...(otherYear && { year: 'numeric' }), hour: 'numeric', minute: '2-digit' }).format(d);
 }
 
 /** File tiles while the list loads (the design's mix of shapes). */

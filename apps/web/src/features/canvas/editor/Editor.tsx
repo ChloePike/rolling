@@ -18,7 +18,7 @@ import type { TimelineOp } from '@rolling/core/timeline';
 import { Bin } from './Bin';
 import styles from './Editor.module.css';
 import { Icon } from './icons';
-import { Inspector } from './Inspector';
+import { Inspector, shotMetaLine } from './Inspector';
 import type { BinItem, EditorProject } from './mocks';
 import { Monitor } from './Monitor';
 import { editPoints } from './playback';
@@ -368,7 +368,7 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
       cost: shotCredits(nodeId),
       kind: 'video',
       actionLabel: t(regenerate ? 'editor.run.action' : 'editor.run.generateAction'),
-      meta: shot ? t('editor.inspector.shotMeta', { model: shot.model, resolution: shot.resolution, seconds: shot.seconds }) : '',
+      meta: shotMetaLine(intl, shot),
       // Real mode: the shot's canvas node runs in place (`scope: 'node'`); the clip updates on `node.version`.
       ...(tsync
         ? {
