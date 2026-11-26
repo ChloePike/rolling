@@ -3,6 +3,7 @@ import { useToast } from '@rolling/ui';
 import { useNavigate } from '@tanstack/react-router';
 import { useRef, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
+import { GoogleOneTap } from '@/features/auth/GoogleOneTap';
 import { isApiError } from '@/lib/api/errors';
 import { checkoutPlan, openBillingPortal, useSession } from '@/lib/session';
 import { motion, Segmented } from './shared';
@@ -83,6 +84,7 @@ export function UpgradePage({ initialPeriod = 'monthly' }: { initialPeriod?: Bil
 
   return (
     <div className={styles.page}>
+      <GoogleOneTap redirect="/upgrade" />
       <div className={styles.hero}>
         <h1 className={styles.title}>
           <FormattedMessage id="account.upgrade.title" />

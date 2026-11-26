@@ -387,13 +387,13 @@ function SignInDialog({ open, onClose, me }: { open: boolean; onClose: () => voi
   const toast = useToast();
   const qc = useQueryClient();
   const accounts = useLinkedAccounts();
-  const [mockLinked, setMockLinked] = useState<Record<'google' | 'apple' | 'email', boolean>>({ google: me.user.signIn === 'google', apple: me.user.signIn === 'apple', email: true });
+  const [mockLinked, setMockLinked] = useState<Record<'google' | 'email', boolean>>({ google: me.user.signIn === 'google', email: true });
   const ids = (accounts.data ?? []).map((a) => a.providerId);
   // Real API: email codes always work for the account's address; social methods come from `list-accounts`.
-  const linked = isMockApi() ? mockLinked : { google: ids.includes('google'), apple: ids.includes('apple'), email: true };
+  const linked = isMockApi() ? mockLinked : { google: ids.includes('google'), email: true };
   const [busy, setBusy] = useState<string | null>(null);
   const count = Object.values(linked).filter(Boolean).length;
-  async function toggle(p: 'google' | 'apple' | 'email', on: boolean) {
+  async function toggle(p: 'google' | 'email', on: boolean) {
     const name = t(`account.settings.signIn.${p}`);
     if (isMockApi()) {
       setMockLinked((l) => ({ ...l, [p]: !on }));
@@ -418,7 +418,7 @@ function SignInDialog({ open, onClose, me }: { open: boolean; onClose: () => voi
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()} title={t('account.settings.signIn.title')} description={t('account.settings.signIn.lead')} closeLabel={t('account.settings.close')}>
       <div className={styles.dlgList}>
-        {(['google', 'apple', 'email'] as const).map((p) => {
+        {(['google', 'email'] as const).map((p) => {
           const on = linked[p];
           const last = on && count === 1;
           return (

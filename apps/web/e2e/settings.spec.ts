@@ -174,10 +174,11 @@ test.describe('settings (Settings.dc.html)', () => {
     await openApp(page, '/settings/account');
     await page.getByRole('button', { name: 'Manage sign-in' }).click();
     const dlg = page.getByRole('dialog', { name: 'Sign-in methods' });
-    await dlg.locator('[data-provider="apple"]').getByRole('button', { name: 'Connect' }).click();
-    await expect(page.getByText('Apple connected.')).toBeVisible();
+    await expect(dlg.locator('[data-provider="apple"]')).toHaveCount(0);
     await dlg.locator('[data-provider="google"]').getByRole('button', { name: 'Disconnect' }).click();
-    await dlg.locator('[data-provider="apple"]').getByRole('button', { name: 'Disconnect' }).click();
+    await dlg.locator('[data-provider="google"]').getByRole('button', { name: 'Connect' }).click();
+    await expect(page.getByText('Google connected.')).toBeVisible();
+    await dlg.locator('[data-provider="google"]').getByRole('button', { name: 'Disconnect' }).click();
     await expect(dlg.locator('[data-provider="email"]').getByRole('button', { name: 'Disconnect' })).toBeDisabled();
     await expect(dlg.getByText('Keep at least one way to sign in.').first()).toBeVisible();
     await page.keyboard.press('Escape');

@@ -15,6 +15,8 @@
   display:flex;align-items:center;justify-content:center;gap:10px;width:100%;
 }
 .btn:disabled{cursor:default}
+/* The official Google button (D-016) sits in the slot of the design's 44px primary button. */
+.gis{height:44px;width:100%;display:flex;align-items:center;justify-content:center;color-scheme:normal}
 .primary{background:var(--c-text-1);color:var(--c-bg)}
 .primary:hover:not(:disabled){background:var(--c-primary-hover)}
 .dark{background:var(--c-surface-4);color:var(--c-text-1)}

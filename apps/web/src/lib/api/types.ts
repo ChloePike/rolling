@@ -80,8 +80,8 @@ export interface MeResponse {
 
 export interface AuthProviders {
   emailCode: boolean;
-  google: boolean;
-  apple: boolean;
+  /** Google (D-016): the public client id and where Google posts credentials in redirect mode; false when not configured. */
+  google: { clientId: string; loginUri: string } | false;
 }
 
 export interface AutoTopUpView {

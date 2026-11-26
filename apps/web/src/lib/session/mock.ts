@@ -1,7 +1,7 @@
 import { planMonthlyCredits, PLANS, prorate, SEAT_PRICE, TEAM_SEATS, type PlanId } from '@rolling/core/pricing/config';
 import { ApiError, type ApiErrorCode } from '@/lib/api/errors';
 import { topUpFor } from '@/lib/topUp';
-import { derive, getCredits, getSession, setCredits, setSession, type BillingPeriod, type CreditsBreakdown, type Session, type SessionPlan } from './store';
+import { derive, getCredits, getSession, setCredits, setSession, SIGNED_OUT, type BillingPeriod, type CreditsBreakdown, type Session, type SessionPlan } from './store';
 
 /**
  * Mock session (`VITE_API_MODE=mock`: Playwright fidelity and flow specs, unit
@@ -10,6 +10,7 @@ import { derive, getCredits, getSession, setCredits, setSession, type BillingPer
  * - `window.__rollingMocks.me` (set before the app loads): `{ plan: null }`
  *   for a workspace without a plan, `{ plan: { id: 'starter', ... } }` for
  *   another plan, `{ workspace: { matureAllowed: false } }`;
+ * - `{ signedOut: true }`: a signed-out visitor;
  * - `?member=0` in the URL at load: signed up, no plan;
  * - localStorage `rolling.mock.isMember` = `false`: same.
  *
@@ -18,6 +19,8 @@ import { derive, getCredits, getSession, setCredits, setSession, type BillingPer
 
 export interface SessionMockOverrides {
   plan?: SessionPlan | null;
+  /** A signed-out visitor (public pages, One Tap). */
+  signedOut?: boolean;
   workspace?: { matureAllowed?: boolean } & Record<string, unknown>;
   [key: string]: unknown;
 }
@@ -101,6 +104,7 @@ export function mockIdentity(workspaceId: string = getMockWorkspace(MOCK_WORKSPA
 
 export function initialMockSession(): Session {
   const o = mockOverrides();
+  if (o.signedOut) return SIGNED_OUT;
   const plan = guestFlag() ? null : o.plan === undefined ? DEFAULT_PLAN : o.plan;
   return derive(plan, o.workspace?.matureAllowed ?? true, mockIdentity());
 }

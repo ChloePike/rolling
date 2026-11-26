@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { googleStartUrl, leaveTo } from '@/features/auth/google';
 import { useMemo } from 'react';
 import { PLAN_ORDER, PLANS, type PlanId } from '@rolling/core/pricing/config';
 import { api } from '@/lib/api/client';
@@ -441,7 +442,7 @@ export function useMe(): { data: Me | undefined; isPending: boolean } {
     if (isMockApi()) return mock.data;
     if (!real.data) return undefined;
     const ids = (accounts.data ?? []).map((a) => a.providerId);
-    const signIn: Me['user']['signIn'] = ids.includes('google') ? 'google' : ids.includes('apple') ? 'apple' : 'email';
+    const signIn: Me['user']['signIn'] = ids.includes('google') ? 'google' : 'email';
     return accountFromApi(real.data, billing.data, signIn, card.data ?? null);
   }, [mock.data, real.data, billing.data, accounts.data, card.data]);
   return { data, isPending: isMockApi() ? mock.isPending : real.isPending };
@@ -601,16 +602,16 @@ export function useTopUps(plan: PlanId | null) {
 
 // ---------------------------------------------------------------- sign-in methods (Better Auth)
 
-/** Links Google or Apple to this account: the provider round trip returns to Settings → Account. */
-export async function linkProvider(provider: 'google' | 'apple'): Promise<never> {
-  const r = await api.post<{ url: string }>('/auth/link-social', { provider, callbackURL: '/settings/account' }, { noWorkspace: true });
-  const seam = (window as unknown as { __rollingRedirect?: (u: string) => void }).__rollingRedirect;
-  if (seam) seam(r.url);
-  else window.location.assign(r.url);
+/**
+ * Links Google to this account (D-016, no client secret): Google posts an ID token
+ * to `/api/auth/google/credential` and the window returns to Settings → Account.
+ */
+export async function linkProvider(_provider: 'google'): Promise<never> {
+  leaveTo(googleStartUrl('/settings/account', 'link'));
   return new Promise(() => {});
 }
 
-export async function unlinkProvider(provider: 'google' | 'apple'): Promise<void> {
+export async function unlinkProvider(provider: 'google'): Promise<void> {
   await api.post('/auth/unlink-account', { providerId: provider }, { noWorkspace: true });
 }
 

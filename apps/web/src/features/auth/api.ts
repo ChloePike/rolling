@@ -9,9 +9,9 @@ import { refetchMe } from '@/lib/session';
  * - email code: `POST /api/auth/email-otp/send-verification-otp`, then
  *   `POST /api/auth/sign-in/email-otp` (sets the session cookie; creates the
  *   user on first sign-in);
- * - Google / Apple: `POST /api/auth/sign-in/social` → navigate to `url`; the
- *   provider returns through `/api/auth/callback/:provider` to `callbackURL`
- *   (or `errorCallbackURL?error=<code>`).
+ * - Google (D-016): ID tokens from Google Identity Services, see `./google.ts`
+ *   (popup / One Tap → `POST /api/auth/sign-in/social` with `idToken`; fallbacks
+ *   land back on `/login?error=<code>` when they fail).
  *
  * Errors are `ApiError`s: `INVALID_CODE`, `CODE_EXPIRED`, `TOO_MANY_ATTEMPTS`,
  * `RATE_LIMITED` (`data.retryAfter` seconds), `VALIDATION_FAILED`.
@@ -20,8 +20,6 @@ import { refetchMe } from '@/lib/session';
  * `000000` is a wrong code, `111111` an expired one. Latency seam:
  * `window.__rollingMocks.delayMs` (default 400 ms).
  */
-
-export type OAuthProvider = 'google' | 'apple';
 
 export interface SendCodeResult {
   email: string;
@@ -37,6 +35,7 @@ export const RESEND_COOLDOWN_SECONDS = 30;
 export const CODE_TTL_MINUTES = 10;
 export const MOCK_WRONG_CODE = '000000';
 export const MOCK_EXPIRED_CODE = '111111';
+export const MOCK_GOOGLE_CLIENT_ID = 'mock-client.apps.googleusercontent.com';
 
 function wait(): Promise<void> {
   const w = typeof window !== 'undefined' ? (window as unknown as { __rollingMocks?: { delayMs?: number } }).__rollingMocks : undefined;
@@ -46,38 +45,12 @@ function wait(): Promise<void> {
 
 /** Which sign-in methods the server offers (unconfigured social providers are hidden). */
 export async function fetchProviders(): Promise<AuthProviders> {
-  if (isMockApi()) return { emailCode: true, google: true, apple: true };
+  if (isMockApi()) return { emailCode: true, google: { clientId: MOCK_GOOGLE_CLIENT_ID, loginUri: '/api/auth/google/credential' } };
   try {
     return await api.get<AuthProviders>('/auth/providers', { noWorkspace: true });
   } catch {
-    return { emailCode: true, google: false, apple: false };
+    return { emailCode: true, google: false };
   }
-}
-
-/** Leaves for the provider (test seam `window.__rollingRedirect`). */
-function go(url: string) {
-  const seam = (window as unknown as { __rollingRedirect?: (u: string) => void }).__rollingRedirect;
-  if (seam) seam(url);
-  else window.location.assign(url);
-}
-
-/**
- * Starts the provider redirect. Real: the window navigates away (the promise
- * stays pending). Mock: returns where the callback would land.
- */
-export async function startOAuth(provider: OAuthProvider, opts: { redirect?: string; errorPath?: string } = {}): Promise<{ redirectTo: string; provider: OAuthProvider }> {
-  const target = opts.redirect ?? '/';
-  if (isMockApi()) {
-    await wait();
-    return { redirectTo: target, provider };
-  }
-  const r = await api.post<{ url: string; redirect: boolean }>(
-    '/auth/sign-in/social',
-    { provider, callbackURL: target, errorCallbackURL: opts.errorPath ?? '/login', newUserCallbackURL: target },
-    { noWorkspace: true },
-  );
-  go(r.url);
-  return new Promise(() => {});
 }
 
 export async function sendEmailCode(email: string): Promise<SendCodeResult> {
@@ -128,6 +101,10 @@ export function authErrorMessage(e: unknown): { id: string; values?: Record<stri
       }
       case 'NETWORK':
         return { id: 'auth.error.network' };
+      case 'UNAUTHENTICATED':
+        return (e.data as { reason?: string }).reason === 'NONCE' ? { id: 'auth.error.attemptExpired' } : { id: 'auth.error.oauth' };
+      case 'FORBIDDEN':
+        return (e.data as { reason?: string }).reason === 'EMAIL_NOT_VERIFIED' ? { id: 'auth.error.emailNotVerified' } : { id: 'auth.error.generic' };
       default:
         return { id: 'auth.error.generic' };
     }
@@ -135,7 +112,16 @@ export function authErrorMessage(e: unknown): { id: string; values?: Record<stri
   return { id: 'auth.error.generic' };
 }
 
-/** OAuth callback error codes (`?error=`) → message. */
+/** Error codes the Google fallbacks return with (`?error=`) → message. */
 export function oauthErrorMessage(code: string): string {
-  return code === 'access_denied' ? 'auth.error.oauthDenied' : 'auth.error.oauth';
+  switch (code) {
+    case 'access_denied':
+      return 'auth.error.oauthDenied';
+    case 'email_not_verified':
+      return 'auth.error.emailNotVerified';
+    case 'nonce':
+      return 'auth.error.attemptExpired';
+    default:
+      return 'auth.error.oauth';
+  }
 }

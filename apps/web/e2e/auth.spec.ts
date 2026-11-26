@@ -37,7 +37,7 @@ test.describe('auth screens (Login.dc.html)', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Welcome back');
     await expect(page.getByText('Log in to pick up where you left off.')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Continue with Google' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Continue with Apple' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Continue with Apple' })).toHaveCount(0);
     await expect(page.getByTestId('app-header')).toHaveCount(0);
     await page.getByRole('link', { name: 'Create an account' }).click();
     await expect(page).toHaveURL(/\/signup$/);
@@ -90,18 +90,17 @@ test.describe('auth screens (Login.dc.html)', () => {
     await expect(page.getByText('Your account is ready.')).toBeVisible();
   });
 
-  test('Google and Apple start the provider redirect (pending state, then back in the app)', async ({ page }) => {
+  test('Google without its script runs the full-page redirect (pending state, then back in the app)', async ({ page }) => {
     await page.addInitScript(() => {
       (window as unknown as { __rollingMocks: Record<string, unknown> }).__rollingMocks = { delayMs: 300 };
     });
     await openApp(page, '/login');
     await page.getByRole('button', { name: 'Continue with Google' }).click();
     await expect(page.getByRole('button', { name: 'Opening Google…' })).toBeDisabled();
-    await expect(page.getByRole('button', { name: 'Continue with Apple' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Continue with email' })).toBeDisabled();
     await expect(page).toHaveURL(/\/$/);
     await openApp(page, '/signup');
-    await page.getByRole('button', { name: 'Continue with Apple' }).click();
-    await expect(page.getByRole('button', { name: 'Opening Apple…' })).toBeVisible();
+    await page.getByRole('button', { name: 'Continue with Google' }).click();
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByText('Your account is ready.')).toBeVisible();
   });

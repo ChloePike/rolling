@@ -24,7 +24,7 @@ export interface Prefs {
 
 export interface Me {
   /** `handle` is '' until the user picks one (real API); `image` is the avatar URL or null. */
-  user: { id: string; name: string; handle: string; email: string; signIn: 'google' | 'apple' | 'email'; bio?: string | null; image?: string | null };
+  user: { id: string; name: string; handle: string; email: string; signIn: 'google' | 'email'; bio?: string | null; image?: string | null };
   workspace: { id: string; name: string; matureAllowed: boolean };
   role: Role;
   prefs: Prefs;
