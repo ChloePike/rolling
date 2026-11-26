@@ -77,6 +77,8 @@ describe("templates: built-ins", () => {
       expect(t.durationSec > 0, t.id).toBe(hasVideo);
     }
     expect(builtins.find((t: any) => t.id === "tpl_character_sheet").durationSec).toBe(0);
+    // Migration 0021: the feed opens on a mix of the Home inspiration categories.
+    expect(builtins.slice(0, 4).map((t: any) => t.category)).toEqual(["product", "talking", "drama", "holiday"]);
     const tvm = manifest.get("tpl_tv_ad_15s")!;
     await env.MEDIA.put(tvm.coverKey, new Uint8Array([255, 216, 255, 224]), { httpMetadata: { contentType: "image/jpeg" } });
     const cover = await SELF.fetch(`${BASE}/api/media/${tvm.coverKey}`);

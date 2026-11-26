@@ -63,7 +63,7 @@ describe("D1 migration", () => {
     const db = new DatabaseSync(":memory:");
     const dir = new URL("../migrations/d1/", import.meta.url);
     const files = readdirSync(dir).filter((f) => f.endsWith(".sql")).sort();
-    expect(files).toEqual(["0001_init.sql", "0002_models.sql", "0003_plan_names.sql", "0004_auth.sql", "0005_billing.sql", "0006_projects_assets.sql", "0007_runs.sql", "0008_agent.sql", "0009_safety.sql", "0010_uploads.sql", "0011_agent_allowance.sql", "0012_team.sql", "0013_account.sql", "0014_exports.sql", "0015_runs_templates.sql", "0016_seed_templates.sql", "0017_template_covers.sql", "0018_privacy.sql", "0019_seed_inspiration_templates.sql", "0020_template_media.sql"]);
+    expect(files).toEqual(["0001_init.sql", "0002_models.sql", "0003_plan_names.sql", "0004_auth.sql", "0005_billing.sql", "0006_projects_assets.sql", "0007_runs.sql", "0008_agent.sql", "0009_safety.sql", "0010_uploads.sql", "0011_agent_allowance.sql", "0012_team.sql", "0013_account.sql", "0014_exports.sql", "0015_runs_templates.sql", "0016_seed_templates.sql", "0017_template_covers.sql", "0018_privacy.sql", "0019_seed_inspiration_templates.sql", "0020_template_media.sql", "0021_template_feed_order.sql"]);
     for (const f of files) db.exec(readFileSync(new URL(f, dir), "utf8"));
     expectSchemaMatches(db, tablesOf(d1));
     // 0015: run requests and retries, template listing fields; 0016 seeds the built-in templates.

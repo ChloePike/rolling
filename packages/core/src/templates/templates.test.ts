@@ -7,7 +7,7 @@ import { computeInputDigests } from '../project/digest';
 import { planRun as structuralPlan } from '../project/plan';
 import { templateOps } from '../project/template';
 import type { GraphState } from '../graph/types';
-import { BUILTIN_TEMPLATES, builtinTemplatesSql } from './builtin';
+import { BUILTIN_TEMPLATES, builtinFeedOrder, builtinTemplatesSql } from './builtin';
 import { fillSlots, inferSlots, selectionGraph, SlotFillError, summarizeGraph } from './slots';
 
 const EMPTY: GraphState = { revision: 0, nodes: [], edges: [], groups: [] };
@@ -45,6 +45,13 @@ describe('built-in templates', () => {
       expect(generative.length, t.id).toBeGreaterThan(0);
       for (const i of generative) expect(i.action, `${t.id}/${i.title}: ${i.reason ?? ''}`).toBe('run');
     }
+  });
+
+  it('orders the feed round-robin across categories, every built-in once', () => {
+    const order = builtinFeedOrder();
+    expect([...order].sort()).toEqual(BUILTIN_TEMPLATES.map((t) => t.id).sort());
+    const cats = order.slice(0, 4).map((id) => BUILTIN_TEMPLATES.find((t) => t.id === id)!.category);
+    expect(cats).toEqual(['product', 'talking', 'drama', 'holiday']);
   });
 
   it('writes an idempotent upsert per template', () => {

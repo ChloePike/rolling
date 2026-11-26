@@ -583,6 +583,27 @@ export const BUILTIN_TEMPLATES: readonly BuiltinTemplate[] = [
   ),
 ];
 
+/** Home inspiration categories first, then the rest, for the feed order below. */
+const FEED_CATEGORY_ORDER: readonly TemplateCategory[] = ['product', 'talking', 'drama', 'holiday', 'comic', 'explainer', 'outfit', 'venue'];
+
+/**
+ * Built-in ids in feed order: round-robin across categories (Home inspiration ones first), in
+ * file order within each, so "For you" opens on a mix. Stored as `created_at` (migration 0021),
+ * which `GET /api/templates` sorts by after `uses`.
+ */
+export function builtinFeedOrder(templates: readonly BuiltinTemplate[] = BUILTIN_TEMPLATES): string[] {
+  const lists = FEED_CATEGORY_ORDER.map((c) => templates.filter((t) => t.category === c)).filter((l) => l.length);
+  const out: string[] = [];
+  for (let i = 0; out.length < templates.length; i++) for (const l of lists) if (i < l.length) out.push(l[i]!.id);
+  return out;
+}
+
+/** SQL that stores the feed order as built-ins' `created_at` (larger = earlier in the list). */
+export function builtinOrderSql(templates: readonly BuiltinTemplate[] = BUILTIN_TEMPLATES): string {
+  const ids = builtinFeedOrder(templates);
+  return ids.map((id, i) => `UPDATE templates SET created_at = ${ids.length - i} WHERE id = '${id}' AND workspace_id IS NULL;`).join('\n') + '\n';
+}
+
 const q = (v: string | null) => (v === null ? 'NULL' : `'${v.replace(/'/g, "''")}'`);
 
 /**
