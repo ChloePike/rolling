@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import listing from '../models/__fixtures__/hyperouter-models.json';
 import { parseListing } from '../models/catalog';
-import { PUBLIC_CHAT_MODELS, resolveChatModel, tokenPrice } from '../models/chat';
+import { PUBLIC_CHAT_MODELS, availableChatModels, resolveChatModel, tokenPrice } from '../models/chat';
 import { AGENT_ABUSE_LIMIT, AgentCostMeter, UNMETERED_AGENT_LLMS, agentAllowancePeriod, defaultTurnEstimateUsd, isUnmeteredAgentLlm, responseCostUsd, rollingAverage, slidingWindowTake, turnsLeft } from './agent';
 import { AGENT_ALLOWANCE_USD } from './config';
 
@@ -41,7 +41,7 @@ describe('agent allowance math (D-012)', () => {
     expect(turnsLeft(1.2, 1.3, 0.001)).toBe(0);
     expect(turnsLeft(1, 0, 0.25)).toBe(4);
     expect(turnsLeft(1, 0, 0)).toBe(0);
-    const table = Object.fromEntries(PUBLIC_CHAT_MODELS.map((m) => [m.id, turnsLeft(AGENT_ALLOWANCE_USD.starter, 0, defaultTurnEstimateUsd(priceOf(m.id)))]));
+    const table = Object.fromEntries(availableChatModels(models).map((m) => [m.id, turnsLeft(AGENT_ALLOWANCE_USD.starter, 0, defaultTurnEstimateUsd(priceOf(m.id)))]));
     expect(table['deepseek-v4.1-flash']).toBe(1081);
     expect(table['claude-opus-5.5']).toBe(18);
     expect(table['gpt-6-astra']).toBe(7);

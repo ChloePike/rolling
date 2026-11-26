@@ -18,6 +18,10 @@ describe('public chat models (D-009)', () => {
       'GPT-6.1 Sol',
       'Grok 4.6',
       'GLM 5.3',
+      'Gemini 4 Hydrogen',
+      'Gemini 4 Carbon',
+      'Gemini 4 Argon',
+      'Doubao',
     ]);
     expect(DEFAULT_CHAT_MODEL_ID).toBe('deepseek-v4.1-flash');
   });

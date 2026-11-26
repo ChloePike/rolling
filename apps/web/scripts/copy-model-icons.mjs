@@ -10,7 +10,7 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const BRANDS = ['bytedance', 'minimax', 'alibaba', 'qwen', 'grok', 'claude', 'openai', 'deepseek', 'zhipu'];
+const BRANDS = ['bytedance', 'minimax', 'alibaba', 'qwen', 'grok', 'claude', 'openai', 'deepseek', 'zhipu', 'gemini', 'doubao'];
 
 const here = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);

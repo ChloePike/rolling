@@ -37,4 +37,11 @@ describe('modelIcon', () => {
     expect(modelIcon('gpt-6-astra')?.colorSrc).toBeUndefined();
     expect(modelIcon('claude-opus-5')?.colorSrc).toBe('/model-icons/claude-color.svg');
   });
+  it('marks Gemini and Doubao (Seed SC) with their own brands', () => {
+    expect(modelIcon('google/gemini-4-argon')?.brand).toBe('gemini');
+    expect(modelIcon('gemini-4-hydrogen')?.brand).toBe('gemini');
+    expect(modelIcon('bytedance/seed-sc-260628')?.brand).toBe('doubao');
+    expect(modelIcon('doubao')?.brand).toBe('doubao');
+    expect(modelIcon('bytedance/seedance-2.5')?.brand).toBe('bytedance');
+  });
 });

@@ -43,6 +43,11 @@ export const PUBLIC_CHAT_MODELS: readonly PublicChatModel[] = [
   { id: 'gpt-6.1-sol', name: 'GPT-6.1 Sol', candidates: ['openai/gpt-6.1-sol'] },
   { id: 'grok-4.6', name: 'Grok 4.6', candidates: ['x-ai/grok-4.6'] },
   { id: 'glm-5.3', name: 'GLM 5.3', candidates: ['z-ai/glm-5.3'] },
+  { id: 'gemini-4-hydrogen', name: 'Gemini 4 Hydrogen', candidates: ['google/gemini-4-hydrogen'] },
+  { id: 'gemini-4-carbon', name: 'Gemini 4 Carbon', candidates: ['google/gemini-4-carbon'] },
+  { id: 'gemini-4-argon', name: 'Gemini 4 Argon', candidates: ['google/gemini-4-argon'] },
+  // Public name Doubao (owner decision); the gateway model is ByteDance Seed SC.
+  { id: 'doubao', name: 'Doubao', candidates: ['bytedance/seed-sc-260628'] },
 ];
 
 export const DEFAULT_CHAT_MODEL_ID = PUBLIC_CHAT_MODELS.find((m) => m.default)!.id;

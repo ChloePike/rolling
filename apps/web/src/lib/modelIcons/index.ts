@@ -9,7 +9,7 @@
  * so it reads in both themes.
  */
 
-export type ModelBrand = 'bytedance' | 'minimax' | 'alibaba' | 'qwen' | 'grok' | 'claude' | 'openai' | 'deepseek' | 'zhipu';
+export type ModelBrand = 'bytedance' | 'minimax' | 'alibaba' | 'qwen' | 'grok' | 'claude' | 'openai' | 'deepseek' | 'zhipu' | 'gemini' | 'doubao';
 
 export interface ModelIconInfo {
   brand: ModelBrand;
@@ -31,6 +31,8 @@ const BRANDS: Record<ModelBrand, { alt: string; color: boolean }> = {
   openai: { alt: 'OpenAI', color: false },
   deepseek: { alt: 'DeepSeek', color: true },
   zhipu: { alt: 'Zhipu GLM', color: true },
+  gemini: { alt: 'Google Gemini', color: true },
+  doubao: { alt: 'ByteDance Doubao', color: true },
 };
 
 /** Gateway provider prefix (`<provider>/…`) → brand. */
@@ -48,10 +50,14 @@ const PROVIDERS: Record<string, ModelBrand> = {
   zhipu: 'zhipu',
   'z-ai': 'zhipu',
   zai: 'zhipu',
+  google: 'gemini',
 };
 
 /** Model name prefixes (public ids, or the part after the provider) → brand. */
 const NAMES: ReadonlyArray<[RegExp, ModelBrand]> = [
+  // Seed SC is sold as Doubao; match it before the generic seed- rule.
+  [/^(doubao|seed-sc)/, 'doubao'],
+  [/^gemini/, 'gemini'],
   [/^(seedance|seedream|seed-)/, 'bytedance'],
   [/^(minimax|hailuo)/, 'minimax'],
   // Lumina Berry 1.0 models are Wan 3.0 (served through the Berry routes).
@@ -85,6 +91,8 @@ export function modelIcon(id: string | null | undefined): ModelIconInfo | null {
     // Only the Berry (Wan 3.0) family has a public mark; spicy, swaps and animate keep the tile.
     return /^berry-/.test(name) ? info('alibaba') : null;
   }
+  // ByteDance's Seed SC is sold as Doubao: its own mark, not the ByteDance one.
+  if (/^(doubao|seed-sc)/.test(name)) return info('doubao');
   if (provider && PROVIDERS[provider]) return info(PROVIDERS[provider]);
   for (const [re, brand] of NAMES) if (re.test(name)) return info(brand);
   return null;
