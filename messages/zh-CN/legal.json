@@ -1,0 +1,15 @@
+{
+  "legal.documentTitle": "{title} · {app}",
+  "legal.nav.label": "法律信息",
+  "legal.nav.terms": "服务条款",
+  "legal.nav.privacy": "隐私",
+  "legal.nav.acceptable-use": "使用规范",
+  "legal.nav.subprocessors": "子处理方",
+  "legal.toc": "本页内容",
+  "legal.links.label": "法律信息",
+  "legal.link.terms": "服务条款",
+  "legal.link.privacy": "隐私政策",
+  "legal.link.acceptable-use": "使用规范",
+  "legal.link.subprocessors": "子处理方",
+  "legal.englishGoverns": "本文档为英文版，以英文版为准。"
+}

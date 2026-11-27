@@ -1,0 +1,20 @@
+{
+  "profile.bio.placeholder": "[BIO: one or two lines the user writes about themselves]",
+  "profile.edit": "编辑资料",
+  "profile.share": "分享",
+  "profile.share.copied": "已复制主页链接",
+  "profile.tabs": "个人主页",
+  "profile.tab.published": "已发布",
+  "profile.tab.template": "模板",
+  "profile.empty": "这里还没有内容。",
+  "profile.downloaded": "已开始下载。",
+  "profile.bio.empty": "暂无简介。",
+  "profile.unavailable": "该主页不存在或未公开。",
+  "profile.unavailable.home": "回到首页",
+  "profile.empty.own.published": "还没有发布内容。在项目中打开“分享”，开启“发布到个人主页”。",
+  "profile.empty.own.template": "你发布的模板会显示在这里。",
+  "profile.empty.other.published": "还没有发布内容。",
+  "profile.empty.other.template": "还没有模板。",
+  "profile.empty.unclaimed": "设置用户名即可拥有公开主页。",
+  "profile.empty.pickHandle": "设置用户名"
+}
