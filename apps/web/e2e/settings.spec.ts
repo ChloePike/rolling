@@ -44,10 +44,14 @@ test.describe('settings (Settings.dc.html)', () => {
     const p25 = page.getByRole('radio', { name: /2,850/ });
     await expect(p25).toHaveAttribute('aria-checked', 'true');
     await expect(p25).toContainText('$25 · +14%');
-    await expect(page.getByText('2,500 + 350 bonus = 2,850 credits')).toBeVisible();
+    await expect(p25).toHaveAttribute('title', '2,500 + 350 bonus = 2,850 credits');
+    // UX audit #30: with a pack selected the field is empty (a placeholder, not “$ 10”) and its line is about the field.
+    const custom = page.getByLabel('Other amount');
+    await expect(custom).toHaveValue('');
+    await expect(custom).toHaveAttribute('placeholder', 'Any amount');
+    await expect(page.locator('#topup-line')).toHaveText('Any amount from $10 to $10,000');
     await page.getByRole('radio', { name: /31,250/ }).click();
     await expect(page.getByRole('button', { name: 'Buy 31,250 credits for $250' })).toBeVisible();
-    const custom = page.getByLabel('Other amount');
     await custom.fill('5');
     await expect(page.getByRole('alert')).toHaveText('The minimum top-up is $10.');
     await expect(page.locator('[role="radio"][aria-checked="true"]')).toHaveCount(0);
@@ -57,6 +61,11 @@ test.describe('settings (Settings.dc.html)', () => {
     await custom.fill('40');
     await expect(page.getByText('4,000 + 560 bonus = 4,560 credits')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Buy 4,560 credits for $40' })).toBeEnabled();
+    // Picking a pack clears the field; typing deselected the packs.
+    await page.getByRole('radio', { name: /2,850/ }).click();
+    await expect(custom).toHaveValue('');
+    await expect(page.getByRole('radio', { name: /2,850/ })).toHaveAttribute('aria-checked', 'true');
+    await expect(page.locator('#topup-line')).toHaveText('Any amount from $10 to $10,000');
     await expect(page.getByText('When credits drop below 200, buy 1,100 for $10 with your saved card')).toBeVisible();
     const sw = page.getByRole('switch', { name: 'Auto top-up' });
     await expect(sw).toHaveAttribute('aria-checked', 'true');

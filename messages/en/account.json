@@ -98,6 +98,8 @@
   "account.upgrade.perk.topUpBonus": "+{pct, number, ::percent} bonus on every top-up",
   "account.settings.billing.topUpBonus": "+{pct, number, ::percent}",
   "account.settings.billing.custom": "Other amount",
+  "account.settings.billing.custom.placeholder": "Any amount",
+  "account.settings.billing.custom.range": "Any amount from {min} to {max}",
   "account.settings.billing.custom.invalid": "Enter an amount in dollars, like 40 or 40.50.",
   "account.settings.billing.custom.min": "The minimum top-up is {min}.",
   "account.settings.billing.custom.max": "The maximum top-up is {max}.",

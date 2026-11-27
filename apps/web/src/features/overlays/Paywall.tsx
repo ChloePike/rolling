@@ -304,7 +304,7 @@ function TopUpBody({ runCost = 347, balance = 120, plan: planProp, defaultOption
             id={customId}
             inputMode="decimal"
             className={styles.customInput}
-            placeholder={String(TOP_UP.minUsd)}
+            placeholder={intl.formatMessage({ id: 'overlays.paywall.credits.custom.placeholder' })}
             value={custom}
             aria-invalid={!!error}
             aria-describedby={lineId}

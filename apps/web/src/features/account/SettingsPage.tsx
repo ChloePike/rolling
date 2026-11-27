@@ -1053,6 +1053,11 @@ function BillingSection({ me }: { me: Me }) {
             role="radio"
             aria-checked={!customActive && topUp?.id === p.id}
             className={styles.topUp}
+            title={
+              p.bonusCredits > 0
+                ? t('account.settings.billing.quote.bonus', { base: p.credits - p.bonusCredits, bonus: p.bonusCredits, credits: p.credits })
+                : t('account.settings.billing.quote', { credits: p.credits })
+            }
             onClick={() => {
               setTopUpId(p.id);
               setCustom('');
@@ -1082,7 +1087,8 @@ function BillingSection({ me }: { me: Me }) {
               id="topup-custom"
               inputMode="decimal"
               className={styles.customInput}
-              placeholder={String(TOP_UP.minUsd)}
+              // Empty until the user types: a number here read as an amount (“$ 10”) while a pack was selected.
+              placeholder={t('account.settings.billing.custom.placeholder')}
               value={custom}
               aria-invalid={!!customError}
               aria-describedby="topup-line"
@@ -1092,12 +1098,15 @@ function BillingSection({ me }: { me: Me }) {
           <span id="topup-line" className={cx(styles.customLine, !!customError && styles.customError)} role={customError ? 'alert' : undefined}>
             {customError ? (
               <FormattedMessage id={customError} values={{ min: money(TOP_UP.minUsd), max: money(TOP_UP.maxUsd) }} />
-            ) : topUp ? (
+            ) : customActive && topUp ? (
+              // The line describes the field's own amount; a selected pack says what it buys on its card and the button.
               <FormattedMessage
                 id={topUp.bonusCredits > 0 ? 'account.settings.billing.quote.bonus' : 'account.settings.billing.quote'}
                 values={{ base: topUp.credits - topUp.bonusCredits, bonus: topUp.bonusCredits, credits: topUp.credits }}
               />
-            ) : null}
+            ) : (
+              <FormattedMessage id="account.settings.billing.custom.range" values={{ min: money(TOP_UP.minUsd), max: money(TOP_UP.maxUsd) }} />
+            )}
           </span>
         </div>
         <button

@@ -113,6 +113,7 @@
   "overlays.viewer.ago.days": "{n, plural, one {# day ago} other {# days ago}}",
   "overlays.paywall.credits.cta.invalid": "Enter an amount",
   "overlays.paywall.credits.custom": "Other amount",
+  "overlays.paywall.credits.custom.placeholder": "Any amount",
   "overlays.paywall.credits.custom.invalid": "Enter an amount in dollars, like 40 or 40.50.",
   "overlays.paywall.credits.custom.min": "The minimum top-up is {min}.",
   "overlays.paywall.credits.custom.max": "The maximum top-up is {max}.",
