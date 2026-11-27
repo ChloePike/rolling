@@ -11,7 +11,8 @@
     "typecheck": "tsc -p . && tsc -p tsconfig.test.json",
     "test": "vitest run",
     "gen:prompts": "node scripts/gen-prompts.mjs",
-    "eval:live": "NODE_USE_ENV_PROXY=1 tsx evals/live.ts"
+    "eval:live": "NODE_USE_ENV_PROXY=1 tsx evals/live.ts",
+    "eval:score": "tsx evals/score.ts"
   },
   "dependencies": { "@rolling/core": "workspace:*", "zod": "^3.25.76" },
   "devDependencies": { "vitest": "^4.1.0", "typescript": "^5.9.3", "tsx": "^4.20.6", "@types/node": "^22.0.0" }

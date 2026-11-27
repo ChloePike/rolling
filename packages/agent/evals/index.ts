@@ -9,11 +9,14 @@ import type { ThreadState } from '../src/context';
 import { runTurn, type TurnResult } from '../src/loop';
 import { testIds, type ScriptedReply, type ScriptedStep } from '../src/testkit';
 import type { MemoryWorld } from '../src/testkit';
+import { canonicalPrompt, type ShotCharacter, type ShotSpec } from '@rolling/core/prompting';
 import { ALL_CASES, type EvalCase, type PlanCase } from './cases';
+import { gradeTurn, type Grade } from './graders';
 import { checkCase } from './invariants';
-import { CANVAS_ID, evalPorts, evalWorld, PROJECT_ID } from './world';
+import { CANVAS_ID, evalPorts, evalWorld, MAYA, PROJECT_ID, SHOT_1 } from './world';
 
 export * from './cases';
+export * from './graders';
 export * from './invariants';
 export * from './world';
 
@@ -23,6 +26,8 @@ export interface CaseRun {
   golden: boolean;
   pass: boolean;
   failures: string[];
+  /** Offline graders (`./graders.ts`), one per aspect that applies to the case. */
+  grades: Grade[];
   result: TurnResult;
 }
 
@@ -41,19 +46,20 @@ export function threadFor(c: EvalCase): ThreadState {
 }
 
 export async function runCase(c: EvalCase, llm: LlmProvider, opts: { world?: MemoryWorld; llmId?: string } = {}): Promise<CaseRun> {
-  const world = opts.world ?? evalWorld({ account: c.account ?? {}, editor: c.surface === 'editor' });
+  const world = opts.world ?? evalWorld({ account: c.account ?? {}, editor: c.surface === 'editor', ...(c.canvas ? { canvas: c.canvas } : {}) });
   const ports = evalPorts(world);
   const result = await runTurn({
     llm,
     ports,
     thread: threadFor(c),
-    input: { text: c.brief, refs: c.refs ?? [], selection: c.selection ?? [] },
+    input: { text: c.brief, refs: c.refs ?? [], selection: c.selection ?? [], ...(c.settings ? { settings: c.settings } : {}) },
     turnId: `turn_${c.id}_${crypto.randomUUID().slice(0, 8)}`,
     newId: testIds(),
     ...(opts.llmId ? { llmId: opts.llmId } : {}),
   });
   const failures = checkCase(c, result, { models: ports.models, account: world.account, edl: world.timelines.get(CANVAS_ID)!.edl });
-  return { id: c.id, kind: c.kind, golden: !!c.golden, pass: failures.length === 0, failures, result };
+  const grades = await gradeTurn(c, result, { account: world.account, invariantFailures: failures });
+  return { id: c.id, kind: c.kind, golden: !!c.golden, pass: failures.length === 0, failures, grades, result };
 }
 
 // ---------------------------------------------------------------- scripted oracle (CI)
@@ -65,20 +71,75 @@ function splitSeconds(total: number, n: number): number[] {
   return out;
 }
 
-function oraclePlan(c: PlanCase, broken: boolean): unknown {
+/** How the scripted agent writes shots: `fields` (the structured schema) or `prose` (one free-text prompt per shot, as before the schema). */
+export type OracleStyle = 'fields' | 'prose';
+
+const CAST: ShotCharacter[] = [
+  MAYA,
+  { name: 'Leo', look: 'man in his thirties, curly brown hair, short beard', wardrobe: 'olive overshirt and dark jeans' },
+];
+const PRODUCT: ShotCharacter = { name: 'The product', look: 'matte bottle with a white label and a silver cap' };
+const LOOK = 'Natural commercial look, soft contrast, warm neutrals';
+
+const SIZES = ['wide', 'medium', 'close_up', 'medium_close_up'] as const;
+const MOVES = ['push_in', 'static', 'tracking', 'pan_right', 'pull_out'] as const;
+const BEATS = [
+  ['in a sunlit kitchen by the window', 'reaches for the bottle on the counter and turns it to the light'],
+  ['at the kitchen counter', 'pours a glass and watches it fill'],
+  ['by the open window', 'takes a first sip and smiles'],
+  ['at the table', 'sets the glass down next to the bottle'],
+  ['in the doorway', 'looks back at the table and leaves'],
+];
+
+/** The fields of shot `i` of a case, as a careful agent would fill them. */
+function oracleShot(c: PlanCase, i: number, seconds: number, cast: ShotCharacter[], audio: boolean): Record<string, unknown> {
+  const who = cast.length ? cast.map((x) => x.name).join(' and ') : 'A hand';
+  const [where, does] = BEATS[i % BEATS.length]!;
+  const speaker = cast.find((x) => x !== PRODUCT) ?? cast[0];
+  const explicit = c.expect.mature ? ', explicit sex scene, both nude' : '';
+  return {
+    subject: `${who} ${where}${explicit}`,
+    action: `${who} ${does}`,
+    setting: 'A bright apartment in the morning',
+    camera: { size: SIZES[i % SIZES.length], angle: 'eye_level', move: MOVES[i % MOVES.length] },
+    lighting: 'Soft window light from the left, warm',
+    ...(cast.length ? { cast: cast.map((x) => x.name) } : {}),
+    ...(c.expect.dialogue && audio && speaker && i === 0 ? { dialogue: [{ speaker: speaker.name, line: seconds >= 5 ? 'This is the one.' : 'Yes.', tone: 'warm' }] } : {}),
+  };
+}
+
+function shotSpecOf(fields: Record<string, unknown>, cast: ShotCharacter[]): ShotSpec {
+  const { cast: _names, ...rest } = fields;
+  return { ...(rest as unknown as ShotSpec), style: LOOK, ...(cast.length ? { characters: cast } : {}) };
+}
+
+function oraclePlan(c: PlanCase, broken: boolean, style: OracleStyle = 'fields'): unknown {
   const [min, max] = c.expect.shots;
   const target = c.expect.seconds ?? Math.round(((min + max) / 2) * 5);
   let n = Math.max(min, Math.min(max, Math.round(target / 5)));
   while (n > min && target / n < 2) n--;
   const seconds = splitSeconds(target, n);
-  const cheap = c.expect.maxCredits !== undefined;
-  const model = seconds.some((s) => s < 4) ? 'lumina/berry-1.0' : cheap ? 'bytedance/seedance-2.0-mini' : 'bytedance/seedance-2.5';
-  const option = (title: string, m: string) => ({
-    title,
-    ratio: c.expect.ratio ?? '16:9',
-    shots: seconds.map((s, i) => ({ title: `Shot ${i + 1}`, seconds: broken && i === 0 ? 1 : s, visual: `Shot ${i + 1} of: ${c.brief.slice(0, 80)}`, model: m })),
-  });
-  return { seconds: target, options: [option('Option A', model), option('Option B', seconds.some((s) => s < 4) ? 'lumina/berry-1.0' : 'bytedance/seedance-2.0-mini')] };
+  const cheap = c.expect.maxCredits !== undefined || c.expect.cheap === true;
+  const short = seconds.some((s) => s < 4);
+  const pick = c.expect.model ?? c.settings?.videoModel ?? null;
+  const first = pick ?? (short ? 'lumina/berry-1.0' : cheap ? 'bytedance/seedance-2.0-mini' : 'bytedance/seedance-2.5');
+  const second = short ? 'lumina/berry-1.0' : 'bytedance/seedance-2.0-mini';
+  const cast = c.expect.recurring ? (c.expect.recurring === 1 ? [CAST[0]!] : CAST.slice(0, c.expect.recurring)) : [];
+  const option = (title: string, m: string) => {
+    const audio = !['minimax/minimax-h3'].includes(m);
+    return {
+      title,
+      ratio: c.expect.ratio ?? c.settings?.ratio ?? '16:9',
+      ...(c.expect.resolution ? { resolution: c.expect.resolution } : {}),
+      ...(style === 'fields' ? { look: LOOK, ...(cast.length ? { characters: cast } : {}) } : {}),
+      shots: seconds.map((s, i) => {
+        const fields = oracleShot(c, i, s, cast, audio);
+        const head = { title: `Shot ${i + 1}`, seconds: broken && i === 0 ? 1 : s, model: m };
+        return style === 'fields' ? { ...head, ...fields } : { ...head, visual: canonicalPrompt(shotSpecOf(fields, cast)).slice(0, 600) };
+      }),
+    };
+  };
+  return { seconds: target, options: [option('Option A', first), option('Option B', second)] };
 }
 
 function oracleFields(c: Extract<EvalCase, { kind: 'fields' }>): unknown {
@@ -98,6 +159,33 @@ function oracleFields(c: Extract<EvalCase, { kind: 'fields' }>): unknown {
 function oracleGraph(c: Extract<EvalCase, { kind: 'graphPatch' }>): unknown {
   const base = { projectId: PROJECT_ID, baseRevision: 7, summary: c.brief };
   switch (c.id) {
+    case 'ed-01-warmer-shot':
+      return { ...base, ops: [{ op: 'updateNode', nodeId: 'node_shot2', params: { shot: { lighting: 'Warm golden morning light from the left' } } }] };
+    case 'ed-02-static-camera':
+      return { ...base, ops: [{ op: 'updateNode', nodeId: 'node_shot1', params: { shot: { camera: { move: 'static' } } } }] };
+    case 'ed-03-new-action':
+      return { ...base, ops: [{ op: 'updateNode', nodeId: 'node_shot2', params: { shot: { action: 'Maya pours the sparkling water into a glass' } } }] };
+    case 'ed-04-add-end-card':
+      return {
+        ...base,
+        ops: [
+          {
+            op: 'addNode',
+            tempId: 't1',
+            kind: 'video',
+            title: 'Shot 3: By the river',
+            params: {
+              shot: { ...SHOT_1, subject: 'Maya standing by the riverside rock', action: 'Maya puts the bottle on the rock and looks at the river', camera: { size: 'medium', angle: 'eye_level', move: 'static' } },
+              model: 'bytedance/seedance-2.5',
+              mode: 't2v',
+              seconds: 4,
+              ratio: '9:16',
+            },
+          },
+        ],
+      };
+    case 'ed-05-cheaper-model':
+      return { ...base, ops: [{ op: 'updateNode', nodeId: 'node_shot2', params: { model: 'bytedance/seedance-2.0-mini' } }] };
     case 'cv-01-warmer':
       return { ...base, ops: [{ op: 'updateNode', nodeId: 'node_shot2', params: { prompt: 'Close-up, a hand twists the cap, bubbles rising, warm golden morning light' } }] };
     case 'cv-02-longer':
@@ -148,15 +236,31 @@ function oracleTimeline(c: Extract<EvalCase, { kind: 'timeline' }>, world: Memor
  * read tool, then the propose call. With `broken`, the first proposal is
  * invalid so the retry path runs.
  */
-export function oracleSteps(c: EvalCase, world: MemoryWorld, broken = false): ScriptedReply[] {
+export function oracleSteps(c: EvalCase, world: MemoryWorld, broken = false, style: OracleStyle = 'fields'): ScriptedReply[] {
   const say = (text: string, name: string, args: unknown): ScriptedStep => ({ text, toolCalls: [{ name, args }] });
   switch (c.kind) {
     case 'plan': {
+      // The scripted agent narrates its read like the recorded model does: the harness must not show it.
       const steps: ScriptedReply[] = [say('Checking models. ', 'models.capabilities', { kind: 'video' })];
-      if (broken) steps.push(say('', 'propose.plan', oraclePlan(c, true)));
-      steps.push(say('Two options; building nodes is free, running them costs the estimate.', 'propose.plan', oraclePlan(c, false)));
+      if (broken) steps.push(say('', 'propose.plan', oraclePlan(c, true, style)));
+      steps.push(say('Two options; building nodes is free, running them costs the estimate.', 'propose.plan', oraclePlan(c, false, style)));
       return steps;
     }
+    case 'text':
+      switch (c.expect.behavior) {
+        case 'smalltalk':
+          return [{ text: 'I plan videos shot by shot and edit them with you. What is the video for, how long, and vertical or widescreen?' }];
+        case 'clarify':
+          return [{ text: c.id === 'cl-02-contradiction' ? 'Ten shots of five seconds make 50 seconds, not 6: which length do you want?' : 'What should the video be about?' }];
+        case 'refuse':
+          return [{ text: 'never reached' }];
+        case 'mature_off': {
+          // An explicit plan is refused by the proposal gate; the agent then says so in a sentence.
+          const explicit = oraclePlan({ ...c, kind: 'plan', expect: { shots: [2, 2], seconds: 10, mature: true } } as PlanCase, false, style);
+          return [say('', 'propose.plan', explicit), { text: 'Mature content is off for this account, so I can’t plan this scene. You can turn it on in Settings.' }];
+        }
+      }
+      return [];
     case 'fields':
       return [say('Filled in from your text.', 'propose.fields', oracleFields(c))];
     case 'graphPatch':
