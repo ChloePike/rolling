@@ -186,8 +186,8 @@ export class SafetyLlmError extends Error {
   }
 }
 
-/** Collects a streamed chat answer within `timeoutMs`. */
-async function collect(
+/** Collects a streamed chat answer within `timeoutMs` (also used by the result review, D-024). */
+export async function collect(
   llm: LlmProvider,
   req: { model: string; fallbackModels?: readonly string[]; messages: ChatMessage[]; maxTokens: number; idempotencyKey: string; json: boolean },
   timeoutMs: number,

@@ -82,6 +82,8 @@ export const userPrefs = sqliteTable(
     avatarAssetId: text("avatar_asset_id"),
     /** Migration 0024 (D-020): "Enhance prompt" default for Home, tools and Quick Create. */
     enhancePrompt: integer("enhance_prompt", { mode: "boolean" }).notNull().default(true),
+    /** Migration 0032 (D-024): "Review results" (a vision model reviews each output). */
+    reviewResults: integer("review_results", { mode: "boolean" }).notNull().default(true),
   },
   (t) => [
     check("user_prefs_theme_check", sql`${t.theme} IN ('system','light','dark')`),
@@ -378,6 +380,9 @@ export const jobs = sqliteTable(
     updatedAt: integer("updated_at"),
     /** Migration 0024 (D-020): the prompt that rendered when the gateway expanded it. */
     expandedPrompt: text("expanded_prompt"),
+    /** Migration 0032 (D-024): the result review (JSON) and its gateway cost, covered from the margin. */
+    review: text("review"),
+    reviewCostUsd: real("review_cost_usd"),
   },
   (t) => [
     index("jobs_activity").on(t.runId),
@@ -871,6 +876,22 @@ export const gatewayFeatures = sqliteTable("gateway_features", {
   reason: text("reason"),
   checkedAt: integer("checked_at").notNull(),
 });
+
+/** Migration 0032 (D-024): Auto mode's retries with a review fix, at most one per node per budget key (turn, else run). */
+export const reviewRetries = sqliteTable(
+  "review_retries",
+  {
+    budgetKey: text("budget_key").notNull(),
+    nodeId: text("node_id").notNull(),
+    jobId: text("job_id").notNull(),
+    runId: text("run_id").notNull(),
+    retryRunId: text("retry_run_id"),
+    credits: integer("credits").notNull(),
+    prevParams: text("prev_params"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.budgetKey, t.nodeId] })],
+);
 
 export type Workspace = typeof workspaces.$inferSelect;
 export type UserPrefs = typeof userPrefs.$inferSelect;

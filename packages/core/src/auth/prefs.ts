@@ -47,6 +47,8 @@ export interface Prefs {
   matureContent: boolean;
   /** D-020 "Enhance prompt" default for Home, tools and Quick Create (each run can change it). */
   enhancePrompt: boolean;
+  /** D-024 "Review results": a cheap vision model reviews each output (badge, issues, "Retry with fix"). */
+  reviewResults: boolean;
 }
 
 export const DEFAULT_NOTIFICATIONS: NotificationPrefs = { done: true, low: true, renewal: true, product: false };
@@ -62,6 +64,7 @@ export const DEFAULT_PREFS: Prefs = {
   theme: 'system',
   matureContent: false,
   enhancePrompt: true,
+  reviewResults: true,
 };
 
 /** Upper bound for the confirm threshold (credits); 1 credit = $0.01, so this is $1,000. */
@@ -80,6 +83,7 @@ export const PrefsPatch = z
     theme: z.enum(THEMES),
     matureContent: z.boolean(),
     enhancePrompt: z.boolean(),
+    reviewResults: z.boolean(),
   })
   .partial()
   .strict()
@@ -198,6 +202,8 @@ export interface PrefsRow {
   mature_content: number | boolean;
   /** Migration 0024; absent on rows read before it. */
   enhance_prompt?: number | boolean | null;
+  /** Migration 0032 (D-024); absent on rows read before it. */
+  review_results?: number | boolean | null;
 }
 
 function oneOf<T extends string>(values: readonly T[], v: string, fallback: T): T {
@@ -224,6 +230,7 @@ export function prefsFromRow(row: PrefsRow): Prefs {
     theme: oneOf(THEMES, row.theme, 'system'),
     matureContent: Boolean(row.mature_content),
     enhancePrompt: row.enhance_prompt === undefined || row.enhance_prompt === null ? DEFAULT_PREFS.enhancePrompt : Boolean(row.enhance_prompt),
+    reviewResults: row.review_results === undefined || row.review_results === null ? DEFAULT_PREFS.reviewResults : Boolean(row.review_results),
   };
 }
 

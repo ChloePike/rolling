@@ -394,3 +394,35 @@ export type ResizeTarget = keyof typeof RESIZE_TARGETS;
 export function planAllowsResize(plan: PlanId, kind: 'video' | 'image', target: ResizeTarget): boolean {
   return planAllowsResolution(plan, kind, target);
 }
+
+/**
+ * Result review (D-024): every generation output is checked by a cheap
+ * vision-capable chat model after `store`. The review is covered from the
+ * margin, not quoted or held: one credit of render earns at least
+ * `USD_PER_CREDIT × (1 − 1 / MARKUP)` ≈ $0.0067 over the gateway cost, and a
+ * review is bounded by these tokens (pictures are downscaled to ≤ 1024 px;
+ * a video take sends two frames). `expectedUsdPerOutput` is what a review
+ * costs on DeepSeek V4.1 Flash; `maxUsdPerOutput` is the most we allow per
+ * output at the review model's prices (above it the review is skipped).
+ */
+export const QUALITY_REVIEW = {
+  promptTokens: 1_200,
+  tokensPerPicture: 1_100,
+  /** Outputs reviewed per job (takes beyond it keep their order). */
+  maxTakes: 4,
+  /** Pictures per take: an image, or two frames of a clip. */
+  maxPicturesPerTake: 2,
+  /** Character reference pictures sent for continuity. */
+  maxReferences: 2,
+  outputTokensPerTake: 450,
+  expectedUsdPerOutput: 0.002,
+  maxUsdPerOutput: 0.005,
+} as const;
+
+/** Worst-case gateway cost of reviewing `takes` outputs at a chat model's token prices (USD per token). */
+export function reviewMaxUsd(takes: number, picturesPerTake: number, references: number, price: { prompt: number; completion: number }): number {
+  const t = Math.max(1, Math.min(QUALITY_REVIEW.maxTakes, takes));
+  const pictures = t * Math.min(QUALITY_REVIEW.maxPicturesPerTake, picturesPerTake) + Math.min(QUALITY_REVIEW.maxReferences, references);
+  const prompt = QUALITY_REVIEW.promptTokens + pictures * QUALITY_REVIEW.tokensPerPicture;
+  return prompt * price.prompt + t * QUALITY_REVIEW.outputTokensPerTake * price.completion;
+}

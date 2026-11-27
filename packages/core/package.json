@@ -14,6 +14,7 @@
     "./safety": "./src/safety/index.ts",
     "./templates": "./src/templates/index.ts",
     "./prompting": "./src/prompting/index.ts",
+    "./review": "./src/review/index.ts",
     "./*": "./src/*.ts"
   },
   "scripts": {
