@@ -238,7 +238,24 @@ test.describe('upgrade /upgrade', () => {
     }
   });
 
+  test('members: “Change your plan”, the next plan up is the primary card, never a downgrade', async ({ page }) => {
+    // UX audit: a Pro member was shown “Pick a plan to start creating” with “Switch to Plus” as the primary button.
+    await asPlan(page, 'plus');
+    await openApp(page, '/upgrade');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Change your plan');
+    const primary = async (id: string) => card(page, id).locator('button').first().evaluate((b) => getComputedStyle(b).backgroundColor);
+    expect(await primary('pro')).not.toBe(await primary('starter'));
+    await expect(card(page, 'pro')).toContainText('Recommended');
+    await expect(card(page, 'plus')).not.toContainText('Recommended');
+    await asPlan(page, 'pro');
+    await openApp(page, '/upgrade');
+    await expect(page.getByText('Recommended', { exact: true })).toHaveCount(0);
+    expect(await primary('plus')).toBe(await primary('starter'));
+  });
+
   test('layout at 1440: centered hero, three equal plan cards in one row, two-column calculator, no horizontal scroll', async ({ page }) => {
+    // A non-member: Plus carries the Recommended ring (members get the next plan up, see below).
+    await asPlan(page, null);
     await openApp(page, '/upgrade');
     await settle(page);
     const box = async (sel: string) => (await page.locator(sel).first().boundingBox())!;

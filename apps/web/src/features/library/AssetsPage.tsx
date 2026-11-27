@@ -8,7 +8,9 @@ import { uploadFiles, useTransfers, validateUpload } from '@/lib/transfers';
 import { assetFromFile, useAssetMutations, useAssets, useCharacters, useFolders, useStorage, useUpload, useVoiceMutations, useVoices } from './assetsApi';
 import type { AssetItem, AssetType, FolderItem, VoiceState } from './assetsMocks';
 import styles from './Assets.module.css';
-import { isMockApi } from '@/features/overlays/backend';
+import { assetMediaUrl, isMockApi, posterUrl } from '@/features/overlays/backend';
+import { useQuery } from '@tanstack/react-query';
+import { activeWorkspace, canvasesQuery } from '@/features/canvas/target/projects';
 import { RatedThumb } from '@/lib/media';
 import { useSendToCanvas } from '@/features/canvas/target';
 
@@ -191,7 +193,7 @@ export function AssetsPage({ folder = 'all' }: { folder?: AssetFolder }) {
             <FormattedMessage id={isChars ? 'library.assets.cta.character' : isVoices ? 'library.assets.cta.voice' : 'library.assets.cta.upload'} />
           </button>
         </div>
-        {isChars ? <Characters key="chars" query={query} /> : isVoices ? <Voices key="voices" query={query} /> : <Files key={folder} folder={kind === 'favorites' ? 'favorites' : kind === 'project' ? folder : 'all'} query={query} sel={sel} setSel={setSel} uploads={uploads} />}
+        {isChars ? <Characters key="chars" query={query} /> : isVoices ? <Voices key="voices" query={query} /> : <Files key={folder} folder={kind === 'favorites' ? 'favorites' : kind === 'project' ? folder : 'all'} query={query} sel={sel} setSel={setSel} uploads={uploads} onUpload={() => fileRef.current?.click()} />}
       </section>
 
       {!isChars && !isVoices && <FileDetailSlot sel={sel} onDeleted={() => setSel(null)} />}
@@ -205,12 +207,15 @@ function Files({
   sel,
   setSel,
   uploads,
+  onUpload,
 }: {
   folder: string;
   query: string;
   sel: string | null;
   setSel: (id: string | null) => void;
   uploads: Array<{ id: string; file: File; progress: number }>;
+  /** Opens the file chooser (the empty state's next step). */
+  onUpload: () => void;
 }) {
   const intl = useIntl();
   const assetsQ = useAssets();
@@ -299,9 +304,21 @@ function Files({
           <FileCard key={a.id} asset={a} index={i} order={n} on={selId === a.id} onPick={() => setSel(a.id)} />
         ))}
         {assetsQ.data !== undefined && visible.length === 0 && (
-          <p className={styles.empty} data-empty="">
-            <FormattedMessage id={assets.length === 0 ? 'library.assets.none' : 'library.assets.empty'} />
-          </p>
+          <div className={styles.empty} data-empty="">
+            <p className={styles.emptyText}>
+              <FormattedMessage id={assets.length === 0 ? 'library.assets.none' : 'library.assets.empty'} />
+            </p>
+            {/* A next step: upload when there is nothing yet, otherwise show every type again. */}
+            {assets.length === 0 ? (
+              <button type="button" className={cx(styles.emptyAction, motion.press)} onClick={onUpload}>
+                <FormattedMessage id="library.assets.cta.upload" />
+              </button>
+            ) : type !== 'all' ? (
+              <button type="button" className={cx(styles.emptyAction, motion.press)} onClick={() => setType('all')}>
+                <FormattedMessage id="library.assets.empty.all" />
+              </button>
+            ) : null}
+          </div>
         )}
       </div>
     </>
@@ -350,16 +367,28 @@ function FileDetailSlot({ sel, onDeleted }: { sel: string | null; onDeleted: () 
   const [name, setName] = useState('');
   const nameId = useId();
   const toCanvas = useSendToCanvas();
+  // "Used in" names projects by title (the list the canvas target uses), not by id.
+  const canvases = useQuery({ ...canvasesQuery(activeWorkspace()), enabled: !isMockApi() });
   // Only the asset the grid shows as selected (Files clears `sel` when the filters hide it).
   const idx = sel ? assets.findIndex((x) => x.id === sel) : -1;
   const a = idx >= 0 ? assets[idx] : undefined;
   if (!a) return null;
   const t = (id: string, v?: Record<string, string | number>) => intl.formatMessage({ id }, v);
-  const ext = a.name.split('.').pop()?.toUpperCase() ?? '';
+  // The file type (`video/mp4` → MP4); a name only counts when it has an extension.
+  const fromName = /\.([a-z0-9]{2,5})$/i.exec(a.name)?.[1];
+  const ext = (a.format ?? fromName ?? '').toUpperCase() || '–';
+  const projectTitle = (id: string) => canvases.data?.find((c) => c.id === id)?.title;
+  const real = !isMockApi();
   return (
     <aside aria-label={intl.formatMessage({ id: 'library.assets.details' })} className={styles.detail}>
       <div key={a.id} className={cx(styles.detailInner, motion.enter)}>
-        <div className={styles.preview} style={{ background: a.type === 'audio' ? 'var(--c-surface-4)' : TONES[idx % TONES.length] }} />
+        <div className={styles.preview} style={{ background: a.type === 'audio' ? 'var(--c-surface-4)' : TONES[idx % TONES.length] }}>
+          {real && a.type === 'video' ? (
+            <video className={styles.previewMedia} src={assetMediaUrl(a.id)} poster={posterUrl(assetMediaUrl(a.id))} controls preload="metadata" playsInline aria-label={a.name} />
+          ) : real && a.type === 'image' && a.thumbUrl ? (
+            <RatedThumb className={styles.previewMedia} src={assetMediaUrl(a.id)} alt={a.name} rating={a.rating ?? (a.mature ? 'suggestive' : null)} />
+          ) : null}
+        </div>
         <div className={styles.detailHead}>
           <span className={styles.detailName}>{a.name}</span>
           <span className={styles.detailMeta}>
@@ -387,7 +416,7 @@ function FileDetailSlot({ sel, onDeleted }: { sel: string | null; onDeleted: () 
           </span>
           {a.usedIn.map((u) => (
             <Link key={u.label} to={u.to as never} className={cx(styles.usedLink, motion.hover)}>
-              <FormattedMessage id="library.assets.usedIn.item" values={{ label: u.label }} />
+              <FormattedMessage id="library.assets.usedIn.item" values={{ label: (u.label.startsWith('prj_') && projectTitle(u.label)) || (u.label.startsWith('prj_') ? t('library.assets.usedIn.project') : u.label) }} />
             </Link>
           ))}
         </div>

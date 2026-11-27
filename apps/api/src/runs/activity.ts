@@ -88,8 +88,17 @@ export function activityStatus(s: RunRow["status"]): ActivityStatus {
 
 const STATUS_DB: Record<ActivityStatus, RunRow["status"]> = { queued: "queued", running: "running", done: "succeeded", partial: "partial", failed: "failed", canceled: "canceled" };
 
-function modelName(id: string): string {
-  return MODEL_OVERLAY[id]?.displayName ?? id;
+/** Display name: the overlay's, else the id without its vendor in title case (`x-ai/grok-imagine-video-1.5-lite` → `Grok Imagine Video 1.5 Lite`). */
+export function modelName(id: string): string {
+  const named = MODEL_OVERLAY[id]?.displayName;
+  if (named) return named;
+  const slug = id.includes("/") ? id.slice(id.indexOf("/") + 1) : id;
+  if (!slug) return id;
+  return slug
+    .split("-")
+    .filter(Boolean)
+    .map((w) => (/^\d/.test(w) ? w : w[0]!.toUpperCase() + w.slice(1)))
+    .join(" ");
 }
 
 function encodeCursor(createdAt: number, id: string): string {

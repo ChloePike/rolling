@@ -90,7 +90,8 @@
 
 .detail{flex:0 0 328px;border-radius:20px;background:var(--c-surface-2);padding:14px;display:flex;flex-direction:column;gap:12px;position:sticky;top:84px}
 .detailInner{display:flex;flex-direction:column;gap:12px}
-.preview{aspect-ratio:4/3;border-radius:14px}
+.preview{aspect-ratio:4/3;border-radius:14px;overflow:hidden;display:flex}
+.previewMedia{width:100%;height:100%;object-fit:contain;background:var(--c-surface-1)}
 .detailHead{display:flex;flex-direction:column;gap:4px}
 .detailName{font-size:15px;font-weight:700}
 .detailMeta{font-size:12px;font-weight:500;line-height:1.4;color:var(--c-text-3)}
@@ -110,7 +111,10 @@
   display:flex;align-items:center;justify-content:center;
 }
 .iconBtn:hover{background:var(--c-surface-6)}
-.empty{padding:40px 0;text-align:center;font-size:13px;color:var(--c-text-3)}
+.empty{grid-column:1/-1;padding:40px 0;display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;font-size:13px;color:var(--c-text-3)}
+.emptyText{margin:0;max-width:360px;line-height:1.5}
+.emptyAction{height:32px;padding:0 14px;border-radius:999px;border:0;background:var(--c-surface-5);color:var(--c-text-1);font:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:background-color var(--dur-fast) var(--ease-standard)}
+.emptyAction:hover{background:var(--c-surface-6)}
 
 /* Interaction pass: dialogs and pressed states. */
 .dlgForm{display:flex;flex-direction:column;gap:8px}

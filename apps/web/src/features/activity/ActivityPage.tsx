@@ -7,7 +7,7 @@ import { ChipGroup, motion, PathIcon, paths, ResultModal, SearchField, type Resu
 import { useActivity } from './api';
 import { useQueryClient } from '@tanstack/react-query';
 import { ResultViewer, RunConfirm } from '@/features/overlays';
-import { assetMediaUrl, isApiError, isMockApi } from '@/features/overlays/backend';
+import { assetMediaUrl, isApiError, isMockApi, posterUrl } from '@/features/overlays/backend';
 import { downloadAsset } from '@/features/overlays/media';
 import { cancelRun, retryRun, startQuote, type SpecQuote } from '@/features/overlays/runs';
 import { runError } from '@/features/canvas/api';
@@ -250,8 +250,9 @@ export function ActivityPage({ initialFilter = 'all' }: { initialFilter?: Activi
         {
           key: 'used',
           value: intl.formatNumber(s.usedThisMonth),
+          // No change (or no last month to compare with): just the unit, never "down 0%".
           note: intl.formatMessage(
-            { id: s.usedChange <= 0 ? 'activity.stat.used.down' : 'activity.stat.used.up' },
+            { id: s.usedChange === 0 ? 'activity.stat.used.flat' : s.usedChange < 0 ? 'activity.stat.used.down' : 'activity.stat.used.up' },
             { pct: Math.abs(s.usedChange) },
           ),
           color: 'var(--c-text-1)',
@@ -259,12 +260,13 @@ export function ActivityPage({ initialFilter = 'all' }: { initialFilter?: Activi
         {
           key: 'running',
           value: intl.formatNumber(s.running),
-          note: intl.formatMessage({ id: 'activity.stat.running.note' }, { minutes: s.runningEtaMinutes }),
+          note: s.running ? intl.formatMessage({ id: 'activity.stat.running.note' }, { minutes: s.runningEtaMinutes }) : intl.formatMessage({ id: 'activity.stat.running.idle' }),
           color: 'var(--c-link)',
         },
         {
           key: 'success',
-          value: intl.formatNumber(s.successRate, { style: 'percent' }),
+          // A rate needs runs: with none in the window it is a dash, not 0%.
+          value: s.runsLast7Days ? intl.formatNumber(s.successRate, { style: 'percent' }) : '–',
           note: intl.formatMessage({ id: 'activity.stat.success.note' }, { runs: s.runsLast7Days }),
           color: 'var(--c-success)',
         },
@@ -397,8 +399,25 @@ export function ActivityPage({ initialFilter = 'all' }: { initialFilter?: Activi
               {activity.isError && !data ? <LoadError onRetry={() => activity.refetch()} retrying={activity.isFetching} /> : null}
               {data && rows.length === 0 && (
                 <div className={cx(styles.empty, motion.enter)} role="row" data-empty="">
-                  <span role="cell">
+                  <span role="cell" className={styles.emptyCell}>
                     <FormattedMessage id={runs.length === 0 ? 'activity.none' : 'activity.empty'} />
+                    {/* Every empty state offers a next step. */}
+                    {runs.length === 0 ? (
+                      <button type="button" className={cx(styles.emptyAction, motion.press)} onClick={() => void navigate({ to: '/' })}>
+                        <FormattedMessage id="activity.none.cta" />
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className={cx(styles.emptyAction, motion.press)}
+                        onClick={() => {
+                          setFilter('all');
+                          setQuery('');
+                        }}
+                      >
+                        <FormattedMessage id="activity.empty.clear" />
+                      </button>
+                    )}
                   </span>
                 </div>
               )}
@@ -482,7 +501,10 @@ function Row({ run, index, onAction }: { run: RunRow; index: number; onAction: (
     <div className={cx(styles.rowWrap, motion.stagger)} style={{ '--i': index } as CSSProperties} data-run-status={run.status}>
       <div className={cx(styles.cols, styles.row)} role="row">
         <span className={styles.what} role="cell">
-          <span className={styles.thumb} style={{ background: TONES[index % TONES.length] }} />
+          <span className={styles.thumb} style={{ background: TONES[index % TONES.length] }}>
+            {/* Real mode: the result's poster (videos) or a small still of the image. */}
+            {run.assetId && !isMockApi() ? <img className={styles.thumbImg} src={posterUrl(assetMediaUrl(run.assetId))} alt="" loading="lazy" decoding="async" onError={(e) => (e.currentTarget.hidden = true)} /> : null}
+          </span>
           <span className={styles.whatText}>
             <span className={styles.name}>{run.name}</span>
             <span className={styles.ref}>{run.ref}</span>

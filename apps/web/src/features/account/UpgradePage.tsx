@@ -22,6 +22,16 @@ import parts from './upgrade/Upgrade.parts.module.css';
 /** Plus carries the Recommended badge (the middle personal plan, as drawn). */
 export const RECOMMENDED: PlanId = PERSONAL_PLAN_ORDER[Math.floor(PERSONAL_PLAN_ORDER.length / 2)]!;
 
+/**
+ * The plan card drawn as the primary choice. Non-members: Recommended. Members: the next personal plan up
+ * (never a downgrade); none when they are already on the top personal plan or on Team.
+ */
+export function highlightedPlan(current: PlanId | null | undefined): PlanId | null {
+  if (!current) return RECOMMENDED;
+  const i = PERSONAL_PLAN_ORDER.indexOf(current);
+  return i >= 0 && i < PERSONAL_PLAN_ORDER.length - 1 ? PERSONAL_PLAN_ORDER[i + 1]! : null;
+}
+
 /** Shown until the catalog answers (D-002 launch models, D-009 display names), with their lowest resolution. */
 const FALLBACK_MODELS = [
   { id: 'bytedance/seedance-2.5', name: 'Seedance 2.5', kind: 'video', resolutions: ['480p', '720p', '1080p'] },
@@ -42,6 +52,8 @@ export function UpgradePage({ initialPeriod = 'monthly' }: { initialPeriod?: Bil
   const intl = useIntl();
   const toast = useToast();
   const session = useSession();
+  const member = !!session.planId;
+  const highlight = highlightedPlan(session.planId as PlanId | null);
   const rates = useRates();
   const featured = useFeaturedModels();
   const models = (featured.length ? featured : FALLBACK_MODELS).map((m) => ({ id: m.id, name: m.name, plan: lowestPlanForModel(m) }));
@@ -88,10 +100,10 @@ export function UpgradePage({ initialPeriod = 'monthly' }: { initialPeriod?: Bil
       <GoogleOneTap redirect="/upgrade" />
       <div className={styles.hero}>
         <h1 className={styles.title}>
-          <FormattedMessage id="account.upgrade.title" />
+          <FormattedMessage id={member ? 'account.upgrade.title.member' : 'account.upgrade.title'} />
         </h1>
         <p className={styles.lead}>
-          <FormattedMessage id="account.upgrade.lead" />
+          <FormattedMessage id={member ? 'account.upgrade.lead.member' : 'account.upgrade.lead'} />
         </p>
         <Segmented
           kind="tablist"
@@ -125,12 +137,12 @@ export function UpgradePage({ initialPeriod = 'monthly' }: { initialPeriod?: Bil
             id={id}
             index={i}
             period={period}
-            recommended={id === RECOMMENDED}
+            recommended={id === highlight}
             current={session.planId}
             pending={pending === id}
             rates={rates}
             onChoose={(p) => void choose(p)}
-            ctaRef={id === RECOMMENDED ? recCta : undefined}
+            ctaRef={id === highlight ? recCta : undefined}
           />
         ))}
       </div>

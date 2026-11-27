@@ -46,7 +46,8 @@ export async function fetchActivity(): Promise<ActivityData> {
   return {
     stats: {
       usedThisMonth: s.usedThisMonth,
-      usedChange: s.usedLastMonth ? Math.round(((s.usedThisMonth - s.usedLastMonth) / s.usedLastMonth) * 100) : 0,
+      // A fraction (−0.12 = down 12%), as the message formats it with `::percent`.
+      usedChange: s.usedLastMonth ? Math.round(((s.usedThisMonth - s.usedLastMonth) / s.usedLastMonth) * 100) / 100 : 0,
       running: s.running,
       runningEtaMinutes: s.running ? 2 : 0,
       successRate: s.successRate ?? 0,

@@ -1386,7 +1386,10 @@ function TeamSection({ me }: { me: Me }) {
   }, [search.resume, session.isTeam, navigate]);
   return (
     <>
-      <Head id="account.settings.section.team" sub={<FormattedMessage id="account.settings.team.sub" values={{ workspace: me.workspace.name }} />} />
+      <Head
+        id="account.settings.section.team"
+        sub={<FormattedMessage id={session.isTeam || members.length > 1 ? 'account.settings.team.sub' : 'account.settings.team.sub.personal'} values={{ workspace: me.workspace.name }} />}
+      />
       {members.map((m) => {
         const self = m.isYou ?? m.email === me.user.email;
         return (

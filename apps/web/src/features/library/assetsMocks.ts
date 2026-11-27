@@ -25,6 +25,8 @@ export interface AssetItem {
   mature?: boolean;
   /** D-005 content rating from the API (`Asset.rating`); blurred when suggestive or explicit. */
   rating?: 'safe' | 'suggestive' | 'explicit' | null;
+  /** Real mode: file type from the content type, e.g. `mp4`. */
+  format?: string;
 }
 
 export interface CharacterItem {

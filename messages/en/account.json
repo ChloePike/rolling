@@ -1,6 +1,8 @@
 {
   "account.upgrade.title": "Pick a plan to start creating",
   "account.upgrade.lead": "Membership unlocks the agent, generating and top-ups. Every plan includes credits each month; top up any amount when you need more.",
+  "account.upgrade.title.member": "Change your plan",
+  "account.upgrade.lead.member": "Every plan includes credits each month. Top up any amount when you need more.",
   "account.upgrade.period": "Billing period",
   "account.upgrade.period.monthly": "Monthly",
   "account.upgrade.period.yearly": "Yearly",
@@ -73,6 +75,7 @@
   "account.settings.billing.invoice.topUp": "Top-up, {n, number} credits",
   "account.settings.billing.pdf": "PDF",
   "account.settings.team.sub": "{workspace} shares one credit pool.",
+  "account.settings.team.sub.personal": "Your personal workspace. On the Team plan, members share one credit pool.",
   "account.settings.team.noLimit": "No limit",
   "account.settings.team.limit": "{n, number} a month",
   "account.settings.team.viewOnly": "View only",

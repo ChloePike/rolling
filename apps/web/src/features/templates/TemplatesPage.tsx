@@ -64,6 +64,13 @@ export function TemplatesPage() {
       (Object.keys(FACET_TEST) as Array<keyof typeof FACET_TEST>).every((k) => FACET_TEST[k](t, facets[k])),
   );
   const showFeatured = cat === 'all' && !query && !filtering;
+  /** Anything narrowing the grid: the count shows what is listed, and an empty grid offers to clear it. */
+  const narrowed = filtering || !!query || cat !== 'all';
+  const clearFilters = () => {
+    setQ('');
+    setCat('all');
+    setFacets((f) => ({ ...f, character: 'any', lines: 'any', duration: 'any' }));
+  };
   const facetLabel = (k: FacetKey, v: string) =>
     k === 'aspect' ? v : v === 'any' ? intl.formatMessage({ id: 'templates.facet.any' }) : intl.formatMessage({ id: `templates.facet.${k}.${v}` });
   const facetValue: Record<FacetKey, string> = { ...facets, aspect: ratio };
@@ -136,7 +143,7 @@ export function TemplatesPage() {
         })}
         <span className={styles.flex1} />
         <span className={styles.total}>
-          {loading ? <Skeleton text width={150} height={12} /> : <FormattedMessage id="templates.total" values={{ n: data.total }} />}
+          {loading ? <Skeleton text width={150} height={12} /> : <FormattedMessage id="templates.total" values={{ n: narrowed ? items.length : data.total }} />}
         </span>
       </div>
 
@@ -157,7 +164,7 @@ export function TemplatesPage() {
               onClick={() => setPreview(t)}
             >
               <div className={styles.featCover} style={coverStyle(t.coverUrl, i === 0 ? TONES[0]! : TONES[6]!)}>
-                <span className={styles.featDur}>{seconds(intl, t.durationSec)}</span>
+                {t.durationSec > 0 ? <span className={styles.featDur}>{seconds(intl, t.durationSec)}</span> : null}
               </div>
               <div className={styles.featBody}>
                 <span className={styles.pick}>
@@ -209,16 +216,19 @@ export function TemplatesPage() {
           >
             <div className={styles.cover} style={coverStyle(t.coverUrl, TONES[data.items.indexOf(t) % TONES.length]!)}>
               <span className={styles.badges}>
-                <span className={styles.badge}>
-                  <FormattedMessage id="templates.badge.roles" values={{ n: t.roles }} />
-                </span>
+                {/* No "0 roles" badge: a template without characters just has none. */}
+                {t.roles > 0 ? (
+                  <span className={styles.badge}>
+                    <FormattedMessage id="templates.badge.roles" values={{ n: t.roles }} />
+                  </span>
+                ) : null}
                 {t.hasLines ? (
                   <span className={styles.badge}>
                     <FormattedMessage id="templates.badge.lines" />
                   </span>
                 ) : null}
               </span>
-              <span className={styles.dur}>{seconds(intl, t.durationSec)}</span>
+              {t.durationSec > 0 ? <span className={styles.dur}>{seconds(intl, t.durationSec)}</span> : null}
             </div>
             <span className={styles.name}>{t.name}</span>
             <span className={styles.meta}>
@@ -232,6 +242,11 @@ export function TemplatesPage() {
         {items.length === 0 ? (
           <p className={styles.empty} data-empty="">
             {data.items.length === 0 ? <FormattedMessage id="templates.none" /> : <FormattedMessage id="templates.empty" values={{ q }} />}
+            {data.items.length > 0 && narrowed ? (
+              <button type="button" className={cx(styles.emptyAction, 'rl-press')} onClick={clearFilters}>
+                <FormattedMessage id="templates.empty.clear" />
+              </button>
+            ) : null}
           </p>
         ) : null}
       </section>}

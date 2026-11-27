@@ -31,6 +31,8 @@
   "library.assets.versionN": "v{n}",
   "library.assets.usedIn": "Used in {n, plural, one {# place} other {# places}}",
   "library.assets.usedIn.item": "{label} ›",
+  "library.assets.usedIn.project": "A project",
+  "library.assets.empty.all": "Show all types",
   "library.assets.addToCanvas": "Add to canvas",
   "library.assets.download": "Download",
   "library.assets.character.meta": "{meta} · Used in {n, plural, one {# project} other {# projects}}",

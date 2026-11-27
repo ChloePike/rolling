@@ -66,6 +66,7 @@ export function assetItemFrom(a: GqlAsset): AssetItem {
     ...(a.projectId ? { folder: a.projectId } : {}),
     projectId: a.projectId,
     thumbUrl: a.thumbUrl,
+    ...(a.contentType?.includes('/') ? { format: a.contentType.split('/')[1]!.split(';')[0]!.replace(/^(x-|vnd\.)/, '').replace('quicktime', 'mov').replace('mpeg', a.kind === 'AUDIO' ? 'mp3' : 'mpeg') } : {}),
     mature: a.mature,
     rating: a.rating ?? (a.mature ? 'suggestive' : null),
   };
