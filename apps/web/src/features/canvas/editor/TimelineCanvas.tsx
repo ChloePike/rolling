@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, type Dispatch } from 'react';
 import type { EditorProject } from './mocks';
 import { PEAKS_PER_SECOND } from './peaks';
+import { assetMediaUrl, posterUrl } from '@/features/overlays/backend';
 import type { PlayheadStore } from './playhead';
 import type { EditorAction, EditorState } from './state';
 import styles from './Editor.module.css';
@@ -182,6 +183,39 @@ export function TimelineCanvas(props: TimelineCanvasProps) {
     if (!raf.current) raf.current = requestAnimationFrame(frame);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /** Clip stills by asset id (the poster variant); null when there is none. Real mode only: the mock has no media. */
+  const stills = useRef(new Map<string, HTMLImageElement | null>());
+  function stillFor(assetId: string | null | undefined): HTMLImageElement | null {
+    const urls = propsRef.current.project.mediaUrls;
+    if (!assetId || !urls) return null;
+    const cache = stills.current;
+    if (cache.has(assetId)) {
+      const img = cache.get(assetId);
+      return img && img.complete && img.naturalWidth > 0 ? img : null;
+    }
+    const src = posterUrl(urls[assetId] ?? assetMediaUrl(assetId));
+    if (!src) {
+      cache.set(assetId, null);
+      return null;
+    }
+    const img = new Image();
+    img.decoding = 'async';
+    img.onload = () => requestDraw();
+    img.onerror = () => cache.set(assetId, null);
+    img.src = src;
+    cache.set(assetId, img);
+    return null;
+  }
+
+  /** Draws `img` to fill the box, cropped to its aspect (object-fit: cover). */
+  function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number) {
+    if (w <= 0 || h <= 0) return;
+    const s = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+    const sw = w / s;
+    const sh = h / s;
+    ctx.drawImage(img, (img.naturalWidth - sw) / 2, (img.naturalHeight - sh) / 2, sw, sh, x, y, w, h);
+  }
 
   /* ---------- drawing ---------- */
 
@@ -442,11 +476,14 @@ export function TimelineCanvas(props: TimelineCanvasProps) {
       if (track.kind === 'video') {
         const n = thumbCount(w);
         const tw = (w - (n - 1)) / n;
+        // The shot's poster in each tile once it has loaded; the tinted tiles until then (and in the mock).
+        const still = stillFor(media?.assetId);
         for (let i = 0; i < n; i++) {
           const a = Math.round(x + i * (tw + 1));
           const b = Math.round(x + i * (tw + 1) + tw);
           ctx.fillStyle = tint.tiles[i % 3]!;
           ctx.fillRect(a, y + 20, b - a, h - 20);
+          if (still) drawCover(ctx, still, a, y + 20, b - a, h - 20);
         }
       }
       if (media && (track.kind === 'voice' || track.kind === 'music')) {

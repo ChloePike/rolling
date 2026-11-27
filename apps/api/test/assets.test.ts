@@ -526,3 +526,21 @@ describe("direct-to-R2 uploads over the S3 API", () => {
     }
   });
 });
+
+describe("GET /api/assets/:id/waveform (editor audio lanes)", () => {
+  it("returns the stored peaks clamped to 0..1, 404 without a waveform, and 404 for another workspace", async () => {
+    const alice = user("wave");
+    await ensureWorkspace(alice);
+    const { assetId } = await upload(alice, new Uint8Array(4096).fill(7), "audio/mpeg", "voice.mp3");
+    expect((await api(alice, `/api/assets/${assetId}/waveform`)).status).toBe(404);
+    const key = `ws/${wsOf(alice)}/uploads/${assetId}/waveform.json`;
+    await env.MEDIA.put(key, JSON.stringify({ points: 4, durationSec: 2, peaks: [0, 0.5, 1.4, "x", 0.25] }), { httpMetadata: { contentType: "application/json" } });
+    await env.DB.prepare("UPDATE assets SET meta = json_set(meta, '$.waveformKey', ?) WHERE id = ?").bind(key, assetId).run();
+    const res = await api(alice, `/api/assets/${assetId}/waveform`);
+    expect(res.status, await res.clone().text()).toBe(200);
+    expect(await res.json()).toEqual({ points: 4, durationSec: 2, peaks: [0, 0.5, 1, 0.25] });
+    const bob = user("wave");
+    await ensureWorkspace(bob);
+    expect((await api(bob, `/api/assets/${assetId}/waveform`)).status).toBe(404);
+  });
+});

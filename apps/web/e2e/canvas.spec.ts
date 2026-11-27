@@ -881,6 +881,30 @@ test.describe('canvas controls', () => {
     await expect(page.locator('.react-flow__node [data-node-kind="image"][data-status="generating"]').first()).toBeVisible();
   });
 
+  test('editor Escape: the topmost layer first (export dialog, typing, the selection), then the editor closes', async ({ page }) => {
+    await openApp(page, 'edit');
+    const editor = page.getByTestId('editor');
+    await page.getByRole('button', { name: 'Export', exact: true }).click();
+    await expect(page.getByTestId('export-dialog')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('export-dialog')).toHaveCount(0);
+    await expect(editor).toBeVisible();
+    // Typing in the agent field: Escape leaves the field, the editor stays.
+    await page.locator('#edask').fill('cut to 10s');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#edask')).not.toBeFocused();
+    await expect(editor).toBeVisible();
+    // Shot A opens selected: the next Escape clears it, the one after closes the editor.
+    const shotA = page.getByRole('list', { name: 'Clips' }).getByRole('button', { name: /^Shot A, hero/ });
+    await expect(shotA).toHaveAttribute('aria-pressed', 'true');
+    await editor.focus();
+    await page.keyboard.press('Escape');
+    await expect(shotA).toHaveAttribute('aria-pressed', 'false');
+    await expect(editor).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(editor).toHaveCount(0);
+  });
+
   test('editor “Open on canvas” closes the editor and selects the shot', async ({ page }) => {
     await openApp(page, 'edit');
     await page.getByRole('button', { name: 'Open on canvas' }).click();

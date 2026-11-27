@@ -154,6 +154,26 @@ export const assets = new Hono<AppEnv>()
     const m = membershipFor(auth, row.workspace_id);
     return c.json({ asset: await assetView(c.env, row, { mayViewMature: m ? matureAllowedIn(auth, m) : auth.matureAllowed }) });
   })
+  /**
+   * `GET /api/assets/:id/waveform`: the peaks media.process stored for an audio or video asset
+   * (`meta.waveformKey`, FFmpeg container `/waveform`) as `{ points, durationSec, peaks: number[] /* 0..1 *\/ }`,
+   * for the editor's audio lanes. A few KB of JSON, not media bytes (D-008 still applies to the media itself);
+   * 404 while there is none (not processed yet, or no container).
+   */
+  .get("/:id/waveform", validate("param", z.object({ id: Id })), async (c) => {
+    const auth = await requireAuth(c);
+    const row = await visibleAsset(c.env, auth, c.req.valid("param").id);
+    if (!row || row.status === "uploading") throw new ApiError(404, "NOT_FOUND", "Asset not found");
+    const key = assetMeta(row).waveformKey;
+    if (typeof key !== "string" || (row.workspace_id !== null && !key.startsWith(`ws/${row.workspace_id}/`))) throw new ApiError(404, "NOT_FOUND", "No waveform for this asset");
+    const obj = await c.env.MEDIA.get(key);
+    if (!obj) throw new ApiError(404, "NOT_FOUND", "No waveform for this asset");
+    const raw = (await obj.json().catch(() => null)) as { points?: unknown; durationSec?: unknown; peaks?: unknown } | null;
+    const peaks = Array.isArray(raw?.peaks) ? raw!.peaks.filter((p): p is number => typeof p === "number" && Number.isFinite(p)).map((p) => Math.max(0, Math.min(1, p))).slice(0, 4000) : [];
+    if (!peaks.length) throw new ApiError(404, "NOT_FOUND", "No waveform for this asset");
+    c.header("cache-control", "private, max-age=3600");
+    return c.json({ points: peaks.length, durationSec: typeof raw?.durationSec === "number" ? raw.durationSec : null, peaks });
+  })
   .delete("/:id", validate("param", z.object({ id: Id })), async (c) => {
     const auth = await requireAuth(c);
     const row = await ownAsset(c, auth, c.req.valid("param").id);

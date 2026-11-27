@@ -10,7 +10,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent } from 'react';
 import { useIntl } from 'react-intl';
 import { agentFailure, applyEditProposal, EditorAgentReply, getEditorProject, mockRun, proposeEdit, quoteNode, reassemble, type EditorProjectReal, type RunOutcome, type RunRequest } from './api';
-import { assetMediaUrl, isMockApi, savePendingAction, takePendingAction } from '@/features/overlays/backend';
+import { assetMediaUrl, isMockApi, posterUrl, savePendingAction, takePendingAction } from '@/features/overlays/backend';
 import { discardProposal } from '@/features/overlays/agent';
 import { subscribeProjectMessages } from '../api';
 import { fetchTimeline, transitionOps, TimelineSync } from './realTimeline';
@@ -106,6 +106,21 @@ function EditorSkeleton() {
 }
 
 const CLOSE_MS = 200;
+
+/** Real mode: a bin item's still, the poster variant of its asset (a video's poster frame, an image itself). */
+const binStill = (item: BinItem) => (item.assetId ? posterUrl(assetMediaUrl(item.assetId)) : undefined);
+
+/**
+ * A layer above the editor is open (a dialog, a popover or menu, a list of options), not the
+ * editor's own proposal card. Those close themselves on Escape from a document listener, which
+ * runs after this React handler, so the editor leaves that Escape to them.
+ */
+export function layerOpenAbove(root: HTMLElement | null): boolean {
+  if (typeof document === 'undefined') return false;
+  return Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]')).some(
+    (el) => el !== root && !el.hasAttribute('data-editor-proposal') && el.getAttribute('data-state') !== 'closed' && !el.closest('[aria-hidden="true"], [inert]') && el.getClientRects().length > 0,
+  );
+}
 const TOOL_KEYS: Record<string, Tool> = { v: 'select', c: 'razor', y: 'slip', t: 'text', h: 'hand' };
 
 function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestRun, onExport }: EditorProps & { project: EditorProject }) {
@@ -544,8 +559,12 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
     const typing = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
     const mod = e.metaKey || e.ctrlKey;
     if (e.key === 'Escape') {
+      // Topmost first: an open dialog or menu, then the proposal, the field being typed in, the selection; then the editor closes.
+      if (e.defaultPrevented || layerOpenAbove(rootRef.current)) return;
       if (state.proposal) discard();
-      else if (!typing && state.selection) dispatch({ type: 'select', clipId: null });
+      else if (typing) target.blur();
+      else if (state.selection) dispatch({ type: 'select', clipId: null });
+      else if (!closing) close();
       return;
     }
     if (typing) return;
@@ -695,7 +714,7 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
         </button>
       </div>
       <div className={styles.body}>
-        <Bin items={project.bin} currentId={binCurrent} onPick={pickBin} onInsert={insertFromBin} />
+        <Bin items={project.bin} currentId={binCurrent} onPick={pickBin} onInsert={insertFromBin} thumbFor={project.mediaUrls ? binStill : undefined} />
         <Monitor
           project={project}
           edl={state.edl}

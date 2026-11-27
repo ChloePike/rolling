@@ -32,6 +32,7 @@ export function ProposalCard({ proposal, onApply, onDiscard, focusOnOpen }: Prop
   return (
     <div
       role="dialog"
+      data-editor-proposal=""
       aria-label={intl.formatMessage({ id: 'editor.proposal.label' })}
       className={styles.proposal}
       data-shown={shown}

@@ -489,6 +489,7 @@ Uploads are only visible to their uploader. They expire 7 days after creation (R
 |---|---|---|
 | GET | `/api/assets` | `?scope=mine\|team\|builtin\|public\|all (all)&kind=image\|video\|audio\|text&q=&first=1..100 (48)&after=` → `{ items: Asset[], nextCursor }`, newest first; `q` is full-text (prefix match on name and tags). GraphQL: `assets(scope: MINE\|TEAM\|BUILTIN\|PUBLIC\|ALL, kind, q, first, after)` |
 | GET | `/api/assets/:id` | `{ asset }` (own workspace, builtin or public) |
+| GET | `/api/assets/:id/waveform` | `{ points, durationSec, peaks: number[] /* 0..1 */ }` from `meta.waveformKey` (media.process), for the editor's audio lanes; 404 when there is none |
 | DELETE | `/api/assets/:id` | removes the row, search entry and R2 objects (editor+) |
 | GET | `/api/media/private/:assetId` | signed-in convenience: `302` to a signed URL; never carries bytes |
 | GET | `/media/<key>?exp=&ws=&sig=` | signed private media (this Worker until the media hostname exists). Resumable: `Accept-Ranges: bytes`, single `Range` → `206` + `Content-Range`, unsatisfiable → `416` with `Content-Range: bytes */size`, `If-Range` (ETag or date; mismatch → full `200`), `ETag` / `If-None-Match` → `304`. `403 { reason: invalid }`, `410 { reason: expired }`. `/api/media/public/...` (public-library fallback) answers `Range` the same way |

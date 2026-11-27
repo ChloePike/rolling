@@ -27,6 +27,15 @@ export interface BinProps {
   onPick: (item: BinItem) => void;
   /** Assets / Public: adds the item at the end of its track. */
   onInsert: (item: BinInsert) => void;
+  /** Real mode: a still for a project item (the shot's poster, `?variant=poster`); the icon shows while there is none. */
+  thumbFor?: (item: BinItem) => string | undefined;
+}
+
+/** A still in the bin's thumbnail box; falls back to the kind icon when it can't load. */
+function Still({ src, icon }: { src: string | undefined; icon: Parameters<typeof Icon>[0]['name'] }) {
+  const [failed, setFailed] = useState<string | null>(null);
+  if (!src || failed === src) return <Icon name={icon} size={14} />;
+  return <img src={src} alt="" className={styles.binImg} loading="lazy" decoding="async" onError={() => setFailed(src)} data-testid="bin-still" />;
 }
 
 /** Kind of a picker item from its group and meta line (`Video · 0:08`, `Image · 2048×2048`). */
@@ -110,7 +119,7 @@ function PublicTab({ onInsert }: { onInsert: BinProps['onInsert'] }) {
 
 const PUB_TONES = ['var(--c-tone-plum)', 'var(--c-tone-indigo)', 'var(--c-tone-sand)', 'var(--c-tone-teal)'];
 
-export function Bin({ items, currentId, onPick, onInsert }: BinProps) {
+export function Bin({ items, currentId, onPick, onInsert, thumbFor }: BinProps) {
   const intl = useIntl();
   const [tab, setTab] = useState<BinTab>('project');
   /** Import: the shared asset picker modal (My assets, Public library, Recent, Upload into Assets); picks go on the timeline. */
@@ -163,7 +172,7 @@ export function Bin({ items, currentId, onPick, onInsert }: BinProps) {
                   onClick={() => onPick(item)}
                 >
                   <span className={styles.binThumb} style={{ background: item.color }}>
-                    <Icon name={item.kind === 'video' ? 'video' : item.kind === 'image' ? 'image' : 'audio'} size={14} />
+                    <Still src={item.notGenerated ? undefined : thumbFor?.(item)} icon={item.kind === 'video' ? 'video' : item.kind === 'image' ? 'image' : 'audio'} />
                   </span>
                   <span className={styles.binText}>
                     <span className={styles.binTitle}>{item.title}</span>

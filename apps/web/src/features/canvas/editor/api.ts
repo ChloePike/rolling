@@ -10,6 +10,7 @@ import { getProject, openSession, subscribeProjectMessages } from '../api';
 import type { SpecQuote } from '@/features/overlays/runs';
 import { canvasIdFor, fetchTimeline, reassembleTimeline } from './realTimeline';
 import type { BinItem, ShotInfo } from './mocks';
+import { lanePeaks } from './peaks';
 
 /**
  * Editor data access. Mock mode: the design's mock project (`mockData().editor`). Real mode: the
@@ -55,6 +56,13 @@ export async function getEditorProject(projectId: string): Promise<EditorProject
       if (t.kind === 'voice' || t.kind === 'music') audio[c.assetId] = { assetId: c.assetId, title: t.kind === 'voice' ? 'Voiceover' : 'Music', seconds: c.out, peaks: [0] };
     }
   }
+  // Audio lanes draw the waveform media.process stored (a flat line while there is none yet).
+  await Promise.allSettled(
+    Object.values(audio).map(async (a) => {
+      const w = await apiFetch<{ peaks: number[]; durationSec: number | null }>(`/assets/${encodeURIComponent(a.assetId)}/waveform`);
+      a.peaks = lanePeaks(w.peaks, w.durationSec);
+    }),
+  );
   const bin: BinItem[] = videos.map((n, i) => {
     const media = session?.sync.getMedia(n.id);
     return {
