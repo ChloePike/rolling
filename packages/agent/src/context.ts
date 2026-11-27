@@ -41,6 +41,27 @@ export interface TurnInput {
   refs: string[];
   /** Selected node ids (canvas). */
   selection: string[];
+  /** What the prompt box's pills say (Home: video model, aspect ratio, length); used unless the brief says otherwise. */
+  settings?: TurnSettings;
+}
+
+export interface TurnSettings {
+  /** Catalog video model id, or null for Auto (the default model). */
+  videoModel?: string | null;
+  ratio?: string;
+  /** Total length in seconds. */
+  seconds?: number;
+}
+
+/** The prompt box settings as one context line; null when there are none. */
+export function settingsSection(s: TurnSettings | undefined): string | null {
+  if (!s) return null;
+  const parts: string[] = [];
+  if (s.ratio) parts.push(`aspect ratio ${s.ratio}`);
+  if (s.seconds) parts.push(`total length ${s.seconds} s`);
+  if (s.videoModel !== undefined) parts.push(s.videoModel ? `video model ${s.videoModel}` : 'video model Auto (the default one)');
+  if (!parts.length) return null;
+  return `# Prompt box settings\nThe user picked ${parts.join(', ')} on the prompt box. Use these in plans unless the brief asks for something else.`;
 }
 
 export interface BuiltContext {
@@ -123,7 +144,7 @@ export async function buildContext(args: {
 
   const skill = thread.skill ? SKILL_PROMPTS[thread.skill] : undefined;
   const accountText = `# Account\n${JSON.stringify(accountView(account))}\nReply language: ${languageName(account.language)}.`;
-  const fixed = [SYSTEM_PROMPT, skill ? `# Active skill\n${skill}` : '', accountText].filter(Boolean).join('\n\n');
+  const fixed = [SYSTEM_PROMPT, skill ? `# Active skill\n${skill}` : '', accountText, settingsSection(input.settings) ?? ''].filter(Boolean).join('\n\n');
   let used = estimateTokens(fixed);
 
   const userText = truncateToTokens(input.text, 4_000);

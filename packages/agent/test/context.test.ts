@@ -47,6 +47,20 @@ describe('buildContext', () => {
     expect(ctx.revision).toBe(7);
   });
 
+  it('passes the prompt box settings (Home pills) to the model, and leaves them out when there are none', async () => {
+    const home = thread({ surface: 'home', projectId: null, skill: null });
+    const withSettings = await buildContext({
+      thread: home,
+      input: { text: 'an ad for a bottle', refs: [], selection: [], settings: { videoModel: null, ratio: '9:16', seconds: 15 } },
+      account: world.account,
+      ports,
+      tools,
+    });
+    expect(withSettings.messages[0]!.content).toContain('# Prompt box settings\nThe user picked aspect ratio 9:16, total length 15 s, video model Auto (the default one) on the prompt box.');
+    const without = await buildContext({ thread: home, input: { text: 'an ad', refs: [], selection: [] }, account: world.account, ports, tools });
+    expect(without.messages[0]!.content).not.toContain('# Prompt box settings');
+  });
+
   it('keeps the last 12 messages verbatim plus the summary', async () => {
     const messages = Array.from({ length: 30 }, (_, i) => msg(i));
     const ctx = await buildContext({ thread: thread({ messages, summary: 'User wants a 15 s ad.' }), input: { text: 'next', refs: [], selection: [] }, account: world.account, ports, tools });
@@ -118,6 +132,19 @@ describe('layout', () => {
     expect(pos.a).toEqual({ x: LAYOUT.originX, y: LAYOUT.originY });
     expect(pos.b).toEqual({ x: LAYOUT.originX + LAYOUT.colWidth, y: LAYOUT.originY });
     expect(pos.c).toEqual({ x: LAYOUT.originX + LAYOUT.colWidth, y: LAYOUT.originY + LAYOUT.rowHeight });
+  });
+
+  it('stacks below a tall script by its height, and puts a text-to-video shot right of its script', () => {
+    const visual = 'A clear glass water bottle stands on a mossy rock in a quiet forest stream, water beading on the glass, soft light.';
+    const ops = layoutNewNodes({ nodes: [], edges: [] }, [
+      { op: 'addNode', tempId: 'script', kind: 'script', title: 's', params: { rows: [{ visual }, { visual }] } },
+      { op: 'addNode', tempId: 'note', kind: 'text', title: 'n', params: {} },
+      { op: 'addNode', tempId: 'shot1', kind: 'video', title: 'v', params: {} },
+    ]);
+    const pos = Object.fromEntries(ops.filter((o) => o.op === 'addNode').map((o) => [(o as { tempId: string }).tempId, (o as { position: { x: number; y: number } }).position]));
+    expect(pos.note!.x).toBe(pos.script!.x);
+    expect(pos.note!.y - pos.script!.y).toBeGreaterThan(LAYOUT.rowHeight);
+    expect(pos.shot1).toEqual({ x: LAYOUT.originX + LAYOUT.colWidth, y: LAYOUT.originY });
   });
 });
 

@@ -91,7 +91,7 @@ export function HomePage() {
   const { data: skills } = useSkills();
   // Real mode, Avatar: the voice pill uploads a voice track; it joins the `@` references.
   const voiceInput = useRef<HTMLInputElement>(null);
-  const { pills, renderPillPopover, credits, blocked, run, llm } = useHomePills(mode, { onUploadVoice: () => voiceInput.current?.click() });
+  const { pills, renderPillPopover, credits, blocked, run, llm, agentSettings } = useHomePills(mode, { onUploadVoice: () => voiceInput.current?.click() });
   const allowance = useAgentAllowance();
   // Settings commands open the pill they name; a mode without that pill does not list them.
   const pillIds = {
@@ -324,7 +324,8 @@ export function HomePage() {
     }
   };
   const thread = useHomeThread(failureText);
-  const askAgent = (brief: string, refIds: string[], skillName: string | null) => void thread.send({ text: brief, refs: refIds, skill: skillName, llm: llm.id });
+  const [newCanvas, newCanvasBusy] = useNewCanvas();
+  const askAgent = (brief: string, refIds: string[], skillName: string | null) => void thread.send({ text: brief, refs: refIds, skill: skillName, llm: llm.id, settings: agentSettings });
 
   const build = (proposalId: string, optionIndex: number, optionTitle?: string) => {
     setBuilding(proposalId);
@@ -503,7 +504,7 @@ export function HomePage() {
         {mode !== 'agent' || !showThread ? <HomeRunList cards={runs.cards} actions={cardActions} onClearFinished={() => runs.cards.filter((c) => !isActive(c)).forEach((c) => runs.remove(c.key))} /> : null}
         <nav className={cx(styles.entries, (showThread || (mode !== 'agent' && runs.cards.length > 0)) && styles.entriesAfter)} aria-label={intl.formatMessage({ id: 'home.start.label' })}>
           {ENTRIES.map((e) => (
-            <Link key={e.key} to={e.to} className={styles.entry}>
+            <Link key={e.key} to={e.to} className={styles.entry} onClick={e.key === 'blank' ? newCanvas : undefined} aria-busy={e.key === 'blank' && newCanvasBusy ? true : undefined}>
               <span className={styles.entryIcon}>
                 <PromptIcon name={e.icon} size={14} />
               </span>
@@ -557,14 +558,46 @@ export function HomePage() {
   );
 }
 
-function RecentProjects() {
+/**
+ * Real mode: creates an untitled canvas, then opens it (mock mode follows the link to the demo canvas).
+ * One project per click: repeated clicks while it is being created do nothing.
+ */
+function useNewCanvas(): [(e: React.MouseEvent) => void, boolean] {
   const intl = useIntl();
   const navigate = useNavigate();
+  const toast = useToast();
   const createProject = useCreateProject();
-  const projectsQ = useRecentProjects();
+  const busyRef = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const open = (e: React.MouseEvent) => {
+    if (isMockApi()) return;
+    e.preventDefault();
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    void createProject({ title: intl.formatMessage({ id: 'home.project.untitled' }), kind: 'canvas' })
+      .then(({ id }) => navigate({ to: '/p/$projectId', params: { projectId: id } }))
+      .catch(() => toast.show({ message: intl.formatMessage({ id: 'home.project.createFailed' }) }))
+      .finally(() => {
+        busyRef.current = false;
+        setBusy(false);
+      });
+  };
+  return [open, busy];
+}
+
+/** Cards shown before "All projects" expands the list. */
+const RECENT_CARDS = 4;
+
+function RecentProjects() {
+  const intl = useIntl();
+  const [all, setAll] = useState(false);
+  const [newCanvas, busy] = useNewCanvas();
+  const projectsQ = useRecentProjects(all);
   // An untitled canvas with no nodes (e.g. made by the nav's Canvas entry) has nothing to show: it stays off Recent.
   const untitled = intl.formatMessage({ id: 'home.project.untitled' });
-  const projects = (projectsQ.data ?? []).filter((p) => !(p.nodeCount === 0 && (p.title === untitled || p.title === 'Untitled project'))).slice(0, 4);
+  const listed = (projectsQ.data ?? []).filter((p) => !(p.nodeCount === 0 && (p.title === untitled || p.title === 'Untitled project')));
+  const projects = all ? listed : listed.slice(0, RECENT_CARDS);
   const meta = (p: ProjectSummary) => {
     const when = formatWhen(intl, p.updatedAt);
     const detail =
@@ -581,22 +614,12 @@ function RecentProjects() {
         <h2 id="h-recent" className={cx(styles.h2, styles.flex1)}>
           <FormattedMessage id="home.projects.title" />
         </h2>
-        <Link to="/" hash="projects" className={styles.allLink}>
-          <FormattedMessage id="home.projects.all" />
-        </Link>
+        <button type="button" className={styles.allLink} aria-expanded={all} aria-controls="home-projects-grid" onClick={() => setAll((v) => !v)}>
+          <FormattedMessage id={all ? 'home.projects.fewer' : 'home.projects.all'} />
+        </button>
       </div>
-      <div className={styles.projectGrid}>
-        <Link
-          to="/p/$projectId"
-          params={{ projectId: 'prj_new' }}
-          className={styles.newProject}
-          onClick={(e) => {
-            if (isMockApi()) return;
-            // Real mode: create the project first, then open it.
-            e.preventDefault();
-            void createProject({ title: intl.formatMessage({ id: 'home.project.untitled' }), kind: 'canvas' }).then(({ id }) => navigate({ to: '/p/$projectId', params: { projectId: id } }));
-          }}
-        >
+      <div className={styles.projectGrid} id="home-projects-grid">
+        <Link to="/p/$projectId" params={{ projectId: 'prj_new' }} className={styles.newProject} onClick={newCanvas} aria-busy={busy || undefined}>
           <span className={styles.newIcon}>
             <PromptIcon name="plus" size={20} />
           </span>

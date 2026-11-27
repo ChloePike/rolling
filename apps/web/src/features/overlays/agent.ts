@@ -190,9 +190,18 @@ export interface TurnStream {
  * through `stream` from the thread socket; the resolved result has the full
  * text either way.
  */
+/** The prompt box's pills sent with a turn (`settings` in `POST /api/agent/threads/:id/messages`). */
+export interface TurnSettings {
+  /** Catalog video model id; null for Auto. */
+  videoModel?: string | null;
+  ratio?: string;
+  /** Total length in seconds. */
+  seconds?: number;
+}
+
 export async function sendTurn(
   threadId: string,
-  input: { text: string; refs?: string[]; selection?: string[]; llm?: string | null },
+  input: { text: string; refs?: string[]; selection?: string[]; llm?: string | null; settings?: TurnSettings },
   stream: TurnStream = {},
   /** Where the thread's events arrive: the user channel (Home, tools; default) or the project channel (canvas, editor). D-014. */
   subscribe: (listener: (msg: Envelope) => void) => () => void = userEvents,
@@ -209,6 +218,7 @@ export async function sendTurn(
     if (input.refs?.length) body.refs = input.refs;
     if (input.selection?.length) body.selection = input.selection;
     if (input.llm) body.llm = input.llm;
+    if (input.settings) body.settings = input.settings;
     return await apiFetch<TurnResult>(`/agent/threads/${encodeURIComponent(threadId)}/messages`, { method: 'POST', body });
   } finally {
     off();

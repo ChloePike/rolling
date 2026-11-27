@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, gql, isMockApi } from '@/features/overlays/backend';
 import { mockData } from '@/lib/api/mode';
 import { mockDeletedProjects } from '@/features/canvas/target/projects';
@@ -40,11 +40,15 @@ function created(): ProjectSummary[] {
   }
 }
 
-/** Mock-backed `GET /api/projects` (recent first). */
-export async function fetchRecentProjects(): Promise<ProjectSummary[]> {
-  // A few more than the four cards: empty untitled canvases are left out on Home.
-  if (!isMockApi()) return fetchRealProjects(8);
-  return mockRecent();
+/** Projects fetched for the first row (a few more than the four cards: empty untitled canvases are left out on Home). */
+export const RECENT_PAGE = 8;
+/** Projects fetched when "All projects" opens the list. */
+const ALL_PAGE = 50;
+
+/** Mock-backed `GET /api/projects` (recent first); `all` lists every project (up to 50). */
+export async function fetchRecentProjects(all = false): Promise<ProjectSummary[]> {
+  if (!isMockApi()) return fetchRealProjects(all ? ALL_PAGE : RECENT_PAGE);
+  return all ? mockAll() : mockRecent();
 }
 
 /** Mock list: created here first, then the fixtures, minus deleted ids, with renames applied. */
@@ -55,6 +59,12 @@ function mockRecent(): ProjectSummary[] {
     .filter((p) => !deleted.has(p.id))
     .map((p) => (titles[p.id] ? { ...p, title: titles[p.id]! } : p))
     .slice(0, 4);
+}
+
+function mockAll(): ProjectSummary[] {
+  const deleted = mockDeletedProjects();
+  const titles = mockTitles();
+  return [...created(), ...mockData().home.MOCK_PROJECTS].filter((p) => !deleted.has(p.id)).map((p) => (titles[p.id] ? { ...p, title: titles[p.id]! } : p));
 }
 
 const TITLES_KEY = 'rolling.mock.projectTitles';
@@ -83,10 +93,14 @@ export async function renameRecentProject(projectId: string, title: string): Pro
   return saved;
 }
 
-export function useRecentProjects() {
+export function useRecentProjects(all = false) {
   const mock = isMockApi();
-  // Real mode: no placeholder rows; the page shows skeletons until the list arrives.
-  return useQuery({ queryKey: projectsKey, queryFn: fetchRecentProjects, ...(mock ? { initialData: mockRecent } : { staleTime: 15_000 }) });
+  // Real mode: no placeholder rows; the page shows skeletons until the list arrives. The open list keeps the first row on screen while it loads.
+  return useQuery({
+    queryKey: all ? [...projectsKey, 'all'] : projectsKey,
+    queryFn: () => fetchRecentProjects(all),
+    ...(mock ? { initialData: all ? mockAll : mockRecent } : { staleTime: 15_000, ...(all ? { placeholderData: keepPreviousData } : {}) }),
+  });
 }
 
 const CREATED_TONES = ['var(--c-tone-indigo)', 'var(--c-tone-teal)', 'var(--c-tone-plum)', 'var(--c-tone-sand)'];

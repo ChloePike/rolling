@@ -35,6 +35,14 @@ const SendMessage = z.object({
   selection: z.array(Id).max(100).default([]),
   /** Public agent LLM id (D-009). */
   llm: z.string().max(64).optional(),
+  /** The prompt box's pills (Home: video model, aspect ratio, total length); the agent uses them unless the brief says otherwise. */
+  settings: z
+    .object({
+      videoModel: z.string().max(120).nullable().optional(),
+      ratio: z.enum(["9:16", "16:9", "1:1", "4:3", "3:4", "21:9"]).optional(),
+      seconds: z.number().int().min(1).max(600).optional(),
+    })
+    .optional(),
 });
 
 interface ThreadRow {
@@ -163,6 +171,7 @@ export const agent = new Hono<AppEnv>()
         refs: body.refs,
         selection: body.selection,
         ...(llm ? { llm } : {}),
+        ...(body.settings ? { settings: body.settings } : {}),
         turnId,
         allowance,
       }),

@@ -60,6 +60,20 @@ describe('propose.plan', () => {
     expect(res.proposal.estimate.credits).toBe(Math.min(...body.options.map((o) => o.estimate.credits)));
   });
 
+  it('gives a text-to-video shot no keyframe: no image node to run and no keyframe in the estimate', async () => {
+    const lite = 'x-ai/grok-imagine-video-1.5-lite';
+    const res = await runPropose('propose.plan', { seconds: 5, options: [{ title: 'A', ratio: '16:9', shots: [shot('Hook', 5, lite)] }, { title: 'B', ratio: '16:9', shots: [shot('Hook', 5)] }] }, ctx('home'));
+    expect(res.ok, res.ok ? '' : res.error).toBe(true);
+    if (!res.ok) return;
+    const [t2v, i2v] = (res.proposal.body as PlanBody).options;
+    expect(t2v!.shots[0]!.mode).toBe('t2v');
+    expect(t2v!.estimate.items.map((i) => i.kind)).toEqual(['video']);
+    expect(t2v!.ops.filter((o) => o.op === 'addNode').map((o) => (o as { kind: string }).kind)).toEqual(['script', 'video']);
+    // The i2v option keeps its keyframe, wired into the shot's frame.
+    expect(i2v!.estimate.items.map((i) => i.kind).sort()).toEqual(['image', 'video']);
+    expect(i2v!.ops.some((o) => o.op === 'connect' && o.to.port === 'frame')).toBe(true);
+  });
+
   it('refuses lengths a model does not take, with the allowed range', async () => {
     const res = await runPropose('propose.plan', { seconds: 4, options: [{ title: 'A', ratio: '16:9', shots: [shot('Hook', 3)] }, { title: 'B', ratio: '16:9', shots: [shot('Hook', 4)] }] }, ctx('home'));
     expect(res.ok).toBe(false);

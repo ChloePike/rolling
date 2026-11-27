@@ -74,6 +74,8 @@ export function useHomePills(
   run: HomeRunSpec | null;
   /** Agent mode: the selected public agent LLM (D-009), shared with the canvas panel. */
   llm: { id: string | null; name: string };
+  /** Agent mode: the video model, ratio and length pills, sent with each turn so the plan follows them. */
+  agentSettings: { videoModel: string | null; ratio: string; seconds: number };
 } {
   const intl = useIntl();
   const { planId } = useSession();
@@ -195,6 +197,11 @@ export function useHomePills(
   const llmModel = pick(chat, llmId);
   const llmInfo = { id: llmModel?.id ?? llmId, name: llmModel?.name ?? '' };
 
+  const agentSettings = {
+    videoModel: agentModel === AUTO_MODEL ? null : (agentM?.id ?? null),
+    ratio: agentVideo.aspectRatio,
+    seconds: Number.parseInt(String(agentVideo.duration), 10) || 15,
+  };
   let specs: PillSpec[] = [];
   let credits: number | null = null;
   let blocked: string | null = null;
@@ -328,6 +335,7 @@ export function useHomePills(
         blocked,
         run,
         llm: llmInfo,
+        agentSettings,
       };
     }
     run = {
@@ -355,6 +363,7 @@ export function useHomePills(
     blocked,
     run,
     llm: llmInfo,
+    agentSettings,
   };
 }
 

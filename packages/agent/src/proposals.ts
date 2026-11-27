@@ -110,7 +110,9 @@ const DEFAULT_RATIO = '16:9';
 
 /**
  * Builds the GraphOps for one plan option: a script node, `@` reference
- * assets, then per shot an image keyframe and a video node fed by it.
+ * assets, then per shot a video node, fed by an image keyframe when the
+ * model animates a first frame (i2v). A text-to-video shot gets no keyframe:
+ * nothing would read it, and running it would cost credits.
  */
 export function planOps(option: PlanOptionOut, refs: readonly AssetItem[], keyframe: { model: string; mode: 't2i' | 'edit' }): LocalOp[] {
   const ops: LocalOp[] = [];
@@ -137,13 +139,15 @@ export function planOps(option: PlanOptionOut, refs: readonly AssetItem[], keyfr
   option.shots.forEach((s) => {
     const k = `key${s.n}`;
     const v = `shot${s.n}`;
-    ops.push({
-      op: 'addNode',
-      tempId: k,
-      kind: 'image',
-      title: `Keyframe ${s.n}: ${s.title}`.slice(0, 200),
-      params: { prompt: `${s.visual} First frame of the shot.`, model: keyframe.model, mode: keyframe.mode, ratio: option.ratio, count: 1 },
-    });
+    const withKeyframe = s.mode === 'i2v';
+    if (withKeyframe)
+      ops.push({
+        op: 'addNode',
+        tempId: k,
+        kind: 'image',
+        title: `Keyframe ${s.n}: ${s.title}`.slice(0, 200),
+        params: { prompt: `${s.visual} First frame of the shot.`, model: keyframe.model, mode: keyframe.mode, ratio: option.ratio, count: 1 },
+      });
     ops.push({
       op: 'addNode',
       tempId: v,
@@ -159,9 +163,10 @@ export function planOps(option: PlanOptionOut, refs: readonly AssetItem[], keyfr
         ...(s.line ? { line: s.line } : {}),
       },
     });
+    if (!withKeyframe) return;
     ops.push({ op: 'connect', from: { node: 'script', port: 'out' }, to: { node: k, port: 'prompt' } });
     imageRefs.slice(0, 8).forEach((_r, i) => ops.push({ op: 'connect', from: { node: `ref${i + 1}`, port: 'out' }, to: { node: k, port: 'refs' } }));
-    if (s.mode === 'i2v') ops.push({ op: 'connect', from: { node: k, port: 'out' }, to: { node: v, port: 'frame' } });
+    ops.push({ op: 'connect', from: { node: k, port: 'out' }, to: { node: v, port: 'frame' } });
   });
   return ops;
 }
@@ -238,10 +243,11 @@ async function proposePlan(args: z.infer<typeof ProposePlanInput>, ctx: ProposeC
       const n = si + 1;
       const credits = creditsForSpec(spec, models);
       if (credits === null) unpriced.push(`shot ${n}`);
+      // Only an i2v shot gets a keyframe (planOps); a text-to-video shot costs just the video.
       const kfSpec: GenSpec = { kind: 'image', model: kf.id, mode: keyframe.mode, count: 1, ...(refs.length ? { inputImages: Math.min(refs.length, 8) } : {}) };
-      const kfCredits = creditsForSpec(kfSpec, models);
+      const kfCredits = mode === 'i2v' ? creditsForSpec(kfSpec, models) : 0;
       if (kfCredits === null) unpriced.push(`keyframe ${n}`);
-      if (kfCredits !== null) items.push({ ref: `key${n}`, model: kf.id, kind: 'image', credits: kfCredits });
+      if (kfCredits !== null && mode === 'i2v') items.push({ ref: `key${n}`, model: kf.id, kind: 'image', credits: kfCredits });
       if (credits !== null) items.push({ ref: `shot${n}`, model: model.id, kind: 'video', seconds: shot.seconds, ...(resolution ? { resolution } : {}), credits });
       shots.push({
         n,

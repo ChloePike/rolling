@@ -14,6 +14,7 @@ import {
   type ApplyResult,
   type PlanOption,
   type Proposal,
+  type TurnSettings,
 } from '@/features/overlays/agent';
 import { isMockApi } from '@/features/overlays/backend';
 import { mockData } from '@/lib/api/mode';
@@ -31,6 +32,8 @@ export interface SendInput {
   refs?: string[];
   skill?: string | null;
   llm?: string | null;
+  /** The prompt box's video model, ratio and length pills. */
+  settings?: TurnSettings;
 }
 
 export interface HomeThread {
@@ -98,6 +101,7 @@ export function useHomeThread(onFailure: FailureHandler): HomeThread {
   const [busy, setBusy] = useState(false);
   const [restoring, setRestoring] = useState(!mock);
   const idRef = useRef<string | null>(null);
+  const lastSettings = useRef<TurnSettings | null>(null);
   const turnRef = useRef<{ stop: boolean } | null>(null);
   const failRef = useRef(onFailure);
   failRef.current = onFailure;
@@ -131,6 +135,7 @@ export function useHomeThread(onFailure: FailureHandler): HomeThread {
     async (input: SendInput) => {
       const text = input.text.trim();
       if (!text || turnRef.current) return;
+      if (input.settings) lastSettings.current = input.settings;
       const userMsg: ThreadMsg = { id: localId('msg_user'), role: 'user', text, status: 'done' };
       const replyId = localId('msg_agent');
       setMessages((list) => [...list, userMsg, { id: replyId, role: 'agent', text: '', status: 'streaming', tool: null }]);
@@ -154,7 +159,7 @@ export function useHomeThread(onFailure: FailureHandler): HomeThread {
         }
         // `@` uploads still in flight resolve to their asset ids first.
         const refs = input.refs?.length ? (await Promise.all(input.refs.map((r) => resolveAssetId(r)))).filter((r) => r.startsWith('ast_')) : [];
-        const r = await sendTurn(threadId, { text, refs, llm: input.llm ?? null }, { onDelta, onTool: (tool) => !turn.stop && patchMsg(replyId, (m) => ({ ...m, tool: tool.status === 'started' ? tool.name : null })) });
+        const r = await sendTurn(threadId, { text, refs, llm: input.llm ?? null, ...(input.settings ? { settings: input.settings } : {}) }, { onDelta, onTool: (tool) => !turn.stop && patchMsg(replyId, (m) => ({ ...m, tool: tool.status === 'started' ? tool.name : null })) });
         const failed = r.reason === 'error' || (!r.text && !r.proposal && r.reason !== 'canceled');
         if (failed) {
           const shown = failRef.current({ kind: 'error', message: r.error?.message ?? '' }, input);
@@ -195,7 +200,7 @@ export function useHomeThread(onFailure: FailureHandler): HomeThread {
       const at = messages.indexOf(msg);
       // The failed reply and the user message before it are replaced by the new attempt.
       setMessages((list) => list.filter((_, i) => i !== at && !(i === at - 1 && list[i]!.role === 'user')));
-      void send({ text: msg.retryText });
+      void send({ text: msg.retryText, ...(lastSettings.current ? { settings: lastSettings.current } : {}) });
     },
     [messages, send],
   );

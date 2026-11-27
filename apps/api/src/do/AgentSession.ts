@@ -23,6 +23,7 @@ import {
   type ThreadState,
   type TimelinePatchBody,
   type TurnEndReason,
+  type TurnSettings,
 } from "@rolling/agent";
 import { hyperouter, isUnmeteredAgentLlm, tokenPrice, type LlmProvider } from "@rolling/core";
 import type { AgentHoldResult, AgentPeriodInput, AgentReleaseResult, AgentSettleResult, LedgerOutcome } from "@rolling/core/credits";
@@ -86,6 +87,8 @@ export interface SendInput {
   selection: string[];
   /** Public LLM id (D-009); default DeepSeek V4.1 Flash. */
   llm?: string | null;
+  /** The prompt box's pills (context only). */
+  settings?: TurnSettings;
   turnId: string;
   /** D-012: the workspace's allowance period; the turn holds its estimate against it before the first LLM call. */
   allowance?: AgentPeriodInput;
@@ -292,7 +295,7 @@ export class AgentSession extends DurableObject<Env> {
       llm,
       ports,
       thread,
-      input: { text: input.text, refs: input.refs, selection: input.selection },
+      input: { text: input.text, refs: input.refs, selection: input.selection, ...(input.settings ? { settings: input.settings } : {}) },
       turnId: input.turnId,
       llmId,
       newId: (kind) => newId(kind === "proposal" ? "proposal" : "message"),
