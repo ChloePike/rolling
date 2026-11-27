@@ -29,8 +29,8 @@ export interface UserCreatedInfo {
 function prefsInsert(db: D1Database, userId: string, prefs: Prefs, now: number): D1PreparedStatement {
   return db
     .prepare(
-      `INSERT OR IGNORE INTO user_prefs (user_id, language, currency, creation_mode, default_ratio, default_model, confirm_threshold, notifications, mature_content, theme, updated_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)`,
+      `INSERT OR IGNORE INTO user_prefs (user_id, language, currency, creation_mode, default_ratio, default_model, confirm_threshold, notifications, mature_content, theme, updated_at, enhance_prompt)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)`,
     )
     .bind(
       userId,
@@ -44,6 +44,7 @@ function prefsInsert(db: D1Database, userId: string, prefs: Prefs, now: number):
       prefs.matureContent ? 1 : 0,
       prefs.theme,
       now,
+      prefs.enhancePrompt ? 1 : 0,
     );
 }
 

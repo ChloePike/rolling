@@ -18,6 +18,7 @@ import { ApiError } from "../lib/errors";
 import { isRoomError, roomFailure } from "../lib/room";
 import type { RoomCaller } from "../lib/access";
 import { loadCatalog } from "../models/catalog";
+import { gatewayFeatureEnabled } from "../models/features";
 import { autoClassifier, gatewayConfigured } from "./provider";
 import { quoteExplicitCheck, quoteSafety } from "../safety/pipeline";
 import { ports, quietly } from "./ports";
@@ -53,6 +54,8 @@ export interface QuoteResponseItem {
   dependsOn: string[];
   /** D-005 mature text-to-video chain: `keyframe` (the first frame) or `animate`; both are priced in `total`. */
   step?: "keyframe" | "animate";
+  /** D-020: the price includes prompt enhancement (its most; settled on what the gateway charges). */
+  promptExpand?: true;
 }
 
 export interface QuoteResponse {
@@ -90,6 +93,7 @@ function toResponseItem(i: StoredQuoteItem): QuoteResponseItem {
     ...(i.autoVia && { autoVia: i.autoVia }),
     dependsOn: i.dependsOn,
     ...(i.spec?.chain && { step: i.spec.chain.step }),
+    ...(i.action === "run" && i.priceRequest?.promptExpandUsd !== undefined && { promptExpand: true as const }),
   };
 }
 
@@ -179,6 +183,8 @@ export async function quoteRun(env: Env, auth: AuthContext, req: QuoteRequest): 
   // D-005: mature-allowed callers' text-only videos get the text classifier at quote time (only asked when no text-to-video
   // model takes mature runs), so an explicit one is planned as keyframe → animation before anything is held.
   const explicit = gatewayConfigured(env) ? quoteExplicitCheck(env) : null;
+  // D-020: "Enhance prompt" default and availability (off while the gateway refuses the feature here).
+  const promptExpand = { default: auth.prefs.enhancePrompt, available: await gatewayFeatureEnabled(env, "prompt_expand"), locale: auth.prefs.language };
   let items: PlanItem[];
   let projectId: string | null = null;
   let scope: string;
@@ -197,7 +203,7 @@ export async function quoteRun(env: Env, auth: AuthContext, req: QuoteRequest): 
       await planPromptSpec({
         spec: req.promptSpec,
         catalog,
-        ctx: { plan: auth.plan, matureAllowed: auth.matureAllowed, matureAccess: callerMatureAccess(auth) },
+        ctx: { plan: auth.plan, matureAllowed: auth.matureAllowed, matureAccess: callerMatureAccess(auth), promptExpand },
         classify,
         explicit,
         assetOrigins: origins,
@@ -216,7 +222,7 @@ export async function quoteRun(env: Env, auth: AuthContext, req: QuoteRequest): 
     if (req.nodeIds?.some((id) => !graph.state.nodes.some((n) => n.id === id))) {
       throw new ApiError(404, "NOT_FOUND", "Node not found", { nodeIds: req.nodeIds });
     }
-    items = (await planRun({ graph: graph.state, structural: structural.items, catalog, ctx: { plan: auth.plan, matureAllowed: req.matureAllowed, matureAccess: callerMatureAccess(auth, req.matureAllowed) }, classify, explicit })).items;
+    items = (await planRun({ graph: graph.state, structural: structural.items, catalog, ctx: { plan: auth.plan, matureAllowed: req.matureAllowed, matureAccess: callerMatureAccess(auth, req.matureAllowed), promptExpand }, classify, explicit })).items;
   }
 
   // D-005: deterministic hard-limit rules before anything is priced or held.

@@ -10,6 +10,7 @@ import type { GenInput, GenSpec } from "@rolling/core/generation";
 import {
   SAFETY_BLOCKED_MESSAGE,
   SAFETY_REVIEW_MESSAGE,
+  expandedPromptCheck,
   postCheck,
   preCheck,
   matureRequiredMessage,
@@ -88,6 +89,15 @@ export async function jobPostCheck(env: Env, job: JobRef, outputs: SafetyOutput[
     await logSafety(env, { id: `${job.jobId}:post`, workspaceId: job.workspaceId, userId: job.userId, runId: job.runId, jobId: job.jobId, stage: "post", verdict, prompt: job.spec.prompt });
   }
   return { verdict, error: verdict.verdict === "block" ? jobErrorFor(verdict, job.spec.matureAccess) : null };
+}
+
+/** `store` (D-020): the text checks on the prompt the gateway's expansion rendered. */
+export async function jobExpandedCheck(env: Env, job: JobRef, expandedPrompt: string): Promise<SafetyJobError | null> {
+  const verdict = await expandedPromptCheck({ expandedPrompt, mature: job.spec.mature, matureAllowed: specMatureAllowed(job.spec) }, await safetyDeps(env));
+  if (shouldLog(verdict)) {
+    await logSafety(env, { id: `${job.jobId}:expanded`, workspaceId: job.workspaceId, userId: job.userId, runId: job.runId, jobId: job.jobId, stage: "post", verdict, prompt: expandedPrompt });
+  }
+  return verdict.verdict === "block" ? jobErrorFor(verdict, job.spec.matureAccess) : null;
 }
 
 /** The quote's view of a plan item (structural subset of PlanItem). */

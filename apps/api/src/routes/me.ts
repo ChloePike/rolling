@@ -108,7 +108,7 @@ export async function mePayload(env: Env, auth: AuthContext) {
 async function savePrefs(env: Env, userId: string, prefs: Prefs): Promise<void> {
   await env.DB.prepare(
     `UPDATE user_prefs SET language = ?2, currency = ?3, creation_mode = ?4, default_ratio = ?5, default_model = ?6,
-       confirm_threshold = ?7, notifications = ?8, theme = ?9, mature_content = ?10, updated_at = ?11
+       confirm_threshold = ?7, notifications = ?8, theme = ?9, mature_content = ?10, updated_at = ?11, enhance_prompt = ?12
      WHERE user_id = ?1`,
   )
     .bind(
@@ -123,6 +123,7 @@ async function savePrefs(env: Env, userId: string, prefs: Prefs): Promise<void> 
       prefs.theme,
       prefs.matureContent ? 1 : 0,
       Date.now(),
+      prefs.enhancePrompt ? 1 : 0,
     )
     .run();
 }

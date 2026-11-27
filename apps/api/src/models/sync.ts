@@ -6,6 +6,7 @@
 import { MODEL_OVERLAY, mergeModel, parseListing, type ListingModel, type SkippedModel } from "@rolling/core";
 import type { NewModelRow } from "@rolling/db/d1";
 import { deleteModelsSeenBefore, listModelRows, upsertModels } from "@rolling/db/queries/models";
+import { recheckGatewayFeatures } from "./features";
 
 /** Models missing from the listing are kept this long (transient gaps), then deleted. */
 export const MODEL_ABSENT_GRACE_MS = 24 * 60 * 60 * 1000;
@@ -78,6 +79,11 @@ export async function syncModels(env: Env, opts: SyncModelsOptions = {}): Promis
   const missing = [...before.keys()].filter((id) => !seen.has(id) && !deleted.includes(id)).sort();
   const unmapped = Object.fromEntries(models.filter((m) => m.unmapped.length > 0).map((m) => [m.id, m.unmapped]));
 
+  // D-020: a gateway feature refused a day ago or more is tried again by the next run.
+  const rechecked = await recheckGatewayFeatures(env, now).catch((err: unknown) => {
+    console.warn(JSON.stringify({ msg: "models: feature recheck failed", error: String(err) }));
+    return [] as string[];
+  });
   const diff: ModelSyncDiff = { total: models.length, added, changed, missing, deleted, skipped, unmapped };
   console.log(
     JSON.stringify({
@@ -89,6 +95,8 @@ export async function syncModels(env: Env, opts: SyncModelsOptions = {}): Promis
       deleted,
       skipped,
       unmappedModels: Object.keys(unmapped).length,
+      promptExpandModels: models.filter((m) => m.params.promptExpand).length,
+      ...(rechecked.length > 0 && { rechecked }),
     }),
   );
   return diff;

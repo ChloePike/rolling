@@ -43,6 +43,7 @@ describe("email code sign-up and sign-in", () => {
       notifications: { done: true, low: true, renewal: true, product: false },
       theme: "system",
       matureContent: false,
+      enhancePrompt: true,
     });
     expect(body).toMatchObject({ plan: null, isMember: false, matureAllowed: false, monthlyCreditLimit: null });
     expect(body.balance).toEqual({ plan: expect.any(Number), purchased: expect.any(Number), held: expect.any(Number), planExpiresAt: null });

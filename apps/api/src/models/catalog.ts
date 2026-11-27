@@ -1,4 +1,5 @@
 import { syncModels } from "./sync";
+import { gatewayFeatureEnabled } from "./features";
 /**
  * Reads the synced model catalog from D1 and shapes it for clients (D-002).
  * The overlay is merged at read time, so product changes apply on deploy
@@ -17,7 +18,11 @@ export function listingModelsFromRows(rows: readonly ModelRow[]): ListingModel[]
       const data = JSON.parse(row.data) as Omit<ListingModel, "price">;
       const price = JSON.parse(row.price) as PriceRule[];
       if (data.id !== row.id || !Array.isArray(price)) throw new Error("row does not match its id");
-      out.push({ ...data, price });
+      // Rows synced before D-020 have no `params.promptExpand`: derive it from the accepted parameters.
+      const params = data.params && typeof data.params.promptExpand !== "boolean"
+        ? { ...data.params, promptExpand: data.kind !== "chat" && Array.isArray(data.acceptedParams) && data.acceptedParams.includes("prompt_expand") }
+        : data.params;
+      out.push({ ...data, params, price });
     } catch (err) {
       console.error(JSON.stringify({ msg: "models: unreadable row skipped", id: row.id, error: String(err) }));
     }
@@ -82,6 +87,11 @@ export interface PublicModel {
    * length the model takes, each priced on its own as a quote would price it.
    */
   credits: CreditSample[];
+  /**
+   * D-020 "Enhance prompt": `available` when the model takes the gateway's prompt expansion, `unavailable` while the
+   * gateway refuses the feature in this environment (the toggle says "Not available yet"), null when the model does not take it.
+   */
+  promptExpand: "available" | "unavailable" | null;
 }
 
 const SAMPLE_SECONDS = 5;
@@ -125,7 +135,7 @@ function creditSamples(m: CatalogModel): CreditSample[] {
   return samples;
 }
 
-export function toPublicModel(m: CatalogModel): PublicModel {
+export function toPublicModel(m: CatalogModel, expandAvailable = true): PublicModel {
   return {
     id: m.id,
     kind: m.kind,
@@ -154,6 +164,7 @@ export function toPublicModel(m: CatalogModel): PublicModel {
       imagesPerRequest: m.maxImagesPerRequest,
     },
     credits: creditSamples(m),
+    promptExpand: m.kind !== "chat" && m.params.promptExpand ? (expandAvailable ? "available" : "unavailable") : null,
   };
 }
 
@@ -163,12 +174,12 @@ export async function listPublicModels(
   user: SessionUser | null,
   kind?: CatalogKind | null,
 ): Promise<PublicModel[]> {
-  const [catalog, mature] = await Promise.all([loadCatalog(env, kind), mayViewMature(env, user)]);
+  const [catalog, mature, expandAvailable] = await Promise.all([loadCatalog(env, kind), mayViewMature(env, user), gatewayFeatureEnabled(env, "prompt_expand")]);
   // Chat models are exposed only as the public agent LLM list (D-009), never as gateway ids.
   const media = catalog
     .list({ ...(kind && { kind }), includeMatureOnly: mature })
     .filter((m) => m.kind !== "chat")
-    .map(toPublicModel);
+    .map((m) => toPublicModel(m, expandAvailable));
   if (kind && kind !== "chat") return media;
   const chatGateway = catalog.list({ kind: "chat", includeMatureOnly: true });
   const chat = availableChatModels(chatGateway).map(
@@ -194,6 +205,7 @@ export async function listPublicModels(
       lipSync: false,
       limits: { referenceImages: 0, referenceVideos: 0, referenceAudios: 0, inputImages: 0, imagesPerRequest: 0 },
       credits: [],
+      promptExpand: null,
     }),
   );
   return kind === "chat" ? chat : [...media, ...chat];

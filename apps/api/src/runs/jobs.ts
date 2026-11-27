@@ -2,7 +2,7 @@
  * Step bodies of GenerateWorkflow (one job = one ledger hold). Each function is
  * idempotent: a step may run again after a crash or a retry.
  */
-import { hyperouter, type CatalogModel, type GenerateRequest, type JobError, type JobStatus } from "@rolling/core";
+import { hyperouter, promptExpansionMaxUsd, type CatalogModel, type GenerateRequest, type JobError, type JobStatus } from "@rolling/core";
 import { buildGenerateRequest, paramsHash, priceRequestOf, replanMature, requestProblems, type GenInput, type GenSpec, type ResolvedInput } from "@rolling/core/generation";
 import { creditsFor, creditsForUsd } from "@rolling/core/pricing/config";
 import { newId } from "@rolling/core/ids";
@@ -16,7 +16,8 @@ import { gatewayFetch, generationProvider, hyperouterClient } from "./provider";
 import { ports, quietly } from "./ports";
 import { advanceRun, advanceWorkspace, pushCredits } from "./service";
 import { isMatureRating, type FaceResult, type SafetyOutput, type SafetyReference } from "@rolling/core/safety";
-import { jobPostCheck, jobPreCheck, referenceSource } from "../safety/pipeline";
+import { jobExpandedCheck, jobPostCheck, jobPreCheck, referenceSource } from "../safety/pipeline";
+import { gatewayFeatureEnabled, markGatewayFeatureOff } from "../models/features";
 import { faceResultFromMeta, pictureDataUrl, r2Picture, sha256OfBytes } from "../safety/service";
 import { getItem, getJob, getRun, parseJson, refreshRun, type RunOptions } from "./store";
 import { ensureFrame, extractFrames } from "./frames";
@@ -275,6 +276,8 @@ export async function prepareJob(env: Env, ctx: JobContext, modelId: string): Pr
     references.push(ref);
   }
   const request = buildGenerateRequest(ctx.spec, model, resolved);
+  // D-020: the gateway refused prompt expansion here since the quote: render the prompt as written (its most stays held, settle is on cost).
+  if (request.promptExpand && !(await gatewayFeatureEnabled(env, "prompt_expand"))) delete request.promptExpand;
   const problems = requestProblems(model, request);
   if (problems.length) fail("invalid_request", `The request does not fit ${model.displayName}: ${problems.join("; ")}.`);
   // The check reads what is sent: the prompt as composed for this model, and its negative prompt (the node's own when the model takes none).
@@ -304,7 +307,7 @@ export async function submitJob(env: Env, ctx: JobContext, modelId: string, requ
   const model = await modelFor(env, modelId);
   let externalId: string;
   try {
-    ({ externalId } = await generationProvider(env, model).submit(request, providerKey(ctx.jobId, attempt)));
+    ({ externalId } = await submitWithExpansionFallback(env, ctx, model, request, providerKey(ctx.jobId, attempt)));
   } catch (err) {
     if (err instanceof hyperouter.HyperouterError) {
       // Retryable errors are retried by the step (same idempotency key); others end the job.
@@ -322,6 +325,46 @@ export async function submitJob(env: Env, ctx: JobContext, modelId: string, requ
     await quietly("markRunning", () => room.markRunning({ nodeId: ctx.nodeId!, jobId: ctx.jobId, progress: 0, status: "generating" }));
   }
   return { externalId, forced: false };
+}
+
+/**
+ * D-020 fallbacks of a create with prompt expansion (same hold, new idempotency key, since the body changes):
+ * - `403 feature_not_enabled`: the account lacks the feature (nothing held or sent): flag it off for this
+ *   environment and resubmit without expansion (`<key>.nx`);
+ * - `422 expansion_refused` (or `400 prompt_rejected`): nothing rendered and nothing billed: resubmit without it;
+ * - the writer is unknown or not callable: resubmit with the gateway's default writer when its most still fits the
+ *   held credits (`<key>.dw`), else without expansion.
+ */
+export async function submitWithExpansionFallback(env: Env, ctx: JobContext, model: CatalogModel, request: GenerateRequest, key: string): Promise<{ externalId: string }> {
+  try {
+    return await generationProvider(env, model).submit(request, key);
+  } catch (err) {
+    const why = request.promptExpand ? hyperouter.expansionFailureOf(err) : null;
+    if (!why || !request.promptExpand) throw err;
+    const message = err instanceof Error ? err.message : String(err);
+    if (why === "feature_off") await markGatewayFeatureOff(env, "prompt_expand", message);
+    const { promptExpand, ...plain } = request;
+    let next: GenerateRequest = plain;
+    let nextKey = `${key}.nx`;
+    if (why === "writer" && promptExpand.model && (await defaultWriterFits(env, ctx, model))) {
+      next = { ...plain, promptExpand: { ...(promptExpand.locale && { locale: promptExpand.locale }) } };
+      nextKey = `${key}.dw`;
+    }
+    console.warn(JSON.stringify({ msg: "runs: prompt expansion fallback", jobId: ctx.jobId, why, writer: promptExpand.model ?? null, retry: nextKey.slice(key.length) }));
+    return submitWithExpansionFallback(env, ctx, model, next, nextKey);
+  }
+}
+
+/** The job's hold covers the render plus the most a rewrite by the gateway's default writer can cost. */
+async function defaultWriterFits(env: Env, ctx: JobContext, model: CatalogModel): Promise<boolean> {
+  if (!ctx.spec.promptExpand) return false;
+  try {
+    const chat = (await loadCatalog(env, "chat")).models;
+    const maxUsd = promptExpansionMaxUsd(chat, null, { promptChars: ctx.spec.prompt.length, pictures: ctx.spec.inputs.filter((i) => i.media === "image").length });
+    return creditsFor(model, priceRequestOf({ ...ctx.spec, promptExpand: { ...ctx.spec.promptExpand, writer: null, maxUsd } }, model)) <= ctx.credits;
+  } catch {
+    return false;
+  }
 }
 
 /** `poll`: reads the provider status and pushes progress. */
@@ -396,6 +439,13 @@ export async function storeOutputs(env: Env, ctx: JobContext, status: JobStatus,
   }
   const main = status.outputs.filter((o) => o.kind === ctx.spec.kind);
   if (main.length === 0) fail("no_output", "The provider returned no output.");
+  // D-020: the rewrite the gateway rendered gets the text checks before anything is stored (only hard limits block
+  // mature-allowed callers), so an expansion cannot bring in what the user's prompt did not have.
+  const expanded = typeof status.expandedPrompt === "string" && status.expandedPrompt.trim() !== "" ? status.expandedPrompt : null;
+  if (expanded) {
+    const blocked = await jobExpandedCheck(env, safetyJob(ctx), expanded);
+    if (blocked) fail(blocked.code, blocked.message);
+  }
   const poster = status.outputs.find((o) => o.kind === "thumbnail");
   const base = `ws/${ctx.workspaceId}/gen/${ctx.jobId}`;
   const now = Date.now();
@@ -409,7 +459,7 @@ export async function storeOutputs(env: Env, ctx: JobContext, status: JobStatus,
     await env.MEDIA.put(key, file.body, { httpMetadata: { contentType: file.contentType } });
     written.push(key);
     const hash = await sha256OfBytes(file.body);
-    const meta: Record<string, unknown> = { jobId: ctx.jobId, runId: ctx.runId, model: modelId };
+    const meta: Record<string, unknown> = { jobId: ctx.jobId, runId: ctx.runId, model: modelId, ...(expanded && { expandedPrompt: expanded }) };
     if (ctx.spec.kind === "image") {
       let thumb: ArrayBuffer | null = null;
       try {
@@ -533,6 +583,11 @@ export async function actualCredits(env: Env, ctx: JobContext, status: JobStatus
   }
 }
 
+/** D-020: the prompt that rendered when the gateway expanded it (stored on the job, the assets and the version). */
+export function expandedOf(status: JobStatus): string | null {
+  return typeof status.expandedPrompt === "string" && status.expandedPrompt.trim() !== "" ? status.expandedPrompt.slice(0, 20_000) : null;
+}
+
 /** `commit`: new active version (broadcasts), settle, Activity row, pushes. */
 export async function commitJob(env: Env, ctx: JobContext, stored: Stored, prepared: Prepared, status: JobStatus, modelId: string): Promise<{ spent: number; version: number | null }> {
   const p = ports(env);
@@ -546,7 +601,7 @@ export async function commitJob(env: Env, ctx: JobContext, stored: Stored, prepa
       inputDigest: prepared.digest,
       model: modelId,
       jobId: ctx.jobId,
-      output: { assetIds: stored.assetIds, rating: stored.rating?.rating ?? null },
+      output: { assetIds: stored.assetIds, rating: stored.rating?.rating ?? null, ...(expandedOf(status) && { expandedPrompt: expandedOf(status) }) },
       rating: stored.rating?.rating ?? null,
     });
     if (!isRoomError(r)) {
@@ -561,12 +616,13 @@ export async function commitJob(env: Env, ctx: JobContext, stored: Stored, prepa
   else if (settled.error.code !== "JOB_CLOSED") throw new Error(`settle failed: ${settled.error.code}`);
   const now = Date.now();
   await env.DB.batch([
-    env.DB.prepare("UPDATE jobs SET status = 'succeeded', progress = 1, cost_actual = ?, asset_id = ?, model = ?, finished_at = ?, updated_at = ? WHERE id = ?").bind(
+    env.DB.prepare("UPDATE jobs SET status = 'succeeded', progress = 1, cost_actual = ?, asset_id = ?, model = ?, finished_at = ?, updated_at = ?, expanded_prompt = ? WHERE id = ?").bind(
       spent,
       stored.assetIds[0] ?? null,
       modelId,
       now,
       now,
+      expandedOf(status),
       ctx.jobId,
     ),
     env.DB.prepare("UPDATE run_items SET status = 'succeeded', updated_at = ? WHERE run_id = ? AND ref = ?").bind(now, ctx.runId, ctx.ref),

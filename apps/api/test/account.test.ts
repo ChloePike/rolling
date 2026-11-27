@@ -46,6 +46,7 @@ describe("PATCH /api/me/prefs", () => {
       confirmThreshold: 1000,
       theme: "light",
       notifications: { product: true },
+      enhancePrompt: false,
     });
     expect(res.status).toBe(200);
     const expected = {
@@ -58,6 +59,7 @@ describe("PATCH /api/me/prefs", () => {
       notifications: { done: true, low: true, renewal: true, product: true },
       theme: "light",
       matureContent: false,
+      enhancePrompt: false,
     };
     expect(await res.json()).toEqual({ prefs: expected, matureAllowed: false });
     expect((await getMe(cookie)).body.prefs).toEqual(expected);

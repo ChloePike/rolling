@@ -90,6 +90,8 @@ export interface JobRow {
   asset_id: string | null;
   error_message: string | null;
   updated_at: number | null;
+  /** Migration 0024 (D-020). */
+  expanded_prompt?: string | null;
 }
 
 /** Quote item as stored in `quotes.items` and returned by the quote route. */

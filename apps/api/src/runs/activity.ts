@@ -37,6 +37,10 @@ export interface RunItemView {
   errorCode: string | null;
   /** D-005 mature text-to-video chain step: `keyframe` (the first frame, an image) or `animate` (the video). */
   step?: "keyframe" | "animate";
+  /** D-020: "Enhance prompt" was on for this item (the gateway was asked to rewrite the prompt). */
+  promptExpand?: true;
+  /** D-020: the prompt that rendered when the gateway expanded it ("Enhanced prompt"). */
+  expandedPrompt?: string;
 }
 
 export interface RunView {
@@ -168,8 +172,11 @@ export function toRunView(r: RunRowWithProject, rows: RunItemRow[], jobs: Readon
   const its = rows.map((i): RunItemView => {
     const job = i.job_id ? jobs.get(i.job_id) : undefined;
     let step: RunItemView["step"];
+    let expand = false;
     try {
-      step = itemSpec(i).chain?.step;
+      const spec = itemSpec(i);
+      step = spec.chain?.step;
+      expand = spec.promptExpand !== undefined;
     } catch {
       step = undefined;
     }
@@ -190,6 +197,8 @@ export function toRunView(r: RunRowWithProject, rows: RunItemRow[], jobs: Readon
       error: job?.error_message ?? i.error_message,
       errorCode: job?.error_code ?? i.error_code,
       ...(step && { step }),
+      ...(expand && { promptExpand: true as const }),
+      ...(job?.expanded_prompt && { expandedPrompt: job.expanded_prompt }),
     };
   });
   const status = activityStatus(r.status);
