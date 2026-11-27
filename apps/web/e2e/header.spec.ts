@@ -11,9 +11,12 @@ const TOLERANCE = 2;
 const NAV_LABELS = ['Home', 'Canvas', 'Quick Create', 'Remix', 'Avatar', 'Characters', 'Assets', 'Activity'];
 const HEADER_CLIP_HEIGHT = 80;
 
-async function openApp(page: Page, width: number, path = '/') {
+type Plan = Parameters<typeof asPlan>[1];
+
+async function openApp(page: Page, width: number, path = '/', plan: Plan = 'plus') {
   // The design draws Upgrade next to the account; the app shows it only below Pro/Team, so compare as Plus.
-  await asPlan(page, 'plus');
+  // Init scripts run in order, so the plan is seeded here once (a test's own asPlan before this would be overridden).
+  await asPlan(page, plan);
   await page.setViewportSize({ width, height: 900 });
   await page.goto(path);
   await page.locator('[data-testid="app-header"]').waitFor();
@@ -278,7 +281,8 @@ test.describe('header popovers', () => {
   }
 
   test('credits popover: top-up presets select, the button follows; only one popover open at a time', async ({ page }) => {
-    await openApp(page, 1440);
+    // The amounts below are a Pro member's (tier bonus + Pro's 10%); a Plus member gets Plus's bonus.
+    await openApp(page, 1440, '/', 'pro');
     await page.getByRole('button', { name: /Credit balance/ }).click();
     const credits = page.getByRole('dialog', { name: 'Credits' });
     // D-006: suggested amounts with credits from quoteTopUp (Pro member: tier bonus + 10%).
@@ -293,9 +297,16 @@ test.describe('header popovers', () => {
     await expect(page.getByRole('dialog', { name: 'Credits' })).toHaveCount(0);
   });
 
-  test('credits popover: non-members see no top-ups, only a way to pick a plan (D-007)', async ({ page }) => {
-    await asPlan(page, null);
+  test('credits popover: a Plus member gets Plus’s top-up bonus, not Pro’s', async ({ page }) => {
     await openApp(page, 1440);
+    await page.getByRole('button', { name: /Credit balance/ }).click();
+    const credits = page.getByRole('dialog', { name: 'Credits' });
+    await expect(credits.getByRole('radio', { name: /^\$25\s/ })).toHaveText(/^\$25\s*2,725$/);
+    await expect(credits.getByRole('button', { name: 'Top up $25 · 2,725 credits' })).toBeVisible();
+  });
+
+  test('credits popover: non-members see no top-ups, only a way to pick a plan (D-007)', async ({ page }) => {
+    await openApp(page, 1440, '/', null);
     await page.getByRole('button', { name: /Credit balance/ }).click();
     const credits = page.getByRole('dialog', { name: 'Credits' });
     await expect(credits.getByRole('radio')).toHaveCount(0);
@@ -510,7 +521,7 @@ test.describe('header interactions', () => {
   });
 
   test('credits: Top up runs the mock checkout, the balance increases and a toast confirms', async ({ page }) => {
-    await openApp(page, 1440);
+    await openApp(page, 1440, '/', 'pro');
     await page.getByRole('button', { name: /Credit balance/ }).click();
     const credits = page.getByRole('dialog', { name: 'Credits' });
     await credits.getByRole('button', { name: 'Top up $25 · 2,850 credits' }).click();
