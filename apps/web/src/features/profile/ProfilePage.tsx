@@ -54,9 +54,15 @@ export function ProfilePage({ handle }: { handle: string }) {
   if (!profile) {
     return (
       <div className={styles.page}>
-        <p className={styles.empty} data-testid="profile-unavailable">
-          <FormattedMessage id="profile.unavailable" />
-        </p>
+        <div className={styles.empty} data-testid="profile-unavailable">
+          <p className={styles.emptyText}>
+            <FormattedMessage id="profile.unavailable" />
+          </p>
+          {/* Not a dead end: a way back. */}
+          <Link to="/" className={cx(styles.emptyAction, motion.press)}>
+            <FormattedMessage id="profile.unavailable.home" />
+          </Link>
+        </div>
       </div>
     );
   }

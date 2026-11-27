@@ -83,3 +83,10 @@ test('tools: the composer stays on screen in short windows (1280×720, 1024×768
     expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight + 1)).toBe(true);
   }
 });
+
+test('settings: the account fields form one column (the bio field no longer shrinks next to its hint)', async ({ page }) => {
+  await openApp(page, '/settings/account');
+  const boxes = await Promise.all(['#acc-name', '#acc-bio'].map(async (sel) => (await page.locator(sel).boundingBox())!));
+  expect(Math.abs(boxes[0]!.x - boxes[1]!.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(boxes[0]!.width - boxes[1]!.width)).toBeLessThanOrEqual(1);
+});

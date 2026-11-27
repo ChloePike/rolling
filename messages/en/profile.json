@@ -10,6 +10,7 @@
   "profile.downloaded": "Download started.",
   "profile.bio.empty": "No bio yet.",
   "profile.unavailable": "This profile doesn’t exist or isn’t public.",
+  "profile.unavailable.home": "Go to Home",
   "profile.empty.own.published": "Nothing published yet. In a project, open Share and turn on Publish to profile.",
   "profile.empty.own.template": "Templates you publish appear here.",
   "profile.empty.other.published": "Nothing published yet.",

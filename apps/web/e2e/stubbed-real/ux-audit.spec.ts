@@ -131,3 +131,12 @@ test('Assets: the detail panel shows the media, the file type and the project by
   await expect(detail.getByText(/prj_bottle/)).toHaveCount(0);
   await expect(detail.locator('img[src*="ast_img1"]')).toBeVisible();
 });
+
+test('Profile: an unknown profile offers a way back (it was a dead end)', async ({ page }) => {
+  await stub(page, () => undefined);
+  await page.goto('/u/nobody-here');
+  const box = page.getByTestId('profile-unavailable');
+  await expect(box).toContainText('This profile doesn’t exist or isn’t public.');
+  await box.getByRole('link', { name: 'Go to Home' }).click();
+  await expect(page).toHaveURL(/\/$/);
+});
