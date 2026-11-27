@@ -145,12 +145,13 @@ describe('planning (Home, tools, Quick Create, canvas)', () => {
   it('Quick Create: on by the preference; quoted with its most; the request asks for it', async () => {
     const plan = await planPromptSpec({ spec: spec({ kind: 'image', model: 'bytedance/seedream-5.0-flash', prompt: 'a red bicycle' }), catalog: fixtureCatalog, ctx: ON, assetOrigins: new Map() });
     const item = plan.items[0]!;
-    expect(item.spec!.promptExpand).toEqual({ writer: 'deepseek/deepseek-v4.1-flash-us', maxUsd: promptExpansionMaxUsd(chat, 'deepseek/deepseek-v4.1-flash-us', { promptChars: 'a red bicycle'.length }) });
+    // An English prompt sends en-US, so the gateway's writer does not pick a language of its own (D-020, GEN-4).
+    expect(item.spec!.promptExpand).toEqual({ writer: 'deepseek/deepseek-v4.1-flash-us', locale: 'en-US', maxUsd: promptExpansionMaxUsd(chat, 'deepseek/deepseek-v4.1-flash-us', { promptChars: 'a red bicycle'.length }) });
     expect(item.priceRequest!.promptExpandUsd).toBe(item.spec!.promptExpand!.maxUsd);
     const model = m('bytedance/seedream-5.0-flash');
     const { promptExpandUsd: _drop, ...plain } = item.priceRequest!;
     expect(creditsFor(model, item.priceRequest)).toBeGreaterThanOrEqual(creditsFor(model, plain));
-    expect(buildGenerateRequest(item.spec!, model, []).promptExpand).toEqual({ model: 'deepseek/deepseek-v4.1-flash-us' });
+    expect(buildGenerateRequest(item.spec!, model, []).promptExpand).toEqual({ model: 'deepseek/deepseek-v4.1-flash-us', locale: 'en-US' });
   });
 
   it('per-run off, preference off, feature unavailable, or no context: no expansion', async () => {
@@ -207,6 +208,6 @@ describe('planning (Home, tools, Quick Create, canvas)', () => {
     const media = new Catalog(fixtureCatalog.models.filter((x) => x.kind !== 'chat'));
     const plan = await planPromptSpec({ spec: spec({ kind: 'image', model: 'bytedance/seedream-5.0-flash', prompt: 'x' }), catalog: media, ctx: ON, assetOrigins: new Map() });
     expect(plan.items[0]!.spec!.promptExpand).toMatchObject({ writer: null });
-    expect(buildGenerateRequest(plan.items[0]!.spec!, m('bytedance/seedream-5.0-flash'), []).promptExpand).toEqual({});
+    expect(buildGenerateRequest(plan.items[0]!.spec!, m('bytedance/seedream-5.0-flash'), []).promptExpand).toEqual({ locale: 'en-US' });
   });
 });

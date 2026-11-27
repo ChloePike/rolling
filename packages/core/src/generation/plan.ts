@@ -699,13 +699,6 @@ export function replanMature(input: MatureReplanInput): MatureReplan {
   return { ok: true, model, spec: { ...spec, modelId: model.id, fallbacks: capable.slice(1, 4).map((m) => m.id) } };
 }
 
-/**
- * BCP 47 tag for the spoken lines: a language the prompt names, else the language it
- * is written in (from its script), so spoken
- * lines in the output follow the prompt and not the UI language (D-020). Latin-script
- * prompts return undefined: the gateway's default (English) or the prompt's own
- * wording decides. Kana means Japanese even with kanji; Han alone means Chinese.
- */
 /** Languages a prompt can ask for by name ("in Japanese", "说英语", "日语对白"), checked before the script. */
 const NAMED_LANGUAGES: ReadonlyArray<[RegExp, string]> = [
   [/\b(in|speaks?|speaking|spoken in|dialogue in|lines in|voice ?over in)\s+english\b|英语|英文/i, 'en-US'],
@@ -717,9 +710,62 @@ const NAMED_LANGUAGES: ReadonlyArray<[RegExp, string]> = [
   [/\b(in|speaks?|speaking|spoken in|dialogue in|lines in|voice ?over in)\s+french\b|法语/i, 'fr-FR'],
   [/\b(in|speaks?|speaking|spoken in|dialogue in|lines in|voice ?over in)\s+german\b|德语/i, 'de-DE'],
   [/\b(in|speaks?|speaking|spoken in|dialogue in|lines in|voice ?over in)\s+portuguese\b|葡萄牙语/i, 'pt-BR'],
+  [/\b(in|speaks?|speaking|spoken in|dialogue in|lines in|voice ?over in)\s+italian\b|意大利语/i, 'it-IT'],
   [/\b(in|speaks?|speaking|spoken in|dialogue in|lines in|voice ?over in)\s+russian\b|俄语/i, 'ru-RU'],
 ];
 
+/**
+ * Function words of the Latin-script languages `promptLocale` tells apart. A word
+ * listed for several languages counts a share for each, so only the distinctive
+ * ones decide. Lists are short and lower-case; accents are kept.
+ */
+const LATIN_STOPWORDS: Readonly<Record<string, readonly string[]>> = {
+  'en-US': ['the', 'and', 'of', 'with', 'is', 'are', 'in', 'on', 'a', 'an', 'to', 'her', 'his', 'she', 'he', 'they', 'through', 'at', 'from', 'this', 'that', 'while', 'wearing', 'into', 'under', 'over', 'its', 'their', 'who', 'it', 'by', 'for', 'as', 'next', 'behind'],
+  'es-ES': ['el', 'la', 'los', 'las', 'y', 'de', 'del', 'con', 'en', 'un', 'una', 'que', 'por', 'para', 'se', 'su', 'sus', 'es', 'está', 'al', 'muy', 'bajo', 'sobre', 'entre', 'mientras', 'hacia', 'lleva', 'hombre', 'mujer', 'chica', 'niño', 'pero', 'como', 'unos', 'unas'],
+  'fr-FR': ['le', 'la', 'les', 'et', 'de', 'des', 'du', 'un', 'une', 'avec', 'dans', 'sur', 'est', 'qui', 'pour', 'au', 'aux', 'son', 'sa', 'ses', 'en', 'il', 'elle', 'sous', 'pendant', 'vers', 'homme', 'femme', 'fille', 'porte', 'mais', 'comme', 'très'],
+  'de-DE': ['der', 'die', 'das', 'und', 'mit', 'ein', 'eine', 'einen', 'einem', 'einer', 'im', 'in', 'auf', 'ist', 'den', 'dem', 'des', 'von', 'zu', 'sich', 'nicht', 'durch', 'unter', 'trägt', 'mann', 'frau', 'mädchen', 'aber', 'wie', 'beim', 'vor', 'neben'],
+  'pt-BR': ['o', 'a', 'os', 'as', 'e', 'de', 'do', 'da', 'dos', 'das', 'com', 'em', 'no', 'na', 'nos', 'nas', 'um', 'uma', 'que', 'para', 'por', 'seu', 'sua', 'é', 'está', 'sob', 'enquanto', 'homem', 'mulher', 'menina', 'mas', 'como', 'muito'],
+  'it-IT': ['il', 'lo', 'la', 'gli', 'le', 'e', 'di', 'del', 'della', 'dello', 'con', 'in', 'un', 'una', 'che', 'per', 'nel', 'nella', 'è', 'sul', 'sulla', 'sotto', 'mentre', 'verso', 'uomo', 'donna', 'ragazza', 'ma', 'come', 'molto', 'dei', 'delle'],
+};
+
+/** Letters only one of the languages uses, each worth one distinctive word when present. */
+const LATIN_LETTER_HINTS: ReadonlyArray<[RegExp, string]> = [
+  [/[ñ¿¡]/i, 'es-ES'],
+  [/[ãõ]/i, 'pt-BR'],
+  [/[ßäöü]/i, 'de-DE'],
+];
+
+const LATIN_WEIGHTS: ReadonlyMap<string, ReadonlyArray<[string, number]>> = (() => {
+  const owners = new Map<string, string[]>();
+  for (const [tag, words] of Object.entries(LATIN_STOPWORDS)) for (const w of words) owners.set(w, [...(owners.get(w) ?? []), tag]);
+  return new Map([...owners].map(([w, tags]) => [w, tags.map((t) => [t, 1 / tags.length] as [string, number])]));
+})();
+
+/**
+ * Language of a Latin-script prompt from its function words: the clear winner among
+ * en, es, fr, de, pt and it (a score of at least 1 and at least twice the runner-up),
+ * else English (D-020).
+ */
+export function latinPromptLocale(prompt: string): string {
+  const scores = new Map<string, number>();
+  const add = (tag: string, n: number) => scores.set(tag, (scores.get(tag) ?? 0) + n);
+  for (const word of prompt.toLowerCase().split(/[^\p{L}]+/u)) {
+    for (const [tag, w] of LATIN_WEIGHTS.get(word) ?? []) add(tag, w);
+  }
+  for (const [re, tag] of LATIN_LETTER_HINTS) if (re.test(prompt)) add(tag, 1);
+  const ranked = [...scores].sort((a, b) => b[1] - a[1]);
+  const [top, second] = [ranked[0], ranked[1]];
+  if (!top || top[1] < 1 || (second && top[1] < 2 * second[1])) return 'en-US';
+  return top[0];
+}
+
+/**
+ * BCP 47 tag for the prompt's language (D-020): a language the prompt names, else
+ * the language it is written in, so the output follows the prompt and not the UI
+ * language. Kana means Japanese even with kanji; Han alone means Chinese; Latin
+ * script goes through `latinPromptLocale` (English when nothing else is clear).
+ * Undefined only for a prompt with no letters or in a script not listed here.
+ */
 export function promptLocale(prompt: string): string | undefined {
   // A language the prompt asks for by name wins; otherwise the prompt's own script decides.
   for (const [re, tag] of NAMED_LANGUAGES) if (re.test(prompt)) return tag;
@@ -739,5 +785,6 @@ export function promptLocale(prompt: string): string | undefined {
   if (counts.cyrillic > 0) return 'ru-RU';
   if (counts.arabic > 0) return 'ar';
   if (counts.thai > 0) return 'th-TH';
+  if (/\p{Script=Latin}/u.test(prompt)) return latinPromptLocale(prompt);
   return undefined;
 }

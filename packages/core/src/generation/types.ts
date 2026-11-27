@@ -170,8 +170,8 @@ export interface PlanContext {
    * "Enhance prompt" (D-020). `default`: the user's preference, used when an
    * item does not say (agent-planned canvas nodes default to off instead);
    * `available`: false while the gateway refuses the feature for this
-   * environment (nothing is expanded or priced); `locale`: the user's language
-   * (spoken lines in video). Absent = no expansion.
+   * environment (nothing is expanded or priced); `locale`: unused, the locale
+   * follows the prompt (`promptLocale`, D-020). Absent = no expansion.
    */
   promptExpand?: { default: boolean; available: boolean; locale?: string };
 }

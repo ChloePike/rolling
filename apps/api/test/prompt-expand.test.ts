@@ -202,7 +202,7 @@ describe("Enhance prompt (D-020)", () => {
     const stored = await env.DB.prepare("SELECT items FROM quotes WHERE id = ?").bind(q.quoteId).first<{ items: string }>();
     const item = JSON.parse(stored!.items)[0];
     expect(item.priceRequest.promptExpandUsd).toBe(maxUsd);
-    expect(item.spec.promptExpand).toEqual({ writer: WRITER, maxUsd });
+    expect(item.spec.promptExpand).toEqual({ writer: WRITER, locale: "en-US", maxUsd });
     expect(q.items[0].credits).toBe(creditsFor(flash, item.priceRequest));
     expect(q.items[0].credits).toBe(creditsForUsd(0.018 + maxUsd));
     expect(off.items[0].credits).toBe(creditsForUsd(0.018));
@@ -219,8 +219,8 @@ describe("Enhance prompt (D-020)", () => {
 
     const body = gateway.creates[0]!.body;
     expect(body).toMatchObject({ model: MODEL, prompt: PROMPT, prompt_expand: true, prompt_expand_model: WRITER });
-    // English prompt, English UI: no locale is sent; spoken lines follow the prompt (D-020).
-    expect(body).not.toHaveProperty("locale");
+    // English prompt: en-US is sent so the rewrite stays in the prompt's language (D-020, GEN-4).
+    expect(body.locale).toBe("en-US");
     expect(body).not.toHaveProperty("prompt_extend");
 
     expect(job.expanded_prompt).toBe(gateway.expanded);
