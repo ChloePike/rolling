@@ -9,6 +9,7 @@ import { checkoutTopUp, useCredits, useSession, type CreditsBreakdown } from '@/
 import { topUpPresets } from '@/lib/topUp';
 import styles from './CreditsPopover.module.css';
 import { openUpgrade } from '@/lib/upgrade/store';
+import { TrialSummary } from './Trial';
 
 export type { CreditsBreakdown } from '@/lib/session';
 
@@ -67,6 +68,7 @@ export function CreditsPopoverContent({
   };
   return (
     <div className={styles.panel}>
+      <TrialSummary onNavigate={onNavigate} />
       <div className={styles.top}>
         <div className={styles.balance}>
           <span className={styles.label}>

@@ -5,6 +5,7 @@ import { queryClient } from '@/lib/api/queryClient';
 import type { AllowanceView, BalanceView, MeResponse } from '@/lib/api/types';
 import { applyServerPrefs, registerPrefsRemote, toServerPatch, type ServerPrefsShape } from '@/lib/prefs';
 import { userSocket } from '@/lib/realtime/client';
+import { ensureDeviceId } from '@/lib/device';
 import { derive, getCredits, LOADING, setCredits, setSession, SIGNED_OUT, ZERO_CREDITS, type CreditsBreakdown, type Session } from './store';
 
 /**
@@ -61,13 +62,17 @@ export function sessionFromMe(me: MeResponse): Session {
     workspaces: me.workspaces,
     role: me.role,
     monthlyCreditLimit: me.monthlyCreditLimit,
+    trial: me.trial ?? null,
   });
 }
 
 export function creditsFromBalance(b: BalanceView, me: MeResponse | null, prev: CreditsBreakdown = ZERO_CREDITS): CreditsBreakdown {
   const expiresAt = b.planExpiresAt ?? me?.plan?.currentPeriodEnd ?? null;
+  // D-022: trial credits count as available while the trial runs.
+  const trial = me?.trial && me.trial.status !== 'expired' ? me.trial.remaining : 0;
   return {
-    available: b.plan + b.purchased,
+    available: b.plan + b.purchased + trial,
+    ...(me?.trial ? { trial } : {}),
     plan: b.plan,
     purchased: b.purchased,
     held: b.held,
@@ -119,6 +124,8 @@ let started = false;
 export function startRealSession() {
   if (started) return;
   started = true;
+  // D-022: the trial's soft one-per-device signal travels with sign-in requests.
+  ensureDeviceId();
   setSession(LOADING);
   queryClient.getQueryCache().subscribe((event) => {
     const q = event.query;
@@ -138,8 +145,13 @@ export function startRealSession() {
     const me = current;
     if (!me || (p.workspaceId && p.workspaceId !== me.workspace.id)) return;
     const plan = p.plan ?? Math.min(getCredits().plan, p.balance);
-    const purchased = p.purchased ?? Math.max(0, p.balance - plan);
-    updateMe((m) => ({ ...m, balance: { ...m.balance, plan, purchased, held: p.held } }));
+    const purchased = p.purchased ?? Math.max(0, p.balance - plan - (p.trial ?? 0));
+    updateMe((m) => ({
+      ...m,
+      balance: { ...m.balance, plan, purchased, held: p.held },
+      // D-022: the trial's remaining credits follow the ledger; at 0 the trial reads as used.
+      ...(m.trial && p.trial !== undefined ? { trial: { ...m.trial, remaining: p.trial, status: m.trial.status === 'expired' ? 'expired' : p.trial > 0 ? 'active' : 'used' } } : {}),
+    }));
   });
   userSocket.on('prefs.changed', (p) => {
     updateMe((m) => ({ ...m, prefs: p.prefs, matureAllowed: m.isMember && p.prefs.matureContent && m.workspace.matureAllowed }));

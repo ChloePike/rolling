@@ -44,6 +44,17 @@ export interface SessionWorkspace {
 
 export type SessionStatus = 'loading' | 'signedIn' | 'signedOut';
 
+/** The one-time trial (D-022), as `/api/me` reports it. */
+export interface SessionTrial {
+  status: 'active' | 'used' | 'expired';
+  credits: number;
+  remaining: number;
+  /** Epoch ms. */
+  expiresAt: number;
+  agentAllowanceUsd?: number;
+  agentUsedUsd?: number;
+}
+
 export interface Session {
   status: SessionStatus;
   user: SessionUser | null;
@@ -68,11 +79,17 @@ export interface Session {
   seats: number;
   /** The workspace is on Team and may invite people. */
   isTeam: boolean;
+  /** D-022: the workspace's one-time trial (null when it never had one, and for members). */
+  trial: SessionTrial | null;
+  /** May generate and use the agent: a member, or a non-member with an active trial (D-022). */
+  canGenerate: boolean;
 }
 
 export interface CreditsBreakdown {
-  /** Plan + purchased credits not held by running jobs. */
+  /** Plan + purchased (+ trial) credits not held by running jobs. */
   available: number;
+  /** D-022: trial credits left (0 without a trial). */
+  trial?: number;
   plan: number;
   planExpires: Date;
   purchased: number;
@@ -84,9 +101,11 @@ export interface CreditsBreakdown {
 export function derive(
   plan: SessionPlan | null,
   workspaceMatureAllowed: boolean,
-  rest: Partial<Pick<Session, 'status' | 'user' | 'workspace' | 'workspaces' | 'role' | 'monthlyCreditLimit'>> = {},
+  rest: Partial<Pick<Session, 'status' | 'user' | 'workspace' | 'workspaces' | 'role' | 'monthlyCreditLimit' | 'trial'>> = {},
 ): Session {
   const isMember = plan?.status === 'active';
+  // The trial chip and its limits apply to non-members only (a member's leftover trial credits just count as credits).
+  const trial = !isMember && rest.trial ? rest.trial : null;
   const isTeam = isMember && plan!.id === 'team';
   const seats = isTeam ? Math.max(1, plan!.seats ?? 1) : 1;
   return {
@@ -103,6 +122,8 @@ export function derive(
     workspaceMatureAllowed,
     seats,
     isTeam,
+    trial,
+    canGenerate: isMember || trial?.status === 'active',
   };
 }
 

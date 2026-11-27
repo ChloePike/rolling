@@ -54,7 +54,7 @@ export function initialMockSession(): Session {
   const o = mockOverrides();
   if (o.signedOut) return SIGNED_OUT;
   const plan = guestFlag() ? null : o.plan === undefined ? DEFAULT_PLAN : o.plan;
-  return derive(plan, o.workspace?.matureAllowed ?? true, mockIdentity());
+  return derive(plan, o.workspace?.matureAllowed ?? true, { ...mockIdentity(), trial: o.trial ?? null });
 }
 
 const DEFAULT_CREDITS: CreditsBreakdown = {
@@ -72,7 +72,7 @@ export function initialMockCredits(): CreditsBreakdown {
 }
 
 function keepIdentity(cur: Session): Parameters<typeof derive>[2] {
-  return { status: cur.status, user: cur.user, workspace: cur.workspace, workspaces: cur.workspaces, role: cur.role, monthlyCreditLimit: cur.monthlyCreditLimit };
+  return { status: cur.status, user: cur.user, workspace: cur.workspace, workspaces: cur.workspaces, role: cur.role, monthlyCreditLimit: cur.monthlyCreditLimit, trial: cur.trial };
 }
 
 export async function mockCheckoutPlan(planId: string, period: BillingPeriod = 'monthly', seats = 1): Promise<Session> {
@@ -137,8 +137,10 @@ let runSeq = 0;
  */
 export async function startMockRun(cost: number): Promise<MockRun> {
   const session = getSession();
-  if (!session.isMember) throw new FlowError('NO_PLAN');
+  if (!session.canGenerate) throw new FlowError('NO_PLAN', 'NO_PLAN', 402, session.trial ? { trial: session.trial.status } : {});
   const c = getCredits();
+  // D-022: a trial that cannot cover the run answers like no plan (the join paywall).
+  if (!session.isMember && c.available < cost) throw new FlowError('NO_PLAN', 'NO_PLAN', 402, { trial: 'used' });
   if (c.available < cost) throw new FlowError('INSUFFICIENT_CREDITS');
   runSeq += 1;
   const id = `run_mock${String(runSeq).padStart(4, '0')}`;
@@ -149,15 +151,22 @@ export async function startMockRun(cost: number): Promise<MockRun> {
     setCredits({ ...now, available: now.available + cost, held: Math.max(0, now.held - cost) });
     throw new FlowError('RUN_FAILED');
   }
-  // Plan credits are used first, then purchased (shell.credits.note).
-  const fromPlan = Math.min(now.plan, cost);
+  // Trial credits first (D-022), then plan, then purchased (shell.credits.note).
+  const fromTrial = Math.min(now.trial ?? 0, cost);
+  const fromPlan = Math.min(now.plan, cost - fromTrial);
   setCredits({
     ...now,
     held: Math.max(0, now.held - cost),
+    ...(now.trial !== undefined ? { trial: now.trial - fromTrial } : {}),
     plan: now.plan - fromPlan,
-    purchased: now.purchased - (cost - fromPlan),
+    purchased: now.purchased - (cost - fromTrial - fromPlan),
     usedThisMonth: now.usedThisMonth + cost,
   });
+  const s = getSession();
+  if (s.trial && fromTrial > 0) {
+    const remaining = Math.max(0, s.trial.remaining - fromTrial);
+    setSession({ ...s, trial: { ...s.trial, remaining, status: remaining > 0 ? 'active' : 'used' }, canGenerate: s.isMember || remaining > 0 });
+  }
   return { id, cost };
 }
 

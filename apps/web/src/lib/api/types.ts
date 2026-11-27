@@ -80,6 +80,18 @@ export interface MeResponse {
   isMember: boolean;
   matureAllowed: boolean;
   balance: BalanceView;
+  /** D-022: the one-time trial; null (or absent) when the workspace never had one. */
+  trial?: TrialView | null;
+}
+
+/** `GET /api/me` → `trial` (D-022). Times are epoch ms; `remaining` is trial credits left now. */
+export interface TrialView {
+  status: 'active' | 'used' | 'expired';
+  credits: number;
+  remaining: number;
+  expiresAt: number;
+  agentAllowanceUsd: number;
+  agentUsedUsd: number;
 }
 
 export interface AuthProviders {

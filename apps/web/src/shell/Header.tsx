@@ -7,6 +7,7 @@ import { Icon, LogoMark } from './icons';
 import { isNavItemActive, navItems } from './nav';
 import { signOut, useCredits, useSession } from '@/lib/session';
 import { AvatarFace } from './AvatarFace';
+import { TrialChip } from './Trial';
 import { NARROW_NAV_QUERY, useMediaQuery } from './useMediaQuery';
 import { lazyComponent } from '@/lib/lazy';
 
@@ -153,6 +154,7 @@ export function Header() {
                   data-credits-trigger=""
                   aria-label={intl.formatMessage({ id: 'header.credits.label' }, { balance: available })}
                 >
+                  <TrialChip />
                   <Icon name="coin" size={15} className={styles.creditsCoin} />
                   <span className={styles.creditsValue}>
                     <FormattedNumber value={available} />

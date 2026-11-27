@@ -26,6 +26,7 @@ import type { LedgerLine } from '@/lib/api/types';
 import { ME_KEY, openBillingPortal, signOut, useCredits, useSession } from '@/lib/session';
 import { parseTopUpAmount } from '@/lib/topUp';
 import { motion, PathIcon, paths, Segmented } from './shared';
+import { TrialPlanCard } from './TrialPlanCard';
 import { SelectMenu } from './shared/SelectMenu';
 import {
   accountsKey,
@@ -994,6 +995,7 @@ function BillingSection({ me }: { me: Me }) {
     <>
       <Head id="account.settings.section.billing" />
       <div className={styles.cards}>
+        <TrialPlanCard />
         <div className={styles.card}>
           <span className={styles.cardKey}>
             <FormattedMessage id="account.settings.billing.currentPlan" />

@@ -142,7 +142,8 @@ export function ToolLayout(p: ToolLayoutProps) {
   const pillsRef = useRef<HTMLDivElement>(null);
   const close = () => setOverlay(null);
   const session = useSession();
-  const isMember = p.isMember ?? session.isMember;
+  // May generate here: a member, or a non-member on an active trial (D-022). The API decides in real mode.
+  const isMember = p.isMember ?? session.canGenerate;
   const threshold = usePref('confirmThreshold');
   // The live quote of what Generate would run (real mode); mock mode shows the mock adapter's estimate.
   const liveQuote = useToolQuote(real && p.spec ? (specOf(p.composer.text) ?? null) : null, p.confirm.cost);

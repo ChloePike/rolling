@@ -1,6 +1,6 @@
 import { TEAM_SEATS } from '@rolling/core/pricing/config';
 import { ApiError, type ApiErrorCode } from '@/lib/api/errors';
-import type { CreditsBreakdown, SessionPlan } from './store';
+import type { CreditsBreakdown, SessionPlan, SessionTrial } from './store';
 
 /**
  * Session pieces both modes share: the flow error, seat clamping, result
@@ -15,6 +15,8 @@ export interface SessionMockOverrides {
   /** A signed-out visitor (public pages, One Tap). */
   signedOut?: boolean;
   workspace?: { matureAllowed?: boolean } & Record<string, unknown>;
+  /** D-022: a non-member on the one-time trial (use with `plan: null`). */
+  trial?: SessionTrial | null;
   [key: string]: unknown;
 }
 

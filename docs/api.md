@@ -123,6 +123,15 @@ One connection per browser, held by the client's SharedWorker; the user's `UserH
 - **Catch-up:** ProjectRoom keeps a ring of the newest 500 replayable events (everything except `job.progress`, `agent.delta`, `credits.changed`, `error`). On `subscribe` with `lastSeq` still in the ring, `events: [{ seq, type, payload }]` holds the gap; with only `lastRevision`, the events after that revision's `graph.patched` (a few already-applied events may repeat; they are idempotent); otherwise `snapshot`. Events can arrive before `subscribed`: buffer project events until it arrives, then apply the snapshot or `events`, then the buffered ones with `seq > subscribed.seq` (and those without `seq`).
 - Server side: the room keeps the subscribed hub ids (`hub_subscribers`) and calls `UserHub.deliver` per event; a hub with no subscribed socket answers `subscribed: false` and is dropped.
 
+## Trial (D-022)
+
+New users get a one-time trial on their personal workspace at their first verified sign-up (no route: Better Auth hooks). `GET /api/me` adds `trial: { status: active|used|expired, credits, remaining, expiresAt, agentAllowanceUsd, agentUsedUsd } | null` (`balance` keeps its shape; trial credits are separate). `credits.changed` carries `trial` (credits left) for trial workspaces.
+
+- Quotes on a trial (no plan) price only the trial models within the caps (`TRIAL` in `pricing/config.ts`); other rows are `blocked` with `code: trial_locked` and `lowestPlan`.
+- `POST /api/runs`, the agent routes and exports accept members or an unexpired trial. Refusals are `402 NO_PLAN` with `data.trial`: `used` (credits do not cover the run), `expired`, `agent_used` (trial agent allowance spent), or `trial: active` with `feature: agent_model | export_1080p`. Mature content, top-ups, auto top-up and team invites keep answering `402 NO_PLAN` / `TEAM_REQUIRED` as for non-members.
+- `GET /api/agent/allowance` on a trial: `{ plan: null, trial: true, allowanceUsd: 0.05, usedUsd, resetsAt: <trial end>, models: [DeepSeek V4.1 Flash only, unlimited: false, turnsLeft] }`.
+- `POST /api/admin/trial { email }` (`routes/adminTrial.ts`, `authorization: Bearer <ADMIN_TOKEN>`) → `{ email, status: granted|already, workspaceId, expiresAt, balance }`: grants a trial to an existing user (no retroactive grants otherwise).
+
 ## Account and billing
 
 M2. All amounts in credits are integers (1 credit = $0.01 retail, D-006); money is in USD cents. Times are epoch ms. Billing reads use the auth context (current workspace, `x-workspace-id`).
@@ -559,7 +568,7 @@ Showcase (the sign-in panel): `GET /api/showcase` → `{ items: Array<{ id, name
 
 ## Agent (M6)
 
-Members only: every route that runs or applies agent work returns `402 NO_PLAN` without an active plan (D-007). Agent turns spend no credits; they draw on the plan's monthly **agent allowance** in USD of gateway cost (D-012: Starter $1.20, Plus $3.50, Pro $12.50; resets on the billing period start, else the UTC calendar month). Each turn holds its estimate in the CreditAccount DO before the first LLM call and settles its actual cost when it ends; when used + held + estimate > allowance the send returns `429 AGENT_ALLOWANCE_EXHAUSTED` with `data: { allowanceUsd, usedUsd, resetsAt, model }` (`resetsAt` epoch ms, `model` the public LLM id). DeepSeek public LLMs (`deepseek-v4.1-flash`, `deepseek-v4.1-flash-1017`) are unmetered (D-012 amendment): no hold, cost recorded in `agent_usage` with `status: unmetered`; instead each user may send at most 300 DeepSeek turns per rolling hour, beyond which the send returns `429 RATE_LIMITED` with `data: { retryAfter /* seconds */, model }`. Proposals never spend credits or change anything until Apply.
+Members only: every route that runs or applies agent work returns `402 NO_PLAN` without an active plan (D-007), except on the one-time trial (D-022: DeepSeek only, within the trial allowance; see Trial). Agent turns spend no credits; they draw on the plan's monthly **agent allowance** in USD of gateway cost (D-012: Starter $1.20, Plus $3.50, Pro $12.50; resets on the billing period start, else the UTC calendar month). Each turn holds its estimate in the CreditAccount DO before the first LLM call and settles its actual cost when it ends; when used + held + estimate > allowance the send returns `429 AGENT_ALLOWANCE_EXHAUSTED` with `data: { allowanceUsd, usedUsd, resetsAt, model }` (`resetsAt` epoch ms, `model` the public LLM id). DeepSeek public LLMs (`deepseek-v4.1-flash`, `deepseek-v4.1-flash-1017`) are unmetered (D-012 amendment): no hold, cost recorded in `agent_usage` with `status: unmetered`; instead each user may send at most 300 DeepSeek turns per rolling hour, beyond which the send returns `429 RATE_LIMITED` with `data: { retryAfter /* seconds */, model }`. Proposals never spend credits or change anything until Apply.
 
 | Method | Path | Notes |
 |---|---|---|

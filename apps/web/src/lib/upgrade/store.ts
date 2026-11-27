@@ -111,15 +111,35 @@ export function reasonFromPlanError(e: PlanErrorEvent): UpgradeReason {
       return { kind: 'team-invite' };
     case 'PLAN_REQUIRED':
       return typeof data.plan === 'string' ? { kind: 'plan', plan: data.plan as PlanId } : { kind: 'plan' };
+    case 'NO_PLAN': {
+      // D-022: what the trial does not cover (or no longer covers).
+      const trial = trialReason(data);
+      if (trial) return trial;
+      return planReasonFromPath(path, body);
+    }
     default:
-      if (path.startsWith('/api/agent')) return { kind: 'agent' };
-      if (/\/prefs\b/.test(path) && 'matureContent' in body) return { kind: 'mature' };
-      if (path.startsWith('/api/billing/auto-topup')) return { kind: 'auto-top-up' };
-      if (path.startsWith('/api/billing/checkout')) return { kind: 'top-up' };
-      if (path.startsWith('/api/billing/portal')) return { kind: 'plan' };
-      if (path.startsWith('/api/workspace/invites')) return { kind: 'team-invite' };
-      return { kind: 'generate' };
+      return planReasonFromPath(path, body);
   }
+}
+
+/** The upgrade reason a trial refusal stands for (`NO_PLAN` with `trial` / `feature`, D-022), else null. */
+export function trialReason(data: Record<string, unknown>): UpgradeReason | null {
+  if (data.feature === 'export_1080p') return { kind: 'export', value: '1080p' };
+  if (data.feature === 'agent_model' || data.trial === 'agent_used') return { kind: 'trial-agent' };
+  if (data.trial === 'used') return { kind: 'trial-used' };
+  if (data.trial === 'expired') return { kind: 'trial-expired' };
+  return null;
+}
+
+/** Membership refusals by where they came from (agent, mature preference, billing, invites, else generating). */
+function planReasonFromPath(path: string, body: Record<string, unknown>): UpgradeReason {
+  if (path.startsWith('/api/agent')) return { kind: 'agent' };
+  if (/\/prefs\b/.test(path) && 'matureContent' in body) return { kind: 'mature' };
+  if (path.startsWith('/api/billing/auto-topup')) return { kind: 'auto-top-up' };
+  if (path.startsWith('/api/billing/checkout')) return { kind: 'top-up' };
+  if (path.startsWith('/api/billing/portal')) return { kind: 'plan' };
+  if (path.startsWith('/api/workspace/invites')) return { kind: 'team-invite' };
+  return { kind: 'generate' };
 }
 
 /** Plan errors from any command open the modal (once a host renders it, see UpgradeHost). */

@@ -10,7 +10,7 @@ export interface UserHubPayloads {
   pong: null;
   error: { code: string; message: string; data?: unknown };
   /** After every hold, settle and release (and, later, billing). `balance` = plan + purchased (available). */
-  'credits.changed': { balance: number; held: number; plan?: number; purchased?: number; workspaceId?: string };
+  'credits.changed': { balance: number; held: number; plan?: number; purchased?: number; workspaceId?: string; /** D-022: trial credits left (trial workspaces only). */ trial?: number };
   'prefs.changed': { prefs: ServerPrefs };
   'activity.updated': { runId: string; jobId?: string };
   /** D-012: same body as `GET /api/agent/allowance`, after each settled turn. */

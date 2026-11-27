@@ -57,6 +57,7 @@ const TemplatePreview = lazyLayer(
   (m) => m.TemplatePreview,
   (p) => p.template != null,
 );
+import { FirstRun } from '@/features/onboarding/FirstRun';
 
 const ENTRIES: Array<{ key: string; to: string; icon: PromptIconName }> = [
   { key: 'blank', to: '/p/prj_new', icon: 'frame' },
@@ -537,6 +538,14 @@ export function HomePage() {
           ))}
         </nav>
       </section>
+      {/* D-022: first-run for new trial users; a picked brief lands in the prompt box (Agent mode), nothing is sent. */}
+      <FirstRun
+        onBrief={(brief) => {
+          setMode('agent');
+          setText(brief);
+          requestAnimationFrame(() => document.getElementById('brief')?.focus());
+        }}
+      />
       {/* No plan (D-007): the shared upgrade modal; the kept brief goes to the agent once the plan is active. */}
       <UpgradeGate
         open={paywall}

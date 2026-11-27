@@ -28,7 +28,15 @@ export type UpgradeReason =
   | { kind: 'top-up'; needed?: number; balance?: number }
   | { kind: 'auto-top-up' }
   /** A plain "Upgrade" / "Pick a plan" CTA. */
-  | { kind: 'plan'; plan?: PlanId };
+  | { kind: 'plan'; plan?: PlanId }
+  /** D-022: the trial's credits are used up (the brief stays). */
+  | { kind: 'trial-used' }
+  /** D-022: the trial ended. */
+  | { kind: 'trial-expired' }
+  /** D-022: other agent models, or the trial's agent allowance is used up. */
+  | { kind: 'trial-agent' }
+  /** D-022: exports above 720p need a plan. */
+  | { kind: 'export'; value?: string };
 
 export type UpgradeReasonKind = UpgradeReason['kind'];
 

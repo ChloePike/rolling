@@ -1,0 +1,21 @@
+/* D-022 trial chip (header credits button) and the trial block of the credits popover. */
+.chip{
+  height:20px;padding:0 7px;border-radius:var(--r-pill);background:var(--c-accent-soft);color:var(--c-accent-text);
+  display:inline-flex;align-items:center;gap:5px;font-size:var(--fs-badge);font-weight:600;white-space:nowrap;
+}
+.chip[data-status="used"],.chip[data-status="expired"]{background:var(--c-surface-5);color:var(--c-text-3)}
+.ends{color:var(--c-text-3);font-weight:500}
+@media (max-width:1359.98px){.ends{display:none}}
+
+.summary{display:flex;flex-direction:column;gap:6px;padding:12px;border-radius:12px;background:var(--c-surface-2)}
+.summaryHead{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600}
+.summaryDate{margin-left:auto;font-size:12px;font-weight:500;color:var(--c-text-3)}
+.summaryLeft{font-size:13px;color:var(--c-text-2);font-variant-numeric:tabular-nums}
+.summaryNote{font-size:11px;line-height:1.5;color:var(--c-text-4)}
+.summaryCta{
+  align-self:flex-start;height:30px;padding:0 12px;border-radius:var(--r-pill);border:0;background:var(--c-surface-5);
+  color:var(--c-text-1);font:inherit;font-size:12px;font-weight:600;cursor:pointer;
+  transition:background-color var(--m-fast) var(--m-ease-standard);
+}
+.summaryCta:hover{background:var(--c-surface-6)}
+.summaryCta:focus-visible{box-shadow:var(--focus-ring);outline:none}

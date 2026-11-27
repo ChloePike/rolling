@@ -4,7 +4,9 @@ import { useIntl } from 'react-intl';
 import { getPrefs } from '@/lib/prefs';
 import { noteFinishedVideo } from '@/lib/pwa/install';
 import { checkoutTopUp, getCredits, getSession, MockFlowError, onCheckoutResume, savePendingAction, startMockRun, takePendingAction, useCredits, type MockRun } from '@/lib/session';
-import { openUpgrade } from '@/lib/upgrade/store';
+import { openUpgrade, trialReason } from '@/lib/upgrade/store';
+import type { UpgradeReason } from '@/lib/upgrade/reasons';
+import type { PlanId } from '@rolling/core/pricing/config';
 import type { RunRowKind } from './types';
 import { isApiError, isMockApi, userEvents } from './backend';
 import { findRun, quoteSpec, resultItems, isFailedRun, runFinished, startQuote, type PromptSpec, type RunSurface, type RunView, type SpecQuote } from './runs';
@@ -14,6 +16,15 @@ import { lazyLayer } from '@/lib/lazy';
 /** Loaded on demand (bundle splitting): most runs start without either dialog. */
 const Paywall = lazyLayer(() => import('./Paywall'), (m) => m.Paywall);
 const RunConfirm = lazyLayer(() => import('./RunConfirm'), (m) => m.RunConfirm);
+
+/** D-022: the trial's own reason for the join paywall (ended, or out of credits), else null. */
+function sessionTrialReason(given: 'join' | 'credits'): UpgradeReason | null {
+  const trial = getSession().trial;
+  if (!trial) return null;
+  if (trial.status === 'expired') return { kind: 'trial-expired' };
+  if (trial.status === 'used' || given === 'credits') return { kind: 'trial-used' };
+  return null;
+}
 
 /** What a finished run hands back: the mock run, or the real run with its first result asset. */
 export type FinishedRun = MockRun & { assetId?: string | null; run?: RunView };
@@ -146,15 +157,16 @@ export function useRunFlow({ surface }: { surface?: RunSurface } = {}): { reques
   const t = (id: string, v?: Record<string, string | number>) => intl.formatMessage({ id }, v);
 
   /** A paywall opens for `run`: keep it for after the checkout (also across the Stripe redirect). */
-  const toPaywall = (run: RunRequest, given: 'join' | 'credits') => {
+  const toPaywall = (run: RunRequest, given: 'join' | 'credits', data?: unknown) => {
     // D-007: without a plan the answer is always a plan first, never a top-up (non-members cannot buy credits).
     const kind = given === 'credits' && getSession().status === 'signedIn' && !getSession().isMember ? 'join' : given;
     if (run.resume) savePendingAction(run.resume.kind, run.resume.data);
     if (kind === 'credits') return setStep({ kind });
     // No plan: the shared upgrade modal. Its checkout resume continues the run (`onCheckoutResume` below).
+    // D-022: a trial that ran out or ended says so; the brief is kept the same way.
     setStep({ kind: 'idle' });
     openUpgrade(
-      { kind: 'generate' },
+      trialReason((data ?? {}) as Record<string, unknown>) ?? sessionTrialReason(given) ?? { kind: 'generate' },
       {
         onDismiss: () => {
           pending.current?.onAbort?.();
@@ -220,7 +232,7 @@ export function useRunFlow({ surface }: { surface?: RunSurface } = {}): { reques
       (e: unknown) => {
         run.onFailed?.();
         if (!isApiError(e, 'NO_PLAN') && !isApiError(e, 'INSUFFICIENT_CREDITS') && !(isApiError(e, 'QUOTE_EXPIRED') && attempt < 1)) run.onAbort?.();
-        if (isApiError(e, 'NO_PLAN')) return toPaywall(run, 'join');
+        if (isApiError(e, 'NO_PLAN')) return toPaywall(run, 'join', e.data);
         if (isApiError(e, 'INSUFFICIENT_CREDITS')) return toPaywall(run, 'credits');
         if (isApiError(e, 'QUOTE_EXPIRED') && attempt < 1) return void advance(run, attempt + 1);
         if (isApiError(e, 'MEMBER_LIMIT_REACHED')) return void toast.show({ message: t('overlays.run.memberLimit'), duration: 0 });
@@ -253,6 +265,8 @@ export function useRunFlow({ surface }: { surface?: RunSurface } = {}): { reques
             run.onAbort?.();
             // D-005: mature content needs a paid plan → the upgrade modal with reason `mature` (members get the Settings copy).
             if (blocked?.code === 'MATURE_REQUIRED' && blocked.matureAccess === 'no_plan') return void openUpgrade({ kind: 'mature' });
+            // D-022: outside the trial's models and caps → the plan that includes it.
+            if (blocked?.code === 'trial_locked') return void openUpgrade(blocked.lowestPlan ? { kind: 'plan', plan: blocked.lowestPlan as PlanId } : { kind: 'plan' });
             return void toast.show({ message: blocked?.reason ?? t('overlays.run.unavailable') });
           }
           if (q.balance < q.total) return toPaywall(run, 'credits');
@@ -260,7 +274,7 @@ export function useRunFlow({ surface }: { surface?: RunSurface } = {}): { reques
           goReal(run, q, attempt);
         },
         (e: unknown) => {
-          if (isApiError(e, 'NO_PLAN')) return toPaywall(run, 'join');
+          if (isApiError(e, 'NO_PLAN')) return toPaywall(run, 'join', e.data);
           run.onAbort?.();
           toast.show({ message: t('overlays.run.startFailed', { label: run.actionLabel }) });
         },
@@ -310,7 +324,8 @@ export function useRunFlow({ surface }: { surface?: RunSurface } = {}): { reques
   function advance(run: RunRequest, attempt = 0) {
     if (!isMockApi()) return advanceReal(run, attempt);
     pending.current = run;
-    if (!getSession().isMember) return toPaywall(run, 'join');
+    // D-022: a member, or a non-member on an active trial.
+    if (!getSession().canGenerate) return toPaywall(run, 'join');
     if (getCredits().available < run.cost) return toPaywall(run, 'credits');
     const threshold = getPrefs().confirmThreshold;
     if (threshold <= 0 || run.cost >= threshold) return setStep({ kind: 'confirm' });
