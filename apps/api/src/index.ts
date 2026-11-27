@@ -32,6 +32,7 @@ import { testPlan } from "./routes/testPlan";
 import { adminGrant } from "./routes/adminGrant";
 import { projects, nodes, canvases } from "./routes/projects";
 import { canvasExports, exportsRoute } from "./routes/exports";
+import { assetPost, brandKit, canvasPost, postJobs } from "./routes/post";
 import { assets, characters, voices } from "./routes/assets";
 import { uploads } from "./routes/uploads";
 import { privateMedia, share, signedMedia } from "./routes/signedMedia";
@@ -48,6 +49,7 @@ export { ExportWorkflow } from "./workflows/Export";
 export { BillingWorkflow } from "./workflows/Billing";
 export { AccountDeletionWorkflow } from "./workflows/AccountDeletion";
 export { DataExportWorkflow } from "./workflows/DataExport";
+export { PostWorkflow } from "./workflows/Post";
 
 export const app = new Hono<AppEnv>();
 
@@ -107,6 +109,10 @@ const api = new Hono<AppEnv>()
   .route("/canvases", canvases)
   .route("/canvases", canvasExports)
   .route("/exports", exportsRoute)
+  .route("/canvases", canvasPost)
+  .route("/post-jobs", postJobs)
+  .route("/brand-kit", brandKit)
+  .route("/assets", assetPost)
   .route("/share", share)
   .route("/assets/uploads", uploads)
   .route("/assets", assets)

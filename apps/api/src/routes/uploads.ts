@@ -136,6 +136,8 @@ const CreateUpload = z.object({
   name: z.string().trim().min(1).max(200).optional(),
   /** Audio/video: the length the browser reported (e.g. `HTMLMediaElement.duration`). Used by quotes until probing replaces it. */
   durationMs: z.number().int().positive().max(6 * 3600 * 1000).optional(),
+  /** Audio: the uploader confirmed “I have the rights to use this voice” (D-037; required for lip-sync). */
+  voiceRights: z.literal(true).optional(),
 });
 
 /** Checks every part against the declared size; returns the problem or null. */
@@ -199,7 +201,7 @@ export const uploads = new Hono<AppEnv>()
       c.env.DB.prepare(
         `INSERT INTO assets (id, workspace_id, kind, source, name, r2_key, meta, license, project_id, created_by, created_at, status, mature, size, content_type)
          VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, 'uploading', 0, ?, ?)`,
-      ).bind(assetId, auth.workspaceId, check.kind, source, body.name ?? body.filename.slice(0, 200), key, JSON.stringify({ filename, ...declared }), body.projectId ?? null, auth.userId, now, body.size, body.contentType),
+      ).bind(assetId, auth.workspaceId, check.kind, source, body.name ?? body.filename.slice(0, 200), key, JSON.stringify({ filename, ...declared, ...(body.voiceRights && check.kind === "audio" && { voiceRights: { by: auth.userId, at: now } }) }), body.projectId ?? null, auth.userId, now, body.size, body.contentType),
       c.env.DB.prepare(
         `INSERT INTO uploads (asset_id, workspace_id, user_id, fingerprint, upload_id, r2_key, size, part_size, part_count, content_type, status, created_at, expires_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'uploading', ?, ?)`,

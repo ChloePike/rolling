@@ -293,6 +293,10 @@ async function planAvatar(input: PlanSpecInput): Promise<RunPlan> {
   if (voice.a.origin === 'generated' || voice.a.origin === 'public' || voice.a.origin === 'builtin') {
     return { items: [blockedItem(base, { code: 'unsupported', reason: 'Upload a voice track.' })] };
   }
+  // D-037: an uploaded voice may be a real person's: never a mature lip-sync with it (D-005 real-person rule).
+  if (spec.mature && input.ctx.matureAllowed && (voice.a.origin === 'upload' || voice.a.origin === 'team')) {
+    return { items: [blockedItem(base, { code: 'mature_voice', reason: 'Mature lip-sync can’t use an uploaded voice.' })] };
+  }
   const model = avatarModel(input.catalog, spec.model);
   if (isBlock(model)) return { items: [blockedItem(base, model)] };
   let seconds = spec.seconds;

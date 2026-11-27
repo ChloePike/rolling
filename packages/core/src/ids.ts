@@ -36,6 +36,10 @@ export const ID_PREFIXES = {
   feedback: 'fbk',
   export: 'exp',
   dataExport: 'dex',
+  /** Post-production (D-033 .. D-037). */
+  postJob: 'pjb',
+  placement: 'plc',
+  brandFont: 'fnt',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIXES;

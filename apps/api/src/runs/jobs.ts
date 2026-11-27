@@ -21,6 +21,7 @@ import { gatewayFeatureEnabled, markGatewayFeatureOff } from "../models/features
 import { faceResultFromMeta, pictureDataUrl, r2Picture, sha256OfBytes } from "../safety/service";
 import { getItem, getJob, getRun, parseJson, refreshRun, type RunOptions } from "./store";
 import { ensureFrame, extractFrames } from "./frames";
+import { dropPlacements, settlePlacement } from "../post/placements";
 import { loadAccount } from "../auth/workspace";
 
 export interface GenerateParams {
@@ -629,6 +630,8 @@ export async function commitJob(env: Env, ctx: JobContext, stored: Stored, prepa
   ]);
   await refreshRun(env.DB, ctx.runId, now);
   if (settled.ok) await pushCredits(env, { created_by: ctx.createdBy, project_id: ctx.projectId, workspace_id: ctx.workspaceId }, settled.value.balance);
+  // D-036 / D-037: an extend or lip-sync result lands on the timeline where it was planned.
+  await quietly("placement", () => settlePlacement(env, ctx.runId, stored.assetIds[0] ?? null));
   await quietly("activity", () => p.hub(ctx.createdBy).broadcast("activity.updated", { runId: ctx.runId, jobId: ctx.jobId }));
   return { spent, version };
 }
@@ -662,6 +665,7 @@ export async function failJob(env: Env, ctx: JobContext, error: JobError): Promi
   }
   await refreshRun(env.DB, ctx.runId, now);
   if (released.ok) await pushCredits(env, { created_by: ctx.createdBy, project_id: ctx.projectId, workspace_id: ctx.workspaceId }, released.value.balance);
+  await quietly("placement", () => dropPlacements(env, ctx.runId));
   await quietly("activity", () => p.hub(ctx.createdBy).broadcast("activity.updated", { runId: ctx.runId, jobId: ctx.jobId }));
   return { refunded };
 }

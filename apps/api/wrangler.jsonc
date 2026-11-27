@@ -120,6 +120,12 @@
       "class_name": "ExportWorkflow"
     },
     {
+      // Post-production (D-033, D-034): auto captions, transcripts, resize.
+      "binding": "POST",
+      "name": "rolling-dev-post",
+      "class_name": "PostWorkflow"
+    },
+    {
       "binding": "BILLING",
       "name": "rolling-dev-billing",
       "class_name": "BillingWorkflow"
@@ -222,6 +228,8 @@
   "env": {
     "staging": {
       "name": "rolling-api-staging",
+      // Workers AI: Whisper auto captions (D-033).
+      "ai": { "binding": "AI" },
       // Custom domains (D-015); the workers.dev URL stays on. cdn-private-staging serves signed media only (D-008).
       "routes": [
         {
@@ -320,6 +328,12 @@
           "class_name": "ExportWorkflow"
         },
         {
+          // Post-production (D-033, D-034): auto captions, transcripts, resize.
+          "binding": "POST",
+          "name": "rolling-staging-post",
+          "class_name": "PostWorkflow"
+        },
+        {
           "binding": "BILLING",
           "name": "rolling-staging-billing",
           "class_name": "BillingWorkflow"
@@ -410,6 +424,8 @@
     },
     "production": {
       "name": "rolling-api",
+      // Workers AI: Whisper auto captions (D-033).
+      "ai": { "binding": "AI" },
       // Custom domains (D-015). www redirects to the apex in the Worker (src/index.ts).
       "routes": [
         {
@@ -509,6 +525,12 @@
           "binding": "EXPORT",
           "name": "rolling-production-export",
           "class_name": "ExportWorkflow"
+        },
+        {
+          // Post-production (D-033, D-034): auto captions, transcripts, resize.
+          "binding": "POST",
+          "name": "rolling-production-post",
+          "class_name": "PostWorkflow"
         },
         {
           "binding": "BILLING",

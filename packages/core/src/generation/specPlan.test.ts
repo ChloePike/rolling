@@ -67,10 +67,12 @@ describe('tool specs: avatar', () => {
 
   it('D-005: a mature avatar takes only platform pictures; a model without lip sync is refused', async () => {
     const upload = await planPromptSpec({ spec: spec({ kind: 'avatar', mature: true, inputs: { photoAssetId: 'ast_photo', audioAssetId: 'ast_voice' } }), catalog: fixtureCatalog, ctx: MATURE, assetOrigins: assets });
-    expect(upload.items[0]).toMatchObject({ action: 'blocked', code: 'identity_requires_platform_assets' });
+    expect(upload.items[0]).toMatchObject({ action: 'blocked', code: 'mature_voice' });
     const platform = await planPromptSpec({ spec: spec({ kind: 'avatar', mature: true, inputs: { photoAssetId: 'ast_gen', audioAssetId: 'ast_voice' } }), catalog: fixtureCatalog, ctx: MATURE, assetOrigins: assets });
-    expect(platform.items[0]).toMatchObject({ action: 'run', model: AVATAR_MODEL });
-    expect(platform.items[0]!.spec!.mature).toBe(true);
+    // D-037: every voice today is an upload (no TTS yet), which may be a real person's: mature lip-sync is refused.
+    expect(platform.items[0]).toMatchObject({ action: 'blocked', code: 'mature_voice' });
+    const plain = await planPromptSpec({ spec: spec({ kind: 'avatar', inputs: { photoAssetId: 'ast_gen', audioAssetId: 'ast_voice' } }), catalog: fixtureCatalog, ctx: MATURE, assetOrigins: assets });
+    expect(plain.items[0]).toMatchObject({ action: 'run', model: AVATAR_MODEL });
     const notAllowed = await planPromptSpec({ spec: spec({ kind: 'avatar', mature: true, inputs: { photoAssetId: 'ast_gen', audioAssetId: 'ast_voice' } }), catalog: fixtureCatalog, ctx: PLUS, assetOrigins: assets });
     expect(notAllowed.items[0]).toMatchObject({ action: 'blocked', code: 'mature_not_allowed' });
     const wrong = await planPromptSpec({ spec: spec({ kind: 'avatar', model: 'Seedance 2.5', inputs: { photoAssetId: 'ast_photo', audioAssetId: 'ast_voice' } }), catalog: fixtureCatalog, ctx: PLUS, assetOrigins: assets });

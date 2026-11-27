@@ -37,6 +37,7 @@ import { projectRoom } from "../lib/access";
 import { gatewayConfigured, hyperouterClient } from "../runs/provider";
 import { agentPorts, roomCallerOf, type AgentCaller } from "./agentPorts";
 import { canvasIdFor } from "./ProjectRoom";
+import { postContext } from "../post/agentContext";
 
 export type { AgentCaller };
 
@@ -285,6 +286,8 @@ export class AgentSession extends DurableObject<Env> {
     }
     await this.refreshProposals(ports);
     const thread = this.threadState();
+    // D-035 / D-037: the brand kit and an imported voiceover (length, transcript) shape the plans.
+    Object.assign(thread, await postContext(this.env, { workspaceId: input.caller.workspaceId, userId: input.caller.userId, projectId: thread.projectId, canvasId: thread.canvasId }));
     const llm = llmOverride ?? new hyperouter.HyperouterLlmProvider(hyperouterClient(this.env));
     if (input.llm) this.setMeta("llm", input.llm);
     const sink = this.sink(thread);

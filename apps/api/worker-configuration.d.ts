@@ -31,6 +31,8 @@ interface __BaseEnv_Env {
 	FFMPEG: DurableObjectNamespace<import("./src/index").FfmpegRenderer>;
 	GENERATE: Workflow<Parameters<import("./src/index").GenerateWorkflow['run']>[0]['payload']>;
 	EXPORT: Workflow<Parameters<import("./src/index").ExportWorkflow['run']>[0]['payload']>;
+	POST: Workflow<Parameters<import("./src/index").PostWorkflow['run']>[0]['payload']>;
+	AI?: Ai;
 	BILLING: Workflow<Parameters<import("./src/index").BillingWorkflow['run']>[0]['payload']>;
 	ACCOUNT_DELETION: Workflow<Parameters<import("./src/index").AccountDeletionWorkflow['run']>[0]['payload']>;
 	DATA_EXPORT: Workflow<Parameters<import("./src/index").DataExportWorkflow['run']>[0]['payload']>;
@@ -70,6 +72,8 @@ declare namespace Cloudflare {
 		FFMPEG: DurableObjectNamespace<import("./src/index").FfmpegRenderer>;
 		GENERATE: Workflow<Parameters<import("./src/index").GenerateWorkflow['run']>[0]['payload']>;
 		EXPORT: Workflow<Parameters<import("./src/index").ExportWorkflow['run']>[0]['payload']>;
+		POST: Workflow<Parameters<import("./src/index").PostWorkflow['run']>[0]['payload']>;
+		AI: Ai;
 		BILLING: Workflow<Parameters<import("./src/index").BillingWorkflow['run']>[0]['payload']>;
 		ACCOUNT_DELETION: Workflow<Parameters<import("./src/index").AccountDeletionWorkflow['run']>[0]['payload']>;
 		DATA_EXPORT: Workflow<Parameters<import("./src/index").DataExportWorkflow['run']>[0]['payload']>;
@@ -104,6 +108,8 @@ declare namespace Cloudflare {
 		FFMPEG: DurableObjectNamespace<import("./src/index").FfmpegRenderer>;
 		GENERATE: Workflow<Parameters<import("./src/index").GenerateWorkflow['run']>[0]['payload']>;
 		EXPORT: Workflow<Parameters<import("./src/index").ExportWorkflow['run']>[0]['payload']>;
+		POST: Workflow<Parameters<import("./src/index").PostWorkflow['run']>[0]['payload']>;
+		AI: Ai;
 		BILLING: Workflow<Parameters<import("./src/index").BillingWorkflow['run']>[0]['payload']>;
 		ACCOUNT_DELETION: Workflow<Parameters<import("./src/index").AccountDeletionWorkflow['run']>[0]['payload']>;
 		DATA_EXPORT: Workflow<Parameters<import("./src/index").DataExportWorkflow['run']>[0]['payload']>;

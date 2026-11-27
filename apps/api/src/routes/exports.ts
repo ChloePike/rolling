@@ -12,7 +12,8 @@ import { projectAccess, requireAuth, roomCaller } from "../lib/access";
 import { ApiError } from "../lib/errors";
 import { validate } from "../lib/validate";
 import { projectIdForCanvas } from "../do/ProjectRoom";
-import { createExport, exportView, loadExport } from "../exports/service";
+import { createExports, exportView, loadExport } from "../exports/service";
+import { ExportOptionsSchema } from "@rolling/core/export";
 
 const CanvasParam = z.object({ id: z.string().regex(/^cnv_[A-Za-z0-9]+$/) });
 const ExportParam = z.object({ id: z.string().regex(/^exp_[A-Za-z0-9]+$/) });
@@ -21,6 +22,10 @@ const Seconds = z.number().finite().min(0).max(24 * 3600);
 const ExportBody = z.object({
   preset: z.enum(EXPORT_PRESETS),
   range: z.object({ start: Seconds, end: Seconds }).refine((r) => r.end > r.start, { message: "end must be after start" }).optional(),
+  /** Batch export (D-034): more presets started with `preset`, same range and options. */
+  presets: z.array(z.enum(EXPORT_PRESETS)).max(EXPORT_PRESETS.length).optional(),
+  /** Captions burn-in, Smoother motion, brand kit, preview (D-033 .. D-035). */
+  options: ExportOptionsSchema.optional(),
 });
 
 async function access(c: Context<AppEnv>, projectId: string, min: "viewer" | "editor") {
@@ -37,8 +42,10 @@ export const canvasExports = new Hono<AppEnv>().post("/:id/export", validate("pa
   const { auth, acc } = await access(c, projectId, "editor");
   if (!acc.membership.plan) throw new ApiError(402, "NO_PLAN", "An active plan is required", { workspaceId: acc.project.workspace_id });
   const body = c.req.valid("json");
-  const row = await createExport(c.env, { caller: roomCaller(auth, acc), projectId, canvasId, preset: body.preset, ...(body.range ? { range: body.range } : {}) });
-  return c.json({ export: await exportView(c.env, row, { mayViewMature: acc.matureAllowed }) }, 201);
+  const presets = [body.preset, ...(body.presets ?? [])];
+  const rows = await createExports(c.env, { caller: roomCaller(auth, acc), projectId, canvasId, presets, ...(body.range ? { range: body.range } : {}), ...(body.options ? { options: body.options } : {}) });
+  const views = await Promise.all(rows.map((r) => exportView(c.env, r, { mayViewMature: acc.matureAllowed })));
+  return c.json({ export: views[0], exports: views }, 201);
 });
 
 /** `GET /api/exports/:id`: status, progress and (when done) a fresh signed download URL. */

@@ -544,6 +544,8 @@ export async function cancelRun(env: Env, auth: AuthContext, runId: string): Pro
   if (["succeeded", "partial", "failed", "canceled"].includes(run.status)) return { runId, refunded: 0, canceled: 0 };
   const now = Date.now();
   await env.DB.prepare("UPDATE runs SET status = 'canceled', updated_at = ? WHERE id = ?").bind(now, runId).run();
+  // D-036 / D-037: a canceled extend or lip-sync takes its planned clip back off the timeline.
+  await quietly("placement", async () => (await import("../post/placements")).dropPlacements(env, runId));
   const items = await getItems(env.DB, runId);
   const p = ports(env);
   const room = run.project_id ? p.room(run.project_id) : null;

@@ -30,6 +30,8 @@ export type BlockCode =
   | 'resolution_locked'
   | 'mature_not_allowed'
   | 'identity_requires_platform_assets'
+  /** D-037: a mature lip-sync with an uploaded voice (possibly a real person's). */
+  | 'mature_voice'
   | 'empty_prompt';
 
 /** Where one generation input comes from. Upstream node outputs resolve to their active asset when the job starts. */

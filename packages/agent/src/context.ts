@@ -31,6 +31,8 @@ export interface ThreadState {
   /** Proposals of this thread (for notes on stored messages and stale notices). */
   proposals: Proposal[];
   brandKit?: string | null;
+  /** Imported voiceover on the timeline: clip lengths and transcripts (D-037). */
+  voiceover?: string | null;
   /** Tool surface: which Simple-mode form this thread fills. */
   tool?: FieldTool | null;
 }
@@ -152,6 +154,7 @@ export function workspaceSection(
   const missing = input.refs.filter((id) => !refs.some((r) => r.id === id));
   if (missing.length) parts.push(`References that could not be found: ${missing.join(', ')}.`);
   if (thread.brandKit) parts.push(`Brand kit: ${thread.brandKit}`);
+  if (thread.voiceover) parts.push(thread.voiceover);
   const stale = thread.proposals.filter((p) => p.status === 'stale');
   if (stale.length) parts.push(`Stale proposals (the canvas changed, they no longer apply): ${stale.slice(-3).map((p) => p.id).join(', ')}.`);
   return truncateToTokens(parts.join('\n\n'), maxTokens);

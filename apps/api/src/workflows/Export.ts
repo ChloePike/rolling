@@ -146,7 +146,13 @@ export class ExportWorkflow extends WorkflowEntrypoint<Env, ExportWorkflowParams
         return { size: head.size };
       }));
 
-      const registered = await step.do("register", RETRY, guard(async () => registerAsset(env, row, key, stored.size, result.durationSec ?? row.duration, prepared.mature)));
+      // Previews (D-034) are not assets: the signed file is enough for the dialog.
+      const registered = row.preview
+        ? await step.do("preview-ready", RETRY, async () => {
+            await setStatus(env, row.id, { status: "done", progress: 1, r2_key: key, size: stored.size, duration: result.durationSec ?? row.duration, finished_at: Date.now() });
+            return { assetId: null as string | null };
+          })
+        : await step.do("register", RETRY, guard(async () => registerAsset(env, row, key, stored.size, result.durationSec ?? row.duration, prepared.mature)));
 
       await step.do("notify-done", RETRY, async () => {
         const fresh = (await loadExport(env, row.id))!;
