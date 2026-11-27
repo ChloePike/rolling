@@ -120,7 +120,7 @@ describe('Whisper transcripts to caption cues', () => {
 
   it('builds the audio source: whole mix, voice lane, or one clip at its place', () => {
     const voice = captionSourceEdl(edl(), { kind: 'voice' })!;
-    expect(voice.edl.tracks.flatMap((t) => t.clips).map((c) => c.id)).toEqual(['a1']);
+    expect(voice.edl.tracks.flatMap((t) => t.clips as { id: string }[]).map((c) => c.id)).toEqual(['a1']);
     expect(voice.range).toEqual({ start: 0, end: 9 });
     const clip = captionSourceEdl(edl(), { kind: 'clip', clipId: 'v2' })!;
     expect(clip.range).toEqual({ start: 4, end: 7 });
