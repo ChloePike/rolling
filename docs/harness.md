@@ -159,3 +159,12 @@ Results, judging and the reasons: `docs/harness-live-eval.md`. Where this sectio
 - **Timeline.** `cutTo {seconds}` is planned by the server (`core/timeline` `planCutTo`) and stored as the trims and moves it makes.
 - **Eval tools.** `eval:live` takes `--budget`, `--debug` and `--rules-only` and uses the live safety classifier by default; `eval:read` writes readable transcripts of a results file.
 
+
+## 13. Result review (D-024, 2026-11-27)
+
+The agent reviews what was generated, not only what it plans. Decision and numbers: `docs/decisions.md` D-024.
+
+- **Where.** `packages/core/src/review` (verdict schema and parsing, scoring, take ranking, retry decision, version pick, fix params, the review call); `apps/api/src/runs/review.ts` (the Generate workflow's `review-<attempt>` and `review-after-commit` steps).
+- **Context.** `buildContext` adds “Result reviews (current versions with a problem, worst first)” to the canvas and editor workspace (`reviewLines`), from `CanvasPort.getGraph().reviews` (ProjectRoom). The system prompt section “Result reviews” (canvas, editor) has the agent mention the worst problem once, by node title, and offer the retry; a yes in the chat becomes a `propose.graphPatch` `updateNode` with the fix's prompt.
+- **Auto mode.** A run the agent starts in Auto mode passes `serverOptions.auto = { budgetLeft, turnId }` to `startRun`; a bad verdict then retries once per node within that budget and keeps the better version. Read and Edit mode only offer “Retry with fix”.
+- **Evals.** `evals/review.ts` (19 cases, graders `action`, `best_take`, `keeps_better`, `fix_applies`, `agent_line`), run by `evals/review.test.ts` in `pnpm -r test`. No model is called: the cases are reviewer answers as raw JSON.
