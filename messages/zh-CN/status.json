@@ -1,0 +1,20 @@
+{
+  "status.title": "ステータス",
+  "status.overall.operational": "すべてのシステムが正常に動作しています。",
+  "status.overall.degraded": "一部のシステムで速度低下または一部機能の停止が発生しています。",
+  "status.overall.outage": "一部のシステムが停止しています。復旧作業を進めています。",
+  "status.incident": "最新情報",
+  "status.updated": "{when}に更新",
+  "status.generationPaused": "モデルゲートウェイの復旧中のため、新しい生成を一時停止しています。課金はされません。",
+  "status.components": "コンポーネント",
+  "status.component.api": "アプリとAPI",
+  "status.component.gateway": "生成",
+  "status.component.media": "メディア",
+  "status.component.auth": "ログイン",
+  "status.state.operational": "正常",
+  "status.state.degraded": "性能低下",
+  "status.state.down": "停止",
+  "status.state.unknown": "データなし",
+  "status.uptime": "過去24時間: {pct}",
+  "status.checked": "{when}に確認"
+}
