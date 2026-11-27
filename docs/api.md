@@ -36,7 +36,7 @@ Signed-out callers of member routes get `401 UNAUTHENTICATED`. The current works
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/api/me` | See shape below. `private, no-store` |
-| PATCH | `/api/me/prefs` | Any subset of `{ language, currency, creationMode, defaultRatio, defaultModel, confirmThreshold, notifications, theme, matureContent }` → `{ prefs, matureAllowed }`. Unknown keys or an empty body → `400 VALIDATION_FAILED`. `matureContent: true` without an active plan → `402 NO_PLAN`. Pushes `prefs.changed { prefs }` to the user's sockets |
+| PATCH | `/api/me/prefs` | Any subset of `{ language, currency, creationMode, defaultRatio, defaultModel, confirmThreshold, notifications, theme, matureContent, enhancePrompt }` → `{ prefs, matureAllowed }`. Unknown keys or an empty body → `400 VALIDATION_FAILED`. `matureContent: true` without an active plan → `402 NO_PLAN`. Pushes `prefs.changed { prefs }` to the user's sockets |
 | PATCH | `/api/me/profile` | Any subset of `{ name, handle, bio, avatarAssetId }` → `{ profile: { name, handle, bio, image } }`. `name` 1–80 chars; `handle` 3–30 of `a-z 0-9 _ .` (a leading `@` is dropped, stored lowercase); `bio` ≤ 160 (empty clears); unknown keys or an empty body → `400 VALIDATION_FAILED`. A handle taken by someone else (case-insensitive) or reserved (`admin`, `settings`, `api`, …) → `409 HANDLE_TAKEN`. `avatarAssetId`: an image asset the caller uploaded (assets upload pipeline) → rated now if unrated (D-005); anything but `safe` → `422 AVATAR_REJECTED data: { reason: "rating", rating }` (or `reason: "blocked"`), classifier down → `503 SAFETY_UNAVAILABLE`, someone else's asset → `404`; a 256 px WebP is stored under the personal workspace and `users.image` becomes `/api/media/avatar/<userId>?v=<version>`. `avatarAssetId: null` removes it |
 | POST | `/api/me/delete/send-code` | Emails a 6-digit code (10 min) to the account's address → `{ sent: true, email, expiresInMinutes, workspacesToDelete }`. `409 OWNER_OF_TEAM data: { workspaces: [{ id, name, members }] }` when the user owns a Team workspace with other members and no other owner (transfer ownership first). `429 RATE_LIMITED` (30 s cooldown) |
 | POST | `/api/me/delete` | `{ code }` → `{ ok: true }` and the session cookie cleared. Errors: `400 INVALID_CODE` (`data.attemptsLeft`), `400 CODE_EXPIRED`, `429 TOO_MANY_ATTEMPTS` (5 wrong codes; ask for a new one), `409 OWNER_OF_TEAM`, `502 INTERNAL` (Stripe cancel failed; nothing deleted). Effects below |
@@ -55,7 +55,7 @@ Signed-out callers of member routes get `401 UNAUTHENTICATED`. The current works
   "prefs": {
     "language": "en", "currency": "USD", "creationMode": "simple", "defaultRatio": "9:16", "defaultModel": "auto",
     "confirmThreshold": 300, "notifications": { "done": true, "low": true, "renewal": true, "product": false },
-    "theme": "system", "matureContent": false
+    "theme": "system", "matureContent": false, "enhancePrompt": true
   },
   "plan": null,
   "isMember": false,
@@ -358,6 +358,7 @@ type QuoteResponse = {
     autoVia?: 'classifier' | 'fallback' | 'single'
     dependsOn: string[]           // run rows: refs that must finish first
     step?: 'keyframe' | 'animate' // D-005 mature text-to-video chain (see below); both rows are in `total`
+    promptExpand?: true           // D-020: `credits` include the most the prompt enhancement can cost ("Includes prompt enhancement")
   }>
   total: number; balance: number; balanceAfter: number
   expiresAt: number | null        // epoch ms (10 minutes)
@@ -370,6 +371,7 @@ type PromptSpec = {
   model?: string /* id, display name or 'auto' (default) */; prompt?: string; title?: string
   seconds?: number; resolution?: string; ratio?: string; audio?: boolean; n?: number
   negativePrompt?: string; seed?: number; mature?: boolean; refsMode?: boolean
+  promptExpand?: boolean                           // D-020 "Enhance prompt"; absent = prefs.enhancePrompt
   shots?: Array<{ prompt?: string; seconds?: number; frameAssetId?: string; startSec?: number }>   // remix, ≤ 12
   name?: string                                    // character: saved under this name
   views?: Array<'body' | 'face'>                   // character, default both
@@ -402,7 +404,9 @@ type RunView = {
   quoted; spent; refunded; error: string | null; createdAt; finishedAt
   items: Array<{ ref, nodeId, title, kind, model, modelName, status: 'pending'|'running'|'succeeded'|'failed'|'skipped'|'canceled',
                  jobId, progress, credits, spent, refunded, assetId, error, errorCode,
-                 step?: 'keyframe' | 'animate' }>   // D-005 chain step; `params` describes the animation, `progress` covers both
+                 step?: 'keyframe' | 'animate',     // D-005 chain step; `params` describes the animation, `progress` covers both
+                 promptExpand?: true,               // D-020: "Enhance prompt" was on for this item
+                 expandedPrompt?: string }>         // D-020: the prompt that rendered ("Enhanced prompt"; also `assets.meta.expandedPrompt`, node version `output.expandedPrompt`)
   request: { promptSpec: PromptSpec } | { scope, nodeIds? } | null   // the normalized request it was quoted from (null before migration 0015)
   tool: 'quick' | 'remix' | 'avatar' | 'character' | null           // tool runs (`quick` = image/video); null for canvas runs
   retryOf: string | null; characterId: string | null
@@ -421,6 +425,7 @@ Rules:
   - **Money:** one quote total (the two rows' credits). Both steps are held together when the keyframe starts (one hold call, two job holds; counts as two jobs at once); the animation starts on its hold when the keyframe lands. Each step settles on its own. The animation failing releases only its hold (the run ends `partial`, the keyframe stays an asset); the keyframe failing, or a cancel before the animation starts, releases the animation's hold too (recorded as a `canceled`, refunded job).
   - **Safety:** both steps run the full pre/post checks (only hard limits block a mature-allowed caller); the keyframe output gets the vision check in its own `store` step and again as the animation's first frame in `prepare`.
   - **Retry** of a chain whose animation failed quotes the animation alone from the kept keyframe (`priorAssets.keyframe`).
+- **Enhance prompt (D-020).** Items whose model lists `prompt_expand` (`GET /api/models` → `promptExpand: 'available' | 'unavailable' | null`) and whose mode is a create (`t2i`, `edit`, `t2v`, `i2v`, `first_last_frame`, `refs`) are sent with `prompt_expand: true` when the item asks for it: `promptSpec.promptExpand`, the node param `promptExpand`, else `prefs.enhancePrompt` (agent-planned nodes: off). Never with `prompt_extend`. Writer `prompt_expand_model`: DeepSeek V4.1 Flash (cheapest route) for non-mature runs, `x-ai/grok-4.7` → `x-ai/grok-4.6` for mature runs, the gateway default when neither is in the catalog; `locale` = `prefs.language`. The quote and the hold add the rewrite's most (`PROMPT_EXPANSION_TOKENS` at the writer's token prices) to the render's USD before the markup; the settle is the gateway's `usage.cost` (render + rewrite). `403 feature_not_enabled` → the same job resubmits without it (`<key>.nx`, same hold) and `gateway_features.prompt_expand` is stored off (models answer `promptExpand: 'unavailable'`, quotes stop pricing it; the model sync clears the flag after 24 h). `422 expansion_refused` → resubmitted without it. A refused writer → the gateway default when its most fits the hold (`<key>.dw`), else without. `store` runs the text checks (rules + classifier; only hard limits for mature-allowed callers) on `expanded_prompt` before anything is kept; a block fails the job (`safety_blocked`, refunded).
 - `options.forceFailure` (staging/development only, ignored in production): the listed items (or all with `true`) fail without calling the provider and are refunded — for testing the refund path end to end.
 
 ### Safety (D-005 hard limits)
