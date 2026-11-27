@@ -1,5 +1,5 @@
 /**
- * Timeline placement of a clip that a run will make (D-029, D-030):
+ * Timeline placement of a clip that a run will make (D-036, D-037):
  * - `after`: Extend clip — a planned clip right after the original on its
  *   track; later clips on that track move right by its length.
  * - `replace`: Lip-sync — the talking-head result replaces the shot in place.

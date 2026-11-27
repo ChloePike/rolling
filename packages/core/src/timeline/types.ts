@@ -66,7 +66,7 @@ export interface Reframe {
   y?: number;
 }
 
-/** Caption looks (`docs/decisions.md` D-026). Missing means `clean`. */
+/** Caption looks (`docs/decisions.md` D-033). Missing means `clean`. */
 export const CAPTION_STYLE_IDS = ['clean', 'bold_social', 'minimal'] as const;
 export type CaptionStyleId = (typeof CAPTION_STYLE_IDS)[number];
 

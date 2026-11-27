@@ -372,7 +372,7 @@ export const PROMPT_EXPANSION_TOKENS = {
 export const PROMPT_EXPANSION_DEFAULT_WRITER_PRICE = { prompt: 0.000002, completion: 0.000006 } as const;
 
 /**
- * Post-production (D-026, D-027). Auto captions run on Workers AI Whisper
+ * Post-production (D-033, D-034). Auto captions run on Workers AI Whisper
  * (`@cf/openai/whisper-large-v3-turbo`, $0.000513 per audio minute): a 15-minute
  * cut costs under one cent, less than one credit even at the 3× markup, so
  * captions are free (absorbed) with a daily cap per workspace instead of a

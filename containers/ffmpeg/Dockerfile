@@ -1,6 +1,6 @@
 # FFmpeg renderer for Cloudflare Containers (class FfmpegRenderer in apps/api).
 # Build context: this directory. Runs the tiny HTTP server on port 8080.
-# Fonts (all SIL Open Font License, D-026): captions burn in with libass
+# Fonts (all SIL Open Font License, D-033): captions burn in with libass
 # (`ass` filter) and cards draw with `drawtext`. Noto Sans covers Latin,
 # Cyrillic, Greek, Thai, Vietnamese and more (fonts-noto-core); Noto Sans CJK
 # covers Japanese, Korean and Chinese in regional variants (fonts-noto-cjk);

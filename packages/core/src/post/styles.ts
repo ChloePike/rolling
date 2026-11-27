@@ -1,5 +1,5 @@
 /**
- * Caption looks (D-026): `clean`, `bold_social`, `minimal`. One definition for
+ * Caption looks (D-033): `clean`, `bold_social`, `minimal`. One definition for
  * the editor preview (CSS) and the burn-in (the Worker resolves a look into
  * `RenderCaptions` for the FFmpeg container, which writes it as an ASS style).
  *

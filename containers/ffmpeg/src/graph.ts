@@ -252,7 +252,7 @@ export function assColor(hex: string, opacity = 1): string {
   return `&H${a}${v.slice(4, 6)}${v.slice(2, 4)}${v.slice(0, 2)}`;
 }
 
-/** The default look (captions before D-026): white DejaVu Sans with a thin outline. */
+/** The default look (captions before D-033): white DejaVu Sans with a thin outline. */
 const DEFAULT_LOOK: CaptionLook = {
   id: "default", weight: 700, size: 0.055, outline: 0.08, box: null, shadow: false, marginV: 0.1, maxLines: 2,
   text: "#FFFFFF", outlineColor: "#000000", boxColor: "#000000", fontFamily: "DejaVu Sans", cjkFamily: "Noto Sans CJK SC",

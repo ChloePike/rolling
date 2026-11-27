@@ -1,5 +1,5 @@
 /**
- * Auto captions (D-026): a Whisper transcript (Workers AI
+ * Auto captions (D-033): a Whisper transcript (Workers AI
  * `@cf/openai/whisper-large-v3-turbo`, words with timings) becomes timed
  * caption cues for the editor's caption track, and the caption track becomes
  * SRT / WebVTT files. Pure: no I/O.

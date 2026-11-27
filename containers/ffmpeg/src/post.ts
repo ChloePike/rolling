@@ -1,5 +1,5 @@
 /**
- * Post-production commands (D-026..D-030), pure builders and parsers:
+ * Post-production commands (D-033..D-037), pure builders and parsers:
  * - last frame of a video (Extend clip: the next shot's first frame);
  * - pauses in a voice track (`silencedetect`, voiceover split);
  * - a cut of an audio track (lip-sync on one voice part);

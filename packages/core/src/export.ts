@@ -9,7 +9,7 @@ import type { ResolvedCaptionLook } from './post/styles';
 import type { WatermarkPosition } from './post/brandKit';
 
 /**
- * `mp4_*`: the cut's own aspect ratio at a short side. Social presets (D-027)
+ * `mp4_*`: the cut's own aspect ratio at a short side. Social presets (D-034)
  * have a fixed frame; when it differs from the cut's aspect, shots are
  * reframed (cropped around the subject) instead of letterboxed.
  */
@@ -181,7 +181,7 @@ export interface RenderBrand {
   outro?: RenderCard;
 }
 
-/** Voice lanes are evened out to this integrated loudness before mixing (D-030). */
+/** Voice lanes are evened out to this integrated loudness before mixing (D-037). */
 export const VOICE_LUFS = -16;
 
 export type ExportPlan = { ok: true; edl: Edl; duration: number; assetIds: string[] } | { ok: false; reason: 'EMPTY' | 'TOO_LONG' | 'BAD_RANGE' };

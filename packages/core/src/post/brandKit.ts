@@ -1,5 +1,5 @@
 /**
- * Brand kit (D-028), one per workspace: logo (an image asset), brand colors,
+ * Brand kit (D-035), one per workspace: logo (an image asset), brand colors,
  * uploaded fonts (woff2 / ttf / otf in R2, with the uploader's license
  * confirmation), intro and outro cards, the watermark position, and a short
  * tone note. Exports can apply it (logo watermark, cards); caption looks use

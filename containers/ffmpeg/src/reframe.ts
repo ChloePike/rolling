@@ -1,5 +1,5 @@
 /**
- * Smart reframe (D-027): where the main subject is in a clip, from small
+ * Smart reframe (D-034): where the main subject is in a clip, from small
  * grayscale frames sampled by ffmpeg, as a smooth path the crop window follows.
  * Pure (no I/O), so the server and the tests share it.
  *
