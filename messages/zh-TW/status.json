@@ -1,0 +1,20 @@
+{
+  "status.title": "狀態頁",
+  "status.overall.operational": "所有系統運作正常。",
+  "status.overall.degraded": "部分系統速度較慢或暫時無法使用。",
+  "status.overall.outage": "部分系統已中斷，我們正在處理。",
+  "status.incident": "更新",
+  "status.updated": "更新於 {when}",
+  "status.generationPaused": "模型閘道恢復期間，新的生成已暫停，不會扣除任何點數。",
+  "status.components": "元件",
+  "status.component.api": "應用程式與 API",
+  "status.component.gateway": "生成",
+  "status.component.media": "媒體",
+  "status.component.auth": "登入",
+  "status.state.operational": "正常運作",
+  "status.state.degraded": "效能降低",
+  "status.state.down": "中斷",
+  "status.state.unknown": "無資料",
+  "status.uptime": "過去 24 小時 {pct}",
+  "status.checked": "檢查時間：{when}"
+}
