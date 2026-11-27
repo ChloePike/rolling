@@ -10,6 +10,7 @@
  */
 import { AgentCostMeter, tokenPrice, type ChatMessage, type ChatUsage, type LlmProvider, type ToolCall } from '@rolling/core';
 import { SAFETY_BLOCKED_MESSAGE, type ReferenceSource, type SafetyReference } from '@rolling/core/safety';
+import { explicitSignal } from '@rolling/core/safety/rules';
 import { buildContext, type ThreadState, type TurnInput } from './context';
 import type { AccountSnapshot, AgentPorts } from './ports';
 import { isProposeTool, runPropose } from './proposals';
@@ -23,7 +24,10 @@ export const MAX_TOOL_CALLS = 8;
 export const MAX_PROPOSAL_RETRIES = 2;
 /** Max tokens of one tool result sent back to the model. */
 export const MAX_TOOL_RESULT_TOKENS = 3_000;
-const MAX_OUTPUT_TOKENS = 4_000;
+/** A 60-second plan of two options is about 6k tokens of tool arguments; 4k cut such calls off mid-JSON. */
+export const MAX_OUTPUT_TOKENS = 8_000;
+/** Responses that came back cut off or empty and were asked for again, per turn. */
+export const MAX_RESPONSE_REPAIRS = 2;
 
 export interface RunTurnOptions {
   llm: LlmProvider;
@@ -125,6 +129,9 @@ export async function runTurn(opts: RunTurnOptions): Promise<TurnResult> {
   let llmCalls = 0;
   let retries = 0;
   let textOnly = false;
+  let repairs = 0;
+  /** After an empty response in a turn that already read something: the next call has to call a tool. */
+  let forceTool = false;
 
   // D-005: the brief and its `@` references go through the safety gate first.
   let blocked = false;
@@ -152,13 +159,14 @@ export async function runTurn(opts: RunTurnOptions): Promise<TurnResult> {
   };
 
   /** One streamed LLM call. Retries once when it fails before producing anything. */
-  const call = async (): Promise<{ text: string; toolCalls: ToolCall[] }> => {
+  const call = async (): Promise<{ text: string; toolCalls: ToolCall[]; finishReason: string | null }> => {
     for (let attempt = 0; ; attempt++) {
       if (opts.signal?.aborted) throw new Canceled();
       llmCalls++;
       let callText = '';
       const calls: ToolCall[] = [];
       let failure: { code: string; message: string; retryable: boolean } | null = null;
+      let finishReason: string | null = null;
       // Text written ahead of a read tool is narration ("Checking the models"): it is never shown or stored. Text is
       // held until the call shows what it is: a read tool drops it, a propose tool or the end of the call shows it.
       let held = '';
@@ -190,7 +198,7 @@ export async function runTurn(opts: RunTurnOptions): Promise<TurnResult> {
           model: llm.gatewayId,
           messages,
           tools: defs,
-          toolChoice: textOnly ? 'none' : 'auto',
+          toolChoice: textOnly ? 'none' : forceTool ? 'required' : 'auto',
           parallelToolCalls: false,
           temperature,
           maxTokens: MAX_OUTPUT_TOKENS,
@@ -213,6 +221,8 @@ export async function runTurn(opts: RunTurnOptions): Promise<TurnResult> {
             addUsage(ev.usage);
           } else if (ev.type === 'error') {
             failure = ev.error;
+          } else if (ev.type === 'done') {
+            finishReason = ev.finishReason;
           }
         }
       } catch (err) {
@@ -226,11 +236,25 @@ export async function runTurn(opts: RunTurnOptions): Promise<TurnResult> {
       }
       if (!narration) show(held);
       held = '';
-      if (!failure) return { text: narration ? '' : callText, toolCalls: calls };
+      if (!failure) return { text: narration ? '' : callText, toolCalls: calls, finishReason };
       if (attempt === 0 && failure.retryable && !callText && !calls.length) continue;
       throw Object.assign(new Error(failure.message), { code: failure.code });
     }
   };
+
+  // D-005: adult content asked for by a caller without mature access. The gate lets the turn through so the reply
+  // can say why in the user's language; nothing may be proposed (not a tamer version either), so it runs without tools.
+  const matureOff = !blocked && !account.matureAllowed && explicitSignal(input.text).length > 0;
+  if (matureOff) {
+    textOnly = true;
+    const system = messages[0];
+    if (system?.role === 'system') {
+      messages[0] = {
+        ...system,
+        content: `${system.content}\n\n# This turn\nThe brief asks for adult content and mature content is off for this account. Answer in one sentence, in the user's language: mature content is off for this account and can be turned on in Settings. Do not describe the scene and do not offer another version.`,
+      };
+    }
+  }
 
   if (blocked) {
     reason = 'safety_blocked';
@@ -241,8 +265,29 @@ export async function runTurn(opts: RunTurnOptions): Promise<TurnResult> {
   try {
     for (; !blocked; ) {
       const res = await call();
+      // A response cut off at the output limit carries no usable tool call, and now and then the model returns
+      // nothing at all. Both would end the turn with an empty reply: ask once for a shorter or an actual answer.
+      const cutOff = res.finishReason === 'length' && !res.toolCalls.length;
+      const empty = !res.toolCalls.length && !res.text.trim() && !text.trim();
+      if ((cutOff || empty) && !textOnly && repairs < MAX_RESPONSE_REPAIRS) {
+        repairs++;
+        retries++;
+        // Seen live: after two read tools in one response the model sometimes answers with nothing, again and
+        // again. It read in order to propose, so the next call must call a tool.
+        forceTool = empty && !cutOff && toolCalls > 0;
+        trace.push({ name: 'llm', ok: false, error: cutOff ? 'response cut off at the output limit' : 'empty response' });
+        if (res.text) messages.push({ role: 'assistant', content: res.text });
+        messages.push({
+          role: 'user',
+          content: cutOff
+            ? '[system] Your last message was cut off at the output limit before the tool call was complete. Call the propose tool again with a shorter input: 2 options, and short texts in every field.'
+            : '[system] Your last message was empty. Call the propose tool for the request above, or answer it in one or two sentences.',
+        });
+        continue;
+      }
+      forceTool = false;
       if (!res.toolCalls.length || textOnly) {
-        if (textOnly && reason === 'completed') reason = 'max_tool_calls';
+        if (textOnly && reason === 'completed' && !matureOff) reason = 'max_tool_calls';
         break;
       }
       messages.push({ role: 'assistant', content: res.text || null, toolCalls: res.toolCalls });

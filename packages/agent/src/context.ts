@@ -6,7 +6,7 @@ import type { ChatMessage, ToolDefinition } from '@rolling/core';
 import type { GraphState } from '@rolling/core/graph';
 import { SKILL_PROMPTS, SYSTEM_PROMPT } from './prompts.generated';
 import type { AccountSnapshot, AgentPorts, AssetItem } from './ports';
-import { accountView } from './tools';
+import { accountView, videoModelsSection } from './tools';
 import { canvasView, compactNode, compactParams, nodeLine, timelineView } from './tools/compact';
 import { estimateTokens, estimateValueTokens, truncateToTokens } from './tokens';
 import type { FieldTool } from './tools/schemas';
@@ -65,6 +65,36 @@ export function settingsSection(s: TurnSettings | undefined): string | null {
   if (s.videoModel !== undefined) parts.push(s.videoModel ? `video model ${s.videoModel}` : 'video model Auto (the default one)');
   if (!parts.length) return null;
   return `# Prompt box settings\nThe user picked ${parts.join(', ')} on the prompt box. Every plan option uses these unless the brief itself names a different one; the server checks.`;
+}
+
+/** Which surfaces a section of the system prompt (by its `# ` heading) is for; unlisted sections go everywhere. */
+const SECTION_SURFACES: Record<string, readonly Surface[]> = {
+  'When not to plan': ['home', 'canvas'],
+  'Shots are fields, not prose': ['home', 'canvas'],
+  Continuity: ['home', 'canvas'],
+  'Plans (`propose.plan`)': ['home', 'canvas'],
+  'Graph patches (`propose.graphPatch`)': ['canvas'],
+  'Timeline patches (`propose.timelinePatch`)': ['editor'],
+  'Tool forms (`propose.fields`)': ['tool'],
+};
+
+const promptCache = new Map<Surface, string>();
+
+/** The system prompt without the sections for tools this surface does not have. */
+export function systemPromptFor(surface: Surface): string {
+  let out = promptCache.get(surface);
+  if (out === undefined) {
+    out = SYSTEM_PROMPT.split(/^(?=# )/m)
+      .filter((section) => {
+        const heading = /^# (.+)$/m.exec(section)?.[1]?.trim() ?? '';
+        const surfaces = SECTION_SURFACES[heading];
+        return !surfaces || surfaces.includes(surface);
+      })
+      .join('')
+      .trim();
+    promptCache.set(surface, out);
+  }
+  return out;
 }
 
 export interface BuiltContext {
@@ -147,7 +177,9 @@ export async function buildContext(args: {
 
   const skill = thread.skill ? SKILL_PROMPTS[thread.skill] : undefined;
   const accountText = `# Account\n${JSON.stringify(accountView(account))}\nReply language: ${languageName(account.language)}.`;
-  const fixed = [SYSTEM_PROMPT, skill ? `# Active skill\n${skill}` : '', accountText, settingsSection(input.settings) ?? ''].filter(Boolean).join('\n\n');
+  // Home plans choose video models every time: listing them here saves the models.capabilities round trip.
+  const modelsText = thread.surface === 'home' ? await videoModelsSection({ ports, account, thread: { projectId: thread.projectId, canvasId: thread.canvasId, surface: thread.surface } }) : '';
+  const fixed = [systemPromptFor(thread.surface), skill ? `# Active skill\n${skill}` : '', accountText, modelsText, settingsSection(input.settings) ?? ''].filter(Boolean).join('\n\n');
   let used = estimateTokens(fixed);
 
   const userText = truncateToTokens(input.text, 4_000);

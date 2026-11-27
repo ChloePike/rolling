@@ -9,7 +9,7 @@ import { ScriptedLlm, testIds } from '../src/testkit';
 import { ALL_CASES, BRIEFS, BRIEFS_V2, CANVAS_CASES_V2, GRADER_IDS, NARRATION, oracleSteps, runCase, scorecard, sentRun, sharedPhrase, threadFor, TIMELINE_CASES, type EvalCase, type Grade } from './index';
 import type { PlanBody } from '../src/types';
 import { applyGraphOps } from '@rolling/core/project';
-import { evalPorts, evalWorld } from './world';
+import { evalPorts, evalWorld, PRODUCT_PHOTO } from './world';
 
 describe('eval set', () => {
   it('has 40 golden briefs and the section 8 timeline cases', () => {
@@ -34,8 +34,9 @@ describe('scripted eval run', () => {
     // Every grader that applies passes: structure, shots as fields, continuity, lengths, pills, per-model prompt format,
     // cost, reply text, no narration, mature routing.
     expect(run.grades.filter((g) => !g.pass).map((g) => `${g.grader}: ${g.failures.join(' | ')}`)).toEqual([]);
-    const refusedOnce = c.kind === 'text' && c.expect.behavior === 'mature_off';
-    expect(run.result.retries).toBe(broken || refusedOnce ? 1 : 0);
+    expect(run.result.retries).toBe(broken ? 1 : 0);
+    // D-005: adult content with mature content off is answered without tools.
+    if (c.kind === 'text' && c.expect.behavior === 'mature_off') expect(run.result).toMatchObject({ reason: 'completed', toolCalls: 0, proposal: null });
   });
 });
 
@@ -175,7 +176,48 @@ describe('plan checks send the agent back with what to fix', () => {
 
   it('cast: unknown names and characters left out of cast', async () => {
     expect((await run(plan({}, { cast: ['Leo'] }))).error).toMatch(/cast "Leo" is not in this option's characters \(Maya\)/);
-    expect((await run(plan({}, { cast: [] }))).error).toMatch(/Maya appears in the shot but is not in cast/);
+  });
+
+  it('a character named in a shot is listed in its cast by the server, and the option model covers its shots', async () => {
+    const world = evalWorld();
+    const args = { seconds: 10, options: [0, 1].map((k) => ({ title: `O${k}`, ratio: '9:16', model: 'bytedance/seedance-2.5', characters: [{ name: 'Maya', look: 'woman in her thirties, short black hair' }], shots: [0, 1].map(() => ({ title: 'A', seconds: 5, subject: 'Maya holding a bottle on a rock', action: 'Maya twists the cap off' })) })) };
+    const r = await runTurn({ llm: new ScriptedLlm([{ toolCalls: [{ name: 'propose.plan', args }] }]), ports: evalPorts(world), thread: threadFor(c), input: { text: 'A 10 second ad for sparkling water.', refs: [], selection: [] }, turnId: 't', newId: testIds() });
+    expect(r.trace[0]).toMatchObject({ ok: true });
+    const shot0 = (r.proposal!.body as PlanBody).options[0]!.shots[0]!;
+    expect(shot0.model).toBe('bytedance/seedance-2.5');
+    expect(shot0.shot?.characters?.map((x) => x.name)).toEqual(['Maya']);
+    const none = { ...args, options: args.options.map(({ model: _m, ...o }) => o) };
+    const r2 = await runTurn({ llm: new ScriptedLlm([{ toolCalls: [{ name: 'propose.plan', args: none }] }, { text: 'x' }]), ports: evalPorts(world), thread: threadFor(c), input: { text: 'A 10 second ad.', refs: [], selection: [] }, turnId: 't', newId: testIds() });
+    expect(r2.trace[0]!.error).toMatch(/options\[0\]: set model on the option/);
+  });
+
+  it('pacing: a long silent shot in a cut is refused unless the brief sets the cut; ambience on a silent model is dropped', async () => {
+    const long = plan({}, { seconds: 10 }, 20);
+    long.options.forEach((o) => (o.shots = o.shots.slice(0, 2)));
+    expect((await run(long, { text: 'A 20 second ad for sparkling water.' })).error).toMatch(/10 s without speech holds one beat too long/);
+    expect(await run(long, { text: 'A 20 second ad for sparkling water in two shots.' })).toMatchObject({ ok: true });
+    expect(await run(plan({}, { sound: 'cap pop', model: 'minimax/minimax-h3' }))).toMatchObject({ ok: true });
+  });
+
+  it('products are objects: no outfit wording, a product reference picture, and none when the user gave a photo', async () => {
+    const world = evalWorld();
+    const bottle = { name: 'Bottle', kind: 'object', look: 'green glass bottle with a white label', wardrobe: 'cap on' };
+    const args = { seconds: 10, options: [0, 1].map((k) => ({ title: `O${k}`, ratio: '9:16', model: 'bytedance/seedance-2.5', characters: [bottle], shots: [0, 1].map(() => ({ title: 'A', seconds: 5, subject: 'Bottle on a rock', action: 'Mist drifts past the Bottle' })) })) };
+    const turn = (refs: string[]) => runTurn({ llm: new ScriptedLlm([{ toolCalls: [{ name: 'propose.plan', args }] }]), ports: evalPorts(world), thread: threadFor(c), input: { text: 'A 10 second ad for sparkling water.', refs, selection: [] }, turnId: 't', newId: testIds() });
+    const plain = (await turn([])).proposal!.body as PlanBody;
+    const sheet = plain.options[0]!.ops.find((o) => o.op === 'addNode' && o.tempId === 'char1')!;
+    expect(sheet).toMatchObject({ title: 'Product: Bottle' });
+    const applied = applyGraphOps({ revision: 0, nodes: [], edges: [], groups: [] }, plain.options[0]!.ops, { actor: 'agent' });
+    if (!applied.ok) throw new Error('plan does not apply');
+    const sent = await sentRun(applied.state, world.account);
+    const sheetPrompt = sent.prompts.find((p) => p.title === 'Product: Bottle')!.prompt;
+    expect(sheetPrompt).toContain('Bottle (green glass bottle with a white label; cap on), the whole object alone in the frame');
+    expect(sheetPrompt).not.toMatch(/wearing|head to toe|pose/);
+    expect(sent.prompts.find((p) => p.title.startsWith('Keyframe 1:'))!.prompt.startsWith('Image 1 is Bottle: keep its shape, materials, colors and markings identical.')).toBe(true);
+    // With the user's product photo in the turn, the photo is the reference: no sheet drawn from words.
+    const withPhoto = (await turn([PRODUCT_PHOTO.id])).proposal!.body as PlanBody;
+    expect(withPhoto.options[0]!.ops.some((o) => o.op === 'addNode' && o.tempId.startsWith('char'))).toBe(false);
+    expect(withPhoto.options[0]!.ops.filter((o) => o.op === 'connect' && o.to.port === 'refs')).toHaveLength(2);
   });
 
   it('speech needs a model with audio and has to fit the shot', async () => {

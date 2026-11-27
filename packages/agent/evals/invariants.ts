@@ -75,7 +75,7 @@ function checkGraph(c: GraphCase, r: TurnResult): string[] {
   if (c.expect.onlyTouch) {
     // Keeping the script node in step with a shot change is fine.
     const scripts = new Set(base.nodes.filter((n) => n.kind === 'script').map((n) => n.id));
-    const extra = [...touched].filter((id) => !c.expect.touch.includes(id) && !scripts.has(id));
+    const extra = [...touched].filter((id) => !c.expect.touch.includes(id) && !c.expect.alsoTouch?.includes(id) && !scripts.has(id));
     if (extra.length || body.touched.added.length) f.push(`also changes ${[...extra, ...body.touched.added].join(', ')}`);
   }
   for (const p of c.expect.params ?? []) {
@@ -96,7 +96,7 @@ function checkGraph(c: GraphCase, r: TurnResult): string[] {
       }
       const changed = [...new Set([...Object.keys(before), ...Object.keys(after)])].filter((k) => JSON.stringify(before[k]) !== JSON.stringify(after[k]));
       for (const k of c.expect.shotFields) if (!changed.includes(k)) f.push(`${id}: shot.${k} not changed`);
-      const extra = changed.filter((k) => !c.expect.shotFields!.includes(k));
+      const extra = changed.filter((k) => !c.expect.shotFields!.includes(k) && !c.expect.mayChange?.includes(k));
       if (extra.length) f.push(`${id}: also changes shot.${extra.join(', shot.')}`);
     }
   }

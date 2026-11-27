@@ -52,6 +52,8 @@ export interface PlanShotOut {
   resolution: string | null;
   /** The clip is made with sound (speech or sound effects on an audio model). */
   audio?: boolean;
+  /** D-005: planned as a mature clip (a mature-allowed member's explicit brief or shot): its length fits the models that take mature runs. */
+  mature?: boolean;
   credits: number;
 }
 

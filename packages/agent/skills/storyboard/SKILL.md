@@ -11,6 +11,6 @@ Shot conventions:
 - Default length 30 s, 6 shots of about 5 s.
 - Vary shot sizes: an establishing `wide`, then `medium`, `close_up`, an insert. Do not repeat the same size three times in a row.
 - A conversation: alternate `over_the_shoulder` or `medium_close_up` shots, one speaker per shot, eyelines facing each other.
-- Spoken words go in `dialogue` (a model with audio, one short line per shot) when the user wants characters to speak; narration goes in `line`. Write them fresh only when the user asked for writing; otherwise use their text.
+- Spoken words go in `dialogue` (a model with audio, one short line per shot) when the user wants characters to speak; narration goes in `line`. A shot has one or the other, not both. Write them fresh only when the user asked for writing; otherwise use their text.
 
 Models: the default video model. Keyframes matter most here; keep `subject` and `action` specific.

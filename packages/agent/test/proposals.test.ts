@@ -75,7 +75,7 @@ describe('propose.plan', () => {
   });
 
   it('refuses lengths a model does not take, with the allowed range', async () => {
-    const res = await runPropose('propose.plan', { seconds: 4, options: [{ title: 'A', ratio: '16:9', shots: [shot('Hook', 3)] }, { title: 'B', ratio: '16:9', shots: [shot('Hook', 4)] }] }, ctx('home'));
+    const res = await runPropose('propose.plan', { seconds: 6, options: [{ title: 'A', ratio: '16:9', shots: [shot('Hook', 3), shot('End', 3)] }, { title: 'B', ratio: '16:9', shots: [shot('Hook', 6)] }] }, ctx('home'));
     expect(res.ok).toBe(false);
     if (res.ok) return;
     expect(res.error).toContain('from 4 to 15');
@@ -124,7 +124,7 @@ describe('propose.plan', () => {
   });
 
   it('flags estimates above the balance and the confirm threshold', async () => {
-    const res = await runPropose('propose.plan', { seconds: 30, options: [{ title: 'A', ratio: '16:9', shots: [shot('x', 15), shot('y', 15)] }, { title: 'B', ratio: '16:9', shots: [shot('z', 15), shot('w', 15)] }] }, ctx('home', {}, { balance: { plan: 100, purchased: 0, held: 0 } }));
+    const res = await runPropose('propose.plan', { seconds: 30, options: [{ title: 'A', ratio: '16:9', shots: [shot('x', 8), shot('y', 8), shot('x2', 7), shot('y2', 7)] }, { title: 'B', ratio: '16:9', shots: [shot('z', 8), shot('w', 8), shot('z2', 7), shot('w2', 7)] }] }, ctx('home', {}, { balance: { plan: 100, purchased: 0, held: 0 } }));
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     const opt = (res.proposal.body as PlanBody).options[0]!;
@@ -269,7 +269,7 @@ describe('plan length and budget checks', () => {
   });
 
   it('refuses plans where every option is over the balance but a cheaper one would fit', async () => {
-    const res = await runPropose('propose.plan', { seconds: 30, options: [{ title: 'A', ratio: '16:9', resolution: '1080p', shots: [shot('a', 15), shot('b', 15)] }, { title: 'B', ratio: '16:9', resolution: '1080p', shots: [shot('c', 15), shot('d', 15)] }] }, ctx('home', {}, { balance: { plan: 800, purchased: 0, held: 0 } }));
+    const res = await runPropose('propose.plan', { seconds: 30, options: [{ title: 'A', ratio: '16:9', resolution: '1080p', shots: [shot('a', 8), shot('b', 8), shot('a2', 7), shot('b2', 7)] }, { title: 'B', ratio: '16:9', resolution: '1080p', shots: [shot('c', 8), shot('d', 8), shot('c2', 7), shot('d2', 7)] }] }, ctx('home', {}, { balance: { plan: 800, purchased: 0, held: 0 } }));
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error).toMatch(/every option costs more than the available 800 credits/);
   });
@@ -284,5 +284,148 @@ describe('suggestSplit', () => {
     expect(suggestSplit(30, [seedance], 8)).toEqual([5, 5, 4, 4, 4, 4, 4]);
     expect(suggestSplit(6, [{ min: 2, max: 30 }], 3)).toEqual([2, 2, 2]);
     expect(suggestSplit(3, [seedance], 1)).toBeNull();
+  });
+});
+
+describe('lenient plan input (what the live model gets wrong, fixed by the server instead of a retry)', () => {
+  it('makes shot lengths add up when they are close, inside the model range and the pacing limit', async () => {
+    const { fitShotSeconds } = await import('../src/proposals');
+    const range = { min: 4, max: 15 };
+    const s = (seconds: number, words = 0) => ({ seconds, words, range });
+    expect(fitShotSeconds([s(5), s(5), s(5), s(5), s(5)], 30)).toEqual([6, 6, 6, 6, 6]);
+    expect(fitShotSeconds([s(6), s(6), s(6), s(6), s(6)], 30)).toBeNull();
+    expect(fitShotSeconds([s(7), s(7), s(6)], 15)).toEqual([5, 5, 5]);
+    // Never below the model minimum, never more than 2 s per shot, never under what a spoken line needs.
+    expect(fitShotSeconds([s(4), s(4)], 6)).toBeNull();
+    expect(fitShotSeconds([s(5), s(5)], 20)).toBeNull();
+    expect(fitShotSeconds([s(6, 18), s(6)], 9)).toBeNull();
+    expect(fitShotSeconds([{ seconds: 4, words: 0, range: { min: 5, max: 8, allowed: [5, 8] } }], 8)).toBeNull();
+    const res = await runPropose('propose.plan', { seconds: 30, options: [0, 1].map((k) => ({ title: `O${k}`, ratio: '16:9', shots: [1, 2, 3, 4, 5].map((n) => shot(`s${n}`, 5)) })) }, ctx('home'));
+    expect(res.ok).toBe(true);
+    if (res.ok) expect((res.proposal.body as PlanBody).options[0]!.shots.map((x) => x.seconds)).toEqual([6, 6, 6, 6, 6]);
+  });
+
+  it('maps camera words outside the lists and drops the ones it cannot place', async () => {
+    const { normalizeCamera } = await import('../src/proposals');
+    const cam = (c: Record<string, unknown>) => (normalizeCamera(c), c);
+    expect(cam({ size: 'over_the_shoulder', move: 'dolly_in' })).toEqual({ angle: 'over_the_shoulder', move: 'push_in' });
+    expect(cam({ size: 'Two Shot', angle: 'top-down', move: 'whip' })).toEqual({ size: 'medium', angle: 'overhead' });
+    expect(cam({ size: 'close_up', angle: 'eye_level', move: 'static', lens: '85mm' })).toEqual({ size: 'close_up', angle: 'eye_level', move: 'static', lens: '85mm' });
+  });
+
+  it('rebuilds a wrong closing tail of a stringified list, and says plainly when a list is still text', async () => {
+    const { decodeJsonStrings } = await import('../src/proposals');
+    expect(decodeJsonStrings({ options: '[{"a":[{"b":1}]}]}]' })).toEqual({ options: [{ a: [{ b: 1 }] }] });
+    expect(decodeJsonStrings({ options: '[{"a":[{"b":"x]}"}]' })).toEqual({ options: [{ a: [{ b: 'x]}' }] }] });
+    const res = await runPropose('propose.plan', { seconds: 6, options: '[{"title": "A", "shots": [{"title": }]' }, ctx('home'));
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toMatch(/"options" must be a JSON array, not text/);
+  });
+
+  it('holds one option to a credit budget the brief names', async () => {
+    const { budgetOf } = await import('../src/proposals');
+    expect(budgetOf('Keep the whole thing under 600 credits.')).toBe(600);
+    expect(budgetOf('max 1,200 credits please')).toBe(1200);
+    expect(budgetOf('a 15 second ad')).toBeNull();
+    const plan = { seconds: 15, options: [0, 1].map((k) => ({ title: `O${k}`, ratio: '16:9', shots: [shot('a', 5), shot('b', 5), shot('c', 5)] })) };
+    const res = await runPropose('propose.plan', plan, { ...ctx('home'), userText: '15 second ad, keep it under 100 credits' });
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toMatch(/the brief asks for at most 100 credits but the cheapest option costs \d+/);
+  });
+
+  it('D-005: every shot of an explicit brief from a mature-allowed member is checked against the mature lengths', async () => {
+    const { matureSplit } = await import('../src/proposals');
+    const c = ctx('home', {}, { matureAllowed: true });
+    expect(matureSplit(10, c.ports.models)).toEqual({ n: 2, seconds: 5 });
+    expect(matureSplit(8, c.ports.models)).toEqual({ n: 1, seconds: 8 });
+    // The shots use no rule term themselves; the brief makes them mature clips.
+    const plan = (seconds: number[]) => ({ seconds: 10, options: [0, 1].map((k) => ({ title: `O${k}`, ratio: '16:9', shots: seconds.map((s, i) => shot(`s${i}`, s)) })) });
+    const bad = await runPropose('propose.plan', plan([4, 6]), { ...c, userText: 'A 10 second explicit sex scene between two fictional adults.' });
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) expect(bad.error).toMatch(/mature clips run on models that take 5 or 8 seconds, not 4.*could use 2 shots of 5 seconds/);
+    const good = await runPropose('propose.plan', plan([5, 5]), { ...c, userText: 'A 10 second explicit sex scene between two fictional adults.' });
+    expect(good.ok).toBe(true);
+    if (good.ok) expect((good.proposal.body as PlanBody).options[0]!.shots.every((s) => s.mature)).toBe(true);
+  });
+});
+
+describe('shot fields the composer can use', () => {
+  const fields = (over: Record<string, unknown> = {}) => ({ title: 'A', seconds: 5, subject: 'Beans tumbling inside a drum roaster', action: 'The beans roll as the drum turns', ...over });
+  const plan = (shotOver: Record<string, unknown> = {}, optionOver: Record<string, unknown> = {}) => ({
+    seconds: 10,
+    options: [0, 1].map((k) => ({ title: `O${k}`, ratio: '16:9', model: 'bytedance/seedance-2.5', characters: [{ name: 'Roaster', look: 'man in his forties, short beard, no glasses', wardrobe: 'canvas apron, no jewelry' }], shots: [fields(shotOver), fields(shotOver)], ...optionOver })),
+  });
+
+  it('leaves out clauses that only say what is absent, and keeps a namesake noun out of the cast', async () => {
+    const { dropNegatedClauses } = await import('../src/proposals');
+    expect(dropNegatedClauses('seamless grey studio backdrop, no props')).toBe('seamless grey studio backdrop');
+    expect(dropNegatedClauses('hard neon tubes, magenta and green, no fill')).toBe('hard neon tubes, magenta and green');
+    expect(dropNegatedClauses('no props')).toBe('no props');
+    expect(dropNegatedClauses('Wei answers without raising his voice')).toBe('Wei answers without raising his voice');
+    const res = await runPropose('propose.plan', plan({ setting: 'roastery at sunrise, no people' }), ctx('home'));
+    expect(res.ok, res.ok ? '' : res.error).toBe(true);
+    if (!res.ok) return;
+    const option = (res.proposal.body as PlanBody).options[0]!;
+    expect(option.characters).toEqual([{ name: 'Roaster', look: 'man in his forties, short beard', wardrobe: 'canvas apron' }]);
+    expect(option.shots[0]!.shot).toMatchObject({ setting: 'roastery at sunrise' });
+    // "a drum roaster" is the machine, not the man called Roaster.
+    expect(option.shots[0]!.shot?.characters).toBeUndefined();
+  });
+
+  it('asks for English in the descriptive fields; speech and captions keep their language', async () => {
+    const zh = await runPropose('propose.plan', plan({ subject: '小雨站在便利店门口' }), ctx('home'));
+    expect(zh.ok).toBe(false);
+    if (!zh.ok) expect(zh.error).toMatch(/write subject, action, setting, lighting, look and the characters' look in English/);
+    const ok = await runPropose('propose.plan', plan({ line: '雨下了一整夜。', title: '雨夜' }), ctx('home'));
+    expect(ok.ok, ok.ok ? '' : ok.error).toBe(true);
+  });
+});
+
+describe('shots shorter than the model takes', () => {
+  const short = (model: string | undefined, over: Record<string, unknown> = {}) => ({ seconds: 6, options: [0, 1].map((k) => ({ title: `O${k}`, ratio: '1:1', ...(model ? { model } : {}), shots: [0, 1].map((i) => ({ title: `s${i}`, seconds: 3, subject: 'A sneaker on a black floor', action: 'The sneaker lands and settles', ...over })) })) });
+
+  it('moves the option to the cheapest listed model that takes the lengths, unless the user picked the model', async () => {
+    const res = await runPropose('propose.plan', short('bytedance/seedance-2.5'), ctx('home'));
+    expect(res.ok, res.ok ? '' : res.error).toBe(true);
+    if (res.ok) expect((res.proposal.body as PlanBody).options[0]!.shots.map((s) => `${s.model} ${s.seconds}`)).toEqual(['lumina/berry-1.0 3', 'lumina/berry-1.0 3']);
+    const picked = await runPropose('propose.plan', short('bytedance/seedance-2.5'), { ...ctx('home'), settings: { videoModel: 'bytedance/seedance-2.5' } });
+    expect(picked.ok).toBe(false);
+    if (!picked.ok) expect(picked.error).toContain('from 4 to 15');
+  });
+});
+
+describe('graph patches on planned shots', () => {
+  it('leaves out an update that changes nothing a node would generate (a camera move sent to a keyframe)', async () => {
+    const { shotGraph } = await import('../evals/world');
+    const world = evalWorld({ canvas: 'shots' });
+    const c = { ...ctx('canvas'), ports: evalPorts(world) };
+    expect(shotGraph().nodes.some((n) => n.id === 'node_key1')).toBe(true);
+    const res = await runPropose(
+      'propose.graphPatch',
+      { projectId: PROJECT_ID, baseRevision: 7, summary: 'Static camera', ops: ['node_key1', 'node_shot1'].map((nodeId) => ({ op: 'updateNode', nodeId, params: { shot: { camera: { move: 'static' } } } })) },
+      c,
+    );
+    expect(res.ok, res.ok ? '' : res.error).toBe(true);
+    if (!res.ok) return;
+    expect((res.proposal.body as GraphPatchBody).touched.updated).toEqual(['node_shot1']);
+    const none = await runPropose('propose.graphPatch', { projectId: PROJECT_ID, baseRevision: 7, summary: 'x', ops: [{ op: 'updateNode', nodeId: 'node_key1', params: { shot: { camera: { move: 'static' } } } }] }, c);
+    expect(none.ok).toBe(false);
+    if (!none.ok) expect(none.error).toMatch(/these ops change nothing/);
+  });
+});
+
+describe('timeline: cut to a length', () => {
+  it('plans the cut on the server from one cutTo op and stores the real ops', async () => {
+    const c = ctx('editor');
+    const res = await runPropose('propose.timelinePatch', { canvasId: CANVAS_ID, baseRevision: 3, summary: 'Cut to 10 s', ops: [{ op: 'cutTo', seconds: 10 }] }, c);
+    expect(res.ok, res.ok ? '' : res.error).toBe(true);
+    if (!res.ok) return;
+    const body = res.proposal.body as TimelinePatchBody;
+    expect(body.durationAfter).toBe(10);
+    expect(body.ops.length).toBeGreaterThan(1);
+    expect(body.ops.every((o) => (o.op as string) !== 'cutTo')).toBe(true);
+    const longer = await runPropose('propose.timelinePatch', { canvasId: CANVAS_ID, baseRevision: 3, summary: 'x', ops: [{ op: 'cutTo', seconds: 40 }] }, c);
+    expect(longer.ok).toBe(false);
+    if (!longer.ok) expect(longer.error).toMatch(/cutTo 40: the cut is 15 s long/);
   });
 });

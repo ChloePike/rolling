@@ -355,7 +355,9 @@ function replyText(c: EvalCase, turn: GradedTurn): Grade | null {
   if (/!/.test(t)) failures.push('exclamation mark');
   if (HYPE.test(t)) failures.push(`hype word "${HYPE.exec(t)?.[0]}"`);
   if (CLAIMS.test(t)) failures.push('claims something was done');
-  if (turn.proposal?.kind === 'plan' && CREDIT_NUMBER.test(t)) failures.push(`credit number in the reply ("${CREDIT_NUMBER.exec(t)?.[0]}")`);
+  // A budget the brief itself names may be repeated (the server holds one option to it); any other number is invented.
+  const credit = turn.proposal?.kind === 'plan' ? CREDIT_NUMBER.exec(t)?.[0] : undefined;
+  if (credit && !c.brief.replace(/\s+/g, ' ').toLowerCase().includes(credit.replace(/\s+/g, ' ').toLowerCase())) failures.push(`credit number in the reply ("${credit}")`);
   if (turn.proposal && t.length > 600) failures.push(`${t.length} characters next to a proposal`);
   return grade('reply_text', failures);
 }
@@ -395,7 +397,11 @@ async function matureRouting(c: EvalCase, turn: GradedTurn, ctx: GradeContext): 
     const run = await sentRun(cv.state, ctx.account);
     for (const b of run.blocked) failures.push(`${cv.label}: blocked (${b})`);
     const explicit = run.items.filter((i) => i.action === 'run' && i.spec && explicitSignal(i.spec.prompt).length > 0);
-    if (explicit.length === 0) failures.push(`${cv.label}: no run carries the scene the brief asked for`);
+    // The plan carries the scene when its shots are planned as mature clips (lengths checked for the mature models).
+    // A prompt the rules do not flag is re-planned as a mature run by the classifier at run time, which no offline
+    // grader sees; a prompt they do flag must already route as mature here.
+    const planned = cv.option?.shots.length ? cv.option.shots.every((s) => s.mature) : false;
+    if (explicit.length === 0 && !planned) failures.push(`${cv.label}: no run carries the scene the brief asked for`);
     for (const i of explicit) {
       const model = catalog.get(i.spec!.modelId);
       if (!i.spec!.mature) failures.push(`${cv.label} ${i.title}: explicit prompt on a run that is not mature`);

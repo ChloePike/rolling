@@ -13,7 +13,7 @@ function thread(over: Partial<ThreadState> = {}): ThreadState {
 const plan = {
   seconds: 15,
   options: [
-    { title: 'Riverside', ratio: '9:16', shots: [{ title: 'Hook', seconds: 5, visual: 'Bottle on a rock', model: 'bytedance/seedance-2.5' }, { title: 'Logo', seconds: 10, visual: 'Logo', model: 'bytedance/seedance-2.5' }] },
+    { title: 'Riverside', ratio: '9:16', shots: [{ title: 'Hook', seconds: 7, visual: 'Bottle on a rock', model: 'bytedance/seedance-2.5' }, { title: 'Logo', seconds: 8, visual: 'Logo', model: 'bytedance/seedance-2.5' }] },
     { title: 'Kitchen', ratio: '9:16', shots: [{ title: 'Pour', seconds: 15, visual: 'Pour', model: 'bytedance/seedance-2.0-mini' }] },
   ],
 };
@@ -153,5 +153,43 @@ describe('runTurn', () => {
     expect(req.tools?.map((t) => t.name)).toEqual(expect.arrayContaining(['canvas.get', 'propose.graphPatch']));
     expect(req.model).toBe('anthropic/claude-haiku-5.5');
     expect(req.reasoningEffort).toBeUndefined();
+  });
+});
+
+describe('responses that are cut off or empty', () => {
+  it('asks once for a shorter call when the output limit cut the tool call off', async () => {
+    const cut = (): ScriptedReply => () => ({ text: '' });
+    const llm = new ScriptedLlm([cut(), { text: 'Two options.', toolCalls: [{ name: 'propose.plan', args: plan }] }]);
+    // The scripted LLM reports `stop`; a cut-off response reports `length` with no tool call.
+    const original = llm.chat.bind(llm);
+    let n = 0;
+    llm.chat = (req) => {
+      const first = n++ === 0;
+      const inner = original(req);
+      return (async function* () {
+        for await (const ev of inner) yield first && ev.type === 'done' ? { ...ev, finishReason: 'length' } : ev;
+      })();
+    };
+    const result = await runTurn({ llm, ports: evalPorts(evalWorld()), thread: thread(), input: { text: 'A 15 second ad', refs: [], selection: [] }, turnId: 't', newId: testIds() });
+    expect(result.reason).toBe('proposal');
+    expect(result.trace[0]).toMatchObject({ name: 'llm', ok: false, error: 'response cut off at the output limit' });
+    expect(llm.requests[1]!.messages.at(-1)!.content).toMatch(/cut off at the output limit/);
+    expect(llm.requests[0]!.maxTokens).toBe(8000);
+  });
+
+  it('asks again after an empty response, twice at most, then ends the turn', async () => {
+    const { result, llm } = await turn([{ text: '' }, { text: '' }, { text: '' }, { text: 'never reached' }]);
+    expect(llm.requests).toHaveLength(3);
+    expect(result.reason).toBe('completed');
+    expect(llm.requests[1]!.messages.at(-1)!.content).toMatch(/Your last message was empty/);
+  });
+
+  it('D-005: adult content with mature content off runs without tools and proposes nothing', async () => {
+    const { result, llm } = await turn([{ text: 'Mature content is off for this account; it can be turned on in Settings.', toolCalls: [{ name: 'propose.plan', args: plan }] }], {
+      input: { text: 'A 10 second explicit sex scene between two fictional adults.', refs: [], selection: [] },
+    });
+    expect(llm.requests[0]!.toolChoice).toBe('none');
+    expect(llm.requests[0]!.messages[0]!.content).toMatch(/# This turn\nThe brief asks for adult content and mature content is off/);
+    expect(result).toMatchObject({ reason: 'completed', proposal: null, text: 'Mature content is off for this account; it can be turned on in Settings.' });
   });
 });

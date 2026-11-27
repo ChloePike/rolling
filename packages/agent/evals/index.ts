@@ -4,6 +4,7 @@
  * invariants.
  */
 import type { LlmProvider } from '@rolling/core';
+import type { SafetyGate } from '@rolling/core/safety';
 import { planCutTo } from '@rolling/core/timeline';
 import type { ThreadState } from '../src/context';
 import { runTurn, type TurnResult } from '../src/loop';
@@ -45,9 +46,9 @@ export function threadFor(c: EvalCase): ThreadState {
   };
 }
 
-export async function runCase(c: EvalCase, llm: LlmProvider, opts: { world?: MemoryWorld; llmId?: string } = {}): Promise<CaseRun> {
+export async function runCase(c: EvalCase, llm: LlmProvider, opts: { world?: MemoryWorld; llmId?: string; safety?: SafetyGate } = {}): Promise<CaseRun> {
   const world = opts.world ?? evalWorld({ account: c.account ?? {}, editor: c.surface === 'editor', ...(c.canvas ? { canvas: c.canvas } : {}) });
-  const ports = evalPorts(world);
+  const ports = { ...evalPorts(world), ...(opts.safety ? { safety: opts.safety } : {}) };
   const result = await runTurn({
     llm,
     ports,
@@ -160,7 +161,8 @@ function oracleGraph(c: Extract<EvalCase, { kind: 'graphPatch' }>): unknown {
   const base = { projectId: PROJECT_ID, baseRevision: 7, summary: c.brief };
   switch (c.id) {
     case 'ed-01-warmer-shot':
-      return { ...base, ops: [{ op: 'updateNode', nodeId: 'node_shot2', params: { shot: { lighting: 'Warm golden morning light from the left' } } }] };
+      // The shot starts from its keyframe, so the light changes on the picture and on the clip.
+      return { ...base, ops: ['node_key2', 'node_shot2'].map((nodeId) => ({ op: 'updateNode', nodeId, params: { shot: { lighting: 'Warm golden morning light from the left' } } })) };
     case 'ed-02-static-camera':
       return { ...base, ops: [{ op: 'updateNode', nodeId: 'node_shot1', params: { shot: { camera: { move: 'static' } } } }] };
     case 'ed-03-new-action':
@@ -254,11 +256,9 @@ export function oracleSteps(c: EvalCase, world: MemoryWorld, broken = false, sty
           return [{ text: c.id === 'cl-02-contradiction' ? 'Ten shots of five seconds make 50 seconds, not 6: which length do you want?' : 'What should the video be about?' }];
         case 'refuse':
           return [{ text: 'never reached' }];
-        case 'mature_off': {
-          // An explicit plan is refused by the proposal gate; the agent then says so in a sentence.
-          const explicit = oraclePlan({ ...c, kind: 'plan', expect: { shots: [2, 2], seconds: 10, mature: true } } as PlanCase, false, style);
-          return [say('', 'propose.plan', explicit), { text: 'Mature content is off for this account, so I can’t plan this scene. You can turn it on in Settings.' }];
-        }
+        case 'mature_off':
+          // The turn runs without tools (`loop.ts`): the agent says in a sentence that mature content is off.
+          return [{ text: 'Mature content is off for this account, so I can’t plan this scene. You can turn it on in Settings.' }];
       }
       return [];
     case 'fields':

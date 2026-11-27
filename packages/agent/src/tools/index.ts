@@ -183,7 +183,7 @@ export const TOOLS: readonly ToolSpec[] = [
     name: 'models.capabilities',
     kind: 'read',
     description:
-      'Models the user can use for a kind, default first: id (use it exactly), modes, seconds range (whole seconds), resolutions this plan allows, ratios, audio (true = it can voice dialogue and sound), and creditsPer5s or creditsPerImage per resolution for comparing cost. Call it once before choosing models for a plan or a new node.',
+      'Models the user can use for a kind, default first: id (use it exactly), modes, seconds range (whole seconds), resolutions this plan allows, ratios, audio (true = it can voice dialogue and sound), and creditsPer5s or creditsPerImage per resolution for comparing cost. The context already lists the video models on Home; call this for image or avatar models, for ratios or modes, or before choosing a model for a new canvas node.',
     input: ModelsCapabilitiesInput,
     surfaces: ALL,
     run: modelsCapabilities as ToolSpec['run'],
@@ -228,7 +228,7 @@ export const TOOLS: readonly ToolSpec[] = [
     name: 'propose.plan',
     kind: 'propose',
     description:
-      'Propose 2-3 plan options for a brief. An option has a ratio, an optional look and characters shared by its shots, and shots made of fields (subject, action, setting, camera, lighting, cast, dialogue, sound, line) with whole seconds and a video model. The server writes each model\'s prompt from the fields, checks lengths, pacing, cast and the prompt box settings, prices every option and builds the nodes. An error names what to fix. Building nodes from a plan is free.',
+      'Propose 2-3 plan options for a brief. An option has a ratio, a video model, an optional look and characters shared by its shots, and shots made of fields (subject, action, setting, camera, lighting, cast, dialogue, sound, line) with whole seconds. The server writes each model\'s prompt from the fields, checks lengths, pacing, cast and the prompt box settings, prices every option and builds the nodes. An error names what to fix. Building nodes from a plan is free.',
     input: ProposePlanInput,
     surfaces: ['home', 'canvas'],
   },
@@ -264,7 +264,29 @@ export function accountView(a: AccountSnapshot) {
     confirmThreshold: a.confirmThreshold,
     creationMode: a.creationMode,
     language: a.language,
+    // D-005: whether this member may plan adult content. The safety gate decides; this tells the model which way to answer.
+    matureContent: a.matureAllowed ? 'on' : 'off',
   };
+}
+
+/**
+ * The video models as a few lines of context, default first, so a plan needs
+ * no `models.capabilities` call (one LLM call less per plan turn): id, whole
+ * seconds range, whether it makes sound, credits per 5 s per allowed resolution.
+ */
+export async function videoModelsSection(ctx: ToolContext): Promise<string> {
+  const { models } = await modelsCapabilities({ kind: 'video' }, ctx);
+  const lines = [...models]
+    .sort((a, b) => Number(!!b.default) - Number(!!a.default))
+    .map((m) => {
+      const credits = Object.entries((m as unknown as { creditsPer5s?: Record<string, number | null> }).creditsPer5s ?? {})
+        .filter(([, c]) => c !== null)
+        .map(([r, c]) => `${r} ${c}`)
+        .join(', ');
+      const notes = [m.default ? 'default' : '', m.audio ? 'audio' : 'silent', m.modes.includes('i2v') ? '' : 'text-to-video only', m.defaultResolution ? `default resolution ${m.defaultResolution}` : ''].filter(Boolean).join(', ');
+      return `${m.id} | ${Array.isArray(m.seconds) ? `${m.seconds.join(' or ')} s` : `${m.seconds ?? '?'} s`} | ${notes} | credits per 5 s: ${credits}`;
+    });
+  return `# Video models\nid | whole seconds per shot | notes | cost\n${lines.join('\n')}`;
 }
 
 export function toolsFor(surface: Surface): ToolSpec[] {

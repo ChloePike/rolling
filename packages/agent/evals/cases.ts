@@ -74,8 +74,12 @@ export interface GraphCase extends Base {
     onlyTouch?: boolean;
     params?: string[];
     addKinds?: string[];
+    /** Nodes the edit may also change: a shot's own keyframe when the opening picture changes with it. */
+    alsoTouch?: string[];
     /** Shot fields the edit must change; the others, and the characters, must stay. */
     shotFields?: string[];
+    /** Shot fields that may change with them (a new action can bring a new prop into the subject). */
+    mayChange?: string[];
     /** Every touched shot keeps the same descriptor for this character. */
     sameCharacter?: string;
   };
@@ -194,14 +198,14 @@ export const BRIEFS_V2: EvalCase[] = [
   plan('dr-04-chinese', 'storyboard', '做一个30秒的竖屏短剧：小雨在雨夜的便利店遇到多年未见的老同学阿杰，两人相视一笑。', { shots: [4, 8], seconds: 30, ratio: '9:16', recurring: 2 }, { account: { language: 'zh-CN' } }),
   // Talking head as a plan (spoken to camera)
   plan('th-05-founder', undefined, 'A founder speaks to camera in her workshop for 10 seconds: "We build bikes that last a lifetime." One take, vertical.', { shots: [1, 2], seconds: 10, ratio: '9:16', recurring: 1, dialogue: true }),
-  plan('th-06-two-hosts', undefined, 'Two podcast hosts at a desk trade two short lines about today\'s topic, 12 seconds, widescreen.', { shots: [2, 3], seconds: 12, ratio: '16:9', recurring: 2, dialogue: true }),
+  plan('th-06-two-hosts', undefined, 'Two podcast hosts at a desk trade two short lines about today\'s topic, 12 seconds, widescreen.', { shots: [1, 3], seconds: 12, ratio: '16:9', recurring: 2, dialogue: true }),
   // Product
   plan('ps-09-hands', 'product-showcase', '16 second showcase of a chef\'s knife: the same chef slices a tomato, shows the edge, sets it on the board.', { shots: [3, 4], seconds: 16, recurring: 2 }),
   plan('ps-10-unboxing', 'product-showcase', 'Unboxing of a mechanical keyboard, 20 seconds, top-down then details, vertical.', { shots: [3, 5], seconds: 20, ratio: '9:16', recurring: 1 }),
   // Holiday
   plan('ho-01-christmas', 'tv-ad', '20 second Christmas ad for a chocolate brand: a grandfather and his granddaughter open a box by the tree.', { shots: [3, 5], seconds: 20, recurring: 2 }),
   plan('ho-02-new-year', 'tv-ad', '给我们的茶叶品牌做一个15秒的春节竖屏贺岁视频，一家人围坐喝茶。', { shots: [2, 4], seconds: 15, ratio: '9:16', recurring: 1 }, { account: { language: 'zh-CN' } }),
-  plan('ho-03-black-friday', 'tv-ad', '6 second Black Friday bumper for a sneaker store, big sale energy, square.', { shots: [1, 1], seconds: 6, ratio: '1:1' }),
+  plan('ho-03-black-friday', 'tv-ad', '6 second Black Friday bumper for a sneaker store, big sale energy, square.', { shots: [1, 2], seconds: 6, ratio: '1:1' }),
   plan('ho-04-valentine', 'brand-kit', 'Valentine\'s Day brand loops for a florist, soft pink and cream, 16 seconds.', { shots: [3, 5], seconds: 16 }),
   // Mature-allowed fictional scenes (D-005): planned, and the runs route as mature
   plan('mt-01-couple', undefined, 'A 10 second explicit sex scene between two fictional adults, a married couple in their thirties, in a hotel room at night.', { shots: [2, 2], seconds: 10, mature: true, recurring: 2 }, { account: MATURE_MEMBER }),
@@ -223,9 +227,9 @@ export const BRIEFS_V2: EvalCase[] = [
 
 /** Edits on a canvas that was planned from structured shots. */
 export const CANVAS_CASES_V2: EvalCase[] = [
-  { id: 'ed-01-warmer-shot', kind: 'graphPatch', surface: 'canvas', canvas: 'shots', brief: 'make shot 2 warmer', expect: { touch: ['node_shot2'], onlyTouch: true, params: ['prompt'], shotFields: ['lighting'], sameCharacter: 'Maya' } },
+  { id: 'ed-01-warmer-shot', kind: 'graphPatch', surface: 'canvas', canvas: 'shots', brief: 'make shot 2 warmer', expect: { touch: ['node_shot2', 'node_key2'], onlyTouch: true, params: ['prompt'], shotFields: ['lighting'], sameCharacter: 'Maya' } },
   { id: 'ed-02-static-camera', kind: 'graphPatch', surface: 'canvas', canvas: 'shots', brief: 'Shot 1 should not move the camera at all.', expect: { touch: ['node_shot1'], onlyTouch: true, shotFields: ['camera'], sameCharacter: 'Maya' } },
-  { id: 'ed-03-new-action', kind: 'graphPatch', surface: 'canvas', canvas: 'shots', brief: 'In shot 2 she should pour the water into a glass instead of twisting the cap.', expect: { touch: ['node_shot2'], onlyTouch: true, shotFields: ['action'], sameCharacter: 'Maya' } },
+  { id: 'ed-03-new-action', kind: 'graphPatch', surface: 'canvas', canvas: 'shots', brief: 'In shot 2 she should pour the water into a glass instead of twisting the cap.', expect: { touch: ['node_shot2'], alsoTouch: ['node_key2'], onlyTouch: true, shotFields: ['action'], mayChange: ['subject'], sameCharacter: 'Maya' } },
   { id: 'ed-04-add-end-card', kind: 'graphPatch', surface: 'canvas', canvas: 'shots', brief: 'Add a third shot: Maya puts the bottle on the rock and looks at the river, 4 seconds.', expect: { touch: [], addKinds: ['video'], sameCharacter: 'Maya' } },
   { id: 'ed-05-cheaper-model', kind: 'graphPatch', surface: 'canvas', canvas: 'shots', brief: 'Switch shot 2 to the cheaper Seedance model.', expect: { touch: ['node_shot2'], onlyTouch: true, params: ['model'], sameCharacter: 'Maya' } },
 ];

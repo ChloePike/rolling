@@ -10,8 +10,8 @@ Workflow:
 Shot conventions:
 - Default length 16 s: 4 shots of 4 s.
 - Name the brand colors in the option's `look` (for example "deep green #0B3D2E and off-white, matte, minimal"); it is applied to every shot.
-- A product or mascot that appears more than once goes in `characters`.
-- End card: logo centered on a plain background, camera `static`, no other text.
+- A product or mascot that appears more than once goes in `characters` (kind `object` for a product).
+- End card: a plain background in the brand color, camera `static`. With an `@` logo the keyframe uses it as a reference; with none, leave the centre clear for the logo and do not invent a logo or a name.
 - No lines unless the user gives a tagline; then put it on the end card only.
 
 Models: the default video model; images use the default image model for keyframes.

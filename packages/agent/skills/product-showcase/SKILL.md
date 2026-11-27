@@ -9,9 +9,9 @@ Workflow:
 
 Shot conventions:
 - Default length 12 s, 3 shots of 4 s. 20 s: 4-5 shots.
-- The product goes in `characters` (look = shape, material, color, logo placement) and in every shot's `cast`: material, color and logo placement stay identical across shots.
+- The product goes in `characters` with kind `object` (look = shape, material, color, logo placement; no wardrobe) and in every shot's `cast`: material, color and logo placement stay identical across shots. Describe only what the brief or the product photo gives; do not invent a brand name or a logo.
 - Studio options: neutral or brand-colored background in `setting`, soft even light. Lifestyle options: a real setting.
 - Slow moves only: `orbit`, `push_in`, `truck_left` or `truck_right`, or `static` for macro details. No on-screen text in the picture.
-- Lines are optional; use short feature callouts.
+- Lines are optional: short callouts of features the brief names, never invented specifications.
 
 Models: the default video model; for 4-second macro shots a fast model is acceptable.

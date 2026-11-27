@@ -3,7 +3,7 @@
  * can send is checked with these before anything runs. Written with zod/v4 so
  * the JSON Schema sent to the model comes from the same definition.
  */
-import { CAMERA_ANGLES, CAMERA_MOVES, SHOT_SIZES } from '@rolling/core/prompting';
+import { CAMERA_ANGLES, CAMERA_MOVES, CHARACTER_KINDS, SHOT_SIZES } from '@rolling/core/prompting';
 import { z } from 'zod/v4';
 
 const Id = z.string().min(1).max(80);
@@ -72,31 +72,33 @@ export const ShotFieldsInput = {
   setting: z.string().max(300).optional().describe('Where and when, in English'),
   camera: ShotCameraInput.optional(),
   lighting: z.string().max(200).optional().describe('Light source, quality and color, in English'),
-  cast: z.array(z.string().min(1).max(40)).max(5).optional().describe('Names from characters that appear in this shot'),
+  cast: z.array(z.string().min(1).max(40)).max(5).optional().describe('Names from characters that this shot shows; leave out the ones it does not show'),
   dialogue: z.array(ShotDialogueInput).max(3).optional().describe('Words spoken on camera in this shot. Only on a model with audio; about 2 words per second'),
-  sound: z.string().max(200).optional().describe('Ambience and sound effects, in English. Only on a model with audio'),
-  text: z.string().max(80).optional().describe('On-screen text that must read exactly (a logo line, a sign)'),
+  sound: z.string().max(200).optional().describe('A sound the picture makes (a pour, a pop, footsteps), in English. Leave out for room tone. Only on a model with audio'),
+  text: z.string().max(80).optional().describe('On-screen words the user gave that must read exactly (their brand name, their tagline). Never an invented name, price or claim'),
 } as const;
 
 export const PlanShot = z.object({
   title: z.string().min(1).max(80),
-  seconds: z.number().positive().max(60).describe('Whole seconds inside the model range'),
+  seconds: z.number().positive().max(60).describe('Whole seconds inside the model range (most models: 4 to 15)'),
   ...ShotFieldsInput,
   visual: z.string().min(1).max(600).optional().describe(HIDDEN),
-  line: z.string().max(400).optional().describe('Voiceover or caption for this shot, in the user language; goes to the script and captions, not into the picture'),
-  model: Id.describe('Video model id, exactly as models.capabilities lists it'),
+  line: z.string().max(400).optional().describe('Voiceover or caption for this shot, in the user language; goes to the script and captions, not into the picture. Leave out on a shot with dialogue'),
+  model: Id.optional().describe('Only when this shot needs another model than the option'),
 });
 
 export const PlanCharacter = z.object({
-  name: z.string().min(1).max(40),
-  look: z.string().min(1).max(240).describe('Fixed look in English: age band, build, face, hair. Adults unless the user says otherwise'),
-  wardrobe: z.string().max(200).optional().describe('Outfit and props for this video, in English'),
+  name: z.string().min(1).max(40).describe('Short name in English letters (Maya, Tea bottle), used as is in subject, action and cast'),
+  kind: z.enum(CHARACTER_KINDS).optional().describe('person (default), animal, or object for a product, vehicle, logo or prop'),
+  look: z.string().min(1).max(240).describe('Fixed look in English, only what is visible. A person: age band, build, face, hair (adults unless the user says otherwise). An object: shape, material, color, label. Say what is there ("plain, unbranded"), never "no logo"'),
+  wardrobe: z.string().max(200).optional().describe('People: outfit and props for this video, in English. Leave out for objects'),
 });
 
 export const PlanOption = z.object({
   title: z.string().min(1).max(80),
   look: z.string().max(200).optional().describe('Look of the whole video in English (medium, palette, grade); applied to every shot'),
   characters: z.array(PlanCharacter).max(5).optional().describe('Recurring characters. Each is described once here and reused word for word in every shot that lists it in cast'),
+  model: Id.optional().describe('Video model id for every shot of this option, exactly as listed'),
   shots: z.array(PlanShot).min(1).max(12),
   estimate: z.number().int().nonnegative().optional().describe('Ignored: the server computes the estimate'),
   ratio: z.string().min(3).max(12).describe('Aspect ratio for every shot: 9:16 vertical, 16:9 widescreen, 1:1 square'),
@@ -159,6 +161,8 @@ export const AgentTimelineOp = z.discriminatedUnion('op', [
   // setFormat and replaceEdl (no media insertion or whole-cut rewrites from a chat turn).
   z.object({ op: z.literal('setSpeed'), clipId: ClipId, speed: z.number().min(0.25).max(4), reverse: z.boolean().optional() }),
   z.object({ op: z.literal('setFade'), clipId: ClipId, fadeIn: z.number().min(0).max(600) }),
+  // Not a core op: the server plans the cut (`core/timeline` planCutTo) and stores the trims and moves it makes.
+  z.object({ op: z.literal('cutTo'), seconds: z.number().positive().max(24 * 3600).describe('New total length. The server trims shot tails, closes the gaps and trims captions, voice and music that run past the end') }),
   z.object({
     op: z.literal('setTransition'),
     clipId: ClipId,

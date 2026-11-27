@@ -61,6 +61,26 @@ describe('buildContext', () => {
     expect(without.messages[0]!.content).not.toContain('# Prompt box settings');
   });
 
+  it('sends only the prompt sections a surface can use, lists the video models on Home and says whether mature content is on', async () => {
+    const world = evalWorld({ account: { matureAllowed: true } });
+    const build = (surface: ThreadState['surface']) => buildContext({ thread: thread({ surface, projectId: surface === 'home' || surface === 'tool' ? null : PROJECT_ID }), input: { text: 'hi', refs: [], selection: [] }, account: world.account, ports: evalPorts(world), tools: toolsFor(surface).map(toolDefinition) });
+    const [home, canvas, editor, tool] = (await Promise.all((['home', 'canvas', 'editor', 'tool'] as const).map(build))).map((c) => c.messages[0]!.content as string);
+    expect(home).toContain('# Plans (`propose.plan`)');
+    expect(home).not.toContain('# Graph patches');
+    expect(home).not.toContain('# Timeline patches');
+    expect(canvas).toContain('# Graph patches (`propose.graphPatch`)');
+    expect(editor).toContain('# Timeline patches (`propose.timelinePatch`)');
+    expect(editor).not.toContain('# Shots are fields');
+    expect(tool).toContain('# Tool forms (`propose.fields`)');
+    expect(tool).not.toContain('# Plans');
+    // One line per video model, default first: a Home plan needs no models.capabilities call.
+    expect(home).toMatch(/# Video models\n.*\nbytedance\/seedance-2\.5 \| 4-15 s \| default, audio, default resolution 480p \| credits per 5 s: 480p \d+/);
+    expect(home).toContain('minimax/minimax-h3 | 4-15 s | silent');
+    expect(canvas).not.toContain('# Video models');
+    expect(home).toContain('"matureContent":"on"');
+    expect(estimateTokens(home!)).toBeLessThan(estimateTokens(canvas!) + 600);
+  });
+
   it('keeps the last 12 messages verbatim plus the summary', async () => {
     const messages = Array.from({ length: 30 }, (_, i) => msg(i));
     const ctx = await buildContext({ thread: thread({ messages, summary: 'User wants a 15 s ad.' }), input: { text: 'next', refs: [], selection: [] }, account: world.account, ports, tools });
