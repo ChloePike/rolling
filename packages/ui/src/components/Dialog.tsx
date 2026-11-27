@@ -55,19 +55,29 @@ export function Dialog({
   const titleId = useId();
   const descId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
+  // Hosts often pass an inline `onOpenChange`; reading it through a ref keeps the effect below tied to `open` only,
+  // so a re-render never moves focus back to the first control or loses the element to restore focus to.
+  const onOpenChangeRef = useRef(onOpenChange);
+  onOpenChangeRef.current = onOpenChange;
+  // The element to give focus back to, read when the dialog starts opening: before a child's `autoFocus` moves it.
+  const restoreRef = useRef<HTMLElement | null>(null);
+  const wasOpen = useRef(false);
+  if (open && !wasOpen.current && typeof document !== 'undefined') restoreRef.current = document.activeElement as HTMLElement | null;
+  wasOpen.current = open;
 
   useEffect(() => {
     if (!open) return;
-    const previous = document.activeElement as HTMLElement | null;
     const panel = panelRef.current;
-    if (panel) (focusableIn(panel)[0] ?? panel).focus();
+    const previous = restoreRef.current && !panel?.contains(restoreRef.current) ? restoreRef.current : null;
+    // A control the host marked `autoFocus` keeps focus; otherwise the first control gets it.
+    if (panel && !panel.contains(document.activeElement)) (focusableIn(panel)[0] ?? panel).focus();
     const { overflow } = document.body.style;
     document.body.style.overflow = 'hidden';
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
-        onOpenChange(false);
+        onOpenChangeRef.current(false);
         return;
       }
       if (e.key !== 'Tab' || !panel) return;
@@ -90,9 +100,9 @@ export function Dialog({
     return () => {
       document.removeEventListener('keydown', onKeyDown);
       document.body.style.overflow = overflow;
-      previous?.focus?.();
+      if (previous?.isConnected) previous.focus();
     };
-  }, [open, onOpenChange]);
+  }, [open]);
 
   const presence = usePresence(open, duration.fast);
   if (!presence.mounted) return null;

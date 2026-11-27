@@ -124,6 +124,54 @@ describe('Dialog', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
+
+  it('keeps focus on the field being typed in when the host re-renders with a new onOpenChange, and restores focus on close', () => {
+    function Harness() {
+      const [open, setOpen] = useState(false);
+      const [text, setText] = useState('');
+      return (
+        <>
+          <button onClick={() => setOpen(true)}>open</button>
+          {/* An inline handler: a new function on every render. */}
+          <Dialog open={open} onOpenChange={(o) => setOpen(o)} title="Rename" closeLabel="Close">
+            <input aria-label="Name" value={text} onChange={(e) => setText(e.target.value)} />
+          </Dialog>
+        </>
+      );
+    }
+    render(<Harness />);
+    const opener = screen.getByText('open');
+    opener.focus();
+    fireEvent.click(opener);
+    const input = screen.getByRole('textbox', { name: 'Name' });
+    input.focus();
+    fireEvent.change(input, { target: { value: 'a' } });
+    fireEvent.change(input, { target: { value: 'ab' } });
+    expect(document.activeElement).toBe(input);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it('keeps a child’s autoFocus and still restores focus to the opener', () => {
+    function Harness() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button onClick={() => setOpen(true)}>open</button>
+          <Dialog open={open} onOpenChange={(o) => setOpen(o)} title="Preview" closeLabel="Close">
+            <button autoFocus>Use template</button>
+          </Dialog>
+        </>
+      );
+    }
+    render(<Harness />);
+    const opener = screen.getByText('open');
+    opener.focus();
+    fireEvent.click(opener);
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Use template' }));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(document.activeElement).toBe(opener);
+  });
 });
 
 describe('Popover', () => {
