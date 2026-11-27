@@ -76,6 +76,22 @@
   --m-move-toast:12px;
   /* Press: primary buttons only, 80ms, scale .97. */
   --m-press-scale:.97;
+  /* Agent-built nodes appear one after another, 150ms apart (handoff 7, node build). */
+  --m-build-stagger:150ms;
+  /* Skeletons stay hidden this long, so fast loads never flash a placeholder. */
+  --m-skeleton-delay:150ms;
+  /* Smoothing between live position updates (collaborators' cursors), linear. */
+  --m-follow:120ms;
+  /* Cross-fade between two media items (login showcase). */
+  --m-crossfade:600ms;
+  /* Status loops (not transitions): skeleton pulse, typing dots, spinner, indeterminate bar, splash cursor. */
+  --m-loop-pulse:1600ms;
+  --m-loop-typing:1200ms;
+  --m-loop-spin:800ms;
+  --m-loop-indeterminate:1600ms;
+  --m-loop-blink:1s;
+  /* Symmetric curve for status loops only. */
+  --m-ease-loop:cubic-bezier(.4,0,.6,1);
   /* Public motion API (handoff 7). Prefer these names in new code; --m-* stay as aliases. */
   --dur-instant:var(--m-instant);
   --dur-fast:var(--m-fast);
@@ -85,6 +101,9 @@
   --ease-standard:var(--m-ease-standard);
   --ease-exit:var(--m-ease-exit);
   --ease-spring:var(--m-ease-spring);
+  --ease-loop:var(--m-ease-loop);
+  /* Longest fade under reduced motion; --dur-slow, --dur-brand and the cross-fade collapse to it. */
+  --dur-reduced:var(--m-base);
   /* Extra surfaces used by the approved screens. */
   --c-surface-7:#333338;
   --c-control-off:#3A3A40;
@@ -520,6 +539,11 @@
     --m-scale-min:1;
     --m-press-scale:1;
     --m-stagger:0ms;
+    --m-build-stagger:0ms;
+    /* Fades only, none longer than --dur-reduced (200ms). */
+    --m-slow:var(--m-base);
+    --m-brand:var(--m-base);
+    --m-crossfade:var(--m-base);
   }
   :where(*:not([data-motion])),:where(*:not([data-motion]))::before,:where(*:not([data-motion]))::after{
     animation-duration:1ms!important;

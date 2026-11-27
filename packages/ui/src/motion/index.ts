@@ -16,6 +16,14 @@ export const duration = {
   slow: 320,
   /** 400ms: splash only. */
   brand: 400,
+  /** 600ms: cross-fade between two media items (login showcase); --m-crossfade. */
+  crossfade: 600,
+  /** 150ms: agent-built nodes appear this far apart; --m-build-stagger. */
+  buildStagger: 150,
+  /** 150ms: skeletons stay hidden this long; --m-skeleton-delay. */
+  skeletonDelay: 150,
+  /** 200ms: the longest fade under reduced motion; --dur-reduced. */
+  reduced: 200,
 } as const;
 
 export const easing = {
@@ -26,6 +34,37 @@ export const easing = {
   /** Logo and splash only. */
   spring: 'cubic-bezier(.3,1.4,.4,1)',
 } as const;
+
+/**
+ * Length in ms for motion driven from JS (canvas pan/zoom/fit, smooth scrolls):
+ * the token, or 0 when the user asked for reduced motion (CSS overrides cannot
+ * reach these). Read at call time, so it follows the setting live.
+ */
+export function motionMs(length: keyof typeof duration): number {
+  if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return 0;
+  return duration[length];
+}
+
+/** The curves as cubic-bezier control points, for `motion` (motion.dev) transitions. */
+export const bezier = {
+  standard: [0.2, 0, 0, 1],
+  exit: [0.4, 0, 1, 1],
+  spring: [0.3, 1.4, 0.4, 1],
+} as const;
+
+/**
+ * A `motion` (motion.dev) tween on the tokens: `transition={tween('base')}`.
+ * Use it for layout animation only (CLAUDE.md); everything else is CSS. Pass
+ * `reduced` (usePrefersReducedMotion) to make the move instant.
+ */
+export function tween(
+  length: keyof typeof duration = 'base',
+  curve: keyof typeof bezier = 'standard',
+  reduced = false,
+): { type: 'tween'; duration: number; ease: [number, number, number, number] } {
+  const [a, b, c, d] = bezier[curve];
+  return { type: 'tween', duration: reduced ? 0 : duration[length] / 1000, ease: [a, b, c, d] };
+}
 
 /** List stagger: 30ms apart, at most 6 steps (rows after the sixth enter together). */
 export const STAGGER_MS = 30;

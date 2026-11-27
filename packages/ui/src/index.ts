@@ -16,6 +16,9 @@ export { Skeleton, type SkeletonProps } from './components/Skeleton';
 export {
   duration,
   easing,
+  bezier,
+  tween,
+  motionMs,
   STAGGER_MS,
   STAGGER_MAX,
   usePresence,

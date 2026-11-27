@@ -30,6 +30,8 @@ export function Skeleton({ width, height, radius, round, text, delayMs, classNam
     <span
       aria-hidden="true"
       data-skeleton=""
+      // Token-based: keeps its 150ms delay under reduced motion (the safety net in tokens.css would zero it and flash it).
+      data-motion=""
       className={cx(styles.skeleton, text && styles.text, round && styles.round, className)}
       style={{
         width: width ?? (text ? '100%' : undefined),

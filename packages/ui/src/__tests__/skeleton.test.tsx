@@ -17,13 +17,15 @@ describe('Skeleton', () => {
     expect(el.style.width).toBe('120px');
     expect(el.style.height).toBe('14px');
     expect(el.style.borderRadius).toBe('4px');
+    // Marked as token-based, so the reduced-motion safety net keeps its 150ms delay (no flash).
+    expect(el.hasAttribute('data-motion')).toBe(true);
   });
 
   it('uses theme tokens only, no gradient or shimmer, appears after a delay and is static under reduced motion', () => {
     expect(css).not.toMatch(/gradient/i);
     expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/i);
     expect(css).toMatch(/var\(--c-surface-5\)/);
-    expect(css).toMatch(/--rl-skeleton-delay,150ms/);
+    expect(css).toMatch(/--rl-skeleton-delay,var\(--m-skeleton-delay\)/);
     const reduced = css.slice(css.indexOf('prefers-reduced-motion'));
     expect(reduced).not.toMatch(/pulse/);
   });
