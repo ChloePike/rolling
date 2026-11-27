@@ -110,7 +110,8 @@ function WireImpl({ id, sourceX, sourceY, targetX, targetY, data }: EdgeProps<Wi
         d={d}
         pathLength={build >= 0 ? 1 : undefined}
         className={`${styles.wire} ${data?.highlight ? styles.highlight : ''} ${data?.pending ? styles.pending : ''} ${build >= 0 ? styles.draw : ''}`}
-        style={build >= 0 ? { animationDelay: `${build * 150 + 320}ms` } : undefined}
+        // After both nodes have built: the last end's build delay (capped like the nodes) plus one node build.
+        style={build >= 0 ? { animationDelay: `calc(${Math.min(build, 5)} * var(--m-build-stagger) + var(--dur-slow))` } : undefined}
       />
       {points.map((p, i) => (
         <Reroute key={i} edgeId={id} index={i} p={p} />

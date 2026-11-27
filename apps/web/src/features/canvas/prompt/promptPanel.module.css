@@ -1,8 +1,12 @@
-/* Node prompt editor under the selected node. Values from Canvas.dc.html (genX/genY block). */
+/*
+ * Node prompt editor under the selected node. Values from Canvas.dc.html (genX/genY block).
+ * Its position (the `translate` set by PromptPanel) follows the node on every pan, zoom and
+ * drag, so it must not transition: a 320ms left/top glide made it trail the node, relaid it
+ * out every frame and counted as layout shift.
+ */
 .panel{
-  position:absolute;width:500px;border-radius:20px;background:var(--c-surface-3);box-shadow:0 16px 40px color-mix(in srgb,var(--c-ink-shadow-bg) 60%,transparent);
+  position:absolute;left:0;top:0;width:500px;border-radius:20px;background:var(--c-surface-3);box-shadow:0 16px 40px color-mix(in srgb,var(--c-ink-shadow-bg) 60%,transparent);
   padding:12px;box-sizing:border-box;display:flex;flex-direction:column;gap:10px;z-index:3;
-  transition:left var(--dur-slow) var(--ease-standard),top var(--dur-slow) var(--ease-standard);
 }
 .top{display:flex;gap:8px;align-items:center}
 .ref{

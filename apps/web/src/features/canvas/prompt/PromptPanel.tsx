@@ -188,7 +188,9 @@ export function PromptPanel({ node, left, top, state, refs, pickerOpen, onOpenPi
   };
 
   return (
-    <div className={cx(styles.panel, 'rl-pop')} style={{ left, top }} {...presenceProps(state)} data-testid="prompt-panel">
+    // Placed with `translate` (not left/top): it follows the node on every pan frame without a layout pass or a
+    // layout shift, and does not fight the rl-pop enter/exit, which animates `transform`.
+    <div className={cx(styles.panel, 'rl-pop')} style={{ translate: `${left}px ${top}px` }} {...presenceProps(state)} data-testid="prompt-panel">
       <div className={styles.top}>
         {refs.map((r, i) => (
           <button

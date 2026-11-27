@@ -1,4 +1,4 @@
-import { cx, presenceProps, Skeleton, usePresence, useToast } from '@rolling/ui';
+import { cx, motionMs, presenceProps, Skeleton, usePresence, useToast } from '@rolling/ui';
 import { Link, useNavigate } from '@tanstack/react-router';
 import {
   ReactFlow,
@@ -423,7 +423,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
     if (!n?.measured?.width) return;
     focusInsert.current = null;
     framed.current = true;
-    void flow.setCenter(n.position.x + n.measured.width / 2, n.position.y + (n.measured.height ?? 200) / 2, { zoom: Math.max(viewport.zoom, 0.75), duration: 320 });
+    void flow.setCenter(n.position.x + n.measured.width / 2, n.position.y + (n.measured.height ?? 200) / 2, { zoom: Math.max(viewport.zoom, 0.75), duration: motionMs('slow') });
   }, [rfNodes, flow, viewport.zoom]);
 
   const rfEdges = useMemo<WireEdge[]>(() => {
@@ -590,7 +590,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
       setSelected(id);
       setSelectedEdge(null);
       const n = flow.getNode(id);
-      if (center && n) void flow.setCenter(n.position.x + (n.measured?.width ?? 240) / 2, n.position.y + (n.measured?.height ?? 200) / 2, { zoom: viewport.zoom, duration: 320 });
+      if (center && n) void flow.setCenter(n.position.x + (n.measured?.width ?? 240) / 2, n.position.y + (n.measured?.height ?? 200) / 2, { zoom: viewport.zoom, duration: motionMs('slow') });
     },
     [flow, viewport.zoom],
   );
@@ -1687,7 +1687,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
       <div className={canvas.bottomLeft}>
         <Minimap graph={graph} rfNodes={rfNodes} selected={selected} size={size} />
         <div className={canvas.zoom}>
-          <button type="button" className={canvas.zoomBtn} aria-label={intl.formatMessage({ id: 'canvas.zoomOut' })} onClick={() => flow.zoomOut({ duration: 200 })}>
+          <button type="button" className={canvas.zoomBtn} aria-label={intl.formatMessage({ id: 'canvas.zoomOut' })} onClick={() => flow.zoomOut({ duration: motionMs('base') })}>
             <CanvasIcon name="minus" size={16} />
           </button>
           <MenuPopover
@@ -1700,9 +1700,9 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
                 key: String(z),
                 label: intl.formatMessage({ id: 'canvas.zoom' }, { zoom: z }),
                 checked: Math.abs(viewport.zoom - z) < 0.005,
-                onSelect: () => void flow.zoomTo(z, { duration: 200 }),
+                onSelect: () => void flow.zoomTo(z, { duration: motionMs('base') }),
               })),
-              { key: 'fit', label: intl.formatMessage({ id: 'canvas.fitAll' }), onSelect: () => void flow.fitView({ duration: 320, padding: fitPadding(agentOpen), maxZoom: 1 }) },
+              { key: 'fit', label: intl.formatMessage({ id: 'canvas.fitAll' }), onSelect: () => void flow.fitView({ duration: motionMs('slow'), padding: fitPadding(agentOpen), maxZoom: 1 }) },
             ]}
             trigger={(t) => (
               <button {...t} type="button" className={cx(canvas.zoomValue, canvas.zoomValueBtn)} data-testid="zoom-value" aria-label={intl.formatMessage({ id: 'canvas.zoomLabel' }, { zoom: viewport.zoom })}>
@@ -1710,10 +1710,10 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
               </button>
             )}
           />
-          <button type="button" className={canvas.zoomBtn} aria-label={intl.formatMessage({ id: 'canvas.zoomIn' })} onClick={() => flow.zoomIn({ duration: 200 })}>
+          <button type="button" className={canvas.zoomBtn} aria-label={intl.formatMessage({ id: 'canvas.zoomIn' })} onClick={() => flow.zoomIn({ duration: motionMs('base') })}>
             <CanvasIcon name="plus" size={16} />
           </button>
-          <button type="button" className={canvas.fit} onClick={() => flow.fitView({ duration: 320, padding: fitPadding(agentOpen), maxZoom: 1 })}>
+          <button type="button" className={canvas.fit} onClick={() => flow.fitView({ duration: motionMs('slow'), padding: fitPadding(agentOpen), maxZoom: 1 })}>
             <FormattedMessage id="canvas.fit" />
           </button>
         </div>
@@ -2167,7 +2167,7 @@ function Minimap({ graph, rfNodes, selected, size }: { graph: GraphState; rfNode
         const d = { ArrowLeft: [step, 0], ArrowRight: [-step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] }[e.key];
         if (!d) return;
         e.preventDefault();
-        void flow.setViewport({ x: viewport.x + d[0]!, y: viewport.y + d[1]!, zoom: viewport.zoom }, { duration: 140 });
+        void flow.setViewport({ x: viewport.x + d[0]!, y: viewport.y + d[1]!, zoom: viewport.zoom }, { duration: motionMs('fast') });
       }}
     >
       {boxes.map((b) => (
