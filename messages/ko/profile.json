@@ -1,0 +1,20 @@
+{
+  "profile.bio.placeholder": "[BIO: 사용자가 자신에 대해 쓰는 한두 줄]",
+  "profile.edit": "프로필 편집",
+  "profile.share": "공유",
+  "profile.share.copied": "프로필 링크를 복사했어요",
+  "profile.tabs": "프로필",
+  "profile.tab.published": "게시됨",
+  "profile.tab.template": "템플릿",
+  "profile.empty": "아직 아무것도 없어요.",
+  "profile.downloaded": "다운로드를 시작했어요.",
+  "profile.bio.empty": "아직 소개가 없어요.",
+  "profile.unavailable": "이 프로필이 없거나 공개되지 않았어요.",
+  "profile.unavailable.home": "홈으로 이동",
+  "profile.empty.own.published": "아직 게시한 항목이 없어요. 프로젝트에서 공유를 열고 프로필에 게시를 켜세요.",
+  "profile.empty.own.template": "게시한 템플릿이 여기에 표시돼요.",
+  "profile.empty.other.published": "아직 게시한 항목이 없어요.",
+  "profile.empty.other.template": "아직 템플릿이 없어요.",
+  "profile.empty.unclaimed": "사용자 이름을 정하면 공개 프로필이 생겨요.",
+  "profile.empty.pickHandle": "사용자 이름 선택"
+}

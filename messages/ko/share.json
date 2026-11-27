@@ -1,0 +1,20 @@
+{
+  "share.meta": "{n, plural, one {항목 #개} other {항목 #개}} · {date} 공유됨",
+  "share.open": "Rolling 열기",
+  "share.signup": "나도 만들어 보기",
+  "share.board": "공유된 캔버스",
+  "share.download": "다운로드",
+  "share.download.label": "{name} 다운로드",
+  "share.empty": "이 공유에 표시할 내용이 없어요.",
+  "share.missing.title": "이 링크를 사용할 수 없어요",
+  "share.missing.sub": "소유자가 공유를 껐거나 주소가 잘못됐을 수 있어요.",
+  "share.error.title": "공유를 불러오지 못했어요",
+  "share.error.sub": "연결 상태를 확인한 뒤 페이지를 새로고침하세요.",
+  "share.kind.script": "스크립트",
+  "share.kind.image": "이미지",
+  "share.kind.video": "영상",
+  "share.kind.audio": "오디오",
+  "share.kind.asset": "참조",
+  "share.kind.text": "텍스트",
+  "share.kind.other": "단계"
+}

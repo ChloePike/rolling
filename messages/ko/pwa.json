@@ -1,0 +1,15 @@
+{
+  "pwa.update.message": "새 버전이 준비됐어요",
+  "pwa.update.reload": "새로고침",
+  "pwa.offline.title": "오프라인 상태예요",
+  "pwa.offline.body": "캔버스 정리와 타임라인 편집은 계속할 수 있어요. 생성과 내보내기는 연결이 필요해요.",
+  "pwa.offline.retry": "다시 시도",
+  "pwa.install.title": "앱 설치",
+  "pwa.install.body": "독에서 별도 창으로 열려요. 계정과 프로젝트는 그대로예요.",
+  "pwa.install.notNow": "나중에",
+  "pwa.install.install": "설치",
+  "pwa.install.ios.title": "iPhone 또는 iPad에 설치",
+  "pwa.install.ios.body": "공유를 누른 다음 홈 화면에 추가를 누르세요.",
+  "pwa.install.ios.done": "확인",
+  "pwa.install.menu": "앱 설치"
+}

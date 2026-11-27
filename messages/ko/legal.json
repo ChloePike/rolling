@@ -1,0 +1,15 @@
+{
+  "legal.documentTitle": "{title} · {app}",
+  "legal.nav.label": "법적 고지",
+  "legal.nav.terms": "이용약관",
+  "legal.nav.privacy": "개인정보",
+  "legal.nav.acceptable-use": "허용 가능한 사용",
+  "legal.nav.subprocessors": "하위 처리자",
+  "legal.toc": "이 페이지의 내용",
+  "legal.links.label": "법적 고지",
+  "legal.link.terms": "이용약관",
+  "legal.link.privacy": "개인정보 처리방침",
+  "legal.link.acceptable-use": "허용 가능한 사용",
+  "legal.link.subprocessors": "하위 처리자",
+  "legal.englishGoverns": "이 문서는 영어로 작성되었으며, 영어 버전이 우선해요."
+}
