@@ -559,7 +559,9 @@ interface QuoteResponse {
     code?: QuoteCode;
     reason?: string;
     lowestPlan?: 'starter' | 'plus' | 'pro' | null;
+    matureAccess?: 'no_plan' | 'preference_off' | 'workspace_off';
     dependsOn: string[];
+    promptExpand?: true;
   }>;
   total: number;
   balance: number;
@@ -597,7 +599,10 @@ export async function requestQuote(projectId: string, req: QuoteRequest, local: 
       ...(i.reason ? { reason: i.reason } : {}),
       ...(i.code ? { code: i.code } : {}),
       ...(i.lowestPlan !== undefined ? { lowestPlan: i.lowestPlan } : {}),
+      ...(i.matureAccess ? { matureAccess: i.matureAccess } : {}),
       dependsOn: i.dependsOn,
+      // D-020: the row says "Includes prompt enhancement" when the price includes it.
+      ...(i.promptExpand ? { promptExpand: true as const } : {}),
     })),
     total: r.total,
     balance: r.balance,
