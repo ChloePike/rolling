@@ -16,6 +16,7 @@ import { orFail, unwrap } from "../lib/room";
 import { validate } from "../lib/validate";
 import { projectIdForCanvas } from "../do/ProjectRoom";
 import { createShare, revokeShares, shareState, updateShareSettings } from "../lib/share";
+import { revokeReviewsForProject } from "../collab/reviews";
 
 const Id = z.string().min(1).max(80).regex(/^[A-Za-z0-9_-]+$/);
 const IdParam = z.object({ id: Id });
@@ -198,6 +199,7 @@ export const projects = new Hono<AppEnv>()
     const id = c.req.valid("param").id;
     const { caller, room } = await access(c, id, "editor");
     await revokeShares(c.env, id);
+    await revokeReviewsForProject(c.env, id);
     unwrap(await room.destroy(caller));
     await c.env.DB.prepare("DELETE FROM projects WHERE id = ?").bind(id).run();
     return c.json({ ok: true });

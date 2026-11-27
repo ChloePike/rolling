@@ -1067,6 +1067,80 @@ export const backupRuns = sqliteTable("backup_runs", {
   finishedAt: integer("finished_at"),
 });
 
+/** Migration 0030 (D-031): client review links (media frozen at creation, reviewers without an account). */
+export const reviewLinks = sqliteTable(
+  "review_links",
+  {
+    id: text("id").primaryKey(),
+    /** Unguessable URL token (`/review/<token>`). */
+    token: text("token").notNull(),
+    projectId: text("project_id").notNull(),
+    workspaceId: text("workspace_id").notNull(),
+    kind: text("kind", { enum: ["version", "export", "shots"] }).notNull(),
+    title: text("title").notNull(),
+    /** JSON ReviewItem[] (`@rolling/core/collab`). */
+    items: text("items").notNull().default("[]"),
+    /** Confirmed mature items (D-005): shown only to signed-in mature-allowed viewers. */
+    mature: integer("mature", { mode: "boolean" }).notNull().default(false),
+    passwordHash: text("password_hash"),
+    passwordVersion: integer("password_version").notNull().default(0),
+    expiresAt: integer("expires_at"),
+    revokedAt: integer("revoked_at"),
+    createdBy: text("created_by").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("review_links_token").on(t.token),
+    index("review_links_project").on(t.projectId, sql`${t.createdAt} DESC`),
+    check("review_links_kind_check", sql`${t.kind} IN ('version','export','shots')`),
+  ],
+);
+
+/** Migration 0030: reviewers who verified their email on a link (bearer token stored hashed). */
+export const reviewReviewers = sqliteTable(
+  "review_reviewers",
+  {
+    id: text("id").primaryKey(),
+    linkId: text("link_id").notNull(),
+    email: text("email").notNull(),
+    name: text("name").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    verifiedAt: integer("verified_at").notNull(),
+    lastSeenAt: integer("last_seen_at").notNull(),
+  },
+  (t) => [uniqueIndex("review_reviewers_token").on(t.tokenHash), uniqueIndex("review_reviewers_link_email").on(t.linkId, t.email)],
+);
+
+/** Migration 0030: pending one-time codes per link and email. */
+export const reviewCodes = sqliteTable(
+  "review_codes",
+  {
+    linkId: text("link_id").notNull(),
+    email: text("email").notNull(),
+    name: text("name").notNull(),
+    codeHash: text("code_hash").notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    expiresAt: integer("expires_at").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.linkId, t.email] })],
+);
+
+/** Migration 0030: approve / request changes, one row per decision (the latest per reviewer counts). */
+export const reviewDecisions = sqliteTable(
+  "review_decisions",
+  {
+    id: text("id").primaryKey(),
+    linkId: text("link_id").notNull(),
+    reviewerId: text("reviewer_id").notNull(),
+    decision: text("decision", { enum: ["approved", "changes_requested"] }).notNull(),
+    note: text("note"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [index("review_decisions_link").on(t.linkId, t.createdAt), check("review_decisions_check", sql`${t.decision} IN ('approved','changes_requested')`)],
+);
+
 export type Workspace = typeof workspaces.$inferSelect;
 export type UserPrefs = typeof userPrefs.$inferSelect;
 export type User = typeof users.$inferSelect;

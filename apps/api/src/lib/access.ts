@@ -127,6 +127,21 @@ export type ProjectRoomApi = Pick<
   | "registerThread"
   | "unregisterThread"
   | "notifyThreads"
+  // D-031 collaboration.
+  | "presenceUpdate"
+  | "presenceLeave"
+  | "presenceList"
+  | "listThreads"
+  | "createThread"
+  | "replyThread"
+  | "setThreadStatus"
+  | "editComment"
+  | "deleteComment"
+  | "markThreadsRead"
+  | "listActivity"
+  | "reviewThreads"
+  | "reviewComment"
+  | "reviewEvent"
 >;
 
 /**

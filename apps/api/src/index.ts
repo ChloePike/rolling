@@ -43,6 +43,8 @@ import { uploads } from "./routes/uploads";
 import { privateMedia, share, signedMedia } from "./routes/signedMedia";
 import { avatars, profiles } from "./routes/profiles";
 import { feedback } from "./routes/feedback";
+import { collab } from "./routes/collab";
+import { review } from "./routes/review";
 
 export { ProjectRoom } from "./do/ProjectRoom";
 export { UserHub } from "./do/UserHub";
@@ -125,6 +127,8 @@ const api = new Hono<AppEnv>()
   .route("/trust", trust)
   .route("/status", status)
   .route("/projects", projects)
+  .route("/projects", collab)
+  .route("/review", review)
   .route("/nodes", nodes)
   .route("/canvases", canvases)
   .route("/canvases", canvasExports)

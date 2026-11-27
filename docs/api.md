@@ -672,6 +672,71 @@ New timeline ops: `setCaptionTrack { trackId, style?, lang? \| null }`, `setRefr
 
 Container (`containers/ffmpeg`): `RenderJob` adds `encode`, `reframe`, `interpolateFps`, `captions` (resolved look; `null` = no burn-in), `fonts`, `brand`, `audioOnly` (MP3 chunks, `GET /render/:id/file?part=n`) and `voiceLufs`. New routes: `POST /last-frame { url, width?, put? }`, `POST /silences { url, start?, duration?, noiseDb?, minSilence? }`, `POST /audio-cut { url, start, duration, put? }`, `POST /jobs { id, kind: "resize", media, url, short: 1080 \| 2160, duration?, putUrl? }`, `GET /jobs/:id`, `GET /jobs/:id/file`, `DELETE /jobs/:id`.
 
+## Collaboration (D-031)
+
+Presence, comments, activity and client review links. Types in `@rolling/core/collab`.
+
+### Presence (global socket, D-014)
+
+Client → gateway, on a subscribed project (else `error { code: NOT_SUBSCRIBED }`):
+
+| Message | Payload | Reply |
+|---|---|---|
+| `presence` | `{ projectId, key?, cursor?: {x,y} \| null, selection?: string[] (≤ 50) }` — flow coordinates; `key` = tab (default `tab`); omitted fields keep their last value | none |
+| `presence.sync` | `{ projectId, key? }` | `presence.state { projectId, entries: PresenceEntry[] }` (same id) |
+| `presence.leave` | `{ projectId, key? }` | none |
+
+Server → client (project channel, transient: no `seq`, never in the ring): `presence.updated { entry }`, `presence.left { id, userId }`. `PresenceEntry = { id: '<connId>:<key>', userId, name, image, canEdit, cursor, selection, at }`. Throttle 50 ms on the client, 40 ms coalescing in the room, heartbeat 15 s, TTL 45 s. The sender's connection never gets its own updates.
+
+### Comments
+
+| Route | Who | Body → result |
+|---|---|---|
+| `GET /api/projects/:id/comments` | members | → `{ threads: ThreadView[], members: [{ userId, name, image, role }], unread, canResolve }` |
+| `POST /api/projects/:id/comments` | members (viewers too) | `{ anchor, body (1–4000), mentions?: userId[] }` → 201 `{ thread }` |
+| `POST /api/projects/:id/comments/:threadId/replies` | members | `{ body, mentions? }` → 201 `{ thread, commentId }` (reopens a resolved thread) |
+| `PATCH /api/projects/:id/comments/:threadId` | editors, owners | `{ status: 'open' \| 'resolved' }` → `{ thread }`; viewers 403 |
+| `PATCH /api/projects/:id/comments/:threadId/:commentId` | author | `{ body, mentions? }` → `{ thread }` (only newly mentioned people are notified) |
+| `DELETE /api/projects/:id/comments/:threadId/:commentId` | author, owners | → `{ thread \| null }` (soft delete; null when the thread is gone) |
+| `POST /api/projects/:id/comments/read` | members | `{ threadIds }` → `{ unread }` |
+
+Anchors: `{ kind: 'node', nodeId }`, `{ kind: 'version', nodeId, versionId }`, `{ kind: 'timeline', canvasId, start, end }` (seconds, `end ≥ start`), `{ kind: 'canvas', x, y }`; reviewer threads have `{ kind: 'review', reviewId, itemId, at }` (members reply to them, they cannot start one). A missing node, version or canvas → 404. `ThreadView = { id, anchor, status, createdBy, createdAt, updatedAt, resolvedBy, resolvedAt, reviewId, comments: [{ id, author: { kind: 'member' \| 'reviewer', id, name }, body, mentions, createdAt, editedAt, deleted }], unread, mentionsMe }`. Mentions are filtered to workspace members, never the author.
+
+Project events (replayable): `comment.thread { thread }` (created, replied, edited, resolved, reopened; `unread`/`mentionsMe` are false in broadcasts, each client computes its own), `comment.deleted { threadId }`, `review.updated { reviewId, kind }`. Transient: `activity.added { entry }`.
+
+Notifications (user channel `notification`): `{ kind: 'mention' | 'comment' | 'review.comment' | 'review.decision', projectId, threadId?, reviewId?, title, message, href }`, following `prefs.notifications.mentions | comments | reviews` (`PATCH /api/me/prefs`). Emails: `comment-mention`, `review-decision`, `review-code`.
+
+### Activity
+
+`GET /api/projects/:id/activity?before=<updatedAt>&limit=1–200` (members) → `{ entries: ActivityEntry[], next }`, newest first. `ActivityEntry = { id, kind, actor: { kind: 'member' | 'reviewer' | 'agent' | 'system', id, name }, data, createdAt, updatedAt }`; kinds `edit` (`data.count`, coalesced), `run.started | run.done | run.failed` (`nodeId, title, jobId, refunded?`), `comment`, `comment.resolved`, `comment.reopened`, `review.created`, `review.revoked`, `review.comment`, `review.decision` (`reviewId, title, decision, note`).
+
+### Review links (owner side)
+
+| Route | Who | Body → result |
+|---|---|---|
+| `GET /api/projects/:id/reviews` | members | → `{ reviews: ReviewOwnerView[] }` |
+| `POST /api/projects/:id/reviews` | editors, owners | `{ kind: 'version', nodeId, versionId? } \| { kind: 'export', exportId } \| { kind: 'shots', nodeIds (1–30) }` plus `title?`, `expiresInDays? (1–90)`, `password? (6–128)`, `confirmMature?` → 201 `{ review }` |
+| `GET /api/projects/:id/reviews/:reviewId` | members | → `{ review, threads }` |
+| `PATCH /api/projects/:id/reviews/:reviewId` | editors, owners | `{ expiresInDays?: n \| null, password?: s \| null, revoke?: true }` → `{ review }` |
+| `DELETE /api/projects/:id/reviews/:reviewId` | editors, owners | revoke → `{ review }` |
+
+`ReviewOwnerView = { id, kind, title, url, state: 'active' | 'expired' | 'revoked', status: 'pending' | 'approved' | 'changes_requested', mature, hasPassword, expiresAt, revokedAt, createdAt, createdBy, items: [{ id, kind, title, nodeId, versionId, exportId, mature }], decisions: [{ reviewerId, name, email, decision, note, createdAt }] }`. Errors: node without a result / unfinished export → 409 `CONFLICT`; mature items without `confirmMature` → 409 `MATURE_CONFIRM_REQUIRED { items }`; mature items from anyone but a D-005 mature-allowed owner → 403 `FORBIDDEN { reason: 'MATURE_NOT_ALLOWED', items }`.
+
+### Review page (public, `/api/review/:token`)
+
+Headers: `x-review-pass` (password links), `x-reviewer-token` (verified reviewer). Responses are `no-store`, `noindex`.
+
+| Route | Body → result |
+|---|---|
+| `GET /api/review/:token` | → `{ link: { id, kind, title, projectTitle, workspaceName, expiresAt, status, mature }, items: [{ id, kind, title, mature, media: { url, posterUrl } \| null, withheld: 'mature' \| 'missing' \| null }], threads, decisions: [{ reviewerId, name, decision, note, createdAt }], me: { id, name, email, decision } \| null, viewerMatureAllowed }` |
+| `POST /api/review/:token/unlock` | `{ password }` → `{ pass }` (12 h); wrong → 403 |
+| `POST /api/review/:token/code` | `{ name, email }` → 202 `{ expiresInMinutes }`; 30 s cooldown → 429 `{ retryAfter }` |
+| `POST /api/review/:token/verify` | `{ email, code }` → `{ reviewer: { id, name, email }, reviewerToken }`; `INVALID_CODE { attemptsLeft }`, `CODE_EXPIRED`, `TOO_MANY_ATTEMPTS` |
+| `POST /api/review/:token/comments` | `{ itemId, at?: seconds \| null, body, threadId? }` → 201 `{ thread }` |
+| `POST /api/review/:token/decision` | `{ decision: 'approved' \| 'changes_requested', note? }` → `{ status, me }` |
+
+Errors on every route: unknown token 404; revoked or expired 410 `LINK_EXPIRED { state }`; password missing or stale 401 `PASSWORD_REQUIRED { title }`; reviewer token missing 401 `UNAUTHENTICATED`.
+
 ## Sharing
 
 Share settings: `audience` (`link` = anyone with the link, default; `workspace` = signed-in members of the project's workspace), `allowDownload` (false), `showPrompt` (true; prompt fields — any `params` key containing "prompt" — are left out of the snapshot and the read when false), `showOnProfile` (false; "Publish to profile": the share's cover — first video, else first image — appears on the author's public profile when it is rated safe).

@@ -8,6 +8,7 @@ import {
   SubscribePayload,
   TimelinePatchPayload,
 } from "@rolling/core/graph";
+import { PresencePayload, PresenceRefPayload } from "@rolling/core/collab";
 import { projectRoom } from "../lib/access";
 import { envelope, parseEnvelope, type ServerMessageType } from "../ws/envelope";
 import { projectIdForCanvas, type PatchOk, type RoomCaller, type RoomError } from "./ProjectRoom";
@@ -26,6 +27,8 @@ interface SocketState {
   userId: string;
   connId: string;
   subs: Record<string, Subscription>;
+  /** D-031: display name and photo shown with this socket's presence (read from D1 once). */
+  profile?: { name: string; image: string | null };
 }
 
 /**
@@ -94,6 +97,10 @@ export class UserHub extends DurableObject<Env> {
       case "snapshot":
       case "timeline.patch":
         return this.forward(ws, state, msg.type, msg.id, msg.payload);
+      case "presence":
+      case "presence.leave":
+      case "presence.sync":
+        return this.presence(ws, state, msg.type, msg.id, msg.payload);
       default:
         this.send(ws, envelope("error", { code: "UNKNOWN_TYPE", message: `Unknown message type: ${msg.type}` }, msg.id));
     }
@@ -106,6 +113,7 @@ export class UserHub extends DurableObject<Env> {
     } catch {
       // Already closed.
     }
+    if (state) await this.leavePresence(state, Object.keys(state.subs));
     if (state) await this.releaseProjects(ws, state.userId, Object.keys(state.subs));
   }
 
@@ -116,6 +124,7 @@ export class UserHub extends DurableObject<Env> {
     } catch {
       // Already closed.
     }
+    if (state) await this.leavePresence(state, Object.keys(state.subs));
     if (state) await this.releaseProjects(ws, state.userId, Object.keys(state.subs));
   }
 
@@ -213,6 +222,7 @@ export class UserHub extends DurableObject<Env> {
     if (state.subs[projectId]) {
       delete state.subs[projectId];
       ws.serializeAttachment(state);
+      await this.leavePresence(state, [projectId]);
       await this.releaseProjects(ws, state.userId, [projectId]);
     }
     this.send(ws, channelEnvelope("unsubscribed", { projectId }, { channel: "project", projectId }, id));
@@ -269,6 +279,60 @@ export class UserHub extends DurableObject<Env> {
         return;
       }
     }
+  }
+
+  /**
+   * D-031 presence on a subscribed project: `presence` (cursor, selection; no
+   * reply), `presence.leave` (this tab closed the canvas; no reply),
+   * `presence.sync` (reply `presence.state { entries }`). The room keeps it
+   * in memory per connection; nothing is stored.
+   */
+  private async presence(ws: WebSocket, state: SocketState, type: "presence" | "presence.leave" | "presence.sync", id: string, raw: unknown): Promise<void> {
+    const parsed = type === "presence" ? PresencePayload.safeParse(raw) : PresenceRefPayload.safeParse(raw);
+    if (!parsed.success) return this.fail(ws, id, null, "BAD_MESSAGE", `Invalid ${type} payload`);
+    const { projectId, key } = parsed.data;
+    const sub = state.subs[projectId];
+    if (!sub) return this.fail(ws, id, projectId, "NOT_SUBSCRIBED", "Subscribe to the project first");
+    const room = projectRoom(this.env, projectId);
+    if (type === "presence.leave") {
+      await room.presenceLeave({ connId: state.connId, key });
+      return;
+    }
+    const caller = this.caller(state.userId, sub);
+    if (type === "presence.sync") {
+      const res = await room.presenceList(caller);
+      if (!res.ok) return this.fail(ws, id, projectId, res.code, res.message);
+      this.send(ws, channelEnvelope("presence.state", { projectId, entries: res.entries }, { channel: "project", projectId }, id));
+      return;
+    }
+    const p = parsed.data as PresencePayload;
+    const profile = await this.profileOf(ws, state);
+    const res = await room.presenceUpdate(caller, {
+      connId: state.connId,
+      key,
+      name: profile.name,
+      image: profile.image,
+      ...(p.cursor !== undefined ? { cursor: p.cursor } : {}),
+      ...(p.selection !== undefined ? { selection: p.selection } : {}),
+    });
+    if (!res.ok) return this.fail(ws, id, projectId, res.code, res.message);
+  }
+
+  /** The user's display name and photo, cached in the socket attachment. Dev identities have no users row. */
+  private async profileOf(ws: WebSocket, state: SocketState): Promise<{ name: string; image: string | null }> {
+    if (state.profile) return state.profile;
+    const row = await this.env.DB.prepare("SELECT name, email, image FROM users WHERE id = ?1").bind(state.userId).first<{ name: string | null; email: string | null; image: string | null }>();
+    const profile = { name: row?.name?.trim() || row?.email?.split("@")[0] || state.userId, image: row?.image ?? null };
+    const fresh = this.stateOf(ws) ?? state;
+    fresh.profile = profile;
+    ws.serializeAttachment(fresh);
+    return profile;
+  }
+
+  /** This connection's presence leaves the given projects (socket closed or unsubscribed). */
+  private async leavePresence(state: SocketState, projectIds: string[]): Promise<void> {
+    if (!state.connId) return;
+    await Promise.all(projectIds.map((p) => projectRoom(this.env, p).presenceLeave({ connId: state.connId }).catch(() => undefined)));
   }
 
   /** Same reply shapes as the project socket: `ack`, `conflict { snapshot }` or `error`. */
@@ -366,7 +430,7 @@ export class UserHub extends DurableObject<Env> {
   private stateOf(ws: WebSocket): SocketState | null {
     const s = ws.deserializeAttachment() as Partial<SocketState> | null;
     if (!s || typeof s.userId !== "string") return null;
-    return { userId: s.userId, connId: typeof s.connId === "string" ? s.connId : "", subs: s.subs ?? {} };
+    return { userId: s.userId, connId: typeof s.connId === "string" ? s.connId : "", subs: s.subs ?? {}, ...(s.profile ? { profile: s.profile } : {}) };
   }
 
   // ---------------------------------------------------------------- agent abuse limit

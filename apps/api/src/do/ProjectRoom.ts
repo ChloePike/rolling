@@ -34,6 +34,25 @@ import { applyOps as applyTimelineOps, type Edl, type TimelineOp } from "@rollin
 import { newId } from "@rolling/core/ids";
 import { summarizeReview, type ResultReview, type ReviewSummary } from "@rolling/core/review";
 import { refuseWebSocket } from "../lib/wsRefusal";
+import { COLLAB_MIGRATION_CHAIN, projectCollabMigrations } from "@rolling/db/do/projectCollab";
+import type { Role } from "@rolling/core/auth/roles";
+import { canResolve, type ActivityActor, type ActivityEntry, type ActivityKind, type CommentAnchor, type PresenceCursor, type PresenceEntry, type ThreadStatus, type ThreadView } from "@rolling/core/collab";
+import { CollabStore, PresenceBoard, commentActivityData, type CollabError } from "./collabStore";
+
+/** D-031: a member acting on comments (role decides resolve and delete; name is shown on their comments). */
+export interface CollabCaller extends RoomCaller {
+  role: Role;
+  name: string;
+}
+
+function collabError(e: CollabError): RoomError {
+  return { ok: false, code: e.code, message: e.message };
+}
+
+/** A thread as broadcast to everyone: per-viewer flags are computed by each client. */
+function publicThread(t: ThreadView): ThreadView {
+  return { ...t, unread: false, mentionsMe: false };
+}
 
 /** Who is calling a ProjectRoom RPC. The Worker resolves it from the auth context; the DO re-checks the workspace. */
 export interface RoomCaller {
@@ -150,7 +169,7 @@ interface ThreadRevisionApi {
 }
 
 /** Events that are not kept in the ring (high volume, superseded by the next one or by a snapshot). */
-const TRANSIENT_EVENTS: ReadonlySet<string> = new Set(["job.progress", "agent.delta", "credits.changed", "error"]);
+const TRANSIENT_EVENTS: ReadonlySet<string> = new Set(["job.progress", "agent.delta", "credits.changed", "error", "presence.state", "presence.updated", "presence.left", "activity.added"]);
 /** Newest ring entries kept. */
 export const EVENT_RING_SIZE = 500;
 /** Coalesces agent-thread rebase notifications after bursts of commits. */
@@ -204,11 +223,19 @@ export function projectIdForCanvas(canvasId: string): string | null {
 export class ProjectRoom extends DurableObject<Env> {
   private hubStubs = new Map<string, HubDeliverApi>();
   private threadTimer: ReturnType<typeof setTimeout> | null = null;
+  /** D-031: comments and activity (SQLite) and presence (memory only). */
+  private readonly collab = new CollabStore(this.ctx.storage.sql);
+  private readonly presence = new PresenceBoard((type, payload, except) => {
+    this.emit(type, payload, except ? { hub: except } : {});
+  });
+  private startedJobs = new Set<string>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     ctx.blockConcurrencyWhile(async () => {
       migrateDurableObject(ctx.storage, projectMigrations);
+      // D-031: collaboration tables on their own chain.
+      migrateDurableObject(ctx.storage, projectCollabMigrations, { chain: COLLAB_MIGRATION_CHAIN });
     });
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
   }
@@ -343,6 +370,7 @@ export class ProjectRoom extends DurableObject<Env> {
       changed += sql.exec("UPDATE event_ring SET payload = REPLACE(payload, ?, ?) WHERE payload LIKE ?", userId, tombstone, like).rowsWritten;
       changed += sql.exec("UPDATE agent_threads SET caller = REPLACE(caller, ?, ?) WHERE caller LIKE ?", userId, tombstone, like).rowsWritten;
       changed += sql.exec("DELETE FROM hub_subscribers WHERE user_id = ?", userId).rowsWritten;
+      changed += this.collab.pseudonymize(userId, tombstone);
       if (this.getMeta("created_by") === userId) {
         this.setMeta("created_by", tombstone);
         changed++;
@@ -454,6 +482,7 @@ export class ProjectRoom extends DurableObject<Env> {
     if (!result) return { ok: false, code: "NOT_FOUND", message: "Node not found" };
     const version = this.versionsOf(input.nodeId).find((v) => v.id === result.id)!;
     this.emit("node.version", { nodeId: input.nodeId, version: this.versionPayload(version), statuses: result.statuses });
+    this.recordRun("run.done", input.nodeId, { versionId: version.id, n: version.n, jobId: input.jobId ?? null, model: input.model ?? null });
     void this.scheduleIndex();
     return { ok: true, version, statuses: result.statuses };
   }
@@ -660,6 +689,7 @@ export class ProjectRoom extends DurableObject<Env> {
   /** The hub has no socket subscribed to this project any more. */
   async hubUnsubscribe(userId: string): Promise<{ ok: true }> {
     this.ctx.storage.sql.exec("DELETE FROM hub_subscribers WHERE user_id = ?", userId);
+    this.presence.leaveUser(userId);
     return { ok: true };
   }
 
@@ -724,6 +754,7 @@ export class ProjectRoom extends DurableObject<Env> {
         })
         .catch((err: unknown) => console.warn(JSON.stringify({ msg: "project: hub delivery failed", projectId, userId, type, error: String(err) })));
     }
+    this.observeActivity(type, payload);
     return hubs.length;
   }
 
@@ -770,6 +801,190 @@ export class ProjectRoom extends DurableObject<Env> {
       }),
     );
     return { notified: rows.length };
+  }
+
+  // ---------------------------------------------------------------- collaboration (D-031)
+
+  /** Presence of one tab, sent by the user's UserHub. Kept in memory only; fanned out as `presence.updated`. */
+  async presenceUpdate(
+    caller: RoomCaller,
+    input: { connId: string; key: string; name: string; image: string | null; cursor?: PresenceCursor | null; selection?: string[] },
+  ): Promise<{ ok: true; entry: PresenceEntry } | RoomError> {
+    const denied = this.check(caller, false);
+    if (denied) return denied;
+    const entry = this.presence.update({ userId: caller.userId, canEdit: caller.canEdit, ...input });
+    return { ok: true, entry };
+  }
+
+  /** A tab (`key`) or a whole gateway connection left (Worker-only RPC: UserHub on close / unsubscribe). */
+  async presenceLeave(input: { connId: string; key?: string }): Promise<{ ok: true; left: number }> {
+    return { ok: true, left: this.presence.leave(input.connId, input.key) };
+  }
+
+  async presenceList(caller: RoomCaller): Promise<{ ok: true; entries: PresenceEntry[] } | RoomError> {
+    const denied = this.check(caller, false);
+    if (denied) return denied;
+    return { ok: true, entries: this.presence.list() };
+  }
+
+  async listThreads(caller: RoomCaller): Promise<{ ok: true; threads: ThreadView[] } | RoomError> {
+    const denied = this.check(caller, false);
+    if (denied) return denied;
+    return { ok: true, threads: this.collab.listThreads(caller.userId) };
+  }
+
+  /** Any member (viewers too) starts a thread pinned to a node, a version, a timeline range or a canvas point. */
+  async createThread(caller: CollabCaller, input: { anchor: CommentAnchor; body: string; mentions: string[] }): Promise<{ ok: true; thread: ThreadView; commentId: string } | RoomError> {
+    const denied = this.check(caller, false) ?? this.checkAnchor(input.anchor);
+    if (denied) return denied;
+    const { thread, commentId } = this.collab.createThread({ anchor: input.anchor, author: { kind: "member", id: caller.userId, name: caller.name }, body: input.body, mentions: input.mentions });
+    this.afterComment(thread, { kind: "member", id: caller.userId, name: caller.name }, input.body, "comment");
+    return { ok: true, thread, commentId };
+  }
+
+  async replyThread(caller: CollabCaller, threadId: string, input: { body: string; mentions: string[] }): Promise<{ ok: true; thread: ThreadView; commentId: string; participants: string[] } | RoomError> {
+    const denied = this.check(caller, false);
+    if (denied) return denied;
+    const r = this.collab.reply(threadId, { author: { kind: "member", id: caller.userId, name: caller.name }, body: input.body, mentions: input.mentions });
+    if ("ok" in r) return collabError(r);
+    this.afterComment(r.thread, { kind: "member", id: caller.userId, name: caller.name }, input.body, r.thread.reviewId ? "review.comment" : "comment");
+    return { ok: true, ...r };
+  }
+
+  /** Resolve / reopen: editors and owners only. */
+  async setThreadStatus(caller: CollabCaller, threadId: string, status: ThreadStatus): Promise<{ ok: true; thread: ThreadView } | RoomError> {
+    const denied = this.check(caller, false);
+    if (denied) return denied;
+    if (!canResolve(caller.role)) return { ok: false, code: "FORBIDDEN", message: "Only editors and owners can resolve comments" };
+    const r = this.collab.setStatus(threadId, status, caller.userId);
+    if ("ok" in r) return collabError(r);
+    this.emit("comment.thread", { thread: publicThread(r) });
+    this.pushActivity(this.collab.record(status === "resolved" ? "comment.resolved" : "comment.reopened", { kind: "member", id: caller.userId, name: caller.name }, { threadId }));
+    return { ok: true, thread: r };
+  }
+
+  async editComment(caller: CollabCaller, threadId: string, commentId: string, input: { body: string; mentions: string[] }): Promise<{ ok: true; thread: ThreadView; added: string[] } | RoomError> {
+    const denied = this.check(caller, false);
+    if (denied) return denied;
+    const r = this.collab.editComment(threadId, commentId, input.body, input.mentions, caller.userId);
+    if ("ok" in r) return collabError(r);
+    this.emit("comment.thread", { thread: publicThread(r.thread) });
+    return { ok: true, ...r };
+  }
+
+  async deleteComment(caller: CollabCaller, threadId: string, commentId: string): Promise<{ ok: true; thread: ThreadView | null } | RoomError> {
+    const denied = this.check(caller, false);
+    if (denied) return denied;
+    const r = this.collab.deleteComment(threadId, commentId, caller.userId, caller.role === "owner");
+    if ("ok" in r) return collabError(r);
+    if (r.thread) this.emit("comment.thread", { thread: publicThread(r.thread) });
+    else this.emit("comment.deleted", { threadId });
+    return { ok: true, thread: r.thread };
+  }
+
+  async markThreadsRead(caller: RoomCaller, threadIds: string[]): Promise<{ ok: true; unread: number } | RoomError> {
+    const denied = this.check(caller, false);
+    if (denied) return denied;
+    this.collab.markRead(caller.userId, threadIds);
+    return { ok: true, unread: this.collab.unreadCount(caller.userId) };
+  }
+
+  async listActivity(caller: RoomCaller, opts: { before?: number; limit?: number } = {}): Promise<{ ok: true; entries: ActivityEntry[] } | RoomError> {
+    const denied = this.check(caller, false);
+    if (denied) return denied;
+    return { ok: true, entries: this.collab.listActivity({ before: opts.before, limit: Math.min(Math.max(opts.limit ?? 50, 1), 200) }) };
+  }
+
+  /** Threads of one review link (Worker-only: the review route checked the link). */
+  async reviewThreads(reviewId: string): Promise<{ ok: true; threads: ThreadView[] }> {
+    return { ok: true, threads: this.collab.listThreads(null, { reviewId }) };
+  }
+
+  /** A verified reviewer's comment (Worker-only): a new thread on an item (optionally at a time), or a reply in a thread of the same link. */
+  async reviewComment(input: {
+    reviewId: string;
+    itemId: string;
+    at: number | null;
+    reviewer: { id: string; name: string };
+    body: string;
+    threadId?: string;
+  }): Promise<{ ok: true; thread: ThreadView; participants: string[] } | RoomError> {
+    const author = { kind: "reviewer" as const, id: input.reviewer.id, name: input.reviewer.name };
+    let thread: ThreadView;
+    let participants: string[] = [];
+    if (input.threadId) {
+      const existing = this.collab.thread(input.threadId, null);
+      if (!existing || existing.reviewId !== input.reviewId) return { ok: false, code: "NOT_FOUND", message: "Thread not found" };
+      const r = this.collab.reply(input.threadId, { author, body: input.body, mentions: [] });
+      if ("ok" in r) return collabError(r);
+      thread = r.thread;
+      participants = r.participants;
+    } else {
+      thread = this.collab.createThread({ anchor: { kind: "review", reviewId: input.reviewId, itemId: input.itemId, at: input.at }, author, body: input.body, mentions: [], reviewId: input.reviewId }).thread;
+    }
+    this.afterComment(thread, { kind: "reviewer", id: author.id, name: author.name }, input.body, "review.comment");
+    return { ok: true, thread, participants };
+  }
+
+  /** Review link events for the feed (Worker-only): created, revoked, decision. Also tells clients to refresh the link list. */
+  async reviewEvent(input: { kind: "review.created" | "review.revoked" | "review.decision"; actor: ActivityActor; data: Record<string, unknown> }): Promise<{ ok: true; entry: ActivityEntry }> {
+    const entry = this.collab.record(input.kind, input.actor, input.data);
+    this.pushActivity(entry);
+    this.emit("review.updated", { reviewId: input.data.reviewId ?? null, kind: input.kind });
+    return { ok: true, entry };
+  }
+
+  private checkAnchor(anchor: CommentAnchor): RoomError | null {
+    const sql = this.ctx.storage.sql;
+    switch (anchor.kind) {
+      case "node":
+        return sql.exec("SELECT 1 FROM nodes WHERE id = ?", anchor.nodeId).toArray().length ? null : { ok: false, code: "NOT_FOUND", message: "Node not found" };
+      case "version":
+        return sql.exec("SELECT 1 FROM node_versions WHERE id = ? AND node_id = ?", anchor.versionId, anchor.nodeId).toArray().length ? null : { ok: false, code: "NOT_FOUND", message: "Version not found" };
+      case "timeline":
+        return this.checkCanvas(anchor.canvasId);
+      case "canvas":
+        return null;
+      case "review":
+        return { ok: false, code: "REFUSED", message: "Review comments come from the review link" };
+    }
+  }
+
+  private afterComment(thread: ThreadView, actor: ActivityActor, body: string, kind: "comment" | "review.comment"): void {
+    this.emit("comment.thread", { thread: publicThread(thread) });
+    this.pushActivity(this.collab.record(kind, actor, commentActivityData(thread, body)));
+  }
+
+  private pushActivity(entry: ActivityEntry): void {
+    this.emit("activity.added", { entry });
+  }
+
+  private recordRun(kind: "run.started" | "run.done" | "run.failed", nodeId: string, data: Record<string, unknown>): void {
+    const title = this.ctx.storage.sql.exec<{ title: string }>("SELECT title FROM nodes WHERE id = ?", nodeId).toArray()[0]?.title ?? null;
+    this.pushActivity(this.collab.record(kind, { kind: "system", id: "system", name: null }, { nodeId, title, ...data }));
+  }
+
+  /** Feeds the activity log from the room's own events (edits, run starts and failures). Never throws. */
+  private observeActivity(type: string, payload: unknown): void {
+    try {
+      const p = (payload ?? {}) as Record<string, unknown>;
+      if (type === "graph.patched" || type === "timeline.patched") {
+        const userId = typeof p.userId === "string" ? p.userId : null;
+        if (!userId || userId === "system") return;
+        const actor: ActivityActor = p.actor === "agent" ? { kind: "agent", id: userId, name: null } : { kind: "member", id: userId, name: null };
+        this.pushActivity(this.collab.record("edit", actor, { count: 1, ...(type === "timeline.patched" ? { timeline: true } : {}) }));
+      } else if ((type === "job.queued" || type === "job.progress") && typeof p.jobId === "string" && typeof p.nodeId === "string") {
+        if (this.startedJobs.has(p.jobId)) return;
+        if (this.startedJobs.size > 1000) this.startedJobs.clear();
+        this.startedJobs.add(p.jobId);
+        if (this.collab.hasRunStarted(p.jobId)) return;
+        this.recordRun("run.started", p.nodeId, { jobId: p.jobId });
+      } else if (type === "job.failed" && typeof p.nodeId === "string") {
+        this.recordRun("run.failed", p.nodeId, { jobId: p.jobId ?? null, refunded: p.refunded ?? 0, reason: p.reason ?? null });
+      }
+    } catch (err) {
+      console.warn(JSON.stringify({ msg: "project: activity not recorded", type, error: String(err) }));
+    }
   }
 
   // ---------------------------------------------------------------- WebSocket

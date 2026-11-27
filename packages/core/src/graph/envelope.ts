@@ -69,8 +69,8 @@ export const TimelinePatchPayload = z.object({
 });
 export type TimelinePatchPayload = z.infer<typeof TimelinePatchPayload>;
 
-/** Message types clients send. Project sockets: `patch`, `undo`, `redo`, `timeline.patch`, `snapshot`, `ping`; the gateway adds `subscribe`, `unsubscribe`. */
-export const ClientMessageType = z.enum(['subscribe', 'unsubscribe', 'patch', 'undo', 'redo', 'timeline.patch', 'snapshot', 'ping']);
+/** Message types clients send. Project sockets: `patch`, `undo`, `redo`, `timeline.patch`, `snapshot`, `ping`; the gateway adds `subscribe`, `unsubscribe` and (D-031) `presence`, `presence.leave`, `presence.sync`. */
+export const ClientMessageType = z.enum(['subscribe', 'unsubscribe', 'patch', 'undo', 'redo', 'timeline.patch', 'snapshot', 'ping', 'presence', 'presence.leave', 'presence.sync']);
 export type ClientMessageType = z.infer<typeof ClientMessageType>;
 
 /** Message types the server sends. */
@@ -104,6 +104,14 @@ export const ServerMessageType = z.enum([
   'prefs.changed',
   'subscribed',
   'unsubscribed',
+  // D-031 collaboration (project channel). `presence.*` are transient (never in the event ring).
+  'presence.state',
+  'presence.updated',
+  'presence.left',
+  'comment.thread',
+  'comment.deleted',
+  'activity.added',
+  'review.updated',
 ]);
 export type ServerMessageType = z.infer<typeof ServerMessageType>;
 

@@ -25,11 +25,18 @@ export interface DoMigration {
   sql: string;
 }
 
-export function migrateDurableObject(storage: MigratableStorage, migrations: readonly DoMigration[]): number {
+/**
+ * `opts.chain` names a separate migration chain (`_migrations_<chain>`) in the
+ * same storage, so a feature area (e.g. ProjectRoom collaboration, D-031)
+ * versions its tables on its own and never races the main chain's numbers.
+ */
+export function migrateDurableObject(storage: MigratableStorage, migrations: readonly DoMigration[], opts: { chain?: string } = {}): number {
+  if (opts.chain !== undefined && !/^[a-z][a-z0-9_]{0,31}$/.test(opts.chain)) throw new Error(`Invalid migration chain ${opts.chain}`);
+  const table = opts.chain ? `_migrations_${opts.chain}` : "_migrations";
   storage.sql.exec(
-    "CREATE TABLE IF NOT EXISTS _migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at INTEGER NOT NULL)",
+    `CREATE TABLE IF NOT EXISTS ${table} (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at INTEGER NOT NULL)`,
   );
-  const row = storage.sql.exec("SELECT COALESCE(MAX(version), 0) AS v FROM _migrations").toArray()[0];
+  const row = storage.sql.exec(`SELECT COALESCE(MAX(version), 0) AS v FROM ${table}`).toArray()[0];
   let current = Number(row?.v ?? 0);
 
   const sorted = [...migrations].sort((a, b) => a.version - b.version);
@@ -41,7 +48,7 @@ export function migrateDurableObject(storage: MigratableStorage, migrations: rea
     storage.transactionSync(() => {
       storage.sql.exec(m.sql);
       storage.sql.exec(
-        "INSERT INTO _migrations (version, name, applied_at) VALUES (?, ?, ?)",
+        `INSERT INTO ${table} (version, name, applied_at) VALUES (?, ?, ?)`,
         m.version,
         m.name,
         Date.now(),

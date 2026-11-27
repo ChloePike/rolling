@@ -40,7 +40,7 @@ describe("email code sign-up and sign-in", () => {
       defaultRatio: "9:16",
       defaultModel: "auto",
       confirmThreshold: 300,
-      notifications: { done: true, low: true, renewal: true, product: false },
+      notifications: { done: true, low: true, renewal: true, product: false, comments: true, mentions: true, reviews: true },
       theme: "system",
       matureContent: false,
       enhancePrompt: true,

@@ -57,7 +57,7 @@ describe("PATCH /api/me/prefs", () => {
       defaultRatio: "16:9",
       defaultModel: "bytedance/seedance-2.5",
       confirmThreshold: 1000,
-      notifications: { done: true, low: true, renewal: true, product: true },
+      notifications: { done: true, low: true, renewal: true, product: true, comments: true, mentions: true, reviews: true },
       theme: "light",
       matureContent: false,
       enhancePrompt: false,

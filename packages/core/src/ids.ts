@@ -36,6 +36,12 @@ export const ID_PREFIXES = {
   feedback: 'fbk',
   export: 'exp',
   dataExport: 'dex',
+  /** D-031 collaboration. */
+  commentThread: 'cth',
+  comment: 'cmt',
+  activity: 'act',
+  review: 'rvw',
+  reviewer: 'rvr',
   // Operations (D-025 .. D-030).
   audit: 'aud',
   case: 'case',

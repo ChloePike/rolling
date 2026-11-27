@@ -28,6 +28,12 @@ export const NotificationPrefs = z
     low: z.boolean(),
     renewal: z.boolean(),
     product: z.boolean(),
+    /** D-031: new comments in threads you are part of and on projects you created (in-app). */
+    comments: z.boolean(),
+    /** D-031: @mentions (in-app and email). */
+    mentions: z.boolean(),
+    /** D-031: review link decisions and reviewer comments on links you created (in-app; decisions also by email). */
+    reviews: z.boolean(),
   })
   .strict();
 export type NotificationPrefs = z.infer<typeof NotificationPrefs>;
@@ -51,7 +57,7 @@ export interface Prefs {
   reviewResults: boolean;
 }
 
-export const DEFAULT_NOTIFICATIONS: NotificationPrefs = { done: true, low: true, renewal: true, product: false };
+export const DEFAULT_NOTIFICATIONS: NotificationPrefs = { done: true, low: true, renewal: true, product: false, comments: true, mentions: true, reviews: true };
 
 export const DEFAULT_PREFS: Prefs = {
   language: 'en',

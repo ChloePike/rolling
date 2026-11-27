@@ -6,6 +6,7 @@ import * as d1 from "../src/d1/schema";
 import * as projectDo from "../src/do/project";
 import * as creditsDo from "../src/do/credits";
 import * as agentDo from "../src/do/agent";
+import * as projectCollabDo from "../src/do/projectCollab";
 import { migrateDurableObject, type MigratableStorage, type DoMigration } from "../src/do/migrate";
 
 function tablesOf(mod: Record<string, unknown>): SQLiteTable[] {
@@ -63,7 +64,7 @@ describe("D1 migration", () => {
     const db = new DatabaseSync(":memory:");
     const dir = new URL("../migrations/d1/", import.meta.url);
     const files = readdirSync(dir).filter((f) => f.endsWith(".sql")).sort();
-    expect(files).toEqual(["0001_init.sql", "0002_models.sql", "0003_plan_names.sql", "0004_auth.sql", "0005_billing.sql", "0006_projects_assets.sql", "0007_runs.sql", "0008_agent.sql", "0009_safety.sql", "0010_uploads.sql", "0011_agent_allowance.sql", "0012_team.sql", "0013_account.sql", "0014_exports.sql", "0015_runs_templates.sql", "0016_seed_templates.sql", "0017_template_covers.sql", "0018_privacy.sql", "0019_seed_inspiration_templates.sql", "0020_template_media.sql", "0021_template_feed_order.sql", "0022_public_items_asset_index.sql", "0023_inspiration_people.sql", "0024_prompt_expand.sql", "0025_run_surface.sql", "0027_operations.sql", "0029_character_sheets.sql", "0031_post_production.sql", "0032_review.sql"]);
+    expect(files).toEqual(["0001_init.sql", "0002_models.sql", "0003_plan_names.sql", "0004_auth.sql", "0005_billing.sql", "0006_projects_assets.sql", "0007_runs.sql", "0008_agent.sql", "0009_safety.sql", "0010_uploads.sql", "0011_agent_allowance.sql", "0012_team.sql", "0013_account.sql", "0014_exports.sql", "0015_runs_templates.sql", "0016_seed_templates.sql", "0017_template_covers.sql", "0018_privacy.sql", "0019_seed_inspiration_templates.sql", "0020_template_media.sql", "0021_template_feed_order.sql", "0022_public_items_asset_index.sql", "0023_inspiration_people.sql", "0024_prompt_expand.sql", "0025_run_surface.sql", "0027_operations.sql", "0029_character_sheets.sql", "0030_collab.sql", "0031_post_production.sql", "0032_review.sql"]);
     for (const f of files) db.exec(readFileSync(new URL(f, dir), "utf8"));
     expectSchemaMatches(db, tablesOf(d1));
     // 0029 (D-032): character sheets, consistency checks, uses.
@@ -129,6 +130,31 @@ describe("D1 migration", () => {
     expect(columnsIn(db, "user_prefs")).toContain("theme");
     db.exec("INSERT INTO user_prefs (user_id) VALUES ('usr_t')");
     expect(db.prepare("SELECT confirm_threshold, theme FROM user_prefs WHERE user_id = 'usr_t'").all()[0]).toEqual({ confirm_threshold: 300, theme: "system" });
+  });
+});
+
+describe("DO project collaboration chain (D-031)", () => {
+  it("applies on its own chain next to the main one and matches the Drizzle schema", () => {
+    const db = new DatabaseSync(":memory:");
+    const storage = fakeStorage(db);
+    migrateDurableObject(storage, projectDo.projectMigrations);
+    const n = projectCollabDo.projectCollabMigrations.length;
+    expect(migrateDurableObject(storage, projectCollabDo.projectCollabMigrations, { chain: projectCollabDo.COLLAB_MIGRATION_CHAIN })).toBe(n);
+    expect(migrateDurableObject(storage, projectCollabDo.projectCollabMigrations, { chain: projectCollabDo.COLLAB_MIGRATION_CHAIN })).toBe(n);
+    // The main chain's version is untouched by the collaboration chain.
+    expect(migrateDurableObject(storage, projectDo.projectMigrations)).toBe(projectDo.projectMigrations.length);
+    expectSchemaMatches(db, tablesOf(projectCollabDo));
+    expect(() => migrateDurableObject(storage, [], { chain: "bad name" })).toThrow();
+  });
+});
+
+describe("D1 0030 review links (D-031)", () => {
+  it("creates the review tables", () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec(readFileSync(new URL("../migrations/d1/0030_collab.sql", import.meta.url), "utf8"));
+    expect(columnsIn(db, "review_links")).toEqual(expect.arrayContaining(["token", "items", "mature", "password_hash", "password_version", "expires_at", "revoked_at"]));
+    expect(columnsIn(db, "review_reviewers")).toEqual(expect.arrayContaining(["token_hash", "verified_at"]));
+    expect(() => db.exec("INSERT INTO review_decisions (id, link_id, reviewer_id, decision, created_at) VALUES ('d', 'l', 'r', 'maybe', 1)")).toThrow();
   });
 });
 

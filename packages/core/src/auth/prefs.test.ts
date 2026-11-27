@@ -66,7 +66,7 @@ describe('prefs patch', () => {
 
   it('merges notifications and reads rows defensively', () => {
     const next = applyPrefsPatch(DEFAULT_PREFS, { notifications: { product: true }, theme: 'dark' });
-    expect(next.notifications).toEqual({ done: true, low: true, renewal: true, product: true });
+    expect(next.notifications).toEqual({ done: true, low: true, renewal: true, product: true, comments: true, mentions: true, reviews: true });
     const row = prefsFromRow({
       language: 'klingon',
       currency: 'USD',
