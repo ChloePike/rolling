@@ -17,6 +17,7 @@ import { billingResolvers, billingTypeDefs } from "./billing";
 import { projectsResolvers, projectsTypeDefs } from "./projects";
 import { runFieldResolvers, runsResolvers, runsTypeDefs } from "./runs";
 import { templatesResolvers, templatesTypeDefs } from "./templates";
+import { agentThreadsResolvers, agentThreadsTypeDefs } from "./agentThreads";
 
 export interface GraphQLContext {
   env: Env;
@@ -240,6 +241,7 @@ const resolvers = {
     ...projectsResolvers,
     ...runsResolvers,
     ...templatesResolvers,
+    ...agentThreadsResolvers,
   },
   ...runFieldResolvers,
   Model: {
@@ -264,7 +266,7 @@ const resolvers = {
 };
 
 export const yoga = createYoga<GraphQLContext>({
-  schema: createSchema<GraphQLContext>({ typeDefs: [typeDefs, billingTypeDefs, projectsTypeDefs, runsTypeDefs, templatesTypeDefs], resolvers }),
+  schema: createSchema<GraphQLContext>({ typeDefs: [typeDefs, billingTypeDefs, projectsTypeDefs, runsTypeDefs, templatesTypeDefs, agentThreadsTypeDefs], resolvers }),
   graphqlEndpoint: "/api/graphql",
   landingPage: false,
   graphiql: (_req, ctx) => ctx.env.ENVIRONMENT === "development",

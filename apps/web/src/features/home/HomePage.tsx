@@ -499,6 +499,7 @@ export function HomePage() {
             onBuild={(p, i) => build(p.id, i, p.body.kind === 'plan' ? p.body.options[i]?.title : undefined)}
             onDiscard={(p) => void thread.discard(p.id)}
             onNew={thread.reset}
+            recent={{ items: thread.recent, currentId: thread.id, onOpen: thread.loadRecent, onPick: (id) => void thread.open(id).catch(() => toast.show({ message: intl.formatMessage({ id: 'home.agent.recentFailed' }) })) }}
           />
         ) : null}
         {mode !== 'agent' || !showThread ? <HomeRunList cards={runs.cards} actions={cardActions} onClearFinished={() => runs.cards.filter((c) => !isActive(c)).forEach((c) => runs.remove(c.key))} /> : null}

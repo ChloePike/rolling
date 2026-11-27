@@ -6,14 +6,19 @@ import {
   createThread,
   discardProposal,
   existingThread,
-  forgetThread,
+  getThread,
+  hasThreadRecord,
+  recentThreads,
   rememberThread,
   sendTurn,
   skillId,
+  startFresh,
   type AgentFailure,
   type ApplyResult,
   type PlanOption,
   type Proposal,
+  type Thread,
+  type ThreadSummary,
   type TurnSettings,
 } from '@/features/overlays/agent';
 import { isMockApi } from '@/features/overlays/backend';
@@ -23,6 +28,29 @@ import { isSmallTalk, messagesFromThread, type ThreadMsg } from './thread';
 
 /** The remembered Home thread (`rolling.agent.thread.home`): reloads continue it. */
 export const HOME_THREAD_KEY = 'home';
+
+/** A thread Home can show: still on the Home surface (a built plan moves it to its canvas). */
+const onHome = (t: Thread | null): t is Thread => !!t && t.surface === 'home' && !t.projectId;
+
+/**
+ * The Home thread to restore: the one this browser remembers, else (a browser that never had one,
+ * e.g. another device) the user's latest Home conversation on the server. A browser where the user
+ * started fresh (New conversation, or a plan built on a canvas) restores nothing.
+ */
+export async function restorableThread(): Promise<Thread | null> {
+  if (hasThreadRecord(HOME_THREAD_KEY)) {
+    const t = await existingThread(HOME_THREAD_KEY);
+    if (onHome(t)) return t;
+    if (t) startFresh(HOME_THREAD_KEY);
+    return null;
+  }
+  const [latest] = await recentThreads('home', 1);
+  if (!latest) return null;
+  const t = await getThread(latest.id);
+  if (!onHome(t)) return null;
+  rememberThread(HOME_THREAD_KEY, t.id);
+  return t;
+}
 
 let seq = 0;
 const localId = (p: string) => `${p}_${Date.now().toString(36)}${(seq++).toString(36)}`;
@@ -53,6 +81,12 @@ export interface HomeThread {
   discard: (proposalId: string) => Promise<void>;
   /** Ends this conversation; the next send starts a new thread. */
   reset: () => void;
+  /** The user's recent Home conversations from the server (any device); empty in mock mode. */
+  recent: ThreadSummary[];
+  /** Reads `recent` again (when the switcher opens). */
+  loadRecent: () => void;
+  /** Continues another recent conversation. */
+  open: (threadId: string) => Promise<void>;
 }
 
 /** What a failure means for the view (`join` is handled by the page: paywall, brief kept). */
@@ -106,28 +140,53 @@ export function useHomeThread(onFailure: FailureHandler): HomeThread {
   const failRef = useRef(onFailure);
   failRef.current = onFailure;
 
-  // Real mode: the remembered Home thread comes back on load. One that moved to a canvas (its plan was built) is left there.
+  const [recent, setRecent] = useState<ThreadSummary[]>([]);
+
+  // Real mode: the Home thread comes back on load, from this browser or (another device) the server.
+  // One that moved to a canvas (its plan was built) is left there.
   useEffect(() => {
     if (mock) return;
     let live = true;
-    void existingThread(HOME_THREAD_KEY).then(
+    void restorableThread().then(
       (t) => {
         if (!live) return;
         setRestoring(false);
-        if (!t || t.surface !== 'home' || t.projectId) {
-          if (t) forgetThread(HOME_THREAD_KEY);
-          return;
-        }
+        if (!t) return;
         idRef.current = t.id;
         setId(t.id);
         setMessages(messagesFromThread(t));
       },
       () => live && setRestoring(false),
     );
+    void recentThreads('home').then(
+      (list) => live && setRecent(list),
+      () => {},
+    );
     return () => {
       live = false;
     };
   }, [mock]);
+
+  const loadRecent = useCallback(() => {
+    if (mock) return;
+    void recentThreads('home').then(setRecent, () => {});
+  }, [mock]);
+
+  const open = useCallback(
+    async (threadId: string) => {
+      if (mock || turnRef.current || threadId === idRef.current) return;
+      const t = await getThread(threadId);
+      if (!onHome(t)) {
+        setRecent((list) => list.filter((x) => x.id !== threadId));
+        return;
+      }
+      idRef.current = t.id;
+      setId(t.id);
+      setMessages(messagesFromThread(t));
+      rememberThread(HOME_THREAD_KEY, t.id);
+    },
+    [mock],
+  );
 
   const patchMsg = (msgId: string, fn: (m: ThreadMsg) => ThreadMsg) => setMessages((list) => list.map((m) => (m.id === msgId ? fn(m) : m)));
 
@@ -216,9 +275,9 @@ export function useHomeThread(onFailure: FailureHandler): HomeThread {
       }
       const r = await applyProposal(proposalId, { optionIndex, ...(title ? { title } : {}) });
       setStatus(proposalId, 'applied');
-      // The thread moved to the new project (surface canvas): the canvas panel continues it.
+      // The thread moved to the new project (surface canvas): the canvas panel continues it; Home starts fresh.
       if (r.projectId && idRef.current) rememberThread(`canvas:${r.projectId}`, idRef.current);
-      forgetThread(HOME_THREAD_KEY);
+      startFresh(HOME_THREAD_KEY);
       return r;
     },
     [mock],
@@ -238,8 +297,8 @@ export function useHomeThread(onFailure: FailureHandler): HomeThread {
     setId(null);
     setMessages([]);
     setBusy(false);
-    forgetThread(HOME_THREAD_KEY);
+    startFresh(HOME_THREAD_KEY);
   }, []);
 
-  return { id, messages, busy, restoring, send, stop, retry, build, discard, reset };
+  return { id, messages, busy, restoring, send, stop, retry, build, discard, reset, recent, loadRecent, open };
 }

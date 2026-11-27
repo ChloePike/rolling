@@ -321,6 +321,46 @@ test('agent: small talk streams a short reply over the socket; a brief returns a
   await expect(page.getByTestId('home-agent')).toContainText('Hi. Tell me what the video is for');
 });
 
+test('agent: the Home conversation comes from the server on a new device; Recent switches conversations; New conversation sticks after a reload', async ({ page }) => {
+  const s = await setup(page);
+  s.messages.push('A lamp ad for my desk brand', 'Here is what I would make.');
+  const thread = (id: string, msgs: string[]) => ({
+    thread: { id, workspaceId: 'ws_stub', projectId: null, canvasId: null, surface: 'home', skill: null, tool: null, llm: null, proposals: [], messages: msgs.map((content, i) => ({ id: `${id}_m${i}`, role: i % 2 ? 'assistant' : 'user', content, createdAt: i })) },
+  });
+  let graphql = 0;
+  await page.route(/\/api\/(graphql|agent\/threads\/thr_old)$/, async (route) => {
+    const req = route.request();
+    if (req.url().endsWith('/thr_old')) return route.fulfill({ contentType: 'application/json', body: JSON.stringify(thread('thr_old', ['Sneaker drop teaser', 'Two options below.'])) });
+    if (!(req.postData() ?? '').includes('agentThreads')) return route.fallback();
+    graphql += 1;
+    const items = [
+      { id: 'thr_stub', projectId: null, surface: 'home', title: 'A lamp ad for my desk brand', updatedAt: Date.now() - 60_000 },
+      { id: 'thr_old', projectId: null, surface: 'home', title: 'Sneaker drop teaser', updatedAt: Date.now() - 86_400_000 },
+    ];
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: { agentThreads: items } }) });
+  });
+  // A browser that never had a Home thread (another device): the latest one comes from the server.
+  await page.goto('/');
+  const agent = page.getByTestId('home-agent');
+  await expect(agent.getByTestId('home-agent-user')).toHaveText('A lamp ad for my desk brand');
+  expect(graphql).toBeGreaterThan(0);
+  await agent.getByRole('button', { name: 'Recent' }).click();
+  const menu = page.getByRole('menu', { name: 'Recent conversations' });
+  await expect(menu.getByRole('menuitem')).toHaveCount(1);
+  await menu.getByRole('menuitem', { name: /Sneaker drop teaser/ }).click();
+  await expect(agent.getByTestId('home-agent-user')).toHaveText('Sneaker drop teaser');
+  // This browser now remembers the one picked.
+  await page.reload();
+  await expect(page.getByTestId('home-agent').getByTestId('home-agent-user')).toHaveText('Sneaker drop teaser');
+  // New conversation: a reload does not bring an older one back.
+  await page.getByTestId('home-agent').getByRole('button', { name: 'New conversation' }).click();
+  await expect(page.getByTestId('home-agent')).toHaveCount(0);
+  await page.reload();
+  await expect(page.locator('#brief')).toBeVisible();
+  await page.waitForTimeout(500);
+  await expect(page.getByTestId('home-agent')).toHaveCount(0);
+});
+
 test('agent plan: Build on canvas applies it (free) and opens the new project', async ({ page }) => {
   const s = await setup(page);
   s.turns.push({ text: 'One option.', plan: true });

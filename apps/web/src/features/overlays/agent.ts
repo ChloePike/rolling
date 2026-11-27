@@ -14,7 +14,7 @@
  * AGENT_ALLOWANCE_EXHAUSTED { allowanceUsd, usedUsd, resetsAt, model }`,
  * `429 RATE_LIMITED`, `409 CONFLICT` (a turn is already running).
  */
-import { apiFetch, ApiError, userEvents, type Envelope } from './backend';
+import { apiFetch, ApiError, gql, userEvents, type Envelope } from './backend';
 
 export type AgentSurface = 'home' | 'canvas' | 'editor' | 'tool';
 export type AgentSkill = 'tv-ad' | 'product-showcase' | 'storyboard' | 'ai-comic' | 'brand-kit';
@@ -169,6 +169,46 @@ export async function existingThread(key: string): Promise<Thread | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * Whether this browser keeps a record for a surface key: a thread id, or `''` once the user started a
+ * fresh conversation (New conversation, or a plan built on a canvas). Without one, Home falls back to
+ * the user's latest thread on the server (another device).
+ */
+export function hasThreadRecord(key: string): boolean {
+  try {
+    return localStorage.getItem(threadKey(key)) !== null;
+  } catch {
+    return false;
+  }
+}
+
+/** The user started over on this surface: no thread is restored here until the next one starts. */
+export function startFresh(key: string) {
+  try {
+    localStorage.setItem(threadKey(key), '');
+  } catch {
+    /* Storage unavailable. */
+  }
+}
+
+export interface ThreadSummary {
+  id: string;
+  projectId: string | null;
+  surface: AgentSurface;
+  /** The first message (80 characters). */
+  title: string;
+  updatedAt: number;
+}
+
+/** The signed-in user's recent conversations on a surface, newest first (GraphQL `agentThreads`). */
+export async function recentThreads(surface: AgentSurface, first = 8): Promise<ThreadSummary[]> {
+  const r = await gql<{ agentThreads: ThreadSummary[] }>(
+    'query ($surface: String!, $first: Int) { agentThreads(surface: $surface, first: $first) { id projectId surface title updatedAt } }',
+    { surface, first },
+  );
+  return Array.isArray(r?.agentThreads) ? r.agentThreads : [];
 }
 
 export function forgetThread(key: string) {

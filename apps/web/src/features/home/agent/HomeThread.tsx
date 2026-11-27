@@ -1,7 +1,8 @@
 import { cx } from '@rolling/ui';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
-import type { PlanOption, Proposal } from '@/features/overlays/agent';
+import type { PlanOption, Proposal, ThreadSummary } from '@/features/overlays/agent';
+import { MenuPopover } from '@/features/canvas/layers/Menu';
 import { modelLabel, useModels } from '@/lib/models';
 import { ModelIcon, modelIcon } from '@/lib/modelIcons';
 import { PromptIcon } from '@/features/prompt';
@@ -22,6 +23,39 @@ export interface HomeThreadViewProps {
   onBuild: (proposal: Proposal, optionIndex: number) => void;
   onDiscard: (proposal: Proposal) => void;
   onNew: () => void;
+  /** The user's other recent Home conversations (server, any device); the switcher shows when there is one. */
+  recent?: { items: ThreadSummary[]; currentId: string | null; onOpen: () => void; onPick: (threadId: string) => void };
+}
+
+/** “Recent” in the thread header: the user's other Home conversations, newest first. */
+function RecentConversations({ recent, disabled }: { recent: NonNullable<HomeThreadViewProps['recent']>; disabled: boolean }) {
+  const intl = useIntl();
+  const [open, setOpen] = useState(false);
+  const others = recent.items.filter((t) => t.id !== recent.currentId);
+  if (!others.length) return null;
+  return (
+    <MenuPopover
+      open={open}
+      onOpenChange={(o) => {
+        if (o) recent.onOpen();
+        setOpen(o);
+      }}
+      label={intl.formatMessage({ id: 'home.agent.recentLabel' })}
+      title={intl.formatMessage({ id: 'home.agent.recentLabel' })}
+      align="end"
+      trigger={(t) => (
+        <button {...t} type="button" className={styles.ghost} disabled={disabled} data-testid="home-agent-recent">
+          <FormattedMessage id="home.agent.recent" />
+        </button>
+      )}
+      entries={others.map((t) => ({
+        key: t.id,
+        label: t.title,
+        meta: intl.formatDate(t.updatedAt, { month: 'short', day: 'numeric' }),
+        onSelect: () => recent.onPick(t.id),
+      }))}
+    />
+  );
 }
 
 /** Pixels from the bottom within which the thread keeps following new text. */
@@ -142,6 +176,7 @@ export function HomeThreadView(p: HomeThreadViewProps) {
           {p.llm.allowance ? <span className={styles.allowance}>· {p.llm.allowance}</span> : null}
         </span>
         <span className={styles.spacer} />
+        {p.recent ? <RecentConversations recent={p.recent} disabled={p.busy} /> : null}
         <button type="button" className={styles.ghost} onClick={p.onNew} disabled={p.busy}>
           <FormattedMessage id="home.agent.new" />
         </button>
