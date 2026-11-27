@@ -1,0 +1,15 @@
+{
+  "legal.documentTitle": "{title} · {app}",
+  "legal.nav.label": "法的情報",
+  "legal.nav.terms": "利用規約",
+  "legal.nav.privacy": "プライバシー",
+  "legal.nav.acceptable-use": "利用ポリシー",
+  "legal.nav.subprocessors": "委託先事業者",
+  "legal.toc": "このページの内容",
+  "legal.links.label": "法的情報",
+  "legal.link.terms": "利用規約",
+  "legal.link.privacy": "プライバシーポリシー",
+  "legal.link.acceptable-use": "利用ポリシー",
+  "legal.link.subprocessors": "委託先事業者",
+  "legal.englishGoverns": "この文書は英語で作成されています。英語版が優先されます。"
+}

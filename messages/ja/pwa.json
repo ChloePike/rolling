@@ -1,0 +1,15 @@
+{
+  "pwa.update.message": "新しいバージョンがあります",
+  "pwa.update.reload": "再読み込み",
+  "pwa.offline.title": "オフラインです",
+  "pwa.offline.body": "キャンバスの配置やタイムラインの編集は続けられます。生成と書き出しには接続が必要です。",
+  "pwa.offline.retry": "再試行",
+  "pwa.install.title": "アプリをインストール",
+  "pwa.install.body": "専用のウィンドウで開き、Dockからも起動できます。アカウントもプロジェクトもそのままです。",
+  "pwa.install.notNow": "あとで",
+  "pwa.install.install": "インストール",
+  "pwa.install.ios.title": "iPhoneまたはiPadにインストール",
+  "pwa.install.ios.body": "共有をタップし、「ホーム画面に追加」を選びます。",
+  "pwa.install.ios.done": "OK",
+  "pwa.install.menu": "アプリをインストール"
+}

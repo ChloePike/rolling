@@ -1,0 +1,20 @@
+{
+  "share.meta": "{n, plural, one {#件} other {#件}} · {date}に共有",
+  "share.open": "Rollingを開く",
+  "share.signup": "自分で作る",
+  "share.board": "共有キャンバス",
+  "share.download": "ダウンロード",
+  "share.download.label": "{name}をダウンロード",
+  "share.empty": "この共有には表示できるものがありません。",
+  "share.missing.title": "このリンクは利用できません",
+  "share.missing.sub": "所有者が共有をオフにしたか、アドレスが間違っている可能性があります。",
+  "share.error.title": "共有を読み込めませんでした",
+  "share.error.sub": "接続を確認して、ページを再読み込みしてください。",
+  "share.kind.script": "スクリプト",
+  "share.kind.image": "画像",
+  "share.kind.video": "動画",
+  "share.kind.audio": "音声",
+  "share.kind.asset": "参照素材",
+  "share.kind.text": "テキスト",
+  "share.kind.other": "ステップ"
+}

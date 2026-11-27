@@ -1,0 +1,20 @@
+{
+  "profile.bio.placeholder": "[BIO: ユーザーが自己紹介として書く1〜2行]",
+  "profile.edit": "プロフィールを編集",
+  "profile.share": "共有",
+  "profile.share.copied": "プロフィールのリンクをコピーしました",
+  "profile.tabs": "プロフィール",
+  "profile.tab.published": "公開済み",
+  "profile.tab.template": "テンプレート",
+  "profile.empty": "まだ何もありません。",
+  "profile.downloaded": "ダウンロードを開始しました。",
+  "profile.bio.empty": "自己紹介はまだありません。",
+  "profile.unavailable": "このプロフィールは存在しないか、公開されていません。",
+  "profile.unavailable.home": "ホームへ",
+  "profile.empty.own.published": "公開したものはまだありません。プロジェクトで「共有」を開き、「プロフィールに公開」をオンにしてください。",
+  "profile.empty.own.template": "公開したテンプレートがここに表示されます。",
+  "profile.empty.other.published": "公開されたものはまだありません。",
+  "profile.empty.other.template": "テンプレートはまだありません。",
+  "profile.empty.unclaimed": "ユーザー名を決めると、公開プロフィールが作成されます。",
+  "profile.empty.pickHandle": "ユーザー名を選ぶ"
+}
