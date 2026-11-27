@@ -181,3 +181,16 @@ test('Profile: an unknown profile offers a way back (it was a dead end)', async 
   await box.getByRole('link', { name: 'Go to Home' }).click();
   await expect(page).toHaveURL(/\/$/);
 });
+
+test('My voices: voice cloning is not live, so the control says “Coming soon” and explains instead of faking a clone', async ({ page }) => {
+  await stub(page, () => undefined);
+  await page.goto('/assets?folder=voices');
+  await expect(page.getByText('No voices yet. Voice cloning is coming soon; Avatar lip-syncs to a voice track you upload.')).toBeVisible();
+  const cta = page.getByRole('button', { name: 'Voice cloning · Coming soon' });
+  await expect(cta).toHaveAttribute('aria-disabled', 'true');
+  // aria-disabled keeps it focusable: the keyboard gets the same explanation.
+  await cta.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('status')).toContainText('Voice cloning is coming soon. For now, upload a voice track in Avatar.');
+  await expect(page.getByRole('button', { name: 'Clone a voice' })).toHaveCount(0);
+});

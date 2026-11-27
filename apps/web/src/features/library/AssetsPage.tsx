@@ -188,10 +188,24 @@ export function AssetsPage({ folder = 'all' }: { folder?: AssetFolder }) {
               e.target.value = '';
             }}
           />
-          <button type="button" className={cx(styles.cta, motion.press)} onClick={() => (isChars ? void navigate({ to: '/create/character' }) : fileRef.current?.click())}>
-            <PathIcon d={isChars ? paths.plus : paths.upload} size={15} strokeWidth={2.2} />
-            <FormattedMessage id={isChars ? 'library.assets.cta.character' : isVoices ? 'library.assets.cta.voice' : 'library.assets.cta.upload'} />
-          </button>
+          {isVoices && !isMockApi() ? (
+            // The voice-clone provider is an open decision: the control says so instead of pretending to clone.
+            <button
+              type="button"
+              className={cx(styles.cta, styles.ctaSoon)}
+              aria-disabled="true"
+              title={intl.formatMessage({ id: 'library.assets.voice.soon' })}
+              onClick={() => toast.show({ message: intl.formatMessage({ id: 'library.assets.voice.soon' }) })}
+            >
+              <PathIcon d={paths.upload} size={15} strokeWidth={2.2} />
+              <FormattedMessage id="library.assets.cta.voiceSoon" />
+            </button>
+          ) : (
+            <button type="button" className={cx(styles.cta, motion.press)} onClick={() => (isChars ? void navigate({ to: '/create/character' }) : fileRef.current?.click())}>
+              <PathIcon d={isChars ? paths.plus : paths.upload} size={15} strokeWidth={2.2} />
+              <FormattedMessage id={isChars ? 'library.assets.cta.character' : isVoices ? 'library.assets.cta.voice' : 'library.assets.cta.upload'} />
+            </button>
+          )}
         </div>
         {isChars ? <Characters key="chars" query={query} /> : isVoices ? <Voices key="voices" query={query} /> : <Files key={folder} folder={kind === 'favorites' ? 'favorites' : kind === 'project' ? folder : 'all'} query={query} sel={sel} setSel={setSel} uploads={uploads} onUpload={() => fileRef.current?.click()} />}
       </section>
@@ -609,7 +623,7 @@ function Voices({ query }: { query: string }) {
       {voicesQ.isError && !voicesQ.data ? <LoadError onRetry={() => voicesQ.refetch()} retrying={voicesQ.isFetching} /> : null}
       {voicesQ.data && voices.length === 0 ? (
         <p className={styles.empty} data-empty="">
-          <FormattedMessage id="library.assets.voices.none" />
+          <FormattedMessage id={isMockApi() ? 'library.assets.voices.none' : 'library.assets.voices.soon'} />
         </p>
       ) : null}
       {visible.map((v, i) => {

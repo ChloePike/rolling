@@ -120,7 +120,8 @@ export function PlanCard({ id, index, period, recommended, current, pending, rat
         )}
       </div>
       <span className={styles.who}>
-        <FormattedMessage id={`account.upgrade.plan.${id}.who`} />
+        {/* What sets the plan apart, from packages/core/src/pricing/config.ts (not hard-coded in the copy). */}
+        <FormattedMessage id={`account.upgrade.plan.${id}.who`} values={{ video: plan.maxVideoResolution, image: plan.maxImageResolution, jobs: plan.concurrentJobs }} />
       </span>
       <div className={styles.priceBlock}>
         <div className={styles.priceRow}>

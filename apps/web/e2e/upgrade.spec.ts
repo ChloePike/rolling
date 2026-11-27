@@ -75,8 +75,16 @@ test.describe('upgrade /upgrade', () => {
     expect(await caps('plus', 'Images')).toEqual(['2K:true', '4K:false']);
     await expect(card(page, 'starter').locator('[data-cap="1080p"]')).toHaveAttribute('title', '1080p needs Plus');
     await expect(card(page, 'plus').locator('[data-cap="4K"]').first()).toHaveAttribute('title', '4K needs Pro');
-    await expect(card(page, 'plus')).toContainText('Voice cloning');
+    // UX audit #31: taglines name what differs (from pricing/config); voice cloning is not live, so it says so.
+    await expect(card(page, 'starter')).toContainText('Unlock generating and top-ups, video up to 720p.');
+    await expect(card(page, 'plus')).toContainText('For weekly creators: 1080p video, 5 jobs at once.');
+    await expect(card(page, 'pro')).toContainText('For pros who need 4K video and 4K images.');
+    await expect(card(page, 'plus')).toContainText('Voice cloning (coming soon)');
     await expect(card(page, 'starter')).not.toContainText('Voice cloning');
+    for (const id of ['plus', 'pro']) {
+      const text = (await card(page, id).innerText()).replace(/Voice cloning \(coming soon\)/g, '');
+      expect(text, id).not.toMatch(/voice cloning/i);
+    }
     // D-013: personal plans have one seat; seats are on Team.
     await expect(card(page, 'pro')).not.toContainText('seats');
     await expect(card(page, 'pro')).toContainText('+10% bonus on every top-up');
