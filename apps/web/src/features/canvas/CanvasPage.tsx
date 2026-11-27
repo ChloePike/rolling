@@ -121,12 +121,15 @@ export interface CanvasPageProps {
   incoming?: string | null;
 }
 
-type Tool = 'add' | 'asset' | 'flow' | 'dir' | 'cut' | 'hist';
+type Tool = 'add' | 'asset' | 'flow' | 'cut' | 'hist';
+/**
+ * Tool rail (Canvas.dc.html). The design's Director tool is left out until it ships (docs/ux-audit.md #33):
+ * a disabled “coming soon” button in the main rail was a dead end. The add menu still lists it as coming soon.
+ */
 const TOOLS: Array<{ key: Tool; icon: CanvasIconName; label: string }> = [
   { key: 'add', icon: 'plus', label: 'canvas.tools.add' },
   { key: 'asset', icon: 'image', label: 'canvas.tools.assets' },
   { key: 'flow', icon: 'flow', label: 'canvas.tools.flow' },
-  { key: 'dir', icon: 'director', label: 'canvas.tools.director' },
   { key: 'cut', icon: 'cut', label: 'canvas.tools.edit' },
   { key: 'hist', icon: 'history', label: 'canvas.tools.history' },
 ];
@@ -965,8 +968,6 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
       void assetPicker.open({ title: intl.formatMessage({ id: 'canvas.assets.title' }), multiple: true, projectId, confirmLabel: intl.formatMessage({ id: 'canvas.assets.add' }) }).then((picks) => picks && addPicks(picks));
     } else if (k === 'flow') {
       setToolPanel((p) => (p === 'templates' ? null : 'templates'));
-    } else if (k === 'dir') {
-      toast.show({ message: intl.formatMessage({ id: 'canvas.tools.directorSoon' }) });
     }
   };
   const toolPressed = (k: Tool) =>
@@ -1675,18 +1676,8 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
       <div role="toolbar" aria-label={intl.formatMessage({ id: 'canvas.tools.label' })} aria-orientation="vertical" className={canvas.toolbar}>
         {TOOLS.map((t) => {
           const label = intl.formatMessage({ id: t.label });
-          const soon = t.key === 'dir';
           return (
-            <button
-              key={t.key}
-              type="button"
-              className={canvas.tool}
-              aria-label={label}
-              title={soon ? intl.formatMessage({ id: 'canvas.tools.directorSoon' }) : label}
-              aria-pressed={soon ? undefined : toolPressed(t.key)}
-              aria-disabled={soon || undefined}
-              onClick={() => pickTool(t.key)}
-            >
+            <button key={t.key} type="button" className={canvas.tool} aria-label={label} title={label} aria-pressed={toolPressed(t.key)} onClick={() => pickTool(t.key)}>
               <CanvasIcon name={t.icon} size={18} />
             </button>
           );

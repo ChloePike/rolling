@@ -24,9 +24,14 @@ const MAX_DIFF = 0.01;
 
 type Overlay = '' | 'plan' | 'addMenu' | 'script' | 'share' | 'edit' | 'editAgent' | 'at';
 
+/** The app leaves the design's Director tool out of the rail until it ships (docs/ux-audit.md #33). */
+const NO_DIRECTOR_TOOL: ReadonlyArray<readonly [string, string]> = [
+  ["['dir','Director','M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3z M6.2 5.3l3.1 3.9 M12.4 3.4l3.1 4 M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'],", ''],
+];
+
 async function openDesign(page: Page, initOverlay: Overlay = '') {
   await page.setViewportSize({ width: W, height: H });
-  await page.setContent(buildDesignPage('Canvas.dc.html', { initOverlay }));
+  await page.setContent(buildDesignPage('Canvas.dc.html', { initOverlay }, NO_DIRECTOR_TOOL));
   await page.waitForFunction(() => (window as unknown as { __DC_READY__?: boolean }).__DC_READY__ === true);
   await page.evaluate(() => document.fonts.ready);
 }
@@ -749,7 +754,7 @@ test.describe('canvas controls', () => {
     await expect(second).toHaveAttribute('data-outcome', 'discarded');
   });
 
-  test('tool rail: assets panel adds asset nodes, templates insert a connected group, director explains, history selects', async ({ page }) => {
+  test('tool rail: assets panel adds asset nodes, templates insert a connected group, history selects; no Director until it ships', async ({ page }) => {
     await openApp(page);
     const before = await page.locator('.react-flow__node').count();
     await page.getByRole('button', { name: 'Assets', exact: true }).click();
@@ -767,9 +772,10 @@ test.describe('canvas controls', () => {
     await expect(page.locator('.react-flow__node')).toHaveCount(before + 3);
     await expect(page.getByText('Product hero shot added (2 nodes)')).toBeVisible();
 
-    // aria-disabled with a reason: it still responds (toast), so force past Playwright's enabled check.
-    await page.getByRole('button', { name: 'Director' }).click({ force: true });
-    await expect(page.getByText(/Director is coming soon/).last()).toBeVisible();
+    // UX audit #33: the disabled “coming soon” Director sat in the main rail; it is left out until it exists.
+    const rail = page.getByRole('toolbar', { name: /tools/i });
+    await expect(rail.getByRole('button', { name: 'Director' })).toHaveCount(0);
+    await expect(rail.getByRole('button')).toHaveCount(5);
 
     await page.getByRole('button', { name: 'Run history' }).click();
     await page.getByRole('region', { name: 'Run history' }).getByRole('menuitem', { name: 'Show Product keyframe on the canvas' }).click();
