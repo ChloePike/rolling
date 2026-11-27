@@ -129,6 +129,7 @@ function settingsOfSpec(spec: PromptSpec, over: Partial<NodeSettings> = {}): Nod
     ...(spec.seed !== undefined && { seed: spec.seed }),
     mature: spec.mature === true,
     refsMode: spec.refsMode === true,
+    ...(spec.promptExpand !== undefined && { promptExpand: spec.promptExpand }),
     ...over,
   };
 }

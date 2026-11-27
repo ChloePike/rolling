@@ -293,6 +293,21 @@ export async function preCheck(input: PreCheckInput, deps: SafetyDeps): Promise<
   return needsMature && v.verdict === 'allow' ? { ...v, needsMature: true } : v;
 }
 
+/**
+ * D-020: the prompt the gateway's expansion actually rendered (`expanded_prompt`)
+ * gets the same text checks as the user's prompt (rules, then the text
+ * classifier), so a rewrite cannot add a hard limit the user's words did not
+ * have. Mature-allowed callers and mature runs are blocked only by hard limits;
+ * other callers also by explicit content (MATURE_REQUIRED). Classifier outages
+ * fail closed on mature runs, as in `preCheck`.
+ */
+export async function expandedPromptCheck(input: { expandedPrompt: string; mature: boolean; matureAllowed?: boolean }, deps: SafetyDeps): Promise<SafetyVerdict> {
+  const v = await preCheck({ prompt: input.expandedPrompt, references: [], mature: input.mature, ...(input.matureAllowed !== undefined && { matureAllowed: input.matureAllowed }) }, deps);
+  // Rating the output decides visibility; an explicit rewrite of a mature-allowed caller is not re-planned here.
+  const { needsMature: _ignored, ...rest } = v;
+  return rest;
+}
+
 /** The pictures a check looks at: an image output itself, a video's frames. */
 function picturesOf(outputs: readonly SafetyOutput[]): { pictures: { url: string; hash?: string; output: number }[]; unframed: number } {
   const pictures: { url: string; hash?: string; output: number }[] = [];

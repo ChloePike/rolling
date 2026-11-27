@@ -13,6 +13,7 @@
  * - Face/head swap never takes a mature run.
  */
 import { Catalog, usdCost, type PriceRequest } from './catalog';
+import { takesPromptExpand } from './expand';
 import { isSwapModel } from './overlay';
 import {
   PLATFORM_IMAGE_SOURCES,
@@ -236,6 +237,7 @@ export function validateRequest(model: CatalogModel, req: GenerateRequest): stri
   if (req.negativePrompt !== undefined && !model.params.negativePrompt) problems.push('negativePrompt not supported');
   if (req.size !== undefined && !model.params.size) problems.push('size not supported');
   if (req.audioUrl !== undefined && !model.lipSync) problems.push('audioUrl not supported');
+  if (req.promptExpand !== undefined && !takesPromptExpand(model, req.mode)) problems.push('promptExpand not supported');
   if (model.requiredParams.includes('prompt') && req.prompt.trim() === '') problems.push('prompt is required');
 
   // Listing rules: mutually exclusive groups and dependencies.

@@ -2,6 +2,7 @@ import type { GenerateRequest, JobOutput, JobState, JobStatus, CatalogModel } fr
 import { errorFromResponse, type HyperouterClient } from './client';
 import { HYPEROUTER_DEFAULTS, HYPEROUTER_PATHS } from './config';
 import { jobErrorFrom } from './job-errors';
+import { applyPromptExpand, withExpanded } from './image';
 
 /** The Video object (OpenAI Videos API shape). */
 export interface HyperouterVideo {
@@ -17,6 +18,8 @@ export interface HyperouterVideo {
   expires_at?: number | null;
   error?: { code?: string | null; message?: string | null } | null;
   usage?: { cost?: number | null; seconds?: number | null } | null;
+  /** With `prompt_expand`: the prompt that rendered, once submitted (null when nothing was expanded; kept 30 days). */
+  expanded_prompt?: string | null;
 }
 
 export interface VideoCreateBody {
@@ -37,6 +40,9 @@ export interface VideoCreateBody {
   reference_audios?: string[];
   audio_url?: string;
   models?: string[];
+  prompt_expand?: boolean;
+  prompt_expand_model?: string;
+  locale?: string;
   moderation: 'auto' | 'low';
   [extra: string]: unknown;
 }
@@ -69,6 +75,8 @@ export function buildVideoBody(cap: CatalogModel, req: GenerateRequest, moderati
   if (req.referenceAudioUrls?.length) body.reference_audios = req.referenceAudioUrls;
   if (req.audioUrl !== undefined) body.audio_url = req.audioUrl;
   if (req.fallbackModelIds?.length) body.models = req.fallbackModelIds;
+  // Extend is not a create: the gateway refuses expansion on it (`takesPromptExpand` keeps it off too).
+  if (req.mode !== 'extend') applyPromptExpand(body, cap, req);
   return body;
 }
 
@@ -134,5 +142,6 @@ export function videoToJobStatus(video: HyperouterVideo, outputs: JobOutput[] = 
     costUsd: video.usage?.cost ?? null,
     error: state === 'failed' ? jobErrorFrom(video.error) : null,
     providerStatus: video.status,
+    ...withExpanded(video.expanded_prompt),
   };
 }

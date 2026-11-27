@@ -109,4 +109,26 @@ describe('shots in run planning', () => {
     expect(byRef.spec!.spec!.prompt).toBe('two adults, explicit sex scene in a hotel room');
     expect(byRef.spec!.spec!.shot).toBeUndefined();
   });
+
+  it('one rewrite, not two: the gateway expands a typed prompt, never one composed from a shot (D-020)', async () => {
+    const expanding = { ...PLUS, promptExpand: { default: true, available: true } };
+    const model = fixtureCatalog.models.find((m) => m.kind === 'video' && m.params.promptExpand && m.operations.includes('t2v'))!;
+    const typed: GraphState = { revision: 1, groups: [], edges: [], nodes: [{ ...node('vid', 'video', { prompt: 'a red fox in the snow', model: model.id, seconds: 5, promptExpand: true }), createdBy: 'user' }] };
+    const t = (await plan(typed, expanding)).vid!;
+    expect(t.spec!.promptExpand).toBeDefined();
+    const sent = buildGenerateRequest(t.spec!, model, []);
+    expect(sent.prompt).toBe('a red fox in the snow');
+    expect(sent.promptExpand).toBeDefined();
+    expect(sent.promptComposed).toBeUndefined();
+
+    // A shot node with the toggle forced on: composed for the model, not expanded and not priced for expansion.
+    const g: GraphState = { revision: 1, groups: [], edges: [], nodes: [node('vid', 'video', { prompt: canonicalPrompt(shot), shot, model: model.id, seconds: 5, promptExpand: true })] };
+    const s = (await plan(g, expanding)).vid!;
+    expect(s.spec!.shot).toEqual(shot);
+    expect(s.spec!.promptExpand).toBeUndefined();
+    expect(s.priceRequest).not.toHaveProperty('promptExpandUsd');
+    const composed = buildGenerateRequest({ ...s.spec!, promptExpand: t.spec!.promptExpand! }, model, []);
+    expect(composed.promptComposed).toBe(true);
+    expect(composed.promptExpand).toBeUndefined();
+  });
 });

@@ -91,7 +91,11 @@ export interface ListingModel {
   /** Images per request (`n` maximum). */
   maxImagesPerRequest: number;
   /** Shared optional parameters we map from GenerateRequest. */
-  params: { seed: boolean; negativePrompt: boolean; promptExtend: boolean; size: boolean };
+  /**
+   * `promptExtend`: the vendor's own rewrite (`prompt_extend`, never sent). `promptExpand`: Hyperouter's
+   * rewrite before the render (`prompt_expand`; the listing names it only once the account has it).
+   */
+  params: { seed: boolean; negativePrompt: boolean; promptExtend: boolean; promptExpand: boolean; size: boolean };
   /** Every parameter name the gateway accepts for this model (schema, supported and extra). */
   acceptedParams: string[];
   /** Parameters the schema marks required. */
@@ -201,6 +205,13 @@ export interface GenerateRequest {
    * edit inputs), in any order. Required for mature runs on identity-driven models (D-005).
    */
   imageSources?: ImageSource[];
+  /**
+   * Gateway prompt expansion ("Enhance prompt", D-020): the gateway rewrites the
+   * prompt with a chat model before the render. `model` is the writer (absent =
+   * the gateway's default), `locale` the language of spoken lines (BCP 47).
+   * Never sent together with the vendor's own `prompt_extend`.
+   */
+  promptExpand?: { model?: string; locale?: string };
   /** Fallback provider model ids tried by the gateway, in order. */
   fallbackModelIds?: string[];
   /** Model-specific fields passed through as-is. */
@@ -238,6 +249,8 @@ export interface JobStatus {
   error: JobError | null;
   /** Raw provider status, for logs. */
   providerStatus?: string;
+  /** With prompt expansion: the prompt that rendered (null = nothing was expanded). Absent when not reported. */
+  expandedPrompt?: string | null;
 }
 
 export interface WebhookResult {

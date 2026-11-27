@@ -42,6 +42,8 @@ export interface Prefs {
   theme: (typeof THEMES)[number];
   /** D-005 visibility preference. Effective only for members whose workspace allows it. */
   matureContent: boolean;
+  /** D-020 "Enhance prompt" default for Home, tools and Quick Create (each run can change it). */
+  enhancePrompt: boolean;
 }
 
 export const DEFAULT_NOTIFICATIONS: NotificationPrefs = { done: true, low: true, renewal: true, product: false };
@@ -56,6 +58,7 @@ export const DEFAULT_PREFS: Prefs = {
   notifications: DEFAULT_NOTIFICATIONS,
   theme: 'system',
   matureContent: false,
+  enhancePrompt: true,
 };
 
 /** Upper bound for the confirm threshold (credits); 1 credit = $0.01, so this is $1,000. */
@@ -73,6 +76,7 @@ export const PrefsPatch = z
     notifications: NotificationPrefs.partial().strict(),
     theme: z.enum(THEMES),
     matureContent: z.boolean(),
+    enhancePrompt: z.boolean(),
   })
   .partial()
   .strict()
@@ -189,6 +193,8 @@ export interface PrefsRow {
   notifications: string;
   theme: string;
   mature_content: number | boolean;
+  /** Migration 0024; absent on rows read before it. */
+  enhance_prompt?: number | boolean | null;
 }
 
 function oneOf<T extends string>(values: readonly T[], v: string, fallback: T): T {
@@ -214,6 +220,7 @@ export function prefsFromRow(row: PrefsRow): Prefs {
     notifications,
     theme: oneOf(THEMES, row.theme, 'system'),
     matureContent: Boolean(row.mature_content),
+    enhancePrompt: row.enhance_prompt === undefined || row.enhance_prompt === null ? DEFAULT_PREFS.enhancePrompt : Boolean(row.enhance_prompt),
   };
 }
 

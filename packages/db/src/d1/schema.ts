@@ -80,6 +80,8 @@ export const userPrefs = sqliteTable(
     /** Migration 0013: R2 key of the derived, safe-rated avatar (served by `/api/media/avatar/:userId`). */
     avatarKey: text("avatar_key"),
     avatarAssetId: text("avatar_asset_id"),
+    /** Migration 0024 (D-020): "Enhance prompt" default for Home, tools and Quick Create. */
+    enhancePrompt: integer("enhance_prompt", { mode: "boolean" }).notNull().default(true),
   },
   (t) => [
     check("user_prefs_theme_check", sql`${t.theme} IN ('system','light','dark')`),
@@ -372,6 +374,8 @@ export const jobs = sqliteTable(
     assetId: text("asset_id"),
     errorMessage: text("error_message"),
     updatedAt: integer("updated_at"),
+    /** Migration 0024 (D-020): the prompt that rendered when the gateway expanded it. */
+    expandedPrompt: text("expanded_prompt"),
   },
   (t) => [
     index("jobs_activity").on(t.runId),
@@ -852,6 +856,14 @@ export const dataExports = sqliteTable(
   },
   (t) => [index("data_exports_user").on(t.userId, sql`${t.createdAt} DESC`)],
 );
+
+/** Migration 0024 (D-020): gateway features this environment's account may not have yet (`prompt_expand`). */
+export const gatewayFeatures = sqliteTable("gateway_features", {
+  feature: text("feature").primaryKey(),
+  enabled: integer("enabled", { mode: "boolean" }).notNull(),
+  reason: text("reason"),
+  checkedAt: integer("checked_at").notNull(),
+});
 
 export type Workspace = typeof workspaces.$inferSelect;
 export type UserPrefs = typeof userPrefs.$inferSelect;

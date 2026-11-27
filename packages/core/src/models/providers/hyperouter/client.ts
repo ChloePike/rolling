@@ -242,3 +242,20 @@ export class HyperouterClient {
     return { data, response: res };
   }
 }
+
+/**
+ * Why a create with `prompt_expand` was refused, when the expansion is the cause (D-020):
+ * - `feature_off`: `403 feature_not_enabled` (the account does not have it; nothing held or sent);
+ * - `refused`: `422 expansion_refused` / `400 prompt_rejected` (the rewrite was refused; not billed, nothing rendered);
+ * - `writer`: the writer named in `prompt_expand_model` is unknown or not callable (before anything is held).
+ * Null for every other error.
+ */
+export type ExpansionFailure = 'feature_off' | 'refused' | 'writer';
+
+export function expansionFailureOf(err: unknown): ExpansionFailure | null {
+  if (!(err instanceof HyperouterError)) return null;
+  if (err.code === 'feature_not_enabled') return 'feature_off';
+  if (err.code === 'expansion_refused' || err.code === 'prompt_rejected') return 'refused';
+  if ((err.code === 'model_not_enabled' || err.code === 'unknown_model') && err.param === 'prompt_expand_model') return 'writer';
+  return null;
+}

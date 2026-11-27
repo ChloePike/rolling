@@ -6,6 +6,7 @@ import { fitRequest } from './auto';
 import { imageSizeFor, usesSize } from './spec';
 import { validateRequest } from '../models/capabilities';
 import { adaptPrompt } from '../prompting/compose';
+import { takesPromptExpand } from '../models/expand';
 import type { CatalogModel, GenerateRequest, ImageSource } from '../models/types';
 import type { GenInput, GenSpec } from './types';
 
@@ -70,6 +71,12 @@ export function buildGenerateRequest(spec: GenSpec, model: CatalogModel, resolve
     ...(edits.length > 0 && { inputImageUrls: edits }),
     ...(spec.mature && { mature: true }),
   };
+  // D-020: "Enhance prompt" on models that take it; others render the prompt as written.
+  // D-020: only a prompt the user typed is expanded by the gateway; a composed one is already written for the model.
+  if (spec.promptExpand && !adapted.composed && takesPromptExpand(model, spec.mode)) {
+    const { writer, locale } = spec.promptExpand;
+    req.promptExpand = { ...(writer && { model: writer }), ...(locale && { locale }) };
+  }
   if (audios.length > 0) {
     if (model.lipSync && audios.length === 1) req.audioUrl = audios[0];
     else req.referenceAudioUrls = audios;

@@ -12,6 +12,8 @@ export interface HyperouterGeneration {
   created_at?: string | null;
   finished_at?: string | null;
   usage?: { cost?: number | null; image?: number; video_seconds?: number } | null;
+  /** With `prompt_expand`: the prompt that rendered (null when nothing was expanded; kept 30 days). */
+  expanded_prompt?: string | null;
   latency_ms?: number | null;
   error?: { code?: string | null; message?: string | null } | null;
   outputs?: { url: string; expires_at?: string | number | null }[];
@@ -24,6 +26,7 @@ export interface HyperouterImageCreateResponse {
   created?: number;
   data?: { url: string }[];
   usage?: { cost?: number | null } | null;
+  expanded_prompt?: string | null;
 }
 
 export interface ImageCreateBody {
@@ -34,6 +37,9 @@ export interface ImageCreateBody {
   seed?: number;
   negative_prompt?: string;
   prompt_extend?: boolean;
+  prompt_expand?: boolean;
+  prompt_expand_model?: string;
+  locale?: string;
   ratio?: string;
   resolution?: string;
   images?: { image_url: string }[];
@@ -55,7 +61,30 @@ export function buildImageBody(cap: CatalogModel, req: GenerateRequest, moderati
   if (req.resolution !== undefined && cap.resolutions.length > 0) body.resolution = req.resolution;
   if (req.inputImageUrls?.length) body.images = req.inputImageUrls.map((url) => ({ image_url: url }));
   if (req.fallbackModelIds?.length) body.models = req.fallbackModelIds;
+  applyPromptExpand(body, cap, req);
   return body;
+}
+
+/**
+ * Gateway prompt expansion (D-020) on a create body: `prompt_expand: true`, the
+ * writer and the spoken-lines locale. The vendor's own `prompt_extend` is never
+ * sent with it (the gateway refuses the pair), not even through `extra`.
+ */
+export function applyPromptExpand(body: { prompt?: string; [k: string]: unknown }, cap: CatalogModel, req: GenerateRequest): void {
+  delete body.prompt_expand;
+  delete body.prompt_expand_model;
+  delete body.locale;
+  if (!req.promptExpand || !cap.params.promptExpand || body.prompt === undefined) return;
+  delete body.prompt_extend;
+  body.prompt_expand = true;
+  if (req.promptExpand.model) body.prompt_expand_model = req.promptExpand.model;
+  if (req.promptExpand.locale) body.locale = req.promptExpand.locale;
+}
+
+/** `expanded_prompt` of an answer: a non-empty string, null, or undefined when absent. */
+export function expandedPromptOf(value: unknown): string | null | undefined {
+  if (value === null) return null;
+  return typeof value === 'string' ? (value.trim() === '' ? null : value) : undefined;
 }
 
 /** True when the body goes to `/v1/images/edits`. */
@@ -90,6 +119,7 @@ export async function createImage(
         costUsd: data.usage?.cost ?? null,
         error: null,
         providerStatus: 'done',
+        ...withExpanded(data.expanded_prompt),
       },
     };
   }
@@ -129,5 +159,12 @@ export function generationToJobStatus(gen: HyperouterGeneration): JobStatus {
     costUsd: gen.usage?.cost ?? null,
     error: state === 'failed' ? jobErrorFrom(gen.error) : null,
     providerStatus: gen.status,
+    ...withExpanded(gen.expanded_prompt),
   };
+}
+
+/** `{ expandedPrompt }` when the answer reported it (string or null), else nothing. */
+export function withExpanded(value: unknown): { expandedPrompt?: string | null } {
+  const v = expandedPromptOf(value);
+  return v === undefined ? {} : { expandedPrompt: v };
 }

@@ -10,6 +10,7 @@
  *   pass-through input of the same type, or are blocked.
  */
 import type { PriceRequest } from '../models/catalog';
+import type { PromptExpansion } from '../models/expand';
 import type { GenerationMode, ImageSource } from '../models/types';
 import type { PlanId } from '../pricing/config';
 import type { MatureAccess } from '../safety/types';
@@ -116,6 +117,12 @@ export interface GenSpec {
   declaredDurations?: Record<string, number>;
   /** Step of a mature text-to-video chain (D-005): the keyframe is held together with the animation and settled on its own. */
   chain?: ChainStep;
+  /**
+   * "Enhance prompt" (D-020): the user asked the gateway to rewrite the prompt
+   * before the render. Sent and priced only on models that take `prompt_expand`
+   * (an Auto fallback without it renders the prompt as written).
+   */
+  promptExpand?: PromptExpansion;
 }
 
 export interface PlanItem {
@@ -159,6 +166,14 @@ export interface PlanContext {
   matureAllowed: boolean;
   /** D-005: why mature content is not allowed (MATURE_REQUIRED copy); derived from `matureAllowed` when absent. */
   matureAccess?: MatureAccess;
+  /**
+   * "Enhance prompt" (D-020). `default`: the user's preference, used when an
+   * item does not say (agent-planned canvas nodes default to off instead);
+   * `available`: false while the gateway refuses the feature for this
+   * environment (nothing is expanded or priced); `locale`: the user's language
+   * (spoken lines in video). Absent = no expansion.
+   */
+  promptExpand?: { default: boolean; available: boolean; locale?: string };
 }
 
 /** Active version of a node: the version id and the digest it was made with. */

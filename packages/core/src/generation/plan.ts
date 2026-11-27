@@ -10,6 +10,7 @@ import type { Catalog } from '../models/catalog';
 import { matureRunProblem, unmetCapability, type AutoRequest } from '../models/capabilities';
 import type { CatalogModel, GenerationMode, ImageSource } from '../models/types';
 import type { PriceRequest } from '../models/catalog';
+import { planPromptExpansion, PROMPT_EXPAND_MODES, takesPromptExpand, type PromptExpansion } from '../models/expand';
 import type { GraphNode, GraphState } from '../graph/types';
 import { outputType } from '../graph/ports';
 import { hash64, stableStringify } from '../project/digest';
@@ -134,7 +135,39 @@ export function priceRequestOf(spec: GenSpec, model: CatalogModel): PriceRequest
     inputImages: images,
     referenceVideos: videos,
     ...(videos > 0 && spec.inputVideoMs !== undefined && { inputVideoMs: spec.inputVideoMs }),
+    // D-020: the rewrite's most is quoted and held with the render, on models that take it.
+    ...(spec.promptExpand && takesPromptExpand(model, spec.mode) && { promptExpandUsd: spec.promptExpand.maxUsd }),
   };
+}
+
+/**
+ * "Enhance prompt" (D-020) for a spec: the user's choice for the item, else the
+ * caller's default; never while the gateway refuses the feature, never on modes
+ * that are not creates, never on an empty prompt. The writer follows mature routing.
+ */
+export function promptExpansionOf(
+  catalog: Catalog,
+  ctx: Pick<PlanContext, 'promptExpand'>,
+  wanted: boolean | undefined,
+  spec: Pick<GenSpec, 'mode' | 'prompt' | 'mature' | 'inputs'>,
+): PromptExpansion | undefined {
+  const pe = ctx.promptExpand;
+  if (!pe || !pe.available || !(wanted ?? pe.default)) return undefined;
+  if (!PROMPT_EXPAND_MODES.has(spec.mode) || spec.prompt.trim() === '') return undefined;
+  const chat = catalog.list({ kind: 'chat', includeHidden: true, includeMatureOnly: true });
+  return planPromptExpansion(chat, {
+    mature: spec.mature,
+    ...(pe.locale && { locale: pe.locale }),
+    promptChars: spec.prompt.length,
+    pictures: spec.inputs.filter((i) => i.media === 'image').length,
+  });
+}
+
+/** Same expansion for a spec whose mature routing or prompt changed (writer and bound recomputed). */
+function reExpand(catalog: Catalog, spec: Pick<GenSpec, 'mode' | 'prompt' | 'mature' | 'inputs' | 'promptExpand'>): PromptExpansion | undefined {
+  if (!spec.promptExpand) return undefined;
+  const locale = spec.promptExpand.locale;
+  return promptExpansionOf(catalog, { promptExpand: { default: true, available: true, ...(locale && { locale }) } }, true, spec);
 }
 
 /** Why `model` cannot take this spec (capability, plan cap, mature routing), or null. */
@@ -228,6 +261,10 @@ async function prepareSpec(input: BuildSpecInput): Promise<Prepared> {
   let matureAuto = !input.settings.mature && ctx.matureAllowed && (input.matureInputs === true || explicitSignal(prompt).length > 0);
   const baseOf = (mature: boolean): Prepared['base'] => {
     const settings = mature ? { ...input.settings, mature: true } : input.settings;
+    const mode = modeOf(kind, settings, inputs);
+    // One rewrite, not two: a prompt composed from a shot is written for its model already, so it is never expanded
+    // (nor priced for it), whatever the toggle says. Only text the user typed is.
+    const expand = input.shot ? undefined : promptExpansionOf(input.catalog, ctx, settings.promptExpand, { mode, prompt, mature: settings.mature, inputs });
     return {
       kind,
       mode: modeOf(kind, settings, inputs),
@@ -244,6 +281,7 @@ async function prepareSpec(input: BuildSpecInput): Promise<Prepared> {
       matureAccess: matureAccessOfPlan(ctx),
       ...(matureAuto && { matureAuto: true as const }),
       inputs,
+      ...(expand && { promptExpand: expand }),
     };
   };
   let base = baseOf(matureAuto);
@@ -387,6 +425,8 @@ function planChain(input: BuildSpecInput, prep: Prepared): BuiltSpec {
       inputs: [],
       chain: { step: 'keyframe', with: chain.ref },
     };
+    const kfExpand = reExpand(catalog, { ...kf, promptExpand: base.promptExpand });
+    if (kfExpand) kf.promptExpand = kfExpand;
     const pool = matureCandidates(catalog, autoRequestOf(kf), ctx.plan).filter((m) => modelProblem(m, { ...kf, modelId: m.id, auto: true, fallbacks: [] }, ctx, []) === null);
     const m = pool[0];
     if (!m) return { ok: false, code: 'no_capable_model', reason: NO_MATURE_KEYFRAME_REASON };
@@ -404,6 +444,9 @@ function planChain(input: BuildSpecInput, prep: Prepared): BuiltSpec {
     inputs: [{ role: 'frame', media: 'image', from: frameFrom }],
     chain: { step: 'animate', with: chain.keyframeRef } satisfies ChainStep,
   };
+  const animExpand = reExpand(catalog, video);
+  if (animExpand) video.promptExpand = animExpand;
+  else delete video.promptExpand;
   const fits = (m: CatalogModel, s: typeof video) => matureRunProblem(m, origins, 1) === null && modelProblem(m, { ...s, modelId: m.id, auto: false, fallbacks: [] }, ctx, origins) === null;
   // The user's length and resolution when a model takes them, else the nearest each model takes.
   let pool = chainVideoCandidates(catalog, autoRequestOf(video), ctx.plan).filter((m) => fits(m, video));
@@ -511,6 +554,8 @@ export async function planRun(input: PlanGraphInput): Promise<RunPlan> {
     // A node planned from a structured shot carries its own row of the script: the script node's text (every row)
     // is not repeated in its prompt.
     const nodeShot = shotOfParams(kind, params);
+    // D-020: agent-planned nodes carry written-out prompts; they are not expanded unless the user turns it on.
+    if (settings.promptExpand === undefined && node.createdBy === 'agent') settings.promptExpand = false;
     const promptParts: string[] = [];
     const inputs: GenInput[] = [];
     let blocked: Blocked | null = null;
@@ -640,6 +685,9 @@ export function replanMature(input: MatureReplanInput): MatureReplan {
   const ctx: PlanContext = { plan: input.plan, matureAllowed: true };
   const origins = imageOriginsOf(input.spec.inputs);
   const spec: GenSpec = { ...input.spec, mature: true, matureAuto: true, matureAccess: 'allowed' };
+  // D-020: a mature run's rewrite has the mature writer (its most is checked against the hold by `fits`).
+  const expand = reExpand(input.catalog, spec);
+  if (expand) spec.promptExpand = expand;
   const ok = (m: CatalogModel) => matureRunProblem(m, origins, origins.length) === null && modelProblem(m, spec, ctx, origins) === null && input.fits(m);
   const fromSpec = spec.fallbacks.map((id) => input.catalog.get(id)).filter((m): m is CatalogModel => !!m);
   const pool = [input.model, ...fromSpec, ...matureCapable(input.catalog, spec, ctx, origins, input.model)];

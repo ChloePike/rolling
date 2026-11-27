@@ -87,6 +87,8 @@ export interface NodeSettings {
   mature: boolean;
   /** Reference-mode video (frames sent as reference images). */
   refsMode: boolean;
+  /** "Enhance prompt" (D-020) for this item; absent = the caller's default. */
+  promptExpand?: boolean;
 }
 
 export function settingsOf(kind: 'image' | 'video', params: Record<string, unknown>): NodeSettings {
@@ -108,6 +110,7 @@ export function settingsOf(kind: 'image' | 'video', params: Record<string, unkno
     ...(typeof params.seed === 'number' && Number.isInteger(params.seed) && { seed: params.seed }),
     mature: params.mature === true,
     refsMode: typeof params.mode === 'string' && /reference/i.test(params.mode),
+    ...(typeof params.promptExpand === 'boolean' && { promptExpand: params.promptExpand }),
   };
 }
 
@@ -153,6 +156,8 @@ export const PromptSpecSchema = z.object({
   mature: z.boolean().optional(),
   /** Reference-mode video: images as references, not frames. */
   refsMode: z.boolean().optional(),
+  /** "Enhance prompt" (D-020): the gateway rewrites the prompt before the render. Absent = the user's preference. */
+  promptExpand: z.boolean().optional(),
   /** Remix: the shots to recreate (default one shot over the whole clip). */
   shots: z.array(RemixShotSchema).max(12).optional(),
   /** Character: the name it is saved under in Characters. */

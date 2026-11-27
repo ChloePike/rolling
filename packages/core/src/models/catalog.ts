@@ -85,6 +85,9 @@ const MAPPED_PARAMS = new Set([
   'images', 'negative_prompt', 'audio_url', 'moderation', 'input_reference', 'watermark',
 ]);
 
+/** Price line of the gateway's prompt expansion (its most, held with the render). */
+export const PROMPT_EXPAND_METER = 'prompt_expand';
+
 /** Meters `usdCost` knows how to count. */
 const PRICED_METERS = new Set(['video_second', 'image', 'input_image', 'input_video_ms', 'request']);
 /** Chat token meters: known, but not priced by `usdCost` (chat cost is settled from usage). */
@@ -297,6 +300,7 @@ function deriveModel(entry: z.infer<typeof zEntry>, kind: CatalogKind): ListingM
       seed: has('seed'),
       negativePrompt: has('negative_prompt'),
       promptExtend: has('prompt_extend'),
+      promptExpand: kind !== 'chat' && has('prompt_expand'),
       // Some schemas list `size` only to say it is ignored.
       size: sizeProp !== undefined && !/^\s*ignored/i.test(sizeProp.description ?? ''),
     },
@@ -387,6 +391,12 @@ export interface PriceRequest {
   inputVideoMs?: number;
   /** Values for listing conditions without a named field. */
   conditions?: Record<string, string | number | boolean>;
+  /**
+   * Most the gateway's prompt expansion can cost (USD at the writer's token
+   * prices, `promptExpansionMaxUsd`). Billed on the same request; priced only
+   * on models that take `prompt_expand`.
+   */
+  promptExpandUsd?: number;
 }
 
 export interface PriceLine {
@@ -481,6 +491,10 @@ export function priceLines(model: ListingModel, req: PriceRequest = {}): PriceLi
     lines.push({ meter, units, usdPerUnit: best.usd, usd: best.usd * units, conditions: best.conditions });
   }
   if (!lines.some((l) => l.meter === outputMeter)) return null;
+  const expand = req.promptExpandUsd;
+  if (expand !== undefined && Number.isFinite(expand) && expand > 0 && model.params.promptExpand) {
+    lines.push({ meter: PROMPT_EXPAND_METER, units: 1, usdPerUnit: expand, usd: expand, conditions: {} });
+  }
   return lines;
 }
 

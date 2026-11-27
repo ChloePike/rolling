@@ -348,3 +348,25 @@ export const AGENT_ALLOWANCE_USD: Record<PlanId, number> = { starter: 1.2, plus:
 
 /** Default turn size for cost estimates before a model has history (D-012). */
 export const AGENT_TURN_TOKENS = { prompt: 10_000, completion: 1_200 } as const;
+
+/**
+ * Gateway prompt expansion ("Enhance prompt", D-020): the most one rewrite can
+ * use, in tokens. Hyperouter bills the rewrite on the same request at the
+ * writer's token prices and holds its most up front; we quote and hold our own
+ * conservative bound and settle on the request's `usage.cost`.
+ * Input: the writer's instructions plus the prompt (one token per character at
+ * most) plus each input picture; output: the rewrite, with room for reasoning
+ * (DeepSeek reasons before it answers by default).
+ */
+export const PROMPT_EXPANSION_TOKENS = {
+  instructions: 6_000,
+  perPicture: 1_500,
+  maxPictures: 5,
+  output: 8_000,
+} as const;
+
+/**
+ * Token prices (USD per token) assumed for the gateway's default writer
+ * (`x-ai/grok-4.6`) when the synced catalog has no price for it.
+ */
+export const PROMPT_EXPANSION_DEFAULT_WRITER_PRICE = { prompt: 0.000002, completion: 0.000006 } as const;
