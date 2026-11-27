@@ -63,7 +63,6 @@
   "shell.account.help": "說明與意見回饋",
   "shell.account.logout": "登出",
   "shell.splash.label": "Rolling",
-  "shell.splash.byline": "by AIGC.HUB",
   "shell.splash.rec": "REC",
   "settingsPopover.back": "返回設定",
   "settingsPopover.row": "{label}：{value}",

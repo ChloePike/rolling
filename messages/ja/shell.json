@@ -63,7 +63,6 @@
   "shell.account.help": "ヘルプとフィードバック",
   "shell.account.logout": "ログアウト",
   "shell.splash.label": "Rolling",
-  "shell.splash.byline": "by AIGC.HUB",
   "shell.splash.rec": "REC",
   "settingsPopover.back": "設定に戻る",
   "settingsPopover.row": "{label}: {value}",

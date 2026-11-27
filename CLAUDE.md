@@ -1,6 +1,6 @@
 # Rolling — build guide for Claude Code
 
-Rolling (working name, rename pending) is an AI video studio for creators and small brand teams, sold globally, English first. It is a web app installable as a PWA. No native apps, no phone-specific layouts.
+Rolling (final product name, owner 2026-11-27; no company byline anywhere) is an AI video studio for creators and small brand teams, sold globally, English first. It is a web app installable as a PWA. No native apps, no phone-specific layouts.
 
 ## Language (strict)
 
@@ -65,4 +65,4 @@ Repo: `apps/api` (Worker + DO classes + Workflows), `apps/web` (SPA), `container
 
 ## Open decisions (use the placeholder, don’t invent)
 
-Product name (domain decided: rolling.actor, D-015), avatar / TTS / voice-clone provider (not on Hyperouter), Stripe acceptance of adult content, company legal details for the legal pages. Pricing is decided (D-006, D-012, D-013): use the values in `packages/core/pricing/config.ts`; don't hard-code prices or credits elsewhere.
+Avatar / TTS / voice-clone provider (not on Hyperouter), Stripe acceptance of adult content, company legal details for the legal pages. Pricing is decided (D-006, D-012, D-013): use the values in `packages/core/pricing/config.ts`; don't hard-code prices or credits elsewhere.

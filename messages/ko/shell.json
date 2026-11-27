@@ -63,7 +63,6 @@
   "shell.account.help": "도움말 및 피드백",
   "shell.account.logout": "로그아웃",
   "shell.splash.label": "Rolling",
-  "shell.splash.byline": "by AIGC.HUB",
   "shell.splash.rec": "REC",
   "settingsPopover.back": "설정으로 돌아가기",
   "settingsPopover.row": "{label}: {value}",

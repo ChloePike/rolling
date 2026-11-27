@@ -82,9 +82,6 @@ export function Splash({ mode = 'play', onDone }: SplashProps) {
           </span>
         </div>
       </div>
-      <div className={styles.by} data-motion="">
-        <FormattedMessage id="shell.splash.byline" />
-      </div>
     </div>
   );
 }
