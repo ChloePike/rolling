@@ -49,6 +49,8 @@ export interface PromptPill {
   ariaLabel?: string;
   /** Model pills: the model id; its provider mark (lib/modelIcons) replaces `icon` when there is one. */
   modelId?: string;
+  /** A fixed value the model offers no choice for: shown read-only, never opens a popover. */
+  readOnly?: boolean;
 }
 
 /** A row in the `/` command palette or the Skills list of the `+` menu. */

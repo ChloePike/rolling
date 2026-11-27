@@ -154,7 +154,7 @@ export function RemixPage({ initialOverlay, models: modelsOverride, plan: planPr
 
   const pills: ComposerPill[] = [
     { id: 'model', label: model === 'Auto' ? t('tools.model.auto') : model, icon: 'cube' },
-    ...settingsPills(intl, s, caps, { ratioIcon: 'wide' }),
+    ...settingsPills(intl, s, caps),
     ...(adv && caps.design ? [{ id: 'motion', label: t('tools.remix.pill.motion', { n: p.motion }), icon: 'motion' } as ComposerPill] : []),
     ...(adv && caps.counts.length > 1 ? [{ id: 'count', label: t('tools.pill.count', { n: s.count }), icon: 'count' } as ComposerPill] : []),
   ];

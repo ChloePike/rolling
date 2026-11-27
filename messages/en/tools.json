@@ -99,6 +99,7 @@
   "tools.quick.note.chipAdv": "S02 · Lighting",
   "tools.quick.composer.label": "Partial edit",
   "tools.quick.composer.placeholder": "Say what to change, e.g. make shot 2 a slow push-in. Type / for commands",
+  "tools.quick.composer.placeholderNone": "Describe the video: who, what happens, where and how the camera moves. Type / for commands",
   "tools.quick.pill.ratio": "9:16 Original",
   "tools.quick.neg.placeholder": "e.g. subtitles, watermarks, extra people",
   "tools.remix.title": "Remix",

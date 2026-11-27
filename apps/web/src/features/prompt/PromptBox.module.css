@@ -76,6 +76,8 @@
 .pill[data-model]{background:var(--c-surface-6);color:var(--c-text-1);font-weight:600}
 .pill[data-model]:hover{background:var(--c-surface-7-hover)}
 .pill[aria-expanded="true"]{background:var(--c-surface-6);color:var(--c-text-1)}
+/* A fixed value (the model offers no choice): read-only, same shape as a pill. */
+.pillStatic{height:34px;padding:0 12px;border-radius:999px;background:transparent;box-shadow:inset 0 0 0 1px var(--c-surface-5);color:var(--c-text-3);font-size:13px;display:flex;align-items:center;gap:6px;white-space:nowrap}
 .caret{opacity:.7;transition:transform var(--m-base) var(--m-ease-standard)}
 .pill[aria-expanded="true"] .caret{transform:rotate(180deg)}
 .pillPopover{position:absolute;left:0;top:calc(100% + 8px);z-index:45}

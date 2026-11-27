@@ -4,6 +4,7 @@ import { FormattedMessage, useIntl } from 'react-intl';
 import type { ComposerPill, ComposerRef } from '../types';
 import styles from './Composer.module.css';
 import { ToolIcon } from './icons';
+import { isSendKey } from '@/features/prompt/keys';
 
 export interface ComposerProps {
   noteLead: string;
@@ -72,6 +73,12 @@ export function Composer(p: ComposerProps) {
             value={p.text}
             placeholder={p.placeholder}
             onChange={(e) => p.onText(e.target.value)}
+            onKeyDown={(e) => {
+              // As in PromptBox: Enter sends, Shift+Enter adds a line, never while an IME is composing.
+              if (!isSendKey({ key: e.key, shiftKey: e.shiftKey, isComposing: e.nativeEvent.isComposing, keyCode: e.keyCode })) return;
+              e.preventDefault();
+              if (p.text.trim()) p.onSend();
+            }}
           />
         </div>
         <div className={styles.bar}>

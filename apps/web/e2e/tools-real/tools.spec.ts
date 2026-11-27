@@ -149,7 +149,8 @@ test('Quick Create, Avatar and Characters: empty prompts, catalog pills, no demo
   await stubApi(page, context);
   await page.goto('/create/quick');
   await expect(composer(page).getByRole('textbox')).toHaveValue('');
-  await expect(composer(page).getByRole('textbox')).toHaveAttribute('placeholder', /Say what to change/);
+  // No template: the generic hint, never "Say what to change".
+  await expect(composer(page).getByRole('textbox')).toHaveAttribute('placeholder', /^Describe the video/);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Quick Create');
   await expect(pill(page, 'ratio')).toHaveText('21:9');
   await expect(pill(page, 'duration')).toHaveText('8s');

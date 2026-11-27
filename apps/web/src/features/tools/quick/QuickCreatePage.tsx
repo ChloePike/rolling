@@ -49,6 +49,11 @@ interface Slot {
   assetId?: string;
 }
 
+/** "Say what to change" only makes sense against a template; without one the generic prompt hint. */
+export function quickPlaceholderId(hasTemplate: boolean): string {
+  return hasTemplate ? 'tools.quick.composer.placeholder' : 'tools.quick.composer.placeholderNone';
+}
+
 export function QuickCreatePage({ initialOverlay, models: modelsOverride, plan: planProp, isMember, templateId, ratio: ratioParam }: Props) {
   // Mock mode: the design's sample template, cast, lines and shots, only through the mock adapter.
   const demo = isMockApi() ? mockData().quick : null;
@@ -318,7 +323,7 @@ export function QuickCreatePage({ initialOverlay, models: modelsOverride, plan: 
         label: t('tools.quick.composer.label'),
         text,
         onText: setText,
-        placeholder: t('tools.quick.composer.placeholder'),
+        placeholder: t(quickPlaceholderId(!!template)),
         pills,
         goLabel: go,
       }}

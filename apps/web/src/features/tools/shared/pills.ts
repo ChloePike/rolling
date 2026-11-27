@@ -1,3 +1,4 @@
+import { ratioIcon } from '@/lib/ratioIcon';
 import type { IntlShape } from 'react-intl';
 import type { ComposerPill } from '../types';
 import type { ToolIconName } from './icons';
@@ -16,7 +17,7 @@ export function settingsPills(
 ): ComposerPill[] {
   const t = (id: string, v?: Record<string, string | number>) => intl.formatMessage({ id }, v);
   const out: ComposerPill[] = [];
-  if (caps.ratios.length && s.ratio) out.push({ id: 'ratio', label: opts.ratioLabel ? opts.ratioLabel(s.ratio) : s.ratio === 'Auto' ? t('tools.pill.ratioAuto') : s.ratio, icon: opts.ratioIcon ?? 'ratio' });
+  if (caps.ratios.length && s.ratio) out.push({ id: 'ratio', label: opts.ratioLabel ? opts.ratioLabel(s.ratio) : s.ratio === 'Auto' ? t('tools.pill.ratioAuto') : s.ratio, icon: opts.ratioIcon ?? ratioIcon(s.ratio) });
   if (caps.durations.length && s.seconds) out.push({ id: 'duration', label: t('tools.seconds', { n: s.seconds }), icon: 'clock' });
   if (caps.resolutions.length && s.resolution) out.push({ id: 'res', label: s.resolution, icon: 'res' });
   if (caps.audio && opts.audio !== false) out.push({ id: 'audio', label: t(s.audio ? 'tools.pill.audio' : 'tools.pill.audioOff'), icon: 'wave' });

@@ -15,6 +15,7 @@ import { RefChips, SkillChip } from './RefChips';
 import motion from './motion.module.css';
 import styles from './PromptBox.module.css';
 import type { PromptCommand, PromptCommandGroup, PromptMode, PromptPill, RefItem } from './types';
+import { isSendKey } from './keys';
 
 export interface PromptBoxProps {
   /** Prompt text (controlled). */
@@ -239,9 +240,8 @@ export function PromptBox(props: PromptBoxProps) {
       }
       return;
     }
-    // Enter sends; Shift+Enter inserts a new line. Never send while an IME is composing
-    // (Chinese, Japanese and Korean input confirm candidates with Enter).
-    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
+    // Enter sends; Shift+Enter inserts a new line; never while an IME is composing (`isSendKey`).
+    if (isSendKey({ key: e.key, shiftKey: e.shiftKey, isComposing: e.nativeEvent.isComposing, keyCode: e.keyCode })) {
       e.preventDefault();
       if (!submitDisabled) onSubmit();
     }
@@ -389,7 +389,13 @@ export function PromptBox(props: PromptBoxProps) {
             >
               <PromptIcon name="plus" size={dock ? 15 : 16} strokeWidth={2.2} />
             </button>
-            {pills.map((p, i) => (
+            {pills.map((p, i) =>
+              p.readOnly ? (
+                <span key={p.id} className={styles.pillStatic} aria-label={p.ariaLabel} data-pill-static={p.id}>
+                  <PromptIcon name={p.icon} size={dock ? 14 : 15} />
+                  {p.label}
+                </span>
+              ) : (
               <span key={p.id} className={styles.pillAnchor}>
                 <button
                   ref={(el) => {
@@ -423,7 +429,8 @@ export function PromptBox(props: PromptBoxProps) {
                   </span>
                 ) : null}
               </span>
-            ))}
+              ),
+            )}
           </div>
           <div className={styles.right}>
             {onRefine ? (

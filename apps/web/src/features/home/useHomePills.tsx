@@ -4,6 +4,8 @@ import type { PromptSpec } from '@/features/overlays/runs';
 import { isMockApi } from '@/features/overlays/backend';
 import { enhanceStateOf, pickerModels, useEnhancePrompt, useModels, type CatalogModel } from '@/lib/models';
 import { usePref } from '@/lib/prefs';
+import { ratioIcon } from '@/lib/ratioIcon';
+import { imageHasChoice, seedImageRatio } from './imageSettings';
 import { useSession } from '@/lib/session';
 import { useAgentAllowance } from '@/lib/session/agentAllowance';
 import {
@@ -102,7 +104,7 @@ export function useHomePills(
   const [agentModel, setAgentModel] = useState<string>(AUTO_MODEL);
   const [agentVideo, setAgentVideo] = useState(() => seedRatio(AGENT_VIDEO));
   const [imageModel, setImageModel] = useState<string | null>(null);
-  const [image, setImage] = useState(IMAGE);
+  const [image, setImage] = useState(() => seedImageRatio(IMAGE, prefRatio));
   const [videoModel, setVideoModel] = useState<string | null>(null);
   const [video, setVideo] = useState(() => seedRatio(VIDEO));
   const [frame, setFrame] = useState(0);
@@ -222,7 +224,7 @@ export function useHomePills(
   if (mode === 'agent') {
     const llm = modelPill('model', nameOf(chat, llmId), idOf(chat, llmId));
     const videoModelPill: PromptPill = { id: 'videoModel', kind: 'param', icon: 'film', label: nameOf(videos, agentModel), modelId: idOf(videos, agentModel) };
-    const ratio: PromptPill = { id: 'ratio', kind: 'param', icon: 'ratio', label: agentVideo.aspectRatio };
+    const ratio: PromptPill = { id: 'ratio', kind: 'param', icon: ratioIcon(agentVideo.aspectRatio), label: agentVideo.aspectRatio };
     const duration: PromptPill = { id: 'duration', kind: 'param', icon: 'clock', label: secs(agentVideo.duration) };
     const chatNames = (chat ?? []).map((m) => m.name);
     const params = videoParams(agentVideo, setAgentVideo, null, agentCaps, agentM, null);
@@ -247,12 +249,15 @@ export function useHomePills(
     ];
   } else if (mode === 'image') {
     const m = imageM;
-    const ratio: PromptPill = { id: 'ratio', kind: 'param', icon: 'wide', label: image.aspectRatio };
+    // A model with nothing to choose (one size, one image, no ratio list): the fixed values read-only, never an empty popover.
+    const fixed = !imageHasChoice(imageCaps);
+    const ratio: PromptPill = { id: 'ratio', kind: 'param', icon: ratioIcon(image.aspectRatio), label: image.aspectRatio, ...(fixed && { readOnly: true }) };
     const size: PromptPill = {
       id: 'size',
       kind: 'param',
       icon: 'res',
       label: t('home.pill.imageSize', { res: image.size, n: Number(image.count) }),
+      ...(fixed && { readOnly: true }),
     };
     blocked = costBlock(intl, 'image', m, imageCaps, imageToSettings(image), plan);
     credits = blocked ? null : m && imageCaps ? strictCredits(m, { resolution: image.size, count: Number(image.count) }) : quoteCredits(m, { resolution: image.size, count: Number(image.count) });
@@ -299,7 +304,7 @@ export function useHomePills(
     const ratio: PromptPill = {
       id: 'ratio',
       kind: 'param',
-      icon: 'ratio',
+      icon: ratioIcon(video.aspectRatio),
       label: t('home.pill.videoSize', { ratio: video.aspectRatio, res: video.resolution, seconds: secs(video.duration) }),
     };
     run = {

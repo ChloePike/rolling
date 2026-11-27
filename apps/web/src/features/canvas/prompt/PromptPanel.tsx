@@ -3,6 +3,7 @@ import { cx, presenceProps, usePresence, type PresenceState } from '@rolling/ui'
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { enhanceStateOf, modeLabel, modelLabel, type CatalogModel } from '@/lib/models';
 import { usePref } from '@/lib/prefs';
+import { ratioIcon } from '@/lib/ratioIcon';
 import { PromptIcon } from '@/features/prompt';
 import { ModelIcon, modelIcon } from '@/lib/modelIcons';
 import {
@@ -139,7 +140,7 @@ export function PromptPanel({ node, left, top, state, refs, pickerOpen, onOpenPi
   const pills: Array<{ key: PillKey; label: string; icon: CanvasIconName; caret: boolean }> = [
     { key: 'model', label: modelLabel(models, node.params.model), icon: 'cube', caret: true },
     { key: 'mode', label: modeLabel(node.params.mode), icon: video ? 'frame' : 'image', caret: true },
-    { key: 'format', label: formatLabel(node), icon: 'ratio', caret: false },
+    { key: 'format', label: formatLabel(node), icon: ratioIcon(typeof node.params.ratio === 'string' ? node.params.ratio : undefined), caret: false },
     { key: 'extra', label: video ? str(node.params.extra) || extraLabel : extraLabel, icon: video ? 'wave' : 'copy', caret: false },
   ];
   /** The node's price from the catalog (usePricedNodes); unknown until the catalog answers. */
