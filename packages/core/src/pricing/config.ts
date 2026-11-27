@@ -4,7 +4,7 @@
  * are not decided yet are the literal `[PRICE]` / `[DISCOUNT]` markers; do not
  * invent values.
  */
-import { usdCost, type PriceRequest } from '../models/catalog';
+import { usdCost, type PriceRequest } from '../models/price';
 import type { ListingModel } from '../models/types';
 
 export const PRICE_PLACEHOLDER = '[PRICE]' as const;
