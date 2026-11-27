@@ -1,0 +1,20 @@
+{
+  "share.meta": "{n, plural, one {# 個項目} other {# 個項目}} · 分享於 {date}",
+  "share.open": "開啟 Rolling",
+  "share.signup": "製作你自己的",
+  "share.board": "共享畫布",
+  "share.download": "下載",
+  "share.download.label": "下載 {name}",
+  "share.empty": "這個分享中沒有可顯示的內容。",
+  "share.missing.title": "此連結無法使用",
+  "share.missing.sub": "可能已被擁有者關閉，或網址有誤。",
+  "share.error.title": "無法載入此分享",
+  "share.error.sub": "請檢查網路連線，然後重新整理頁面。",
+  "share.kind.script": "腳本",
+  "share.kind.image": "圖片",
+  "share.kind.video": "影片",
+  "share.kind.audio": "音訊",
+  "share.kind.asset": "參考素材",
+  "share.kind.text": "文字",
+  "share.kind.other": "步驟"
+}

@@ -1,0 +1,20 @@
+{
+  "profile.bio.placeholder": "[BIO: one or two lines the user writes about themselves]",
+  "profile.edit": "編輯個人檔案",
+  "profile.share": "分享",
+  "profile.share.copied": "已複製個人檔案連結",
+  "profile.tabs": "個人檔案",
+  "profile.tab.published": "已發布",
+  "profile.tab.template": "範本",
+  "profile.empty": "這裡還沒有內容。",
+  "profile.downloaded": "已開始下載。",
+  "profile.bio.empty": "尚未填寫簡介。",
+  "profile.unavailable": "此個人檔案不存在或未公開。",
+  "profile.unavailable.home": "回到首頁",
+  "profile.empty.own.published": "尚未發布任何內容。在專案中開啟「分享」，並啟用「發布到個人檔案」。",
+  "profile.empty.own.template": "你發布的範本會顯示在這裡。",
+  "profile.empty.other.published": "尚未發布任何內容。",
+  "profile.empty.other.template": "尚無範本。",
+  "profile.empty.unclaimed": "選擇使用者名稱，即可擁有公開的個人檔案。",
+  "profile.empty.pickHandle": "選擇使用者名稱"
+}

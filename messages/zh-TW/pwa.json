@@ -1,0 +1,15 @@
+{
+  "pwa.update.message": "有新版本可用",
+  "pwa.update.reload": "重新載入",
+  "pwa.offline.title": "你目前離線",
+  "pwa.offline.body": "你仍可調整畫布與編輯時間軸。生成與匯出需要網路連線。",
+  "pwa.offline.retry": "再試一次",
+  "pwa.install.title": "安裝應用程式",
+  "pwa.install.body": "以獨立視窗開啟，也可從 Dock 啟動。帳號與專案都相同。",
+  "pwa.install.notNow": "暫時不要",
+  "pwa.install.install": "安裝",
+  "pwa.install.ios.title": "安裝到 iPhone 或 iPad",
+  "pwa.install.ios.body": "點選「分享」，再選「加入主畫面」。",
+  "pwa.install.ios.done": "知道了",
+  "pwa.install.menu": "安裝應用程式"
+}

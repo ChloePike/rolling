@@ -1,0 +1,15 @@
+{
+  "legal.documentTitle": "{title} · {app}",
+  "legal.nav.label": "法律資訊",
+  "legal.nav.terms": "服務條款",
+  "legal.nav.privacy": "隱私權",
+  "legal.nav.acceptable-use": "使用規範",
+  "legal.nav.subprocessors": "子處理者",
+  "legal.toc": "本頁內容",
+  "legal.links.label": "法律資訊",
+  "legal.link.terms": "服務條款",
+  "legal.link.privacy": "隱私權政策",
+  "legal.link.acceptable-use": "使用規範",
+  "legal.link.subprocessors": "子處理者",
+  "legal.englishGoverns": "本文件以英文撰寫，如有歧異，以英文版為準。"
+}
