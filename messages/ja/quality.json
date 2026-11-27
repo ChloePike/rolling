@@ -1,0 +1,15 @@
+{
+  "quality.title": "品質チェック",
+  "quality.grade": "{grade, select, good {問題なし} fair {軽微な問題あり} other {問題あり}}",
+  "quality.badge.label": "品質チェック: {grade, select, good {問題なし} fair {軽微な問題あり} other {問題あり}}、5点中{score}点",
+  "quality.score": "{score}/5",
+  "quality.dimension": "{dimension, select, anatomy {人体} text {文字とロゴ} adherence {プロンプトとの一致} continuity {一貫性} framing {構図} artifacts {破綻} other {その他}}",
+  "quality.severity.major": "重大",
+  "quality.noIssues": "問題は見つかりませんでした。",
+  "quality.fix": "修正案: {note}",
+  "quality.retry": "修正して再生成",
+  "quality.retry.hint": "修正案をプロンプトに反映し、このノードをもう一度生成します。",
+  "quality.autoRetried": "修正案で1回再生成しました。良い方のバージョンを現在のバージョンにしています。",
+  "quality.bestTake": "{takes}テイク中のベスト: テイク{n}を表示しています。",
+  "quality.budget": "このターンの予算を超えるため、自動では再生成していません。"
+}

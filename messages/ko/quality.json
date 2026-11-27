@@ -1,0 +1,15 @@
+{
+  "quality.title": "품질 검사",
+  "quality.grade": "{grade, select, good {문제 없음} fair {사소한 문제} other {문제 있음}}",
+  "quality.badge.label": "품질 검사: {grade, select, good {문제 없음} fair {사소한 문제} other {문제 있음}}, 5점 중 {score}점",
+  "quality.score": "{score}/5",
+  "quality.dimension": "{dimension, select, anatomy {인체} text {글자와 로고} adherence {프롬프트 일치} continuity {일관성} framing {구도} artifacts {결함} other {기타}}",
+  "quality.severity.major": "심각",
+  "quality.noIssues": "발견된 문제가 없습니다.",
+  "quality.fix": "수정안: {note}",
+  "quality.retry": "수정해서 다시 생성",
+  "quality.retry.hint": "수정안을 프롬프트에 반영하고 이 노드를 다시 생성합니다.",
+  "quality.autoRetried": "수정안으로 한 번 다시 생성했습니다. 더 나은 버전이 현재 버전입니다.",
+  "quality.bestTake": "{takes}개 테이크 중 최고: 테이크 {n}을(를) 표시합니다.",
+  "quality.budget": "이번 턴의 예산을 넘어 자동으로 다시 생성하지 않았습니다."
+}

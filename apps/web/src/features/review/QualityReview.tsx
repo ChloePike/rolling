@@ -19,7 +19,7 @@ export interface QualityReviewProps {
 /** The result viewer's quality card: badge, the issues found, the suggested fix and "Retry with fix". */
 export function QualityReview({ review, onRetryWithFix, retryCost, disabled }: QualityReviewProps) {
   const intl = useIntl();
-  const t = (id: string, v?: Record<string, string | number>) => intl.formatMessage({ id: `review.${id}` }, v);
+  const t = (id: string, v?: Record<string, string | number>) => intl.formatMessage({ id: `quality.${id}` }, v);
   const canRetry = !!onRetryWithFix && !!review.fix && review.grade !== 'good' && !review.autoRetried;
   return (
     <section className={styles.card} data-testid="quality-review" aria-label={t('title')}>
