@@ -6,6 +6,6 @@
  */
 export { AssetPicker, type AssetPickerProps } from './AssetPicker';
 export { useAssetPicker } from './useAssetPicker';
-export { uploadToAssets, useUploadToAssets, pickFromAsset, pickFromPublic, pickFromUpload, rememberPicks, type AssetUpload } from './data';
+export { uploadToAssets, useUploadToAssets, noteUploadDone, pickFromAsset, pickFromPublic, pickFromUpload, rememberPicks, type AssetUpload } from './data';
 export { acceptedFiles, kindOfFile } from './state';
 export type { AssetPick, AssetPickerOptions, PickKind, PickSource, PickerTab } from './types';

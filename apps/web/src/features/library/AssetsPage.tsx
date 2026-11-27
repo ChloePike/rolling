@@ -4,6 +4,7 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { ChipGroup, motion, PathIcon, paths, SearchField } from '@/features/account/shared';
+import { noteUploadDone, pickFromUpload } from '@/features/picker/data';
 import { uploadFiles, useTransfers, validateUpload } from '@/lib/transfers';
 import { assetFromFile, useAssetMutations, useAssets, useCharacters, useFolders, useStorage, useUpload, useVoiceMutations, useVoices } from './assetsApi';
 import type { AssetItem, AssetType, FolderItem, VoiceState } from './assetsMocks';
@@ -98,6 +99,8 @@ export function AssetsPage({ folder = 'all' }: { folder?: AssetFolder }) {
         (res) => {
           setUploads((u) => u.filter((x) => x.id !== h.id));
           if (!isMockApi()) {
+            // The picker lists it at once, before the server's list does (picker/uploaded.ts).
+            noteUploadDone(pickFromUpload(file, res), file);
             void assetsMut.refresh();
             setSel(res.assetId);
             toast.show({ message: intl.formatMessage({ id: 'library.assets.uploaded' }, { name: file.name }) });

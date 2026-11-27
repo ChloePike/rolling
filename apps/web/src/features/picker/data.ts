@@ -9,6 +9,7 @@ import { queryClient as appQueryClient } from '@/lib/api/queryClient';
 import type { PublicItem } from '@/lib/publicLibrary';
 import { uploadFiles, type UploadHandle, type UploadOptions, type UploadResult } from '@/lib/transfers';
 import { pushRecent } from './state';
+import { noteUploadedAsset, uploadedAssets } from './uploaded';
 import type { AssetPick, PickKind } from './types';
 
 /**
@@ -124,6 +125,24 @@ function fetchMockMine(qc: QueryClient, kind: PickKind | 'all', q: string): Mine
   return { items, next: null };
 }
 
+/** How often "My assets" asks again while a finished upload is not listed yet. */
+export const UNLISTED_REFETCH_MS = 2_500;
+
+/**
+ * A finished upload: remembered until the server lists it (merged into "My
+ * assets", `uploaded.ts`), and every assets list refetches (mock mode: the
+ * asset is added to the Assets cache).
+ */
+export function noteUploadDone(pick: AssetPick, file: File, qc: QueryClient = appQueryClient, opts: { listed?: boolean } = {}): void {
+  if (isMockApi()) qc.setQueryData<AssetItem[]>(assetsKey, (all) => [mockAssetItem(pick, file), ...(all ?? mockData().library.assetsMock)].filter((a, i, arr) => arr.findIndex((b) => b.id === a.id) === i));
+  else {
+    if (opts.listed !== false) noteUploadedAsset(pick);
+    void qc.invalidateQueries({ queryKey: assetsKey });
+  }
+  void qc.invalidateQueries({ queryKey: ['picker', 'mine'] });
+  void qc.invalidateQueries({ queryKey: ['prompt', 'references'] });
+}
+
 /**
  * My assets for a kind filter (`all`: every file kind plus Characters when
  * the caller takes them). Paged; `fetchNextPage` loads the next 48.
@@ -146,6 +165,12 @@ export function useMineAssets(kind: PickKind | 'all', q: string, opts: { enabled
     getNextPageParam: (last) => last.next ?? undefined,
     enabled: opts.enabled,
     staleTime: mock ? Infinity : 15_000,
+    // A finished upload the server does not list yet: ask again soon instead of waiting out the cache.
+    refetchInterval: (query) => {
+      if (mock) return false;
+      const listed = new Set(query.state.data?.pages.flatMap((p) => p.items.map((i) => i.assetId)) ?? []);
+      return uploadedAssets().some((p) => !listed.has(p.assetId)) ? UNLISTED_REFETCH_MS : false;
+    },
     retry: 1,
   });
 }
@@ -228,6 +253,7 @@ export interface AssetUpload {
  */
 export function uploadToAssets(files: File[], opts: Partial<UploadOptions> = {}, qc: QueryClient = appQueryClient): { items: AssetUpload[]; refused: File[] } {
   const { items, rejected } = uploadFiles(files, { purpose: 'library', priority: 'high', quiet: true, ...opts });
+  const purpose = opts.purpose ?? 'library';
   return {
     refused: rejected.map((r) => r.file),
     items: items.map((h: UploadHandle) => ({
@@ -235,10 +261,8 @@ export function uploadToAssets(files: File[], opts: Partial<UploadOptions> = {},
       file: h.file,
       done: h.done.then((r) => {
         const pick = pickFromUpload(h.file, r);
-        if (isMockApi()) qc.setQueryData<AssetItem[]>(assetsKey, (all) => [mockAssetItem(pick, h.file), ...(all ?? mockData().library.assetsMock)].filter((a, i, arr) => arr.findIndex((b) => b.id === a.id) === i));
-        else void qc.invalidateQueries({ queryKey: assetsKey });
-        void qc.invalidateQueries({ queryKey: ['picker', 'mine'] });
-        void qc.invalidateQueries({ queryKey: ['prompt', 'references'] });
+        // Uploads for other purposes (an avatar) are not merged into "My assets" ahead of the server.
+        noteUploadDone(pick, h.file, qc, { listed: purpose === 'library' || purpose === 'reference' });
         return pick;
       }),
     })),

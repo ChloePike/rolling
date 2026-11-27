@@ -8,6 +8,7 @@ import { usePublicCategories, usePublicItems } from '@/lib/publicLibrary';
 import { useSession } from '@/lib/session';
 import { transfers, useTransfers } from '@/lib/transfers';
 import { pickFromPublic, rememberPicks, useMineAssets, useRecentPicks, useUploadToAssets } from './data';
+import { mergeUploaded, pruneUploaded, useUploadedAssets } from './uploaded';
 import {
   acceptedFiles,
   acceptFor,
@@ -77,10 +78,23 @@ export function AssetPicker({ open, options, onClose, onConfirm }: AssetPickerPr
   const pub = usePublicItems(s.category === 'all' ? null : s.category, { q: s.query, enabled: open && s.tab === 'public' && pubOk });
   const facets = usePublicCategories();
   const recent = useRecentPicks();
+  const uploaded = useUploadedAssets();
+
+  // Opening on "My assets" with a stale list asks again (an upload may have finished since).
+  const mineTab = open && s.tab === 'mine';
+  useEffect(() => {
+    if (mineTab && mine.isStale && !mine.isFetching) void mine.refetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mineTab]);
+  // Uploads the server lists now no longer need the local copy.
+  useEffect(() => {
+    if (mine.data && uploaded.length) pruneUploaded(mine.data.pages.flatMap((p) => p.items.map((i) => i.assetId)));
+  }, [mine.data, uploaded]);
 
   const cells: GridCell[] = useMemo(() => {
     if (s.tab === 'mine') {
-      const fetched = (mine.data?.pages.flatMap((p) => p.items) ?? []).filter((p) => kinds.includes(p.kind));
+      // Finished uploads the server does not list yet go first (uploaded.ts).
+      const fetched = mergeUploaded(mine.data?.pages.flatMap((p) => p.items) ?? [], uploaded, s.kind, s.query).filter((p) => kinds.includes(p.kind));
       return mineCells(s.uploads, fetched, s.kind, s.query);
     }
     if (s.tab === 'public') {
@@ -92,7 +106,7 @@ export function AssetPicker({ open, options, onClose, onConfirm }: AssetPickerPr
       .filter((p) => (kinds.includes(p.kind) || (p.kind === 'image' && kinds.includes('character'))) && (!q || p.name.toLowerCase().includes(q)))
       .map((pick) => ({ type: 'item', pick }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [s.tab, s.uploads, s.kind, s.query, mine.data, pub.data, recent, showMature, kinds.join()]);
+  }, [s.tab, s.uploads, s.kind, s.query, mine.data, uploaded, pub.data, recent, showMature, kinds.join()]);
 
   const query = s.tab === 'mine' ? mine : s.tab === 'public' ? pub : null;
   const pending = !!query && query.isPending && !cells.length;
