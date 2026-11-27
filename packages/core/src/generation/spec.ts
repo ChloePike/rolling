@@ -7,6 +7,8 @@ import { isSwapModel } from '../models/overlay';
 import { z } from 'zod';
 import type { Catalog } from '../models/catalog';
 import type { CatalogModel } from '../models/types';
+import { CharacterDescriptorSchema, OutfitInputSchema } from '../characters/descriptor';
+import { MAX_EXPRESSIONS, SHEET_EXPRESSIONS } from '../characters/sheet';
 
 export const AUTO_MODEL = 'auto';
 
@@ -132,6 +134,24 @@ export const RemixShotSchema = z.object({
 export type RemixShot = z.infer<typeof RemixShotSchema>;
 
 /**
+ * Character sheet request (D-032). `new`: a character from the descriptor (and
+ * reference pictures). `version`: a new version of a saved character from a
+ * changed descriptor. `outfit`: an outfit variant of a saved character (its
+ * locked descriptor is used; only the outfit changes). For `version` and
+ * `outfit` the server fills `descriptor` and `baseAssetId` from the saved
+ * character; what the client sends there is replaced.
+ */
+export const CharacterSheetSpecSchema = z.object({
+  mode: z.enum(['new', 'version', 'outfit']).default('new'),
+  descriptor: CharacterDescriptorSchema,
+  expressions: z.array(z.enum(SHEET_EXPRESSIONS)).max(MAX_EXPRESSIONS).optional(),
+  characterId: z.string().min(1).max(64).optional(),
+  outfit: OutfitInputSchema.optional(),
+  baseAssetId: z.string().min(1).max(64).optional(),
+});
+export type CharacterSheetSpec = z.infer<typeof CharacterSheetSpecSchema>;
+
+/**
  * Tool page request (Quick Create, Remix, Avatar, Characters, Home) without a graph.
  * - `image` / `video`: one generation.
  * - `remix`: a reference video (`inputs.videoAssetId`) recreated shot by shot with new
@@ -164,6 +184,8 @@ export const PromptSpecSchema = z.object({
   name: z.string().max(80).optional(),
   /** Character: which pictures to make (default both). */
   views: z.array(z.enum(['body', 'face'])).min(1).max(2).optional(),
+  /** Character sheet (D-032): a turnaround in one run, saved with a locked descriptor. Replaces `views`. */
+  sheet: CharacterSheetSpecSchema.optional(),
   inputs: z
     .object({
       firstFrameAssetId: AssetRef.optional(),
@@ -192,6 +214,7 @@ export function specAssetIds(spec: PromptSpec): string[] {
     ...(i.referenceAssetIds ?? []),
     ...(i.inputAssetIds ?? []),
     ...(spec.shots ?? []).map((s) => s.frameAssetId),
+    spec.sheet?.baseAssetId,
   ].filter((x): x is string => typeof x === 'string' && x !== '');
   return [...new Set(ids)];
 }

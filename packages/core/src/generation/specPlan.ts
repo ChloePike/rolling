@@ -22,6 +22,8 @@ import type { Classify } from './auto';
 import { buildSpec, imageOriginsOf, keyframeRefOf, type Blocked, type ChainRefs, type ExplicitCheck } from './plan';
 import { findModel, isAuto, type NodeSettings, type PromptSpec } from './spec';
 import type { GenInput, PlanContext, PlanItem, RunPlan } from './types';
+import { descriptorIsEmpty } from '../characters/descriptor';
+import { sheetItems } from '../characters/sheet';
 
 /** Lip-sync model for Avatar runs (D-009 candidate). */
 export const AVATAR_MODEL = 'lumina/wan2.7-i2v-spicy';
@@ -391,8 +393,90 @@ async function planRemix(input: PlanSpecInput): Promise<RunPlan> {
 const BODY_DIRECTION = 'Full-body character reference: the whole figure from head to toe, standing in a neutral pose, front view, plain light studio background, even lighting.';
 const FACE_DIRECTION = 'Close-up portrait of the same character: face and shoulders, front view, neutral expression, plain light background, even lighting. Keep the face, hair and features identical.';
 
+/** User reference pictures a sheet's full body takes (more would crowd the views out of the model's input limit). */
+export const SHEET_MAX_REFERENCES = 3;
+
+/**
+ * Character sheet (D-032): the full body first (from the descriptor, the
+ * saved base picture and up to three references), then every other view as an
+ * edit of it, all in one run. `version` and `outfit` modes need the base
+ * picture the server filled in.
+ */
+async function planCharacterSheet(input: PlanSpecInput): Promise<RunPlan> {
+  const { spec } = input;
+  const sheet = spec.sheet!;
+  const name = (spec.name ?? spec.title ?? 'Character').trim().slice(0, 40) || 'Character';
+  const refs: GenInput[] = [];
+  let refProblem: Blocked | null = null;
+  const ids = [...(spec.inputs.referenceAssetIds ?? []), ...(spec.inputs.inputAssetIds ?? [])].slice(0, SHEET_MAX_REFERENCES);
+  for (const id of ids) {
+    const a = asset(input, id, 'image', '');
+    if (isBlock(a)) refProblem ??= a;
+    else refs.push({ role: 'edit', media: 'image', from: { assetId: a.id, origin: a.a.origin } });
+  }
+  let base: GenInput | null = null;
+  if (sheet.mode !== 'new') {
+    const b = asset(input, sheet.baseAssetId, 'image', 'This character has no saved sheet to start from.');
+    if (isBlock(b)) refProblem ??= b;
+    else base = { role: 'edit', media: 'image', from: { assetId: b.id, origin: b.a.origin } };
+  }
+  if (sheet.mode === 'outfit' && !sheet.outfit) refProblem ??= { code: 'missing_input', reason: 'Describe the outfit.' };
+  const plan = sheetItems({
+    name,
+    descriptor: sheet.descriptor,
+    ...(sheet.expressions && { expressions: sheet.expressions }),
+    mode: sheet.mode,
+    ...(sheet.outfit && { outfit: sheet.outfit }),
+    base: base !== null,
+    references: refs.length,
+  });
+  const items: PlanItem[] = [];
+  const run = (ref: string) => !input.onlyRefs || input.onlyRefs.includes(ref);
+  const settingsFor = (ratio: string) => {
+    const s = settingsOfSpec(spec, { ratio, refsMode: false });
+    delete s.n;
+    delete s.seconds;
+    delete s.audio;
+    return s;
+  };
+  const empty = descriptorIsEmpty(sheet.descriptor) && refs.length === 0 && !base;
+  for (const it of plan) {
+    if (!run(it.ref)) continue;
+    const b: Base = { ref: it.ref, nodeId: null, title: it.title, kind: 'image', dependsOn: [], model: null, modelName: null };
+    if (refProblem) {
+      items.push(blockedItem(b, refProblem));
+      continue;
+    }
+    if (empty) {
+      items.push(blockedItem(b, { code: 'empty_prompt', reason: 'Describe the character or add a reference picture.' }));
+      continue;
+    }
+    let inputs: GenInput[];
+    if (it.from === null) inputs = [...(base ? [base] : []), ...refs];
+    else {
+      const fromItem = items.find((x) => x.ref === it.from);
+      const prior = input.priorAssets?.[it.from];
+      if (fromItem?.action === 'blocked') {
+        items.push(blockedItem(b, { code: 'upstream_blocked', reason: 'Waiting on the full-body picture, which can’t run.' }));
+        continue;
+      }
+      if (fromItem?.action === 'run') {
+        inputs = [{ role: 'edit', media: 'image', from: { item: it.from } }];
+        b.dependsOn = [it.from];
+      } else if (prior) inputs = [{ role: 'edit', media: 'image', from: { assetId: prior, origin: 'generated' } }];
+      else {
+        items.push(blockedItem(b, { code: 'missing_input', reason: 'The full-body picture is missing.' }));
+        continue;
+      }
+    }
+    items.push(await planOne(input, b, 'image', spec.model, it.prompt, settingsFor(it.ratio), inputs));
+  }
+  return { items };
+}
+
 async function planCharacter(input: PlanSpecInput): Promise<RunPlan> {
   const { spec } = input;
+  if (spec.sheet) return planCharacterSheet(input);
   const title = specTitle(spec);
   const views = spec.views ?? ['body', 'face'];
   const refs: GenInput[] = [];

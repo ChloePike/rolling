@@ -315,6 +315,8 @@ export interface ChatRequest {
   responseFormat?: { type: 'json_object' } | { type: 'json_schema'; name: string; schema: Record<string, unknown> };
   reasoningEffort?: 'none' | 'low' | 'medium' | 'high';
   mature?: boolean;
+  /** Model-specific body fields passed through as-is (e.g. `crop_heads` for `lumina/face-detect`). */
+  extra?: Record<string, unknown>;
   /** Required: chat calls are paid. */
   idempotencyKey: string;
   signal?: AbortSignal;

@@ -104,7 +104,9 @@ export function referenceSentences(labels: readonly string[] | undefined): strin
   labels.forEach((raw, i) => {
     const label = cleanLabel(raw);
     const sheet = /^(character|animal|product)(?: sheet)?:\s*(.+)$/i.exec(label);
-    const who = sheet?.[2];
+    // A saved sheet view is labelled "Character: Maya · 3/4 view" (core/characters): the view is named in brackets.
+    const [name, view] = (sheet?.[2] ?? '').split(/\s+·\s+/, 2);
+    const who = name ? `${name}${view ? ` (${view})` : ''}` : undefined;
     const kind = sheet?.[1]?.toLowerCase();
     if (who && kind === 'product') out.push(`Image ${i + 1} is ${who}: keep its shape, materials, colors and markings identical.`);
     else if (who && kind === 'animal') out.push(`Image ${i + 1} is ${who}: keep the same animal, with identical coat, markings and build.`);

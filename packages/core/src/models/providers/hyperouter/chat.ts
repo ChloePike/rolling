@@ -112,6 +112,8 @@ export function buildChatBody(req: ChatRequest): Record<string, unknown> {
         ? { type: 'json_object' }
         : { type: 'json_schema', json_schema: { name: req.responseFormat.name, schema: req.responseFormat.schema, strict: true } };
   }
+  // Model-specific fields (e.g. `crop_heads` for `lumina/face-detect`); never overrides a mapped field.
+  for (const [k, v] of Object.entries(req.extra ?? {})) if (!(k in body)) body[k] = v;
   return body;
 }
 
