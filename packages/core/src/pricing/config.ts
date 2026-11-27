@@ -385,6 +385,49 @@ export const PROMPT_EXPANSION_TOKENS = {
 export const PROMPT_EXPANSION_DEFAULT_WRITER_PRICE = { prompt: 0.000002, completion: 0.000006 } as const;
 
 /**
+ * One-time free trial for new sign-ups (D-022). Each new user's personal
+ * workspace gets `credits` once, in the CreditAccount `trial` bucket, expiring
+ * `days` after the grant. Sized from live gateway prices (fixture listing
+ * 2026-11-25, `trial.test.ts` recomputes it): 5 Seedream 5.0 Lite images
+ * (11 credits each, 55) plus one 5 s 480p Seedance 2.0 Mini video (53) = 108,
+ * rounded up to 120 so one run can also carry Enhance prompt. Gateway cost is
+ * at most credits ÷ MARKUP × USD_PER_CREDIT = $0.40 per trial user, plus the
+ * trial agent allowance ($0.05): ≤ $0.45 worst case.
+ *
+ * While a workspace has no plan, trial credits only run `models` within the
+ * caps below (enforced on every quote in CreditAccount, `trialProblem`).
+ */
+export const TRIAL = {
+  credits: 120,
+  days: 14,
+  /** Curated cheap models a trial may run (gateway ids; launch-grade, never mature). */
+  models: {
+    image: ['bytedance/seedream-5.0-flash', 'bytedance/seedream-5.0-lite', 'bytedance/seedream-5.5', 'qwen/qwen-image-2.0'],
+    video: ['bytedance/seedance-2.0-mini', 'bytedance/seedance-2.0-fast', 'lumina/berry-1.0'],
+  },
+  maxImageResolution: '2K',
+  maxVideoResolution: '480p',
+  maxVideoSeconds: 5,
+  maxImagesPerRun: 4,
+  /** Largest image size a trial may request (`WxH`, total pixels), 2048×2048. */
+  maxImagePixels: 2048 * 2048,
+  concurrentJobs: 2,
+  /** Exports above this need a plan (D-022). */
+  maxExportShortSide: 720,
+  /** Agent: DeepSeek only, metered against this USD allowance for the whole trial (D-012 style). */
+  agentAllowanceUsd: 0.05,
+  agentLlm: 'deepseek-v4.1-flash',
+  /** Anti-abuse (D-022): grants per client IP and per /24 (IPv6 /64) in a rolling day. */
+  perIpPerDay: 3,
+  perSubnetPerDay: 10,
+} as const;
+
+/** Worst-case gateway cost of one trial in USD (every trial credit used plus the whole agent allowance). */
+export function trialWorstCaseUsd(): number {
+  return Math.round(((TRIAL.credits * USD_PER_CREDIT) / MARKUP + TRIAL.agentAllowanceUsd) * 1e4) / 1e4;
+}
+
+/**
  * Post-production (D-033, D-034). Auto captions run on Workers AI Whisper
  * (`@cf/openai/whisper-large-v3-turbo`, $0.000513 per audio minute): a 15-minute
  * cut costs under one cent, less than one credit even at the 3× markup, so

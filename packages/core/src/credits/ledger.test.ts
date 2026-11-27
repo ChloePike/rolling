@@ -277,7 +277,7 @@ describe('reconcile', () => {
     ledger.settle(h.jobs[0]!.jobId, 300, 's1');
     const r = reconcile(store.allLines());
     const b = ledger.balance();
-    expect(r).toEqual({ plan: b.plan, purchased: b.purchased, held: b.held, spent: 300 });
+    expect(r).toEqual({ plan: b.plan, purchased: b.purchased, held: b.held, spent: 300, trial: 0 });
     expect(b.held).toBe(162);
   });
 });

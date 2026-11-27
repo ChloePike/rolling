@@ -1144,6 +1144,40 @@ export const reviewDecisions = sqliteTable(
   (t) => [index("review_decisions_link").on(t.linkId, t.createdAt), check("review_decisions_check", sql`${t.decision} IN ('approved','changes_requested')`)],
 );
 
+/**
+ * One-time sign-up trial claims (D-022, migration 0028). `pending` from the user hook, then
+ * `granted` or `denied` at the first session. Identity signals are SHA-256 hashes only.
+ */
+export const trialClaims = sqliteTable(
+  "trial_claims",
+  {
+    userId: text("user_id").primaryKey(),
+    workspaceId: text("workspace_id").notNull(),
+    status: text("status", { enum: ["pending", "granted", "denied"] }).notNull(),
+    reason: text("reason"),
+    method: text("method"),
+    emailHash: text("email_hash"),
+    googleHash: text("google_hash"),
+    ipHash: text("ip_hash"),
+    subnetHash: text("subnet_hash"),
+    deviceHash: text("device_hash"),
+    credits: integer("credits").notNull().default(0),
+    expiresAt: integer("expires_at"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("trial_claims_email_granted").on(t.emailHash).where(sql`status = 'granted'`),
+    uniqueIndex("trial_claims_google_granted").on(t.googleHash).where(sql`status = 'granted'`),
+    uniqueIndex("trial_claims_workspace_granted").on(t.workspaceId).where(sql`status = 'granted'`),
+    index("trial_claims_device").on(t.deviceHash, t.status),
+    index("trial_claims_ip").on(t.ipHash, t.status, t.updatedAt),
+    index("trial_claims_subnet").on(t.subnetHash, t.status, t.updatedAt),
+    index("trial_claims_workspace").on(t.workspaceId, t.status),
+    check("trial_claims_status_check", sql`${t.status} IN ('pending','granted','denied')`),
+  ],
+);
+
 export type Workspace = typeof workspaces.$inferSelect;
 export type UserPrefs = typeof userPrefs.$inferSelect;
 export type User = typeof users.$inferSelect;

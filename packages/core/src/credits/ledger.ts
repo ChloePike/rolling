@@ -21,9 +21,11 @@ import {
   SEAT_PRICE,
   TEAM_SEATS,
   TOP_UP,
+  TRIAL,
   UnpricedModelError,
   type PlanId,
 } from '../pricing/config';
+import { trialProblem, trialStatus, type TrialStatus } from '../pricing/trial';
 import type {
   AccountState,
   AutoTopUpSettings,
@@ -48,6 +50,7 @@ import type {
   SeatsResult,
   SettleResult,
   StoredQuote,
+  TrialGrantResult,
 } from './types';
 import { LedgerError } from './types';
 
@@ -129,11 +132,30 @@ export function emptyAccount(): AccountState {
     seats: 1,
     sliceSeats: 1,
     grantedPlanId: null,
+    trial: 0,
+    trialExpiresAt: null,
+    trialGrantedAt: null,
   };
 }
 
 export function balanceOf(s: AccountState): Balance {
-  return { plan: s.plan, purchased: s.purchased, held: s.held, planExpiresAt: s.planExpiresAt };
+  const b: Balance = { plan: s.plan, purchased: s.purchased, held: s.held, planExpiresAt: s.planExpiresAt };
+  // Trial fields only once a trial exists, so accounts without one keep the original shape.
+  if (s.trialGrantedAt !== null) {
+    b.trial = s.trial;
+    b.trialExpiresAt = s.trialExpiresAt;
+  }
+  return b;
+}
+
+/** The plan is active at `now` (renewals may land within `PLAN_GRACE_MS` after the period end). */
+function planActive(s: AccountState, now: number): boolean {
+  return !!s.planId && !(s.periodEnd !== null && now >= s.periodEnd + PLAN_GRACE_MS);
+}
+
+/** Trial credits are usable at `now` (granted and not expired, D-022). */
+function trialLive(s: AccountState, now: number): boolean {
+  return s.trialExpiresAt !== null && now < s.trialExpiresAt;
 }
 
 /** UTC `YYYY-MM` for member monthly limits. */
@@ -197,7 +219,7 @@ export class CreditLedger {
     const s = this.store.getAccount();
     const a = s.autoTopUp;
     if (!a?.enabled || !s.planId) return null;
-    const available = s.plan + s.purchased;
+    const available = s.plan + s.purchased + s.trial;
     if (available >= a.thresholdCredits) return null;
     return { window: `${s.periodStart ?? 0}-${s.autoTopUpSeq}`, amountCents: a.amountCents, available };
   }
@@ -222,7 +244,9 @@ export class CreditLedger {
       const now = this.deps.now();
       this.tickInTx(now);
       const s = this.store.getAccount();
-      const priced: QuotedItem[] = items.map((it) => this.priceItem(it, byId.get(it.modelId), s.planId));
+      // D-022: without a plan, an active trial prices under the trial caps (and only trial credits count).
+      const trial = !planActive(s, now) && trialLive(s, now);
+      const priced: QuotedItem[] = items.map((it) => this.priceItem(it, byId.get(it.modelId), s.planId, trial));
       const ok = priced.filter((p) => !p.blocked);
       const total = ok.reduce((sum, p) => sum + p.credits, 0);
       const quote: StoredQuote = {
@@ -232,16 +256,29 @@ export class CreditLedger {
         createdAt: now,
         expiresAt: now + QUOTE_TTL_MS,
         runId: null,
+        ...(trial && { trial: true }),
       };
       this.store.putQuote(quote);
-      const available = s.plan + s.purchased;
-      return { quoteId: quote.id, items: priced, total, balance: available, balanceAfter: available - total, expiresAt: quote.expiresAt };
+      const available = trial ? s.trial : s.plan + s.purchased + s.trial;
+      return {
+        quoteId: quote.id,
+        items: priced,
+        total,
+        balance: available,
+        balanceAfter: available - total,
+        expiresAt: quote.expiresAt,
+        ...(trial && { trial: true }),
+      };
     });
   }
 
-  private priceItem(it: QuoteItemInput, model: ListingModel | undefined, planId: PlanId | null): QuotedItem {
+  private priceItem(it: QuoteItemInput, model: ListingModel | undefined, planId: PlanId | null, trial = false): QuotedItem {
     const base = { ref: it.ref, modelId: it.modelId, credits: 0 };
     if (!model || (model.kind !== 'video' && model.kind !== 'image')) return { ...base, blocked: 'unknown_model' };
+    if (trial) {
+      const lock = trialProblem(model, it.request ?? {});
+      if (lock) return { ...base, blocked: 'trial_locked', lowestPlan: lock.lowestPlan, trialLock: lock.code };
+    }
     const resolution = it.request?.resolution ?? model.defaultResolution;
     if (planId && resolution && !planAllowsResolution(planId, model.kind, resolution)) {
       return { ...base, blocked: 'resolution_locked', lowestPlan: lowestPlanFor(model.kind, resolution) };
@@ -274,8 +311,11 @@ export class CreditLedger {
       if (now >= deadline) throw new LedgerError('QUOTE_EXPIRED', 'Quote expired.', { quoteId: quote.id, expiresAt: quote.expiresAt });
 
       const s = this.store.getAccount();
-      if (!s.planId || (s.periodEnd !== null && now >= s.periodEnd + PLAN_GRACE_MS)) {
-        throw new LedgerError('NO_PLAN', 'An active plan is required.');
+      const member = planActive(s, now);
+      // D-022: without a plan, only a quote priced under the trial rules may be held, from trial credits only.
+      if (!member && !(quote.trial && trialLive(s, now))) {
+        const status = this.trialStatusOf(s, now);
+        throw new LedgerError('NO_PLAN', 'An active plan is required.', status === 'none' ? {} : { trial: status });
       }
 
       const already = new Set(this.store.holdsForQuote(quote.id).map((h) => h.itemRef));
@@ -290,7 +330,7 @@ export class CreditLedger {
       const total = items.reduce((sum, i) => sum + i.credits, 0);
 
       const open = this.store.openHolds();
-      const limit = planConcurrentJobs(s.planId, s.seats);
+      const limit = member ? planConcurrentJobs(s.planId!, s.seats) : TRIAL.concurrentJobs;
       if (items.length > 0 && open.length + items.length > limit) {
         throw new LedgerError('CONCURRENCY_LIMIT', 'Too many jobs running at once for this plan.', {
           limit,
@@ -312,16 +352,19 @@ export class CreditLedger {
         }
       }
 
-      const available = s.plan + s.purchased;
+      const available = member ? s.trial + s.plan + s.purchased : s.trial;
       if (total > available) {
-        throw new LedgerError('INSUFFICIENT_CREDITS', 'Not enough credits.', { needed: total, balance: available });
+        throw new LedgerError('INSUFFICIENT_CREDITS', 'Not enough credits.', { needed: total, balance: available, ...(!member && { trial: 'used' }) });
       }
 
       const lines: LedgerLine[] = [];
       const jobs: HeldJob[] = [];
       for (const item of items) {
-        const fromPlan = Math.min(item.credits, s.plan);
-        const fromPurchased = item.credits - fromPlan;
+        // Trial credits first (they expire soonest), then plan, then purchased.
+        const fromTrial = Math.min(item.credits, s.trial);
+        const fromPlan = Math.min(item.credits - fromTrial, s.plan);
+        const fromPurchased = item.credits - fromTrial - fromPlan;
+        s.trial -= fromTrial;
         s.plan -= fromPlan;
         s.purchased -= fromPurchased;
         s.held += item.credits;
@@ -336,6 +379,7 @@ export class CreditLedger {
           credits: item.credits,
           fromPlan,
           fromPurchased,
+          ...(fromTrial > 0 && { fromTrial }),
           planExpiresAt: s.planExpiresAt,
           status: 'held',
           spent: null,
@@ -344,6 +388,7 @@ export class CreditLedger {
         };
         this.store.putHold(hold);
         const ctx = { userId: input.userId, runId: input.runId, jobId };
+        if (fromTrial > 0) lines.push(this.line(key, lines.length, 'hold', 'trial', 0 - fromTrial, now, ctx));
         if (fromPlan > 0 || item.credits === 0) lines.push(this.line(key, lines.length, 'hold', 'plan', 0 - fromPlan, now, ctx));
         if (fromPurchased > 0) lines.push(this.line(key, lines.length, 'hold', 'purchased', 0 - fromPurchased, now, ctx));
         jobs.push({ jobId, ref: item.ref, modelId: item.modelId, credits: item.credits });
@@ -362,14 +407,17 @@ export class CreditLedger {
     return this.idempotent('settle', key, { jobId, actual }, (now) => {
       const hold = this.openHold(jobId);
       const spent = Math.min(actual, hold.credits);
-      const spentPlan = Math.min(spent, hold.fromPlan);
-      const spentPurchased = spent - spentPlan;
+      const fromTrial = hold.fromTrial ?? 0;
+      const spentTrial = Math.min(spent, fromTrial);
+      const spentPlan = Math.min(spent - spentTrial, hold.fromPlan);
+      const spentPurchased = spent - spentTrial - spentPlan;
       const lines: LedgerLine[] = [];
       const ctx = { userId: hold.userId, runId: hold.runId, jobId };
+      if (spentTrial > 0) lines.push(this.line(key, lines.length, 'settle', 'trial', 0 - spentTrial, now, ctx));
       if (spentPlan > 0 || spent === 0) lines.push(this.line(key, lines.length, 'settle', 'plan', 0 - spentPlan, now, ctx));
       if (spentPurchased > 0) lines.push(this.line(key, lines.length, 'settle', 'purchased', 0 - spentPurchased, now, ctx));
       const s = this.store.getAccount();
-      const returned = this.returnToBuckets(s, hold, hold.fromPlan - spentPlan, hold.fromPurchased - spentPurchased, 'release', key, lines, now, null);
+      const returned = this.returnToBuckets(s, hold, hold.fromPlan - spentPlan, hold.fromPurchased - spentPurchased, 'release', key, lines, now, null, fromTrial - spentTrial);
       s.held -= hold.credits;
       if (spent > 0) this.store.addMemberSpent(hold.userId, monthKey(now), spent);
       this.store.putHold({ ...hold, status: 'settled', spent, closedAt: now });
@@ -387,7 +435,7 @@ export class CreditLedger {
       const hold = this.openHold(jobId);
       const lines: LedgerLine[] = [];
       const s = this.store.getAccount();
-      const refunded = this.returnToBuckets(s, hold, hold.fromPlan, hold.fromPurchased, 'refund', key, lines, now, note);
+      const refunded = this.returnToBuckets(s, hold, hold.fromPlan, hold.fromPurchased, 'refund', key, lines, now, note, hold.fromTrial ?? 0);
       s.held -= hold.credits;
       this.store.putHold({ ...hold, status: 'released', spent: 0, closedAt: now });
       this.store.putAccount(s);
@@ -418,8 +466,15 @@ export class CreditLedger {
     lines: LedgerLine[],
     now: number,
     note: string | null,
+    trial = 0,
   ): number {
     const ctx = { userId: hold.userId, runId: hold.runId, jobId: hold.jobId, note };
+    if (trial > 0) {
+      lines.push(this.line(key, lines.length, kind, 'trial', trial, now, ctx));
+      // Trial credits returned after the trial ended expire at once (D-022).
+      if (trialLive(s, now)) s.trial += trial;
+      else lines.push(this.line(key, lines.length, 'expire', 'trial', 0 - trial, now, { ...ctx, note: 'trial ended' }));
+    }
     if (plan > 0) {
       lines.push(this.line(key, lines.length, kind, 'plan', plan, now, ctx));
       const sliceAlive = s.planExpiresAt !== null && s.planExpiresAt === hold.planExpiresAt && now < s.planExpiresAt;
@@ -430,7 +485,7 @@ export class CreditLedger {
       lines.push(this.line(key, lines.length, kind, 'purchased', purchased, now, ctx));
       s.purchased += purchased;
     }
-    return plan + purchased;
+    return trial + plan + purchased;
   }
 
   // -------------------------------------------------------------------------
@@ -530,6 +585,38 @@ export class CreditLedger {
     });
   }
 
+  /**
+   * The one-time sign-up trial (D-022): `credits` into the trial bucket until
+   * `expiresAt`. Once per workspace, ever: a second grant (any key) is skipped.
+   * Anti-abuse (one per person) is checked by the caller before this.
+   */
+  grantTrial(credits: number, expiresAt: number, idemKey: string): TrialGrantResult {
+    const key = requireKey(idemKey);
+    if (!isNonNegInt(credits) || credits === 0) throw new LedgerError('BAD_REQUEST', 'credits must be a positive integer.');
+    if (!isNonNegInt(expiresAt)) throw new LedgerError('BAD_REQUEST', 'expiresAt must be a timestamp.');
+    return this.idempotent('grantTrial', key, { credits, expiresAt }, (now) => {
+      const s = this.store.getAccount();
+      if (s.trialGrantedAt !== null) return { granted: 0, expiresAt: s.trialExpiresAt, skipped: 'already' as const, balance: balanceOf(s) };
+      if (expiresAt <= now) throw new LedgerError('BAD_REQUEST', 'expiresAt must be in the future.');
+      s.trial = credits;
+      s.trialExpiresAt = expiresAt;
+      s.trialGrantedAt = now;
+      this.store.putAccount(s);
+      this.store.appendLines([this.line(key, 0, 'grant', 'trial', credits, now, { note: 'trial' })]);
+      return { granted: credits, expiresAt, balance: balanceOf(s) };
+    });
+  }
+
+  /** Trial state at `now` (`used` while nothing is left and no trial hold is open). */
+  trialStatus(now = this.deps.now()): TrialStatus {
+    return this.trialStatusOf(this.store.getAccount(), now);
+  }
+
+  private trialStatusOf(s: AccountState, now: number): TrialStatus {
+    const trialHeld = s.trialGrantedAt === null ? 0 : this.store.openHolds().reduce((sum, h) => sum + (h.fromTrial ?? 0), 0);
+    return trialStatus({ trial: s.trial, trialExpiresAt: s.trialExpiresAt, trialGrantedAt: s.trialGrantedAt, trialHeld }, now);
+  }
+
   /** Purchased credits (top-up). Never expire. `source: 'auto'` advances the auto top-up window. */
   purchase(credits: number, ref: string, idemKey: string, source: 'checkout' | 'auto' = 'checkout'): PurchaseResult {
     const key = requireKey(idemKey);
@@ -558,12 +645,25 @@ export class CreditLedger {
     });
   }
 
-  /** Next time `expire` has work to do (for the DO alarm). */
+  /** Next time `expire` has work to do (for the DO alarm): plan slice end or trial end. */
   nextExpiry(): number | null {
-    return this.store.getAccount().planExpiresAt;
+    const s = this.store.getAccount();
+    const times = [s.planExpiresAt, s.trial > 0 ? s.trialExpiresAt : null].filter((t): t is number => t !== null);
+    return times.length ? Math.min(...times) : null;
+  }
+
+  /** Trial credits left when the trial ends expire (D-022). Idempotent: the bucket is empty afterwards. */
+  private expireTrialInTx(now: number): void {
+    const s = this.store.getAccount();
+    if (s.trial <= 0 || s.trialExpiresAt === null || now < s.trialExpiresAt) return;
+    const line = this.line(`trial-expire:${s.trialExpiresAt}`, 0, 'expire', 'trial', 0 - s.trial, now, { note: 'trial ended' });
+    s.trial = 0;
+    this.store.putAccount(s);
+    this.store.appendLines([line]);
   }
 
   private tickInTx(now: number): { expired: number; granted: number } {
+    this.expireTrialInTx(now);
     const s = this.store.getAccount();
     if (s.planExpiresAt === null || now < s.planExpiresAt) return { expired: 0, granted: 0 };
     const key = `expire:${s.planExpiresAt}`;
@@ -749,14 +849,16 @@ export class CreditLedger {
  * available buckets are the sums of every non-settle line; `held` is what
  * holds took minus what settles spent and releases/refunds returned.
  */
-export function reconcile(lines: readonly Pick<LedgerLine, 'kind' | 'bucket' | 'amount'>[]): { plan: number; purchased: number; held: number; spent: number } {
+export function reconcile(lines: readonly Pick<LedgerLine, 'kind' | 'bucket' | 'amount'>[]): { plan: number; purchased: number; held: number; spent: number; trial: number } {
   let plan = 0;
   let purchased = 0;
+  let trial = 0;
   let held = 0;
   let spent = 0;
   for (const l of lines) {
     if (l.kind !== 'settle') {
       if (l.bucket === 'plan') plan += l.amount;
+      else if (l.bucket === 'trial') trial += l.amount;
       else purchased += l.amount;
     }
     if (l.kind === 'hold') held -= l.amount;
@@ -765,5 +867,5 @@ export function reconcile(lines: readonly Pick<LedgerLine, 'kind' | 'bucket' | '
       spent -= l.amount;
     } else if (l.kind === 'release' || l.kind === 'refund') held -= l.amount;
   }
-  return { plan, purchased, held, spent };
+  return { plan, purchased, held, spent, trial };
 }

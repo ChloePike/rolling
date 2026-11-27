@@ -12,7 +12,8 @@ import type { ListingModel } from '../models/types';
 import type { PriceRequest } from '../models/catalog';
 import type { PlanId } from '../pricing/config';
 
-export type Bucket = 'plan' | 'purchased';
+/** `trial`: the one-time sign-up trial (D-022), spent first and expiring with the trial. */
+export type Bucket = 'plan' | 'purchased' | 'trial';
 export type LedgerKind = 'grant' | 'purchase' | 'hold' | 'settle' | 'release' | 'refund' | 'expire' | 'adjust';
 export type PlanInterval = 'month' | 'year';
 
@@ -65,6 +66,12 @@ export interface AccountState {
   sliceSeats: number;
   /** Plan the current slice's credits were granted for; a paid change to a higher plan is an upgrade (grants again). */
   grantedPlanId: PlanId | null;
+  /** Available trial credits (D-022). */
+  trial: number;
+  /** When the trial ends (its credits expire); null when never granted. */
+  trialExpiresAt: number | null;
+  /** When the trial was granted (once per workspace); null when never. */
+  trialGrantedAt: number | null;
 }
 
 export interface Balance {
@@ -72,6 +79,9 @@ export interface Balance {
   purchased: number;
   held: number;
   planExpiresAt: number | null;
+  /** Trial credits (D-022); present only once a trial was granted. */
+  trial?: number;
+  trialExpiresAt?: number | null;
 }
 
 export interface QuoteItemInput {
@@ -81,15 +91,17 @@ export interface QuoteItemInput {
   request?: PriceRequest;
 }
 
-export type QuoteBlockReason = 'unknown_model' | 'unpriced' | 'resolution_locked';
+export type QuoteBlockReason = 'unknown_model' | 'unpriced' | 'resolution_locked' | 'trial_locked';
 
 export interface QuotedItem {
   ref: string;
   modelId: string;
   credits: number;
   blocked?: QuoteBlockReason;
-  /** For `resolution_locked`: the lowest plan that allows the requested resolution. */
+  /** For `resolution_locked` / `trial_locked`: the lowest plan that allows the request. */
   lowestPlan?: PlanId | null;
+  /** For `trial_locked`: which trial cap the request is over (D-022). */
+  trialLock?: 'model' | 'resolution' | 'duration' | 'count';
 }
 
 export interface StoredQuote {
@@ -101,6 +113,8 @@ export interface StoredQuote {
   expiresAt: number;
   /** Bound on first hold; later holds of remaining items must use the same run. */
   runId: string | null;
+  /** Priced under the trial rules (no plan, active trial, D-022); only such quotes may be held without a plan. */
+  trial?: boolean;
 }
 
 export interface QuoteResult {
@@ -110,6 +124,8 @@ export interface QuoteResult {
   balance: number;
   balanceAfter: number;
   expiresAt: number;
+  /** Priced under the trial rules (D-022). */
+  trial?: boolean;
 }
 
 export type HoldStatus = 'held' | 'settled' | 'released';
@@ -124,6 +140,8 @@ export interface HoldRecord {
   credits: number;
   fromPlan: number;
   fromPurchased: number;
+  /** Taken from the trial bucket (D-022); returned trial credits expire once the trial has ended. */
+  fromTrial?: number;
   /** `planExpiresAt` when the hold was taken: returned plan credits from an ended slice expire. */
   planExpiresAt: number | null;
   status: HoldStatus;
@@ -196,6 +214,14 @@ export interface GrantResult {
   expired: number;
   planExpiresAt: number | null;
   skipped?: 'stale';
+  balance: Balance;
+}
+
+export interface TrialGrantResult {
+  granted: number;
+  expiresAt: number | null;
+  /** `already`: this workspace had a trial before (one per workspace, ever). */
+  skipped?: 'already';
   balance: Balance;
 }
 

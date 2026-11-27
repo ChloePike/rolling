@@ -41,3 +41,15 @@ ALTER TABLE balance ADD COLUMN slice_seats INTEGER NOT NULL DEFAULT 1;
 -- Plan the current slice was granted for (upgrade detection in invoice.paid).
 ALTER TABLE balance ADD COLUMN granted_plan_id TEXT;
 UPDATE balance SET granted_plan_id = plan_id WHERE plan_expires_at IS NOT NULL;
+
+-- v5 (D-022): the one-time sign-up trial. The ledger is rebuilt so its bucket CHECK takes 'trial' (same columns and index).
+CREATE TABLE ledger_v5 (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('grant','purchase','hold','settle','release','refund','expire','adjust')), bucket TEXT NOT NULL CHECK (bucket IN ('plan','purchased','trial')), amount INTEGER NOT NULL, user_id TEXT, run_id TEXT, job_id TEXT, stripe_ref TEXT, idem_key TEXT UNIQUE, created_at INTEGER NOT NULL, note TEXT, mirrored_at INTEGER);
+INSERT INTO ledger_v5 SELECT id, kind, bucket, amount, user_id, run_id, job_id, stripe_ref, idem_key, created_at, note, mirrored_at FROM ledger;
+DROP TABLE ledger;
+ALTER TABLE ledger_v5 RENAME TO ledger;
+CREATE INDEX ledger_unmirrored ON ledger (created_at) WHERE mirrored_at IS NULL;
+ALTER TABLE balance ADD COLUMN trial INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE balance ADD COLUMN trial_expires_at INTEGER;
+ALTER TABLE balance ADD COLUMN trial_granted_at INTEGER;
+ALTER TABLE holds ADD COLUMN from_trial INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE quotes ADD COLUMN trial INTEGER NOT NULL DEFAULT 0;

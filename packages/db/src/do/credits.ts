@@ -7,7 +7,8 @@ import { check, index, integer, primaryKey, sqliteTable, text } from "drizzle-or
 import type { DoMigration } from "./migrate";
 
 export const ledgerKinds = ["grant", "purchase", "hold", "settle", "release", "refund", "expire", "adjust"] as const;
-export const creditBuckets = ["plan", "purchased"] as const;
+/** `trial`: the one-time sign-up trial (D-022, v5). */
+export const creditBuckets = ["plan", "purchased", "trial"] as const;
 
 /** Single row (id = 1). */
 export const balance = sqliteTable(
@@ -30,6 +31,10 @@ export const balance = sqliteTable(
     seats: integer("seats").notNull().default(1),
     sliceSeats: integer("slice_seats").notNull().default(1),
     grantedPlanId: text("granted_plan_id"),
+    // v5 (D-022): the one-time sign-up trial
+    trial: integer("trial").notNull().default(0),
+    trialExpiresAt: integer("trial_expires_at"),
+    trialGrantedAt: integer("trial_granted_at"),
   },
   (t) => [check("balance_singleton", sql`${t.id} = 1`)],
 );
@@ -58,7 +63,7 @@ export const ledger = sqliteTable(
       "ledger_kind_check",
       sql`${t.kind} IN ('grant','purchase','hold','settle','release','refund','expire','adjust')`,
     ),
-    check("ledger_bucket_check", sql`${t.bucket} IN ('plan','purchased')`),
+    check("ledger_bucket_check", sql`${t.bucket} IN ('plan','purchased','trial')`),
   ],
 );
 
@@ -83,6 +88,8 @@ export const holds = sqliteTable(
     status: text("status", { enum: holdStatuses }).notNull().default("held"),
     spent: integer("spent"),
     closedAt: integer("closed_at"),
+    // v5 (D-022)
+    fromTrial: integer("from_trial").notNull().default(0),
   },
   (t) => [index("holds_status").on(t.status), index("holds_quote").on(t.quoteId)],
 );
@@ -95,6 +102,8 @@ export const quotes = sqliteTable("quotes", {
   // v2 (M2)
   createdAt: integer("created_at").notNull().default(0),
   runId: text("run_id"),
+  // v5 (D-022): priced under the trial rules
+  trial: integer("trial").notNull().default(0),
 });
 
 /** Results of idempotent operations, by key (v2). */
@@ -197,6 +206,24 @@ ALTER TABLE balance ADD COLUMN seats INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE balance ADD COLUMN slice_seats INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE balance ADD COLUMN granted_plan_id TEXT;
 UPDATE balance SET granted_plan_id = plan_id WHERE plan_expires_at IS NOT NULL;
+`,
+  },
+  {
+    version: 5,
+    name: "trial",
+    // SQLite cannot change a CHECK constraint: the ledger table is rebuilt with the `trial` bucket (same columns, order and index).
+    sql: `
+CREATE TABLE ledger_v5 (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('grant','purchase','hold','settle','release','refund','expire','adjust')), bucket TEXT NOT NULL CHECK (bucket IN ('plan','purchased','trial')), amount INTEGER NOT NULL, user_id TEXT, run_id TEXT, job_id TEXT, stripe_ref TEXT, idem_key TEXT UNIQUE, created_at INTEGER NOT NULL, note TEXT, mirrored_at INTEGER);
+INSERT INTO ledger_v5 (id, kind, bucket, amount, user_id, run_id, job_id, stripe_ref, idem_key, created_at, note, mirrored_at)
+  SELECT id, kind, bucket, amount, user_id, run_id, job_id, stripe_ref, idem_key, created_at, note, mirrored_at FROM ledger;
+DROP TABLE ledger;
+ALTER TABLE ledger_v5 RENAME TO ledger;
+CREATE INDEX ledger_unmirrored ON ledger (created_at) WHERE mirrored_at IS NULL;
+ALTER TABLE balance ADD COLUMN trial INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE balance ADD COLUMN trial_expires_at INTEGER;
+ALTER TABLE balance ADD COLUMN trial_granted_at INTEGER;
+ALTER TABLE holds ADD COLUMN from_trial INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE quotes ADD COLUMN trial INTEGER NOT NULL DEFAULT 0;
 `,
   },
 ];

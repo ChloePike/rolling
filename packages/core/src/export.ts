@@ -103,6 +103,12 @@ export function needsReframe(edl: Pick<Edl, 'width' | 'height'>, size: { width: 
   return Math.abs(edl.width / edl.height - size.width / size.height) / (size.width / size.height) > 0.01;
 }
 
+/** Short side of a preset's output in pixels (plan gates, D-022). */
+export function exportShortSide(preset: ExportPreset): number {
+  const fixed = FIXED_SIZE[preset];
+  return fixed ? Math.min(fixed.width, fixed.height) : SHORT_SIDE[preset]!;
+}
+
 /** Longest export the renderer takes, seconds. */
 export const MAX_EXPORT_SECONDS = 15 * 60;
 

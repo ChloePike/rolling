@@ -22,6 +22,8 @@ const itemArb = fc.oneof(
     request: fc.record({ resolution: fc.constantFrom('480p', '720p', '1080p'), seconds: fc.integer({ min: 4, max: 12 }) }),
   }),
   fc.record({ modelId: fc.constant('unknown/model'), request: fc.constant({}) }),
+  // D-022: a model in the trial set, inside and over the trial caps.
+  fc.record({ modelId: fc.constant('bytedance/seedance-2.0-mini'), request: fc.record({ resolution: fc.constantFrom('480p', '720p'), seconds: fc.integer({ min: 4, max: 6 }) }) }),
 );
 
 type Op =
@@ -34,7 +36,8 @@ type Op =
   | { t: 'repeat'; pick: number }
   | { t: 'time'; hours: number }
   | { t: 'expire' }
-  | { t: 'cancel' };
+  | { t: 'cancel' }
+  | { t: 'trial'; credits: number; days: number };
 
 const opArb: fc.Arbitrary<Op> = fc.oneof(
   { weight: 2, arbitrary: fc.record({ t: fc.constant('grant' as const), plan: fc.constantFrom<PlanId>('starter', 'plus', 'pro'), interval: fc.constantFrom<'month' | 'year'>('month', 'year'), offsetDays: fc.integer({ min: -40, max: 40 }) }) },
@@ -47,6 +50,7 @@ const opArb: fc.Arbitrary<Op> = fc.oneof(
   { weight: 2, arbitrary: fc.record({ t: fc.constant('time' as const), hours: fc.integer({ min: 0, max: 24 * 45 }) }) },
   { weight: 1, arbitrary: fc.constant({ t: 'expire' as const }) },
   { weight: 1, arbitrary: fc.constant({ t: 'cancel' as const }) },
+  { weight: 1, arbitrary: fc.record({ t: fc.constant('trial' as const), credits: fc.integer({ min: 1, max: 500 }), days: fc.integer({ min: 1, max: 20 }) }) },
 );
 
 const ALLOWED_ERRORS = new Set(['NO_PLAN', 'INSUFFICIENT_CREDITS', 'MEMBER_LIMIT_REACHED', 'CONCURRENCY_LIMIT', 'QUOTE_EXPIRED', 'JOB_CLOSED', 'NOT_FOUND', 'BAD_REQUEST']);
@@ -133,6 +137,11 @@ function runSequence(ops: Op[]) {
       case 'cancel':
         attempt(() => ledger.cancelPlan(`c${i}`));
         break;
+      case 'trial': {
+        const expiresAt = clock.now + op.days * DAY;
+        attempt(() => ledger.grantTrial(op.credits, expiresAt, `t${i}`));
+        break;
+      }
     }
     checkInvariants();
   }
@@ -145,13 +154,16 @@ function runSequence(ops: Op[]) {
     expect(acct.plan).toBeGreaterThanOrEqual(0);
     expect(acct.purchased).toBeGreaterThanOrEqual(0);
     expect(acct.held).toBeGreaterThanOrEqual(0);
+    expect(acct.trial).toBeGreaterThanOrEqual(0);
     // held equals the open holds.
     expect(acct.held).toBe(holds.filter((h) => h.status === 'held').reduce((s, h) => s + h.credits, 0));
     // Totals reconcile with the ledger lines.
     const r = reconcile(lines);
-    expect({ plan: r.plan, purchased: r.purchased, held: r.held }).toEqual({ plan: acct.plan, purchased: acct.purchased, held: acct.held });
+    expect({ plan: r.plan, purchased: r.purchased, held: r.held, trial: r.trial }).toEqual({ plan: acct.plan, purchased: acct.purchased, held: acct.held, trial: acct.trial });
+    // At most one trial grant per account, ever.
+    expect(lines.filter((l) => l.kind === 'grant' && l.bucket === 'trial').length).toBeLessThanOrEqual(1);
     for (const h of holds) {
-      expect(h.fromPlan + h.fromPurchased).toBe(h.credits);
+      expect((h.fromTrial ?? 0) + h.fromPlan + h.fromPurchased).toBe(h.credits);
       const jobLines = lines.filter((l) => l.jobId === h.jobId);
       const spent = 0 - jobLines.filter((l) => l.kind === 'settle').reduce((s, l) => s + l.amount, 0);
       // Settles never exceed holds.
