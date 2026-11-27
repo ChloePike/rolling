@@ -9,6 +9,8 @@ import { projectRoom } from "../lib/access";
 import { loadCatalog } from "../models/catalog";
 import { canvasIdFor, type RoomCaller } from "./ProjectRoom";
 import { agentSafetyGate } from "../safety/service";
+import { descriptorToShotCharacter } from "@rolling/core/characters";
+import { descriptorOf, outfitsOf, sheetOf, type CharacterRow } from "../characters/store";
 
 /** Who the turn runs for. Resolved by the Worker from the auth context; the DO trusts it. */
 export interface AgentCaller {
@@ -111,10 +113,24 @@ export async function agentPorts(env: Env, caller: AgentCaller): Promise<AgentPo
         return rows.results.map(assetItem);
       },
       async characters() {
-        const rows = await env.DB.prepare("SELECT id, name, meta FROM characters WHERE workspace_id = ? ORDER BY created_at DESC LIMIT 30").bind(ws).all<{ id: string; name: string; meta: string | null }>();
+        const rows = await env.DB.prepare("SELECT * FROM characters WHERE workspace_id = ? ORDER BY created_at DESC LIMIT 30").bind(ws).all<CharacterRow>();
         return rows.results.map((r) => {
           const d = parseMeta(r.meta).description;
-          return { id: r.id, name: r.name, ...(typeof d === "string" ? { description: d.slice(0, 200) } : {}) };
+          // D-032: the locked descriptor words and the current sheet; the plan links recurring characters to them.
+          const descriptor = descriptorOf(r);
+          const shot = descriptor ? descriptorToShotCharacter(r.name, descriptor) : null;
+          const sheet = sheetOf(r);
+          const outfits = outfitsOf(r);
+          return {
+            id: r.id,
+            name: r.name,
+            ...(typeof d === "string" ? { description: d.slice(0, 200) } : {}),
+            kind: (r.kind ?? "person") as "person" | "animal" | "object",
+            ...(shot?.look && { look: shot.look }),
+            ...(shot?.wardrobe && { wardrobe: shot.wardrobe }),
+            ...(Object.keys(sheet).length > 0 && { sheet }),
+            ...(outfits.length > 0 && { outfits: outfits.map((o) => ({ name: o.name, outfit: o.outfit, views: o.views })) }),
+          };
         });
       },
       async voices() {

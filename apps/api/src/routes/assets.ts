@@ -14,6 +14,8 @@ import { membershipFor, matureAllowedIn, requireAuth, requireEditor, type AuthCo
 import { ApiError } from "../lib/errors";
 import { assetMeta, assetView, mediaUrlFor, type AssetRow } from "../lib/mediaUrls";
 import { validate } from "../lib/validate";
+import { getCharacter, type CharacterRow } from "../characters/store";
+import { characterDetailView, characterListView } from "../characters/views";
 
 const Id = z.string().min(1).max(80).regex(/^[A-Za-z0-9_-]+$/);
 
@@ -198,31 +200,8 @@ export const assets = new Hono<AppEnv>()
 
 // ---------------------------------------------------------------- characters
 
-interface CharacterRow {
-  id: string;
-  workspace_id: string;
-  name: string;
-  meta: string | null;
-  cover_asset_id: string | null;
-  versions: string;
-  created_at: number;
-  created_by: string | null;
-}
-
 async function characterView(env: Env, auth: AuthContext, r: CharacterRow) {
-  let cover: string | null = null;
-  if (r.cover_asset_id) {
-    const a = await visibleAsset(env, auth, r.cover_asset_id);
-    if (a) cover = (await assetView(env, a, { mayViewMature: auth.matureAllowed })).thumbUrl;
-  }
-  const parse = (s: string | null, fallback: unknown) => {
-    try {
-      return s ? JSON.parse(s) : fallback;
-    } catch {
-      return fallback;
-    }
-  };
-  return { id: r.id, name: r.name, meta: parse(r.meta, {}), coverAssetId: r.cover_asset_id, coverUrl: cover, versions: parse(r.versions, []), createdAt: r.created_at, createdBy: r.created_by };
+  return characterListView(env, auth, r);
 }
 
 export const characters = new Hono<AppEnv>()
@@ -252,11 +231,38 @@ export const characters = new Hono<AppEnv>()
       return c.json({ character: await characterView(c.env, auth, row!) }, 201);
     },
   )
+  // D-032: the character page (sheet, locked descriptor, versions with drift, outfits, used in, checks).
+  .get("/:id", validate("param", z.object({ id: Id })), async (c) => {
+    const auth = await requireAuth(c);
+    const row = await getCharacter(c.env, auth.workspaceId, c.req.valid("param").id);
+    if (!row) throw new ApiError(404, "NOT_FOUND", "Character not found");
+    return c.json({ character: await characterDetailView(c.env, auth, row) });
+  })
+  // Renames only: the descriptor is locked (a new version or an outfit variant goes through a sheet run).
+  .patch("/:id", validate("param", z.object({ id: Id })), validate("json", z.object({ name: z.string().trim().min(1).max(80).optional(), descriptor: z.unknown().optional() })), async (c) => {
+    const auth = await requireAuth(c);
+    requireEditor(auth);
+    const body = c.req.valid("json");
+    const row = await getCharacter(c.env, auth.workspaceId, c.req.valid("param").id);
+    if (!row) throw new ApiError(404, "NOT_FOUND", "Character not found");
+    if (body.descriptor !== undefined) {
+      throw new ApiError(409, "CONFLICT", "The description is locked. Make a new version to change it.", { characterId: row.id, reason: "DESCRIPTOR_LOCKED" });
+    }
+    if (body.name) await c.env.DB.prepare("UPDATE characters SET name = ?, updated_at = ? WHERE id = ?").bind(body.name, Date.now(), row.id).run();
+    return c.json({ character: await characterDetailView(c.env, auth, (await getCharacter(c.env, auth.workspaceId, row.id))!) });
+  })
   .delete("/:id", validate("param", z.object({ id: Id })), async (c) => {
     const auth = await requireAuth(c);
     requireEditor(auth);
-    const res = await c.env.DB.prepare("DELETE FROM characters WHERE id = ? AND workspace_id = ?").bind(c.req.valid("param").id, auth.workspaceId).run();
+    const id = c.req.valid("param").id;
+    const res = await c.env.DB.prepare("DELETE FROM characters WHERE id = ? AND workspace_id = ?").bind(id, auth.workspaceId).run();
     if (!res.meta.changes) throw new ApiError(404, "NOT_FOUND", "Character not found");
+    // The sheet pictures stay in Assets; the index, checks and uses of the character go with it.
+    await c.env.DB.batch([
+      c.env.DB.prepare("DELETE FROM character_sheet_assets WHERE character_id = ?").bind(id),
+      c.env.DB.prepare("DELETE FROM character_checks WHERE character_id = ?").bind(id),
+      c.env.DB.prepare("DELETE FROM character_uses WHERE character_id = ?").bind(id),
+    ]);
     return c.json({ ok: true });
   });
 

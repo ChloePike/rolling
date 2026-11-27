@@ -25,6 +25,7 @@ import { autoClassifier, gatewayConfigured } from "./provider";
 import { guessSurface, runSurface, specRunTitle, type RunSurface } from "./surface";
 import { quoteExplicitCheck, quoteSafety } from "../safety/pipeline";
 import { ports, quietly } from "./ports";
+import { realFaceAssets, resolveSheetSpec, saveSheetRun } from "../characters/store";
 import {
   getItems,
   getRun,
@@ -165,9 +166,14 @@ async function assetOrigins(env: Env, workspaceId: string, userId: string, spec:
       if (Array.isArray(v.assetIds)) for (const a of v.assetIds) if (typeof a === "string") characterAssets.add(a);
     }
   }
+  // D-032 / D-005: pictures of a character drawn from a real face are uploads, never platform assets.
+  const realFace = await realFaceAssets(env, workspaceId, ids);
+  const realChars = await env.DB.prepare("SELECT cover_asset_id FROM characters WHERE workspace_id = ? AND real_face = 1").bind(workspaceId).all<{ cover_asset_id: string | null }>();
+  for (const c of realChars.results) if (c.cover_asset_id) realFace.add(c.cover_asset_id);
   for (const id of ids) {
     const a = out.get(id);
-    if (a && a.media === "image" && characterAssets.has(id)) out.set(id, { ...a, origin: "character" });
+    if (a && a.media === "image" && realFace.has(id)) out.set(id, { ...a, origin: "upload" });
+    else if (a && a.media === "image" && characterAssets.has(id)) out.set(id, { ...a, origin: "character" });
   }
   return out;
 }
@@ -205,6 +211,8 @@ export async function quoteRun(env: Env, auth: AuthContext, req: QuoteRequest): 
   let scope: string;
   let record: RunRequestRecord;
   if ("promptSpec" in req) {
+    // D-032: a version or outfit of a saved character takes its locked descriptor and base picture from the server.
+    req = { ...req, promptSpec: await resolveSheetSpec(env, auth.workspaceId, req.promptSpec) };
     scope = "spec";
     projectId = req.projectId ?? null;
     record = {
@@ -694,6 +702,20 @@ export async function saveCharacterOf(env: Env, runId: string): Promise<string |
   const spec = record.promptSpec;
   // A retry adds a version to the Character its run saved (if it saved one).
   const previous = record.retryOf ? await getRun(env.DB, record.retryOf) : null;
+  if (spec.sheet) {
+    // D-032: a sheet run saves a version, an outfit variant, or a new character with its locked descriptor.
+    const chain: string[] = [];
+    let cursor = previous;
+    while (cursor && chain.length < 10) {
+      chain.push(cursor.id);
+      const earlier = parseJson<RunRequestRecord | null>(cursor.request, null)?.retryOf;
+      cursor = earlier ? await getRun(env.DB, earlier) : null;
+    }
+    const saved = await saveSheetRun(env, { id: runId, workspace_id: run.workspace_id, created_by: run.created_by }, spec, byRef, { retryChain: chain, existingId: previous?.character_id ?? null, newId: characterIdFor(runId) });
+    if (!saved) return null;
+    await env.DB.prepare("UPDATE runs SET character_id = ? WHERE id = ?").bind(saved.characterId, runId).run();
+    return saved.characterId;
+  }
   const id = previous?.character_id ?? characterIdFor(runId);
   const now = Date.now();
   const existing = await env.DB.prepare("SELECT versions FROM characters WHERE id = ? AND workspace_id = ?").bind(id, run.workspace_id).first<{ versions: string }>();

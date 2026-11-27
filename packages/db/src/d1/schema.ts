@@ -590,6 +590,15 @@ export const characters = sqliteTable(
     versions: text("versions").notNull().default("[]"),
     createdAt: integer("created_at").notNull(),
     createdBy: text("created_by"),
+    /** Migration 0029 (D-032): consistent characters. */
+    kind: text("kind").notNull().default("person"),
+    descriptor: text("descriptor"),
+    descriptorVersion: integer("descriptor_version").notNull().default(1),
+    sheet: text("sheet"),
+    outfits: text("outfits").notNull().default("[]"),
+    realFace: integer("real_face", { mode: "boolean" }).notNull().default(false),
+    refFaceKey: text("ref_face_key"),
+    updatedAt: integer("updated_at"),
   },
   (t) => [index("characters_ws").on(t.workspaceId, sql`${t.createdAt} DESC`)],
 );
@@ -1134,3 +1143,59 @@ export const brandKits = sqliteTable("brand_kits", {
   updatedBy: text("updated_by").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
+
+/** Migration 0029 (D-032): sheet pictures of a character version, so runs can tell them apart. */
+export const characterSheetAssets = sqliteTable(
+  "character_sheet_assets",
+  {
+    assetId: text("asset_id").primaryKey(),
+    characterId: text("character_id").notNull(),
+    workspaceId: text("workspace_id").notNull(),
+    version: integer("version").notNull(),
+    view: text("view").notNull(),
+    outfitId: text("outfit_id"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [index("character_sheet_assets_char").on(t.characterId, t.version)],
+);
+
+/** Migration 0029 (D-032): consistency check per output (drift score). */
+export const characterChecks = sqliteTable(
+  "character_checks",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id").notNull(),
+    characterId: text("character_id").notNull(),
+    version: integer("version").notNull(),
+    assetId: text("asset_id").notNull(),
+    runId: text("run_id"),
+    jobId: text("job_id"),
+    projectId: text("project_id"),
+    score: real("score"),
+    verdict: text("verdict", { enum: ["consistent", "minor", "drift", "no_face", "error"] }).notNull(),
+    faces: integer("faces").notNull().default(0),
+    method: text("method").notNull(),
+    model: text("model"),
+    costUsd: real("cost_usd"),
+    error: text("error"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    index("character_checks_char").on(t.characterId, sql`${t.createdAt} DESC`),
+    index("character_checks_asset").on(t.assetId),
+    check("character_checks_verdict_check", sql`${t.verdict} IN ('consistent','minor','drift','no_face','error')`),
+  ],
+);
+
+/** Migration 0029 (D-032): projects that used a character. */
+export const characterUses = sqliteTable(
+  "character_uses",
+  {
+    characterId: text("character_id").notNull(),
+    projectId: text("project_id").notNull(),
+    workspaceId: text("workspace_id").notNull(),
+    uses: integer("uses").notNull().default(1),
+    lastUsedAt: integer("last_used_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.characterId, t.projectId] }), index("character_uses_ws").on(t.workspaceId, sql`${t.lastUsedAt} DESC`)],
+);

@@ -165,6 +165,10 @@ async function removeWorkspace(env: Env, workspaceId: string, now: number): Prom
     db.prepare("DELETE FROM assets WHERE workspace_id = ?").bind(workspaceId),
     db.prepare("DELETE FROM uploads WHERE workspace_id = ?").bind(workspaceId),
     db.prepare("DELETE FROM characters WHERE workspace_id = ?").bind(workspaceId),
+    // D-032: sheet index, consistency checks and "used in" rows of the workspace's characters.
+    db.prepare("DELETE FROM character_sheet_assets WHERE workspace_id = ?").bind(workspaceId),
+    db.prepare("DELETE FROM character_checks WHERE workspace_id = ?").bind(workspaceId),
+    db.prepare("DELETE FROM character_uses WHERE workspace_id = ?").bind(workspaceId),
     db.prepare("DELETE FROM voices WHERE workspace_id = ?").bind(workspaceId),
     db.prepare("DELETE FROM templates WHERE workspace_id = ?").bind(workspaceId),
     db.prepare("DELETE FROM agent_proposals WHERE workspace_id = ?").bind(workspaceId),

@@ -17,6 +17,7 @@ import {
   type GenerateParams,
   type JobContext,
 } from "../runs/jobs";
+import { consistencyStep } from "../characters/consistency";
 import { decideReview, pickBetterVersion, reviewJob, startReviewRetry } from "../runs/review";
 import type { ResultReview } from "@rolling/core/review";
 
@@ -37,6 +38,8 @@ const MAX_WAIT_S = 60;
 const MAX_WAITS = { image: 70, video: 190 } as const;
 
 const RETRY = { retries: { limit: 4, delay: "5 seconds", backoff: "exponential" }, timeout: "2 minutes" } as const;
+/** The consistency check catches its own errors; one retry covers a lost isolate. */
+const CHECK_RETRY = { retries: { limit: 1, delay: "5 seconds", backoff: "constant" }, timeout: "2 minutes" } as const;
 /** The result review (D-024): one retry, then the output stays unreviewed. */
 const REVIEW_STEP = { retries: { limit: 1, delay: "5 seconds", backoff: "constant" }, timeout: "2 minutes" } as const;
 
@@ -156,6 +159,8 @@ export class GenerateWorkflow extends WorkflowEntrypoint<Env, GenerateWorkflowPa
             }).catch(() => "");
           }
           await step.do("advance-after-commit", RETRY, async () => advanceAfter(env, ctx));
+          // D-032: consistency check against the characters' sheets (never fails the committed job).
+          await step.do("consistency", CHECK_RETRY, async () => consistencyStep(env, ctx));
           return { status: "succeeded" as const, model: usedModel, attempt, ...committed };
         } catch (err) {
           status = failedStatus(status.externalId, jobErrorOf(err));

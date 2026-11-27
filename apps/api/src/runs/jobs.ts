@@ -25,6 +25,7 @@ import { faceResultFromMeta, pictureDataUrl, r2Picture, sha256OfBytes } from "..
 import { getItem, getJob, getRun, parseJson, refreshRun, type RunOptions } from "./store";
 import { ensureFrame, extractFrames } from "./frames";
 import { dropPlacements, settlePlacement } from "../post/placements";
+import { realFaceAssets } from "../characters/store";
 import { loadAccount } from "../auth/workspace";
 import type { ResultReview } from "@rolling/core/review";
 
@@ -270,7 +271,9 @@ export async function prepareJob(env: Env, ctx: JobContext, modelId: string): Pr
       const again = await prepareJob(env, { ...ctx, spec: next.spec }, next.model.id);
       return { ...again, replanned: { spec: next.spec, modelId: next.model.id } };
     }
-    const origin: ImageSource = "node" in input.from || "item" in input.from ? "generated" : (input.from as { origin: ImageSource }).origin;
+    let origin: ImageSource = "node" in input.from || "item" in input.from ? "generated" : (input.from as { origin: ImageSource }).origin;
+    // D-032 / D-005: a picture of a character drawn from a real face is an upload, wherever it came from.
+    if (input.media === "image" && origin !== "upload" && (await realFaceAssets(env, ctx.workspaceId, [assetId!])).size > 0) origin = "upload";
     resolved.push({ input, url: a.url, origin });
     evidenceKeys.push(a.key);
     const ref: SafetyReference = { kind: input.media, source: referenceSource(origin), caption: a.name };
