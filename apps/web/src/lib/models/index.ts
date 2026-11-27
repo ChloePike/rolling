@@ -19,6 +19,8 @@ export interface CreditPoint {
   resolution: string | null;
   seconds: number | null;
   credits: number;
+  /** D-020: the same run with "Enhance prompt" (the rewrite's most included), on models that take it. */
+  enhanced?: number;
 }
 
 export interface CatalogModel {

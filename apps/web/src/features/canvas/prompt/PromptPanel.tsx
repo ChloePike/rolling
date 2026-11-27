@@ -19,7 +19,7 @@ import {
   type VideoParams,
 } from '@/features/overlays';
 import { catalogToOptions, costBlock, fitImage, fitVideo, imageToSettings, maxSeconds, modelCaps, paramOptions, videoToSettings } from '@/features/overlays';
-import { findModel, formatLabel, mediaKind, resolutionOptions } from '../pricing';
+import { findModel, formatLabel, mediaKind, nodeEnhanceOn, resolutionOptions } from '../pricing';
 import { runCost } from '../nodes/NodeCard';
 import { useIntl } from 'react-intl';
 import type { GraphNode } from '@rolling/core/graph';
@@ -168,7 +168,7 @@ export function PromptPanel({ node, left, top, state, refs, pickerOpen, onOpenPi
   // and the Preferences default for the user's own nodes. Shown only when the node's model takes the gateway's expansion.
   const enhancePref = usePref('enhancePrompt');
   const enhanceState = isMockApi() ? null : enhanceStateOf([catalogModel]);
-  const enhanceOn = typeof node.params.promptExpand === 'boolean' ? node.params.promptExpand : node.createdBy === 'agent' ? false : enhancePref;
+  const enhanceOn = nodeEnhanceOn(node, enhancePref);
 
   const commitDraft = () => {
     setEditing(false);

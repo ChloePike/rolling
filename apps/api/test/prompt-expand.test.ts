@@ -232,6 +232,25 @@ describe("Enhance prompt (D-020)", () => {
     expect(texts.some((t) => t.includes("golden hour"))).toBe(true);
   });
 
+  it("GET /api/models: each credit point carries the price with Enhance prompt, equal to the quote (canvas estimates)", async () => {
+    const { user } = await member("pm");
+    const models = ((await (await api(user, "/api/models?kind=image")).json()) as any).models as any[];
+    const flash = models.find((m) => m.id === MODEL)!;
+    expect(flash.promptExpand).toBe("available");
+    const point = flash.credits[0];
+    const on = await quote(user, image(PROMPT));
+    const off = await quote(user, image(PROMPT, { promptExpand: false }));
+    expect(point.credits).toBe(off.items[0].credits);
+    expect(point.enhanced).toBe(on.items[0].credits);
+    expect(point.enhanced).toBeGreaterThan(point.credits);
+    // While the gateway refuses the feature, nothing is priced for it.
+    await env.DB.prepare("INSERT OR REPLACE INTO gateway_features (feature, enabled, reason, checked_at) VALUES ('prompt_expand', 0, 'test', ?)").bind(Date.now()).run();
+    resetFeatureMemoForTests();
+    const refused = ((await (await api(user, "/api/models?kind=image")).json()) as any).models.find((m: any) => m.id === MODEL);
+    expect(refused.promptExpand).toBe("unavailable");
+    expect(refused.credits[0]).not.toHaveProperty("enhanced");
+  });
+
   it("follows the preference when the run does not say; per-run on overrides it", async () => {
     const { user } = await member("pp", { enhance: false });
     expect((await quote(user, image(PROMPT))).items[0].promptExpand).toBeUndefined();

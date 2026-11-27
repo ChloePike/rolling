@@ -3,7 +3,9 @@ import type { IntlShape } from 'react-intl';
 import { planLockInfo } from '@/features/overlays';
 import { useMemo } from 'react';
 import { useModels, type CatalogModel } from '@/lib/models';
+import { usePref } from '@/lib/prefs';
 import type { GraphNode } from '@rolling/core/graph';
+import { shotOfParams } from '@rolling/core/prompting/shot';
 
 /**
  * Node prices and plan caps (D-006). Cost chips come from the per-resolution
@@ -29,12 +31,37 @@ export function findModel(models: CatalogModel[] | undefined, node: GraphNode): 
   return models.find((m) => m.id === name || m.name === name);
 }
 
-/** Credits for one run of `node` at its resolution and length, from the catalog points. */
-export function catalogCredits(model: CatalogModel, node: GraphNode): number | undefined {
+/**
+ * The node's "Enhance prompt" toggle (D-020): its own choice, else off for agent-planned
+ * nodes and the Preferences default for the rest.
+ */
+export function nodeEnhanceOn(node: GraphNode, pref: boolean): boolean {
+  if (typeof node.params.promptExpand === 'boolean') return node.params.promptExpand;
+  return node.createdBy === 'agent' ? false : pref;
+}
+
+/**
+ * Whether a run of `node` on `model` is priced with the prompt rewrite, as the quote prices it:
+ * the toggle is on, the model takes the expansion while it is available, and the prompt is the
+ * user's own (a prompt composed from a shot is never expanded).
+ */
+export function nodeExpands(node: GraphNode, model: CatalogModel | undefined, pref: boolean): boolean {
+  if (!model || model.promptExpand !== 'available' || !nodeEnhanceOn(node, pref)) return false;
+  const kind = mediaKind(node);
+  return kind !== null && shotOfParams(kind, node.params) === null;
+}
+
+/**
+ * Credits for one run of `node` at its resolution and length, from the catalog points.
+ * `enhance`: price it with the prompt rewrite's most (the points' `enhanced`, D-020).
+ */
+export function catalogCredits(model: CatalogModel, node: GraphNode, opts: { enhance?: boolean } = {}): number | undefined {
   const res = typeof node.params.resolution === 'string' ? node.params.resolution : model.defaultResolution;
   const seconds = typeof node.params.length === 'number' ? node.params.length : typeof node.params.seconds === 'number' ? node.params.seconds : model.defaultSeconds;
   const count = typeof node.params.count === 'number' ? node.params.count : 1;
-  const atRes = model.credits.filter((c) => c.resolution === res || c.resolution === null);
+  const atRes = model.credits
+    .filter((c) => c.resolution === res || c.resolution === null)
+    .map((c) => (opts.enhance && typeof c.enhanced === 'number' ? { ...c, credits: c.enhanced } : c));
   if (!atRes.length) return undefined;
   if (model.kind === 'image' || seconds === null) return atRes[0]!.credits * count;
   const exact = atRes.find((c) => c.seconds === seconds);
@@ -54,16 +81,17 @@ export function resolutionOptions(intl: IntlShape, model: CatalogModel | undefin
 /** Adds the catalog price (or the mock estimate) to every node that can run. */
 export function usePricedNodes(nodes: GraphNode[]): { nodes: GraphNode[]; models: CatalogModel[] | undefined } {
   const { data: models } = useModels();
+  const enhancePref = usePref('enhancePrompt');
   const priced = useMemo(
     () =>
       nodes.map((n) => {
         const model = findModel(models, n);
-        const credits = model ? catalogCredits(model, n) : undefined;
+        const credits = model ? catalogCredits(model, n, { enhance: nodeExpands(n, model, enhancePref) }) : undefined;
         if (credits !== undefined) return { ...n, cost: credits };
         if (n.cost !== undefined || typeof n.params.runCost !== 'number') return n;
         return { ...n, cost: n.params.runCost };
       }),
-    [nodes, models],
+    [nodes, models, enhancePref],
   );
   return { nodes: priced, models };
 }

@@ -5,7 +5,7 @@ import { gatewayFeatureEnabled } from "./features";
  * The overlay is merged at read time, so product changes apply on deploy
  * without waiting for the next sync.
  */
-import { availableChatModels, Catalog, creditsFor, type CatalogKind, type CatalogModel, type ListingModel, type PriceRule } from "@rolling/core";
+import { availableChatModels, Catalog, creditsFor, expansionWriter, promptExpansionMaxUsd, type CatalogKind, type CatalogModel, type ListingModel, type PriceRule } from "@rolling/core";
 import type { ModelRow } from "@rolling/db/d1";
 import { listModelRows, userMayViewMatureModels } from "@rolling/db/queries/models";
 import type { SessionUser } from "../lib/session";
@@ -52,7 +52,15 @@ export interface CreditSample {
   resolution: string | null;
   seconds: number | null;
   credits: number;
+  /**
+   * D-020: the same run with "Enhance prompt", the rewrite's most included (the non-mature writer, a typical
+   * prompt), so local estimates match the quote. Only on models that take the expansion while it is available.
+   */
+  enhanced?: number;
 }
+
+/** Prompt size the `enhanced` samples assume (the rewrite's most barely moves with the prompt on the cheap writer). */
+const SAMPLE_EXPANSION_SIZE = { promptChars: 500, pictures: 0 };
 
 export interface PublicModel {
   id: string;
@@ -114,19 +122,21 @@ function sampleSeconds(m: CatalogModel): (number | null)[] {
   return [first, ...all.filter((x) => x !== first && Number.isInteger(x) && x > 0)];
 }
 
-function creditSamples(m: CatalogModel): CreditSample[] {
+function creditSamples(m: CatalogModel, expandUsd: number | null): CreditSample[] {
   if (m.kind === "chat") return [];
   const samples: CreditSample[] = [];
   const resolutions: (string | null)[] = m.resolutions.length ? m.resolutions : [null];
   for (const resolution of resolutions) {
     for (const seconds of sampleSeconds(m)) {
       try {
-        const credits = creditsFor(m, {
+        const req = {
           ...(resolution !== null && { resolution }),
           ...(seconds !== null && { seconds }),
           ...(m.kind === "image" && !m.operations.includes("t2i") && { inputImages: Math.max(1, m.minInputImages) }),
-        });
-        samples.push({ resolution, seconds, credits });
+        };
+        const credits = creditsFor(m, req);
+        const enhanced = expandUsd !== null && m.params.promptExpand ? creditsFor(m, { ...req, promptExpandUsd: expandUsd }) : undefined;
+        samples.push({ resolution, seconds, credits, ...(enhanced !== undefined && { enhanced }) });
       } catch {
         // Not priceable at this resolution: leave it out; quotes refuse it too.
       }
@@ -135,7 +145,11 @@ function creditSamples(m: CatalogModel): CreditSample[] {
   return samples;
 }
 
-export function toPublicModel(m: CatalogModel, expandAvailable = true): PublicModel {
+/**
+ * `expandUsd`: the rewrite's most (D-020) priced into the `enhanced` samples; null leaves them out (feature off,
+ * or no chat models to price the writer).
+ */
+export function toPublicModel(m: CatalogModel, expandAvailable = true, expandUsd: number | null = null): PublicModel {
   return {
     id: m.id,
     kind: m.kind,
@@ -163,7 +177,7 @@ export function toPublicModel(m: CatalogModel, expandAvailable = true): PublicMo
       inputImages: m.maxInputImages,
       imagesPerRequest: m.maxImagesPerRequest,
     },
-    credits: creditSamples(m),
+    credits: creditSamples(m, expandAvailable ? expandUsd : null),
     promptExpand: m.kind !== "chat" && m.params.promptExpand ? (expandAvailable ? "available" : "unavailable") : null,
   };
 }
@@ -175,11 +189,15 @@ export async function listPublicModels(
   kind?: CatalogKind | null,
 ): Promise<PublicModel[]> {
   const [catalog, mature, expandAvailable] = await Promise.all([loadCatalog(env, kind), mayViewMature(env, user), gatewayFeatureEnabled(env, "prompt_expand")]);
+  // D-020: the non-mature writer's most for a typical prompt, so "Enhance prompt" estimates match the quote.
+  const chatCatalog = !kind || kind === "chat" ? catalog : expandAvailable ? await loadCatalog(env, "chat") : null;
+  const writers = chatCatalog ? chatCatalog.list({ kind: "chat", includeHidden: true, includeMatureOnly: true }) : [];
+  const expandUsd = expandAvailable ? promptExpansionMaxUsd(writers, expansionWriter(writers, { mature: false }), SAMPLE_EXPANSION_SIZE) : null;
   // Chat models are exposed only as the public agent LLM list (D-009), never as gateway ids.
   const media = catalog
     .list({ ...(kind && { kind }), includeMatureOnly: mature })
     .filter((m) => m.kind !== "chat")
-    .map((m) => toPublicModel(m, expandAvailable));
+    .map((m) => toPublicModel(m, expandAvailable, expandUsd));
   if (kind && kind !== "chat") return media;
   const chatGateway = catalog.list({ kind: "chat", includeMatureOnly: true });
   const chat = availableChatModels(chatGateway).map(

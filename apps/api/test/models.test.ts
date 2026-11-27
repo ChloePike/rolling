@@ -116,13 +116,15 @@ describe("model catalog reads", () => {
     expect(body.models.every((m) => m.kind === "video")).toBe(true);
     const s25 = body.models.find((m) => m.id === "bytedance/seedance-2.5");
     expect(s25).toMatchObject({ name: "Seedance 2.5", default: true, auto: true, mature: false, defaultResolution: "480p" });
-    expect(s25.credits.filter((c: { seconds: number }) => c.seconds === 5)).toEqual([
+    expect(s25.credits.filter((c: { seconds: number }) => c.seconds === 5)).toMatchObject([
       { resolution: "480p", seconds: 5, credits: 162 },
       { resolution: "720p", seconds: 5, credits: 347 },
       { resolution: "1080p", seconds: 5, credits: 853 },
     ]);
     // Every other whole length is priced on its own (a quote for 10 s rounds once, not 2 x the rounded 5 s).
-    expect(s25.credits[0]).toEqual({ resolution: "480p", seconds: 5, credits: 162 });
+    expect(s25.credits[0]).toMatchObject({ resolution: "480p", seconds: 5, credits: 162 });
+    // D-020: with Enhance prompt the point adds the rewrite's most (never less than without).
+    if (s25.promptExpand === "available") for (const c of s25.credits) expect(c.enhanced).toBeGreaterThanOrEqual(c.credits);
     const lengths = s25.credits.filter((c: { resolution: string }) => c.resolution === "720p").map((c: { seconds: number }) => c.seconds);
     expect(lengths.length).toBe(s25.seconds.max - s25.seconds.min + 1);
     const ten = s25.credits.find((c: { resolution: string; seconds: number }) => c.resolution === "720p" && c.seconds === 10);
