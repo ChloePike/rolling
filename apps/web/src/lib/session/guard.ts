@@ -18,6 +18,8 @@ const PUBLIC: readonly RegExp[] = [
   // Legal pages (`/terms` and `/privacy` are registered with Google OAuth) and the old `/legal/<doc>` redirects.
   /^\/(terms|privacy|acceptable-use|subprocessors)\/?$/,
   /^\/legal\/[^/]+\/?$/,
+  // Status page, abuse report and DMCA notice (D-026, D-028, D-029): anyone, signed in or not.
+  /^\/(status|report|dmca)\/?$/,
 ];
 
 export function isPublicPath(pathname: string): boolean {

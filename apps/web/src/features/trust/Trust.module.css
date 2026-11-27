@@ -1,0 +1,39 @@
+/* Public status, report, appeal and DMCA pages (D-026 .. D-029); account-page tokens (handoff §2). */
+.page{min-height:100vh;background:var(--c-bg);color:var(--c-text-1);display:flex;flex-direction:column}
+.bar{height:64px;flex:none;display:flex;align-items:center;gap:12px;padding:0 24px;border-bottom:1px solid var(--c-border)}
+.brand{display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none;font-weight:700}
+.main{width:100%;max-width:720px;margin:0 auto;padding:32px 24px 48px;display:flex;flex-direction:column;gap:20px;box-sizing:border-box}
+.h1{margin:0;font-size:28px;font-weight:700}
+.h2{margin:0;font-size:15px;font-weight:700}
+.sub{margin:0;font-size:14px;color:var(--c-text-3);line-height:1.5}
+.card{background:var(--c-surface-2);border-radius:14px;box-shadow:inset 0 0 0 1px var(--c-border);padding:16px;display:flex;flex-direction:column;gap:12px}
+.comp{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--c-border);font-size:14px}
+.comp:last-child{border-bottom:none}
+.compName{flex:1;font-weight:600}
+.meta{font-size:12px;color:var(--c-text-4);font-variant-numeric:tabular-nums}
+.chip{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:999px;font-size:12px;font-weight:600;background:var(--c-surface-5);color:var(--c-text-2)}
+.ok{background:var(--c-success-soft);color:var(--c-success)}
+.warn{background:var(--c-warning-bg);color:var(--c-warning-text)}
+.bad{background:var(--c-failed-bg);color:var(--c-failed-text)}
+.form{display:flex;flex-direction:column;gap:14px}
+.field{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:600;color:var(--c-text-2)}
+.hint{font-size:12px;font-weight:400;color:var(--c-text-4);line-height:1.5}
+.input,.select,.textarea{height:40px;border-radius:10px;border:none;background:var(--c-surface-4);color:var(--c-text-1);padding:0 12px;font:inherit;font-size:14px;box-shadow:inset 0 0 0 1px var(--c-border)}
+.textarea{height:auto;min-height:110px;padding:10px 12px;resize:vertical}
+.input:focus-visible,.select:focus-visible,.textarea:focus-visible{outline:2px solid var(--c-accent);outline-offset:1px}
+.check{display:flex;gap:10px;align-items:flex-start;font-size:13px;font-weight:400;color:var(--c-text-2);line-height:1.5}
+.submit{align-self:flex-start;height:40px;padding:0 18px;border-radius:10px;border:none;background:var(--c-text-1);color:var(--c-bg);font:inherit;font-size:14px;font-weight:700;cursor:pointer}
+.submit:hover{background:var(--c-primary-hover)}
+.submit:disabled{opacity:.5;cursor:default}
+.error{font-size:13px;color:var(--c-danger)}
+.link{color:var(--c-link);text-decoration:none;font-weight:600}
+.link:hover{text-decoration:underline}
+.banner{display:flex;align-items:center;gap:10px;padding:10px 16px;font-size:13px;line-height:1.4;background:var(--c-warning-bg);color:var(--c-warning-text);border-bottom:1px solid var(--c-border)}
+.bannerBad{background:var(--c-failed-bg);color:var(--c-failed-text)}
+.bannerInfo{background:var(--c-info-soft);color:var(--c-text-1)}
+.bannerText{flex:1;min-width:0}
+.bannerLink{color:inherit;font-weight:700;text-decoration:underline;text-underline-offset:2px}
+.dismiss{border:none;background:transparent;color:inherit;font:inherit;font-weight:600;cursor:pointer;padding:4px 8px;border-radius:8px}
+.dismiss:hover{background:var(--c-surface-hover)}
+.reportLink{font-size:12px;color:var(--c-text-3);text-decoration:none;font-weight:600}
+.reportLink:hover{color:var(--c-text-1)}

@@ -66,7 +66,8 @@ describe('legal markdown parser', () => {
 });
 
 describe('legal documents', () => {
-  const paths = new Set<string>([...LEGAL_DOCS.map((d) => d.path), '/upgrade']);
+  // D-026, D-028: the AUP links the report, appeal and copyright forms.
+  const paths = new Set<string>([...LEGAL_DOCS.map((d) => d.path), '/upgrade', '/report', '/appeal', '/dmca', '/counter-notice']);
 
   for (const doc of LEGAL_DOCS) {
     it(`${doc.id}: title, no draft banner or open placeholders, links resolve`, () => {

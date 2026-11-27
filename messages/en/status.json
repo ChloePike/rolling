@@ -1,0 +1,20 @@
+{
+  "status.title": "Status",
+  "status.overall.operational": "All systems are working.",
+  "status.overall.degraded": "Some systems are slower or partly unavailable.",
+  "status.overall.outage": "Some systems are down. We’re working on it.",
+  "status.incident": "Update",
+  "status.updated": "Updated {when}",
+  "status.generationPaused": "New generations are paused while the model gateway recovers. Nothing is charged.",
+  "status.components": "Components",
+  "status.component.api": "App and API",
+  "status.component.gateway": "Generation",
+  "status.component.media": "Media",
+  "status.component.auth": "Sign-in",
+  "status.state.operational": "Operational",
+  "status.state.degraded": "Degraded",
+  "status.state.down": "Down",
+  "status.state.unknown": "No data",
+  "status.uptime": "{pct} in the last 24 hours",
+  "status.checked": "Checked at {when}"
+}

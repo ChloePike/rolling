@@ -1,3 +1,5 @@
+import { AppealLink } from '@/features/trust/AppealPage';
+import { isAppealableBlock } from '@/features/trust/api';
 import { Popover, Skeleton, useToast } from '@rolling/ui';
 import { LoadError } from '@/lib/loading';
 import { useNavigate } from '@tanstack/react-router';
@@ -598,6 +600,8 @@ function Row({ run, index, onAction }: { run: RunRow; index: number; onAction: (
               </>
             ) : null}
           </span>
+          {/* D-028: a blocked run can be appealed from its message. */}
+          {isAppealableBlock(run.error) && <AppealLink runId={run.id} />}
           <span className={styles.refund}>
             <FormattedMessage id="activity.refunded" values={{ n: run.refunded }} />
           </span>

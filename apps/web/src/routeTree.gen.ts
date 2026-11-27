@@ -11,16 +11,27 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ShellRouteImport } from './routes/_shell'
 import { Route as AcceptableUseRouteImport } from './routes/acceptable-use'
+import { Route as AdminRouteImport } from './routes/admin'
+import { Route as AppealRouteImport } from './routes/appeal'
 import { Route as CanvasRouteImport } from './routes/canvas'
+import { Route as CounterNoticeRouteImport } from './routes/counter-notice'
+import { Route as DmcaRouteImport } from './routes/dmca'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as ReportRouteImport } from './routes/report'
 import { Route as SignupRouteImport } from './routes/signup'
+import { Route as StatusRouteImport } from './routes/status'
 import { Route as SubprocessorsRouteImport } from './routes/subprocessors'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as ShellIndexRouteImport } from './routes/_shell/index'
 import { Route as ShellActivityRouteImport } from './routes/_shell/activity'
 import { Route as ShellTemplatesRouteImport } from './routes/_shell/templates'
 import { Route as ShellUpgradeRouteImport } from './routes/_shell/upgrade'
+import { Route as AdminIndexRouteImport } from './routes/admin.index'
+import { Route as AdminAccountsRouteImport } from './routes/admin.accounts'
+import { Route as AdminAuditRouteImport } from './routes/admin.audit'
+import { Route as AdminOpsRouteImport } from './routes/admin.ops'
+import { Route as AdminQueueRouteImport } from './routes/admin.queue'
 import { Route as DevEditorRouteImport } from './routes/dev.editor'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as LegalDocRouteImport } from './routes/legal.$doc'
@@ -36,6 +47,9 @@ import { Route as ShellCreateRemixRouteImport } from './routes/_shell/create/rem
 import { Route as ShellSettingsIndexRouteImport } from './routes/_shell/settings/index'
 import { Route as ShellSettingsSectionRouteImport } from './routes/_shell/settings/$section'
 import { Route as ShellUHandleRouteImport } from './routes/_shell/u/$handle'
+import { Route as AdminCasesIdRouteImport } from './routes/admin.cases.$id'
+import { Route as AdminUsersIdRouteImport } from './routes/admin.users.$id'
+import { Route as AdminWorkspacesIdRouteImport } from './routes/admin.workspaces.$id'
 
 const ShellRoute = ShellRouteImport.update({
   id: '/_shell',
@@ -46,9 +60,29 @@ const AcceptableUseRoute = AcceptableUseRouteImport.update({
   path: '/acceptable-use',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppealRoute = AppealRouteImport.update({
+  id: '/appeal',
+  path: '/appeal',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CanvasRoute = CanvasRouteImport.update({
   id: '/canvas',
   path: '/canvas',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CounterNoticeRoute = CounterNoticeRouteImport.update({
+  id: '/counter-notice',
+  path: '/counter-notice',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DmcaRoute = DmcaRouteImport.update({
+  id: '/dmca',
+  path: '/dmca',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -61,9 +95,19 @@ const PrivacyRoute = PrivacyRouteImport.update({
   path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ReportRoute = ReportRouteImport.update({
+  id: '/report',
+  path: '/report',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
   path: '/signup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StatusRoute = StatusRouteImport.update({
+  id: '/status',
+  path: '/status',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SubprocessorsRoute = SubprocessorsRouteImport.update({
@@ -95,6 +139,31 @@ const ShellUpgradeRoute = ShellUpgradeRouteImport.update({
   id: '/upgrade',
   path: '/upgrade',
   getParentRoute: () => ShellRoute,
+} as any)
+const AdminIndexRoute = AdminIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminAccountsRoute = AdminAccountsRouteImport.update({
+  id: '/accounts',
+  path: '/accounts',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminAuditRoute = AdminAuditRouteImport.update({
+  id: '/audit',
+  path: '/audit',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminOpsRoute = AdminOpsRouteImport.update({
+  id: '/ops',
+  path: '/ops',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminQueueRoute = AdminQueueRouteImport.update({
+  id: '/queue',
+  path: '/queue',
+  getParentRoute: () => AdminRoute,
 } as any)
 const DevEditorRoute = DevEditorRouteImport.update({
   id: '/dev/editor',
@@ -171,25 +240,51 @@ const ShellUHandleRoute = ShellUHandleRouteImport.update({
   path: '/u/$handle',
   getParentRoute: () => ShellRoute,
 } as any)
+const AdminCasesIdRoute = AdminCasesIdRouteImport.update({
+  id: '/cases/$id',
+  path: '/cases/$id',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminUsersIdRoute = AdminUsersIdRouteImport.update({
+  id: '/users/$id',
+  path: '/users/$id',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminWorkspacesIdRoute = AdminWorkspacesIdRouteImport.update({
+  id: '/workspaces/$id',
+  path: '/workspaces/$id',
+  getParentRoute: () => AdminRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof ShellIndexRoute
   '/acceptable-use': typeof AcceptableUseRoute
+  '/admin': typeof AdminRouteWithChildren
+  '/appeal': typeof AppealRoute
   '/canvas': typeof CanvasRoute
+  '/counter-notice': typeof CounterNoticeRoute
+  '/dmca': typeof DmcaRoute
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
+  '/report': typeof ReportRoute
   '/signup': typeof SignupRoute
+  '/status': typeof StatusRoute
   '/subprocessors': typeof SubprocessorsRoute
   '/terms': typeof TermsRoute
   '/activity': typeof ShellActivityRoute
   '/templates': typeof ShellTemplatesRoute
   '/upgrade': typeof ShellUpgradeRoute
+  '/admin/accounts': typeof AdminAccountsRoute
+  '/admin/audit': typeof AdminAuditRoute
+  '/admin/ops': typeof AdminOpsRoute
+  '/admin/queue': typeof AdminQueueRoute
   '/dev/editor': typeof DevEditorRoute
   '/invite/$token': typeof InviteTokenRoute
   '/legal/$doc': typeof LegalDocRoute
   '/p/$projectId': typeof PProjectIdRoute
   '/preview/overlays': typeof PreviewOverlaysRoute
   '/share/$id': typeof ShareIdRoute
+  '/admin/': typeof AdminIndexRoute
   '/assets/public': typeof ShellAssetsPublicRoute
   '/create/avatar': typeof ShellCreateAvatarRoute
   '/create/character': typeof ShellCreateCharacterRoute
@@ -197,20 +292,32 @@ export interface FileRoutesByFullPath {
   '/create/remix': typeof ShellCreateRemixRoute
   '/settings/$section': typeof ShellSettingsSectionRoute
   '/u/$handle': typeof ShellUHandleRoute
+  '/admin/cases/$id': typeof AdminCasesIdRoute
+  '/admin/users/$id': typeof AdminUsersIdRoute
+  '/admin/workspaces/$id': typeof AdminWorkspacesIdRoute
   '/assets/': typeof ShellAssetsIndexRoute
   '/settings/': typeof ShellSettingsIndexRoute
 }
 export interface FileRoutesByTo {
   '/acceptable-use': typeof AcceptableUseRoute
+  '/appeal': typeof AppealRoute
   '/canvas': typeof CanvasRoute
+  '/counter-notice': typeof CounterNoticeRoute
+  '/dmca': typeof DmcaRoute
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
+  '/report': typeof ReportRoute
   '/signup': typeof SignupRoute
+  '/status': typeof StatusRoute
   '/subprocessors': typeof SubprocessorsRoute
   '/terms': typeof TermsRoute
   '/activity': typeof ShellActivityRoute
   '/templates': typeof ShellTemplatesRoute
   '/upgrade': typeof ShellUpgradeRoute
+  '/admin/accounts': typeof AdminAccountsRoute
+  '/admin/audit': typeof AdminAuditRoute
+  '/admin/ops': typeof AdminOpsRoute
+  '/admin/queue': typeof AdminQueueRoute
   '/dev/editor': typeof DevEditorRoute
   '/invite/$token': typeof InviteTokenRoute
   '/legal/$doc': typeof LegalDocRoute
@@ -218,6 +325,7 @@ export interface FileRoutesByTo {
   '/preview/overlays': typeof PreviewOverlaysRoute
   '/share/$id': typeof ShareIdRoute
   '/': typeof ShellIndexRoute
+  '/admin': typeof AdminIndexRoute
   '/assets/public': typeof ShellAssetsPublicRoute
   '/create/avatar': typeof ShellCreateAvatarRoute
   '/create/character': typeof ShellCreateCharacterRoute
@@ -225,6 +333,9 @@ export interface FileRoutesByTo {
   '/create/remix': typeof ShellCreateRemixRoute
   '/settings/$section': typeof ShellSettingsSectionRoute
   '/u/$handle': typeof ShellUHandleRoute
+  '/admin/cases/$id': typeof AdminCasesIdRoute
+  '/admin/users/$id': typeof AdminUsersIdRoute
+  '/admin/workspaces/$id': typeof AdminWorkspacesIdRoute
   '/assets': typeof ShellAssetsIndexRoute
   '/settings': typeof ShellSettingsIndexRoute
 }
@@ -232,15 +343,25 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_shell': typeof ShellRouteWithChildren
   '/acceptable-use': typeof AcceptableUseRoute
+  '/admin': typeof AdminRouteWithChildren
+  '/appeal': typeof AppealRoute
   '/canvas': typeof CanvasRoute
+  '/counter-notice': typeof CounterNoticeRoute
+  '/dmca': typeof DmcaRoute
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
+  '/report': typeof ReportRoute
   '/signup': typeof SignupRoute
+  '/status': typeof StatusRoute
   '/subprocessors': typeof SubprocessorsRoute
   '/terms': typeof TermsRoute
   '/_shell/activity': typeof ShellActivityRoute
   '/_shell/templates': typeof ShellTemplatesRoute
   '/_shell/upgrade': typeof ShellUpgradeRoute
+  '/admin/accounts': typeof AdminAccountsRoute
+  '/admin/audit': typeof AdminAuditRoute
+  '/admin/ops': typeof AdminOpsRoute
+  '/admin/queue': typeof AdminQueueRoute
   '/dev/editor': typeof DevEditorRoute
   '/invite/$token': typeof InviteTokenRoute
   '/legal/$doc': typeof LegalDocRoute
@@ -248,6 +369,7 @@ export interface FileRoutesById {
   '/preview/overlays': typeof PreviewOverlaysRoute
   '/share/$id': typeof ShareIdRoute
   '/_shell/': typeof ShellIndexRoute
+  '/admin/': typeof AdminIndexRoute
   '/_shell/assets/public': typeof ShellAssetsPublicRoute
   '/_shell/create/avatar': typeof ShellCreateAvatarRoute
   '/_shell/create/character': typeof ShellCreateCharacterRoute
@@ -255,6 +377,9 @@ export interface FileRoutesById {
   '/_shell/create/remix': typeof ShellCreateRemixRoute
   '/_shell/settings/$section': typeof ShellSettingsSectionRoute
   '/_shell/u/$handle': typeof ShellUHandleRoute
+  '/admin/cases/$id': typeof AdminCasesIdRoute
+  '/admin/users/$id': typeof AdminUsersIdRoute
+  '/admin/workspaces/$id': typeof AdminWorkspacesIdRoute
   '/_shell/assets/': typeof ShellAssetsIndexRoute
   '/_shell/settings/': typeof ShellSettingsIndexRoute
 }
@@ -263,21 +388,32 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/acceptable-use'
+    | '/admin'
+    | '/appeal'
     | '/canvas'
+    | '/counter-notice'
+    | '/dmca'
     | '/login'
     | '/privacy'
+    | '/report'
     | '/signup'
+    | '/status'
     | '/subprocessors'
     | '/terms'
     | '/activity'
     | '/templates'
     | '/upgrade'
+    | '/admin/accounts'
+    | '/admin/audit'
+    | '/admin/ops'
+    | '/admin/queue'
     | '/dev/editor'
     | '/invite/$token'
     | '/legal/$doc'
     | '/p/$projectId'
     | '/preview/overlays'
     | '/share/$id'
+    | '/admin/'
     | '/assets/public'
     | '/create/avatar'
     | '/create/character'
@@ -285,20 +421,32 @@ export interface FileRouteTypes {
     | '/create/remix'
     | '/settings/$section'
     | '/u/$handle'
+    | '/admin/cases/$id'
+    | '/admin/users/$id'
+    | '/admin/workspaces/$id'
     | '/assets/'
     | '/settings/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/acceptable-use'
+    | '/appeal'
     | '/canvas'
+    | '/counter-notice'
+    | '/dmca'
     | '/login'
     | '/privacy'
+    | '/report'
     | '/signup'
+    | '/status'
     | '/subprocessors'
     | '/terms'
     | '/activity'
     | '/templates'
     | '/upgrade'
+    | '/admin/accounts'
+    | '/admin/audit'
+    | '/admin/ops'
+    | '/admin/queue'
     | '/dev/editor'
     | '/invite/$token'
     | '/legal/$doc'
@@ -306,6 +454,7 @@ export interface FileRouteTypes {
     | '/preview/overlays'
     | '/share/$id'
     | '/'
+    | '/admin'
     | '/assets/public'
     | '/create/avatar'
     | '/create/character'
@@ -313,21 +462,34 @@ export interface FileRouteTypes {
     | '/create/remix'
     | '/settings/$section'
     | '/u/$handle'
+    | '/admin/cases/$id'
+    | '/admin/users/$id'
+    | '/admin/workspaces/$id'
     | '/assets'
     | '/settings'
   id:
     | '__root__'
     | '/_shell'
     | '/acceptable-use'
+    | '/admin'
+    | '/appeal'
     | '/canvas'
+    | '/counter-notice'
+    | '/dmca'
     | '/login'
     | '/privacy'
+    | '/report'
     | '/signup'
+    | '/status'
     | '/subprocessors'
     | '/terms'
     | '/_shell/activity'
     | '/_shell/templates'
     | '/_shell/upgrade'
+    | '/admin/accounts'
+    | '/admin/audit'
+    | '/admin/ops'
+    | '/admin/queue'
     | '/dev/editor'
     | '/invite/$token'
     | '/legal/$doc'
@@ -335,6 +497,7 @@ export interface FileRouteTypes {
     | '/preview/overlays'
     | '/share/$id'
     | '/_shell/'
+    | '/admin/'
     | '/_shell/assets/public'
     | '/_shell/create/avatar'
     | '/_shell/create/character'
@@ -342,6 +505,9 @@ export interface FileRouteTypes {
     | '/_shell/create/remix'
     | '/_shell/settings/$section'
     | '/_shell/u/$handle'
+    | '/admin/cases/$id'
+    | '/admin/users/$id'
+    | '/admin/workspaces/$id'
     | '/_shell/assets/'
     | '/_shell/settings/'
   fileRoutesById: FileRoutesById
@@ -349,10 +515,16 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   ShellRoute: typeof ShellRouteWithChildren
   AcceptableUseRoute: typeof AcceptableUseRoute
+  AdminRoute: typeof AdminRouteWithChildren
+  AppealRoute: typeof AppealRoute
   CanvasRoute: typeof CanvasRoute
+  CounterNoticeRoute: typeof CounterNoticeRoute
+  DmcaRoute: typeof DmcaRoute
   LoginRoute: typeof LoginRoute
   PrivacyRoute: typeof PrivacyRoute
+  ReportRoute: typeof ReportRoute
   SignupRoute: typeof SignupRoute
+  StatusRoute: typeof StatusRoute
   SubprocessorsRoute: typeof SubprocessorsRoute
   TermsRoute: typeof TermsRoute
   DevEditorRoute: typeof DevEditorRoute
@@ -379,11 +551,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AcceptableUseRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/appeal': {
+      id: '/appeal'
+      path: '/appeal'
+      fullPath: '/appeal'
+      preLoaderRoute: typeof AppealRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/canvas': {
       id: '/canvas'
       path: '/canvas'
       fullPath: '/canvas'
       preLoaderRoute: typeof CanvasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/counter-notice': {
+      id: '/counter-notice'
+      path: '/counter-notice'
+      fullPath: '/counter-notice'
+      preLoaderRoute: typeof CounterNoticeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dmca': {
+      id: '/dmca'
+      path: '/dmca'
+      fullPath: '/dmca'
+      preLoaderRoute: typeof DmcaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -400,11 +600,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/report': {
+      id: '/report'
+      path: '/report'
+      fullPath: '/report'
+      preLoaderRoute: typeof ReportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/signup': {
       id: '/signup'
       path: '/signup'
       fullPath: '/signup'
       preLoaderRoute: typeof SignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/status': {
+      id: '/status'
+      path: '/status'
+      fullPath: '/status'
+      preLoaderRoute: typeof StatusRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/subprocessors': {
@@ -448,6 +662,41 @@ declare module '@tanstack/react-router' {
       fullPath: '/upgrade'
       preLoaderRoute: typeof ShellUpgradeRouteImport
       parentRoute: typeof ShellRoute
+    }
+    '/admin/': {
+      id: '/admin/'
+      path: '/'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AdminIndexRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/accounts': {
+      id: '/admin/accounts'
+      path: '/accounts'
+      fullPath: '/admin/accounts'
+      preLoaderRoute: typeof AdminAccountsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/audit': {
+      id: '/admin/audit'
+      path: '/audit'
+      fullPath: '/admin/audit'
+      preLoaderRoute: typeof AdminAuditRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/ops': {
+      id: '/admin/ops'
+      path: '/ops'
+      fullPath: '/admin/ops'
+      preLoaderRoute: typeof AdminOpsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/queue': {
+      id: '/admin/queue'
+      path: '/queue'
+      fullPath: '/admin/queue'
+      preLoaderRoute: typeof AdminQueueRouteImport
+      parentRoute: typeof AdminRoute
     }
     '/dev/editor': {
       id: '/dev/editor'
@@ -554,6 +803,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellUHandleRouteImport
       parentRoute: typeof ShellRoute
     }
+    '/admin/cases/$id': {
+      id: '/admin/cases/$id'
+      path: '/cases/$id'
+      fullPath: '/admin/cases/$id'
+      preLoaderRoute: typeof AdminCasesIdRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/users/$id': {
+      id: '/admin/users/$id'
+      path: '/users/$id'
+      fullPath: '/admin/users/$id'
+      preLoaderRoute: typeof AdminUsersIdRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/workspaces/$id': {
+      id: '/admin/workspaces/$id'
+      path: '/workspaces/$id'
+      fullPath: '/admin/workspaces/$id'
+      preLoaderRoute: typeof AdminWorkspacesIdRouteImport
+      parentRoute: typeof AdminRoute
+    }
   }
 }
 
@@ -591,13 +861,43 @@ const ShellRouteChildren: ShellRouteChildren = {
 
 const ShellRouteWithChildren = ShellRoute._addFileChildren(ShellRouteChildren)
 
+interface AdminRouteChildren {
+  AdminAccountsRoute: typeof AdminAccountsRoute
+  AdminAuditRoute: typeof AdminAuditRoute
+  AdminOpsRoute: typeof AdminOpsRoute
+  AdminQueueRoute: typeof AdminQueueRoute
+  AdminIndexRoute: typeof AdminIndexRoute
+  AdminCasesIdRoute: typeof AdminCasesIdRoute
+  AdminUsersIdRoute: typeof AdminUsersIdRoute
+  AdminWorkspacesIdRoute: typeof AdminWorkspacesIdRoute
+}
+
+const AdminRouteChildren: AdminRouteChildren = {
+  AdminAccountsRoute: AdminAccountsRoute,
+  AdminAuditRoute: AdminAuditRoute,
+  AdminOpsRoute: AdminOpsRoute,
+  AdminQueueRoute: AdminQueueRoute,
+  AdminIndexRoute: AdminIndexRoute,
+  AdminCasesIdRoute: AdminCasesIdRoute,
+  AdminUsersIdRoute: AdminUsersIdRoute,
+  AdminWorkspacesIdRoute: AdminWorkspacesIdRoute,
+}
+
+const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   ShellRoute: ShellRouteWithChildren,
   AcceptableUseRoute: AcceptableUseRoute,
+  AdminRoute: AdminRouteWithChildren,
+  AppealRoute: AppealRoute,
   CanvasRoute: CanvasRoute,
+  CounterNoticeRoute: CounterNoticeRoute,
+  DmcaRoute: DmcaRoute,
   LoginRoute: LoginRoute,
   PrivacyRoute: PrivacyRoute,
+  ReportRoute: ReportRoute,
   SignupRoute: SignupRoute,
+  StatusRoute: StatusRoute,
   SubprocessorsRoute: SubprocessorsRoute,
   TermsRoute: TermsRoute,
   DevEditorRoute: DevEditorRoute,

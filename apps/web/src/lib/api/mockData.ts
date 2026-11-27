@@ -4,6 +4,8 @@
  * `./mode.ts`, in mock builds and tests only; real builds never include it.
  */
 import * as account from '@/features/account/mocks';
+import * as admin from '@/features/admin/mocks';
+import * as trust from '@/features/trust/mocks';
 import * as invite from '@/features/account/invite/mocks';
 import * as activity from '@/features/activity/mocks';
 import * as canvas from '@/features/canvas/mocks';
@@ -23,6 +25,6 @@ import * as remix from '@/features/tools/remix/mocks';
 import * as share from '@/features/share/mocks';
 import * as session from '@/lib/session/mock';
 
-export const mockModules = { account, invite, activity, canvas, editor, room, home, library, overlays, overlayPreview, profile, prompt, share, templates, avatar, character, quick, remix, session };
+export const mockModules = { account, admin, trust, invite, activity, canvas, editor, room, home, library, overlays, overlayPreview, profile, prompt, share, templates, avatar, character, quick, remix, session };
 
 export type MockData = typeof mockModules;

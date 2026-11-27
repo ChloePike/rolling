@@ -1,3 +1,4 @@
+import { ReportLink } from '@/features/trust/ReportPage';
 import { Skeleton, useToast } from '@rolling/ui';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useState, type CSSProperties } from 'react';
@@ -106,6 +107,8 @@ export function ProfilePage({ handle }: { handle: string }) {
               <FormattedMessage id="profile.share" />
             </button>
           )}
+          {/* D-026: anyone can report a profile that is not their own. */}
+          {!own && !profile.unclaimed && <ReportLink kind="profile" id={profile.handle} />}
         </div>
       </section>
       <Segmented<ProfileTab>

@@ -4,6 +4,7 @@ import { FormattedMessage, useIntl } from 'react-intl';
 import type { ShareNode } from '@/lib/api/types';
 import { RatedThumb, type ContentRating } from '@/lib/media';
 import { useSession } from '@/lib/session';
+import { ReportLink } from '@/features/trust/ReportPage';
 import { publicNodes, useShare } from './api';
 import styles from './Share.module.css';
 
@@ -49,6 +50,7 @@ export function SharePage({ id }: { id: string }) {
             <FormattedMessage id="share.meta" values={{ n: nodes.length, date: intl.formatDate(data.createdAt, { month: 'short', day: 'numeric' }) }} />
           </span>
         )}
+        {data && <ReportLink kind="share" id={id} />}
         <Link to={session.status === 'signedIn' ? '/' : '/signup'} className={styles.cta}>
           <FormattedMessage id={session.status === 'signedIn' ? 'share.open' : 'share.signup'} />
         </Link>

@@ -52,14 +52,14 @@ Mature content is allowed only within these rules:
 - **Actions we may take:** warn you, block runs, remove content or share links, disable mature content, suspend or close your account or workspace, and keep unused credits as the terms allow.
 - **Reporting to authorities** where the law requires it, or where there is a risk of serious harm.
 
-Automated checks can be wrong. If you think we blocked something by mistake, or acted on your account in error, email abuse@rolling.actor with the run or project link, and we will review it.
+Automated checks can be wrong. If you think we blocked something by mistake, or acted on your account in error, [send an appeal](/appeal) (also linked from the block message and the suspension notice), or email abuse@rolling.actor with the run or project link. A person reviews every appeal.
 <!-- Owner to set: appeals process and response time. -->
 
 ## Reporting
 
-If you see content made with Rolling that breaks this policy, including on a share link or profile, report it to **abuse@rolling.actor**. Include the link and a short description. For content involving a child, you can also report directly to the police or, in the United States, to the National Center for Missing & Exploited Children (https://report.cybertip.org).
+If you see content made with Rolling that breaks this policy, including on a share link or profile, use the **Report** link on that page or the [abuse report form](/report), or email **abuse@rolling.actor**. Include the link and a short description. Reports about children are reviewed first. For content involving a child, you can also report directly to the police or, in the United States, to the National Center for Missing & Exploited Children (https://report.cybertip.org).
 
-For copyright complaints, send a notice to legal@rolling.actor with: the work you own, where the infringing content is, your contact details, a statement of good-faith belief, and a statement that your notice is accurate and that you are the owner or authorized to act for them.
+For copyright complaints, use the [copyright notice form](/dmca), or send a notice to legal@rolling.actor with: the work you own, where the infringing content is, your contact details, a statement of good-faith belief, a statement under penalty of perjury that your notice is accurate and that you are the owner or authorized to act for them, and your signature. If your content was removed after a copyright notice and you think that was a mistake, you can send a [counter-notice](/counter-notice).
 <!-- Owner to add: DMCA agent details, if registered. -->
 
 ## Changes

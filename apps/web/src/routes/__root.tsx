@@ -3,6 +3,7 @@ import { createRootRouteWithContext, Outlet } from '@tanstack/react-router';
 import { UpgradeHost } from '@/features/account/upgrade/UpgradeModal';
 import { InstallCard, OfflinePage, UpdatePrompt, useOfflineGate } from '@/features/pwa';
 import { TransfersDock } from '@/features/transfers';
+import { TrustBanner } from '@/features/trust/TrustBanner';
 import { guardRoute } from '@/lib/session/guard';
 import { SessionRuntime } from '@/lib/session/SessionRuntime';
 import { NotFound } from '@/pages/NotFound';
@@ -26,6 +27,8 @@ function Root() {
   const { offline, retry } = useOfflineGate();
   return (
     <>
+      {/* D-025, D-029: incident or degraded status, suspension, staff notices. */}
+      {offline ? null : <TrustBanner />}
       {offline ? <OfflinePage onRetry={retry} /> : <Outlet />}
       <SessionRuntime />
       <UpgradeHost />
