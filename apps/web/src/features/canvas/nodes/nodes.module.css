@@ -64,6 +64,8 @@
 /* Script node table. */
 .table{border-radius:14px;background:var(--c-node-card);overflow:hidden;font-size:12px}
 .row{display:grid;grid-template-columns:28px 28px 1fr 44px;padding:9px 10px;line-height:1.45;color:var(--c-text-2)}
+/* Keeps a long visual off the duration (it read "stands5s"). */
+.row > :last-child{padding-left:8px}
 .rowHead{display:grid;grid-template-columns:28px 28px 1fr 44px;padding:8px 10px;color:var(--c-text-4);font-weight:600;background:var(--c-surface-4)}
 .check{width:14px;height:14px;border-radius:4px;background:var(--c-surface-7)}
 .checkOn{width:14px;height:14px;border-radius:4px;background:var(--c-accent)}
