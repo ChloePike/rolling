@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isAppNavigation, isRuntimeStatic } from './swRules';
+import { isAppNavigation, isOnDemandChunk, isRuntimeStatic } from './swRules';
 
 const ORIGIN = 'https://rolling.actor';
 const nav = (url: string, method = 'GET') => ({ url, method, mode: 'navigate' });
@@ -49,5 +49,16 @@ describe('service worker rules', () => {
     expect(isRuntimeStatic(get(`${ORIGIN}/api/me`, ''), ORIGIN)).toBe(false);
     expect(isRuntimeStatic(get(`${ORIGIN}/assets/app.js`, 'script'), ORIGIN)).toBe(false);
     expect(isRuntimeStatic(get(`${ORIGIN}/icons/a.png`, 'image', 'PUT'), ORIGIN)).toBe(false);
+  });
+
+  it('runtime-caches the chunks left out of the precache (translations, admin console)', () => {
+    expect(isOnDemandChunk(get(`${ORIGIN}/assets/locales/ja-BaS5QclZ.js`, 'script'), ORIGIN)).toBe(true);
+    expect(isOnDemandChunk(get(`${ORIGIN}/assets/admin/users-Ab12_cd.js`, 'script'), ORIGIN)).toBe(true);
+    expect(isOnDemandChunk(get(`${ORIGIN}/assets/admin/users-Ab12_cd.css`, 'style'), ORIGIN)).toBe(true);
+    expect(isOnDemandChunk(get(`${ORIGIN}/assets/index-Ab12.js`, 'script'), ORIGIN)).toBe(false);
+    expect(isOnDemandChunk(get(`${ORIGIN}/assets/locales/ja.js?v=1`, 'script'), ORIGIN)).toBe(false);
+    expect(isOnDemandChunk(get(`https://media.rolling.actor/assets/locales/ja.js`, 'script'), ORIGIN)).toBe(false);
+    expect(isOnDemandChunk(get(`${ORIGIN}/api/assets/locales/ja.js`, 'script'), ORIGIN)).toBe(false);
+    expect(isOnDemandChunk(get(`${ORIGIN}/assets/locales/ja.js`, 'script', 'POST'), ORIGIN)).toBe(false);
   });
 });

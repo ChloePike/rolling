@@ -1,6 +1,6 @@
 import { Dialog, cx, staggerStyle, useToast } from '@rolling/ui';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { useNavigate, useRouter } from '@tanstack/react-router';
 import { useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { activeWorkspace, canvasesQuery, createCanvas } from './projects';
@@ -29,6 +29,12 @@ export interface SendToCanvas {
  */
 export function useSendToCanvas(): SendToCanvas {
   const navigate = useNavigate();
+  const router = useRouter();
+  // The next route is the canvas: fetch its chunk while the user picks or as the send starts.
+  const preloadCanvas = () => {
+    const canvas = router.routesById['/p/$projectId'];
+    if (canvas) void Promise.resolve(router.loadRouteChunk(canvas)).catch(() => undefined);
+  };
   const [pending, setPending] = useState<IncomingItem | null>(null);
   const go = (projectId: string, item: IncomingItem) => {
     const insert = saveIncoming(projectId, [item]);
@@ -36,6 +42,7 @@ export function useSendToCanvas(): SendToCanvas {
   };
   return {
     send: (item, opts) => {
+      preloadCanvas();
       if (opts?.projectId) go(opts.projectId, item);
       else setPending(item);
     },

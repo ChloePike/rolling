@@ -1,6 +1,6 @@
 import { cx, Skeleton, staggerStyle, useIndicator, useToast } from '@rolling/ui';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import {
   COMMAND,
@@ -41,13 +41,22 @@ import styles from './HomePage.module.css';
 import type { ProjectSummary } from './types';
 import { coverStyle } from '@/features/templates/cover';
 import { TemplateMedia } from '@/features/templates/TemplateMedia';
-import { TemplatePreview } from '@/features/templates/TemplatePreview';
 import { LoadError } from '@/lib/loading';
 import { HomeRunList } from './runs/HomeRunList';
 import { isActive, type CardStatus, type HomeRunCard } from './runs/model';
 import { useHomeRuns } from './runs/useHomeRuns';
-import { HomeThreadView } from './agent/HomeThread';
 import { useHomeThread, type SendInput } from './agent/useHomeThread';
+import { lazyComponent, lazyLayer, preloadWhenIdle } from '@/lib/lazy';
+
+/** The agent conversation loads on demand (bundle splitting): at once in agent mode, else when idle. */
+const HomeThreadView = lazyComponent(() => import('./agent/HomeThread'), (m) => m.HomeThreadView);
+
+/** Loaded on demand (bundle splitting): opens on a template click. */
+const TemplatePreview = lazyLayer(
+  () => import('@/features/templates/TemplatePreview'),
+  (m) => m.TemplatePreview,
+  (p) => p.template != null,
+);
 
 const ENTRIES: Array<{ key: string; to: string; icon: PromptIconName }> = [
   { key: 'blank', to: '/p/prj_new', icon: 'frame' },
@@ -416,6 +425,7 @@ export function HomePage() {
   })();
   const allowanceNotice = allowance.exhausted ? t('home.agent.allowanceUsedUp', { date: intl.formatDate(allowance.resetsAt, { month: 'short', day: 'numeric' }) }) : null;
   const showThread = mode === 'agent' && thread.messages.length > 0;
+  useEffect(() => (mode === 'agent' ? void HomeThreadView.preload() : preloadWhenIdle(HomeThreadView)), [mode]);
 
   return (
     <>
@@ -481,26 +491,28 @@ export function HomePage() {
           </p>
         ) : null}
         {showThread ? (
-          <HomeThreadView
-            messages={thread.messages}
-            busy={thread.busy}
-            llm={{ id: llm.id, name: llm.name, allowance: llmAllowance }}
-            notice={allowanceNotice}
-            building={building}
-            onSend={(reply) => {
-              if (mock && !isMember) {
-                setText(reply);
-                return setPaywall(true);
-              }
-              askAgent(reply, [], null);
-            }}
-            onStop={thread.stop}
-            onRetry={thread.retry}
-            onBuild={(p, i) => build(p.id, i, p.body.kind === 'plan' ? p.body.options[i]?.title : undefined)}
-            onDiscard={(p) => void thread.discard(p.id)}
-            onNew={thread.reset}
-            recent={{ items: thread.recent, currentId: thread.id, onOpen: thread.loadRecent, onPick: (id) => void thread.open(id).catch(() => toast.show({ message: intl.formatMessage({ id: 'home.agent.recentFailed' }) })) }}
-          />
+          <Suspense fallback={null}>
+            <HomeThreadView
+              messages={thread.messages}
+              busy={thread.busy}
+              llm={{ id: llm.id, name: llm.name, allowance: llmAllowance }}
+              notice={allowanceNotice}
+              building={building}
+              onSend={(reply) => {
+                if (mock && !isMember) {
+                  setText(reply);
+                  return setPaywall(true);
+                }
+                askAgent(reply, [], null);
+              }}
+              onStop={thread.stop}
+              onRetry={thread.retry}
+              onBuild={(p, i) => build(p.id, i, p.body.kind === 'plan' ? p.body.options[i]?.title : undefined)}
+              onDiscard={(p) => void thread.discard(p.id)}
+              onNew={thread.reset}
+              recent={{ items: thread.recent, currentId: thread.id, onOpen: thread.loadRecent, onPick: (id) => void thread.open(id).catch(() => toast.show({ message: intl.formatMessage({ id: 'home.agent.recentFailed' }) })) }}
+            />
+          </Suspense>
         ) : null}
         {mode !== 'agent' || !showThread ? <HomeRunList cards={runs.cards} actions={cardActions} onClearFinished={() => runs.cards.filter((c) => !isActive(c)).forEach((c) => runs.remove(c.key))} /> : null}
         <nav className={cx(styles.entries, (showThread || (mode !== 'agent' && runs.cards.length > 0)) && styles.entriesAfter)} aria-label={intl.formatMessage({ id: 'home.start.label' })}>

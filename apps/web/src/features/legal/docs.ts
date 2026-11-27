@@ -9,7 +9,9 @@ import subprocessors from '@legal/subprocessors.md?raw';
 import terms from '@legal/terms-of-service.md?raw';
 import { parseMarkdown, type Block } from './markdown';
 
-export type LegalDocId = 'terms' | 'privacy' | 'acceptable-use' | 'subprocessors';
+import type { LegalDocId } from './ids';
+
+export { isLegalDocId, type LegalDocId } from './ids';
 
 export interface LegalDocInfo {
   id: LegalDocId;
@@ -23,10 +25,6 @@ export const LEGAL_DOCS: readonly LegalDocInfo[] = [
   { id: 'acceptable-use', path: '/acceptable-use', source: aup },
   { id: 'subprocessors', path: '/subprocessors', source: subprocessors },
 ];
-
-export function isLegalDocId(v: string): v is LegalDocId {
-  return LEGAL_DOCS.some((d) => d.id === v);
-}
 
 const parsed = new Map<LegalDocId, Block[]>();
 

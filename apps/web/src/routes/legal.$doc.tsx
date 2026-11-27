@@ -1,5 +1,5 @@
 import { createFileRoute, notFound, redirect } from '@tanstack/react-router';
-import { isLegalDocId } from '@/features/legal/docs';
+import { isLegalDocId } from '@/features/legal/ids';
 
 /** Old `/legal/<doc>` paths: permanent redirect to the canonical `/<doc>` (e.g. `/legal/privacy` → `/privacy`). */
 export const Route = createFileRoute('/legal/$doc')({

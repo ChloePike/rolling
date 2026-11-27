@@ -16,8 +16,6 @@ import {
   imageToSettings,
   maxSeconds,
   modelCaps,
-  ModelPicker,
-  ParamPopover,
   paramOptions,
   strictCredits,
   videoToSettings,
@@ -30,6 +28,11 @@ import { defaultModel, quoteCredits, toModelOption } from './catalog';
 import { formatSeconds } from './format';
 import { FRAME_MODES, PERSONAS, VOICES, type HomeModeId } from './modes';
 import { PillListPopover } from './PillListPopover';
+import { lazyLayer } from '@/lib/lazy';
+
+/** Pill popovers load on demand (bundle splitting); fetched when idle after Home renders. */
+const ModelPicker = lazyLayer(() => import('@/features/overlays/ModelPicker'), (m) => m.ModelPicker, (p) => p.open !== false);
+const ParamPopover = lazyLayer(() => import('@/features/overlays/ParamPopover'), (m) => m.ParamPopover, (p) => p.open !== false);
 
 interface PillSpec {
   pill: PromptPill;

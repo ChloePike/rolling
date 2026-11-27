@@ -2,13 +2,17 @@ import { useToast } from '@rolling/ui';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect } from 'react';
 import { useIntl } from 'react-intl';
-import { resultActions, ResultViewer, type ResultActionId, type ResultVersion, type RunRequest } from '@/features/overlays';
+import { resultActions, type ResultActionId, type ResultVersion, type RunRequest } from '@/features/overlays';
 import type { RefItem } from '@/features/prompt';
 import { useCreateProject } from './api';
 import { assetMediaUrl, isMockApi } from '@/features/overlays/backend';
 import { downloadAsset } from '@/features/overlays/media';
 import { useSendToCanvas } from '@/features/canvas/target';
 import type { PromptSpec } from '@/features/overlays/runs';
+import { lazyLayer } from '@/lib/lazy';
+
+/** Loaded on demand (bundle splitting): opens on a result click. */
+const ResultViewer = lazyLayer(() => import('@/features/overlays/ResultViewer'), (m) => m.ResultViewer);
 
 export interface HomeResultState {
   title: string;

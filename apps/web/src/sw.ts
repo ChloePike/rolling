@@ -16,7 +16,7 @@ import { ExpirationPlugin } from 'workbox-expiration';
 import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute, type PrecacheEntry } from 'workbox-precaching';
 import { registerRoute } from 'workbox-routing';
 import { CacheFirst } from 'workbox-strategies';
-import { isAppNavigation, isRuntimeStatic, SKIP_WAITING } from '@/lib/pwa/swRules';
+import { isAppNavigation, isOnDemandChunk, isRuntimeStatic, SKIP_WAITING } from '@/lib/pwa/swRules';
 
 const sw = self as unknown as ServiceWorkerGlobalScope;
 
@@ -40,5 +40,14 @@ registerRoute(
   new CacheFirst({
     cacheName: 'rolling-static',
     plugins: [new ExpirationPlugin({ maxEntries: 120, maxAgeSeconds: 30 * 24 * 60 * 60, purgeOnQuotaError: true })],
+  }),
+);
+
+// Translations and the admin console are not precached (vite.config.ts); cached once used.
+registerRoute(
+  ({ request }) => isOnDemandChunk(request, origin),
+  new CacheFirst({
+    cacheName: 'rolling-chunks',
+    plugins: [new ExpirationPlugin({ maxEntries: 80, maxAgeSeconds: 60 * 24 * 60 * 60, purgeOnQuotaError: true })],
   }),
 );

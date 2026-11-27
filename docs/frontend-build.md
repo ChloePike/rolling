@@ -29,6 +29,15 @@ Applies to every agent building screens in `apps/web`. Read `CLAUDE.md`, `docs/d
 - Loading: until a query has data, render a `Skeleton` (`@rolling/ui`) shaped like the final layout (it appears after ~150ms; static under reduced motion); cached data shows at once; truly empty data shows the screen's empty state; a failed load shows `LoadError` with Retry (`lib/loading`). Header numbers (credits, plan) are skeletons until `/api/me`, never 0. `playwright.stubbed.config.ts` checks this in real mode with a slow, empty stubbed API.
 - English only in code and comments. Numbers, dates, currency through `Intl` / react-intl.
 
+## Bundle size (first-load budget)
+
+- `vite build` measures what a first visit to Home downloads before it renders (entry chunk, the `_shell` layout and `/` route chunks, and their static imports, gzip) and **fails above 250 kB + 2%** (`apps/web/build/bundleBudget.ts`, so CI fails). Real builds also fail if a mock module reaches the output. `ROLLING_BUNDLE_STATS=<file>` writes per-chunk and per-module numbers; `ROLLING_BUNDLE_BUDGET=off` skips the check for a local measurement.
+- Routes are split by TanStack Router (`autoCodeSplitting`). What a route file imports at the top (for `validateSearch`, `beforeLoad`, params) stays in the entry chunk: import only small modules there (`features/canvas/overlays.ts`, `features/account/sections.ts`, `features/legal/ids.ts`), or `await import()` inside `beforeLoad` (`routes/canvas.tsx`).
+- Layers opened by a click (dialogs, popovers, pickers) load on demand: `lazyLayer` / `lazyComponent` + `preloadWhenIdle` in `apps/web/src/lib/lazy.tsx`. Import such a layer from its own module, not through a barrel the page imports anyway.
+- English messages: only the first-paint features (the list in `apps/web/src/i18n/messages.ts`) ship in the entry; every other `messages/en/<feature>.json`, including a new one, loads right after the first render as one chunk (`loadEnglishRest()`, `src/i18n/englishRest.ts`, whose list mirrors the first-paint one). The root route's loader waits for it on any route but `/`, and every `lazyComponent` / `lazyLayer` waits for it with its chunk. A component Home renders before any click must use first-paint messages only; add its feature to the list if it needs to.
+- Links preload the next route's chunk on hover/focus (`defaultPreload: 'intent'`); `useSendToCanvas` loads the canvas chunk when a send starts.
+- Service worker: everything is precached (canvas and editor too: offline editing, handoff 8) except translations and the admin console, which `vite.config.ts` writes to `assets/locales/` and `assets/admin/` (admin = modules under `src/routes/admin*` or `src/features/admin/`); the worker caches those once fetched.
+
 ## Done means
 
 `pnpm --filter @rolling/web typecheck`, `test`, `build` and your e2e specs pass; the report lists each screen/state with its pixel-diff number and anything you could not match.

@@ -10,8 +10,10 @@
  *   `applyUpdate()` (the Reload button) tells the waiting worker to activate
  *   and reloads once it controls the page.
  * - Checks for a new version every hour and when the tab becomes visible.
+ * - `workbox-window` loads on demand (after the page's `load` event), so it is
+ *   not in the entry chunk.
  */
-import { Workbox } from 'workbox-window';
+import type { Workbox } from 'workbox-window';
 import { isMockApi } from '@/lib/api/mode';
 import { SKIP_WAITING } from './swRules';
 
@@ -53,9 +55,15 @@ export function serviceWorkerEnabled(): boolean {
   return true;
 }
 
+let registering = false;
+
 export function registerServiceWorker(): void {
-  if (workbox || !serviceWorkerEnabled()) return;
-  const wb = new Workbox('/sw.js', { scope: '/' });
+  if (registering || workbox || !serviceWorkerEnabled()) return;
+  registering = true;
+  void import('workbox-window').then(({ Workbox }) => startWorkbox(new Workbox('/sw.js', { scope: '/' })));
+}
+
+function startWorkbox(wb: Workbox): void {
   workbox = wb;
   // A worker finished installing while another controls the page: offer the reload.
   wb.addEventListener('waiting', () => {

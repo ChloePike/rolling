@@ -12,11 +12,11 @@ const LINGER_MS = 4000;
  * Transfers dock (D-011): a compact indicator with the count and aggregate
  * progress that opens a panel listing every upload and download with
  * progress, speed, ETA and controls. Every tab of the origin shows the same
- * queue (SharedWorker). Hidden while nothing is transferring.
+ * queue (SharedWorker). Hidden while nothing is transferring. Completion and
+ * failure toasts come from `useTransferToasts` (./toasts.ts), mounted by the host.
  */
 export function TransfersDock() {
   const intl = useIntl();
-  const toast = useToast();
   const snap = useTransfers();
   const [open, setOpen] = useState(false);
   const items = useMemo(() => snap.items.filter((i) => !i.hidden), [snap.items]);
@@ -31,7 +31,6 @@ export function TransfersDock() {
     return () => clearTimeout(t);
   }, [active.length, items.length]);
 
-  useTransferToasts(intl, toast);
 
   const visible = active.length > 0 || lingering || open;
   const presence = usePresence(visible);
@@ -241,32 +240,6 @@ function statusLine(intl: IntlShape, item: TransferItem, paused: boolean, online
 function errorText(intl: IntlShape, code?: string) {
   const id = `transfers.error.${code ?? 'generic'}`;
   return intl.messages[id] ? intl.formatMessage({ id }) : intl.formatMessage({ id: 'transfers.error.generic' });
-}
-
-/** Completion and failure toasts, only in the tab that started the transfer. */
-function useTransferToasts(intl: IntlShape, toast: ReturnType<typeof useToast>) {
-  useEffect(() => {
-    const offs = [
-      transfers.on('transfer.done', (e) => {
-        const own = transfers.ownership(e.id);
-        if (!own.mine || own.quiet || e.kind === 'fetch') return;
-        toast.show({ message: intl.formatMessage({ id: e.kind === 'upload' ? 'transfers.toast.uploaded' : 'transfers.toast.downloaded' }, { name: e.name }) });
-      }),
-      transfers.on('transfer.failed', (e) => {
-        if (!transfers.ownership(e.id).mine || e.kind === 'fetch') return;
-        toast.show({
-          message: intl.formatMessage({ id: 'transfers.toast.failed' }, { name: e.name }),
-          action: { label: intl.formatMessage({ id: 'transfers.action.retry' }), onAction: () => transfers.retry(e.id) },
-        });
-      }),
-      transfers.onRejected((list) => {
-        const r = list[0]!;
-        const v = r.validation;
-        toast.show({ message: intl.formatMessage({ id: `transfers.toast.rejected.${v.reason}` }, { name: r.file.name, max: v.maxBytes ? formatBytes(intl, v.maxBytes) : '' }) });
-      }),
-    ];
-    return () => offs.forEach((off) => off());
-  }, [intl, toast]);
 }
 
 function IconBtn({ label, onClick, icon }: { label: string; onClick: () => void; icon: 'pause' | 'play' | 'close' }) {

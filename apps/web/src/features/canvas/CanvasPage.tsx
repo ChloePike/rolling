@@ -94,13 +94,13 @@ import styles from './nodes/nodes.module.css';
 import { ConnectionLine, EdgeActionsContext, Wire, type EdgeActions, type WireEdge } from './nodes/Wire';
 import { PromptPanel } from './prompt/PromptPanel';
 import { formatLabel, usePricedNodes } from './pricing';
+import type { CanvasOverlay } from './overlays';
 import { getPrefs } from '@/lib/prefs';
 import { retryWithFixOp, reviewViewOf } from '@/features/review';
 import { modeLabel, modelLabel, type CatalogModel } from '@/lib/models';
 
 /** Layers the design opens through `initOverlay` (Canvas.dc.html), plus the canvas' own. */
-export type CanvasOverlay = 'plan' | 'addMenu' | 'script' | 'share' | 'edit' | 'editAgent' | 'at';
-export const CANVAS_OVERLAYS: readonly CanvasOverlay[] = ['plan', 'addMenu', 'script', 'share', 'edit', 'editAgent', 'at'];
+export { CANVAS_OVERLAYS, type CanvasOverlay } from './overlays';
 
 export interface CanvasEditorSlotProps {
   projectId: string;

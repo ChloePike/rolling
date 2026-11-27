@@ -1,8 +1,9 @@
 import { fileURLToPath } from 'node:url';
 import { tanstackRouter } from '@tanstack/router-plugin/vite';
 import react from '@vitejs/plugin-react';
-import { defineConfig, type Plugin } from 'vite';
+import { defineConfig, type Plugin, type Rollup } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
+import { bundleBudget } from './build/bundleBudget';
 
 const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 /** Where dev and preview proxy `/api` (the local Worker by default; e.g. a staging Worker URL for a manual look). */
@@ -28,12 +29,33 @@ function preloadMainFont(): Plugin {
   };
 }
 
+/**
+ * Chunks kept out of the service worker's precache (bundle splitting, 2026-11-27): each
+ * translation (a visitor needs at most one; `src/i18n/locales/*`) and the admin console
+ * (`src/routes/admin*`, `src/features/admin/`; staff only). They are written to their own
+ * folders so `globIgnores` can skip them; the worker caches them once fetched
+ * (`ON_DEMAND_DIRS` in src/lib/pwa/swRules.ts). Canvas and editor stay precached: offline
+ * editing is a product rule (handoff 8).
+ */
+const ON_DEMAND_CHUNKS: Array<[RegExp, string]> = [
+  [/\/src\/i18n\/locales\/|\/messages\/(?!en\/)[^/]+\/[^/]+\.json$/, 'locales'],
+  [/\/src\/(routes\/admin|features\/admin\/)/, 'admin'],
+];
+
+function chunkFileNames(chunk: Rollup.PreRenderedChunk): string {
+  const own = chunk.moduleIds.filter((id) => !id.includes('/node_modules/'));
+  for (const [match, dir] of ON_DEMAND_CHUNKS) if (own.length && own.every((id) => match.test(id))) return `assets/${dir}/[name]-[hash].js`;
+  return 'assets/[name]-[hash].js';
+}
+
 export default defineConfig({
   plugins: [
     // Must run before the React plugin.
     tanstackRouter({ target: 'react', autoCodeSplitting: true }),
     react(),
     preloadMainFont(),
+    // First-load JS budget and no mocks in real builds (build/bundleBudget.ts); fails the build, so CI.
+    bundleBudget({ mockBuild: process.env.VITE_API_MODE === 'mock' }),
     /*
      * PWA (handoff 8, PWA.dc.html). `injectManifest`, not `generateSW`: the
      * worker (src/sw.ts) is our own small file whose routes are explicit and
@@ -82,7 +104,8 @@ export default defineConfig({
         // The plugin adds manifest.webmanifest itself.
         globPatterns: ['**/*.{js,css,html,woff2,svg,png}'],
         // Only the manifest needs the 1024 icon and the Google logo lives on the login page; fetched on demand.
-        globIgnores: ['icons/app-icon-1024.png', 'icons/google-oauth-logo-*.png', 'sw.js'],
+        // Translations and the admin console load on demand (ON_DEMAND_CHUNKS above).
+        globIgnores: ['icons/app-icon-1024.png', 'icons/google-oauth-logo-*.png', 'sw.js', 'assets/locales/**', 'assets/admin/**'],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
       },
       devOptions: { enabled: false },
@@ -103,6 +126,7 @@ export default defineConfig({
     // The Worker (apps/api) serves the SPA from here as static assets.
     outDir: r('./dist'),
     emptyOutDir: true,
+    rollupOptions: { output: { chunkFileNames } },
   },
   server: {
     port: 5173,

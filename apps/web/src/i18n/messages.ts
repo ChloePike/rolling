@@ -9,13 +9,40 @@ export { mergeMessages, type Messages };
  * without editing a shared file. Keys must be globally unique; prefix them with
  * the feature name (`home.`, `canvas.`, ...). Files are merged per locale.
  *
- * English ships in the main bundle. Every other locale is one lazy chunk
+ * English ships in the main bundle (first-paint features; see below). Every other locale is one lazy chunk
  * (`./locales/<locale>.ts`), so adding a locale never grows the English bundle.
  * `email.json` holds the Worker's email templates and is not bundled here.
  */
-const english = import.meta.glob<Messages>(['@messages/en/*.json', '!@messages/en/email.json'], { import: 'default', eager: true });
+/**
+ * English is split in two (bundle splitting, 2026-11-27). The features Home's first
+ * paint needs (the list below: the shell, Home, the prompt box, overlays, picker,
+ * templates, transfers, PWA, sign-in, agent, trial and trust banners) ship in the main
+ * bundle. Every other feature file — and any new one by default — loads after the
+ * first render with `loadEnglishRest()`, which fills `englishMessages` in place: the
+ * root route's loader awaits it for any route but `/`, every on-demand layer
+ * (`lib/lazy.tsx`) awaits it with its chunk, and `loadMessages` awaits it before
+ * filling a translation's gaps. The rest is one chunk (`./englishRest.ts`); its list
+ * mirrors the one below (`englishRest.test.ts` checks).
+ */
+const englishFirstPaint = import.meta.glob<Messages>('@messages/en/{shell,home,prompt,overlays,picker,templates,transfers,pwa,auth,agent,trial,trust}.json', {
+  import: 'default',
+  eager: true,
+});
 
-export const englishMessages: Messages = mergeMessages(english);
+export const englishMessages: Messages = mergeMessages(englishFirstPaint);
+
+let restReady: Promise<void> | null = null;
+/** Loads the English feature files outside the first-paint list into `englishMessages` (once; retried after a failure). */
+export function loadEnglishRest(): Promise<void> {
+  restReady ??= import('./englishRest').then(
+    (m) => void Object.assign(englishMessages, m.default),
+    (e: unknown) => {
+      restReady = null;
+      throw e;
+    },
+  );
+  return restReady;
+}
 
 /** Lazy loaders, one chunk per translated locale. */
 const LOADERS: Record<Exclude<Locale, 'en'>, () => Promise<{ default: Messages }>> = {
@@ -38,7 +65,8 @@ const cache = new Map<string, Messages>();
 export async function loadMessages(locale: Locale | string): Promise<Messages> {
   const hit = cache.get(locale);
   if (hit) return hit;
-  const merged = { ...englishMessages, ...(await loadLocaleMessages(locale)) };
+  const [own] = await Promise.all([loadLocaleMessages(locale), loadEnglishRest()]);
+  const merged = { ...englishMessages, ...own };
   cache.set(locale, merged);
   return merged;
 }

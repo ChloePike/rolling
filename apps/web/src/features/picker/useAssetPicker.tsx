@@ -1,6 +1,9 @@
-import { useCallback, useRef, useState, type ReactNode } from 'react';
-import { AssetPicker } from './AssetPicker';
+import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { lazyComponent, preloadWhenIdle } from '@/lib/lazy';
 import type { AssetPick, AssetPickerOptions } from './types';
+
+/** The modal loads on demand (bundle splitting): fetched when idle after a page that can open it renders. */
+const AssetPicker = lazyComponent(() => import('./AssetPicker'), (m) => m.AssetPicker);
 
 interface Session {
   n: number;
@@ -42,6 +45,12 @@ export function useAssetPicker(): { open: (options?: AssetPickerOptions) => Prom
   const onClose = useCallback(() => finish(null), [finish]);
   const onConfirm = useCallback((picks: AssetPick[]) => finish(picks), [finish]);
 
-  const element = session ? <AssetPicker key={session.n} open={session.open} options={session.options} onClose={onClose} onConfirm={onConfirm} /> : null;
+  useEffect(() => preloadWhenIdle(AssetPicker), []);
+
+  const element = session ? (
+    <Suspense fallback={null}>
+      <AssetPicker key={session.n} open={session.open} options={session.options} onClose={onClose} onConfirm={onConfirm} />
+    </Suspense>
+  ) : null;
   return { open, element, isOpen: !!session?.open };
 }

@@ -8,7 +8,10 @@
  * - same-origin SPA navigations, answered with the precached `index.html`
  *   (`isAppNavigation`);
  * - same-origin static files that are not precached (fonts, icons, images),
- *   cache first (`isRuntimeStatic`).
+ *   cache first (`isRuntimeStatic`);
+ * - the hashed chunks left out of the precache on purpose (translations and
+ *   the admin console, `ON_DEMAND_DIRS`), cache first once fetched
+ *   (`isOnDemandChunk`).
  *
  * Everything else goes straight to the network untouched: `/api/*` (REST,
  * GraphQL, auth callbacks, WebSocket upgrades — WebSockets never pass through
@@ -61,6 +64,22 @@ export function isRuntimeStatic(req: { url: string; method: string; destination:
   // Query strings mark dynamic or signed URLs: never cache those.
   if (url.search) return false;
   return STATIC_DESTINATIONS.has(req.destination) && STATIC_EXT.test(url.pathname);
+}
+
+/**
+ * Build output folders that are not precached (vite.config.ts `chunkFileNames`,
+ * `injectManifest.globIgnores`): a visitor needs at most one translation, and
+ * only staff open the admin console, so neither weighs on the first install.
+ * Once fetched they are cached like the precache, so offline use keeps working.
+ */
+export const ON_DEMAND_DIRS = ['assets/locales', 'assets/admin'] as const;
+const ON_DEMAND = new RegExp(`^/(${ON_DEMAND_DIRS.join('|')})/[\\w.-]+\\.(js|css)$`);
+
+/** A same-origin GET for a hashed chunk under `ON_DEMAND_DIRS` (file names change on every build). */
+export function isOnDemandChunk(req: { url: string; method: string }, origin: string): boolean {
+  if (req.method !== 'GET') return false;
+  const url = new URL(req.url);
+  return url.origin === origin && !url.search && ON_DEMAND.test(url.pathname);
 }
 
 /** Message the page posts to the waiting worker when the user chose Reload. */

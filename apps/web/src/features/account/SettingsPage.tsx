@@ -71,13 +71,9 @@ import { openUpgrade } from '@/lib/upgrade/store';
 import styles from './Settings.module.css';
 
 const cx = (...c: Array<string | false | undefined>) => c.filter(Boolean).join(' ');
+import { SETTINGS_SECTIONS, type SettingsSection } from './sections';
 
-export const SETTINGS_SECTIONS = ['account', 'preferences', 'billing', 'team', 'notifications'] as const;
-export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
-
-export function isSettingsSection(s: string): s is SettingsSection {
-  return (SETTINGS_SECTIONS as readonly string[]).includes(s);
-}
+export { SETTINGS_SECTIONS, isSettingsSection, type SettingsSection } from './sections';
 
 const ICONS: Record<SettingsSection, string> = {
   account: 'M18 20a6 6 0 0 0-12 0 M12 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8z',

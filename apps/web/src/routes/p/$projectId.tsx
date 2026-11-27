@@ -1,5 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { CANVAS_OVERLAYS, CanvasError, CanvasPage, type CanvasOverlay } from '@/features/canvas';
+import { CanvasError } from '@/features/canvas/CanvasError';
+import { CanvasPage } from '@/features/canvas/CanvasPage';
+import { CANVAS_OVERLAYS, type CanvasOverlay } from '@/features/canvas/overlays';
 import { Editor } from '@/features/canvas/editor';
 import { mockData } from '@/lib/api/mode';
 import { isMockApi } from '@/features/overlays/backend';

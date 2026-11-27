@@ -1,17 +1,27 @@
 import { IconButton, Popover, Skeleton, Tooltip, useIndicator, useToast } from '@rolling/ui';
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
-import { useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { FormattedMessage, FormattedNumber, useIntl } from 'react-intl';
-import { AccountMenuContent } from './AccountMenu';
-import { CreditsPopoverContent } from './CreditsPopover';
 import styles from './Header.module.css';
 import { Icon, LogoMark } from './icons';
 import { isNavItemActive, navItems } from './nav';
 import { signOut, useCredits, useSession } from '@/lib/session';
 import { AvatarFace } from './AvatarFace';
-import { HelpDialog } from './HelpDialog';
-import { SettingsPopoverContent } from './SettingsPopover';
 import { NARROW_NAV_QUERY, useMediaQuery } from './useMediaQuery';
+import { lazyComponent } from '@/lib/lazy';
+
+/*
+ * The header's popovers and the Help dialog load on demand (bundle splitting): fetched
+ * right after the signed-in header renders (not part of the page's first-load JS), and
+ * again on pointer or focus in the header's actions, so they are ready for the first click.
+ */
+const CreditsPopoverContent = lazyComponent(() => import('./CreditsPopover'), (m) => m.CreditsPopoverContent);
+const SettingsPopoverContent = lazyComponent(() => import('./SettingsPopover'), (m) => m.SettingsPopoverContent);
+const AccountMenuContent = lazyComponent(() => import('./AccountMenu'), (m) => m.AccountMenuContent);
+const HelpDialog = lazyComponent(() => import('./HelpDialog'), (m) => m.HelpDialog);
+const LAYERS = [CreditsPopoverContent, SettingsPopoverContent, AccountMenuContent, HelpDialog];
+const LAYER_OF = { credits: CreditsPopoverContent, settings: SettingsPopoverContent, account: AccountMenuContent };
+const preloadLayers = () => LAYERS.forEach((c) => void c.preload());
 
 /**
  * Shift of the credits popover past the credits button's right edge so it sits
@@ -42,7 +52,9 @@ export function Header() {
   const [creditsOffset, setCreditsOffset] = useState(CREDITS_ALIGN_OFFSET);
   const toggle = (which: 'credits' | 'settings' | 'account') => (next: boolean) => {
     if (next && which === 'credits') setCreditsOffset(creditsAlignOffset());
-    setOpen(next ? which : (o) => (o === which ? null : o));
+    if (!next) return setOpen((o) => (o === which ? null : o));
+    // Opens once its chunk is in (normally preloaded), so it renders and is placed with its content.
+    void LAYER_OF[which].preload().then(() => setOpen(which));
   };
   const navRef = useRef<HTMLElement>(null);
   // The active pill slides between items (200ms, standard curve) on navigation.
@@ -50,6 +62,8 @@ export function Header() {
   const navigate = useNavigate();
   const toast = useToast();
   const [help, setHelp] = useState(false);
+  const [helpMounted, setHelpMounted] = useState(false);
+  if (help && !helpMounted) setHelpMounted(true);
   const session = useSession();
   const { planId } = session;
   const logout = () => {
@@ -64,6 +78,9 @@ export function Header() {
   // Public pages (plans) are open to signed-out visitors: log in instead of credits and account.
   const signedOut = session.status === 'signedOut';
   const loading = session.status === 'loading';
+  useEffect(() => {
+    if (!signedOut && !loading) preloadLayers();
+  }, [signedOut, loading]);
 
   return (
     <header className={styles.header} data-testid="app-header">
@@ -100,7 +117,7 @@ export function Header() {
         })}
       </nav>
 
-      <div className={styles.actions} data-session={session.status}>
+      <div className={styles.actions} data-session={session.status} onPointerEnter={preloadLayers} onFocus={preloadLayers}>
         {signedOut ? (
           <>
             <Link to="/login" search={{ redirect: pathname }} className={styles.upgrade} data-testid="header-login">
@@ -146,7 +163,9 @@ export function Header() {
                 </button>
               )}
             >
-              <CreditsPopoverContent onNavigate={() => setOpen(null)} />
+              <Suspense fallback={null}>
+                <CreditsPopoverContent onNavigate={() => setOpen(null)} />
+              </Suspense>
             </Popover>
             {/* Upgrade only when there is a higher plan to move to: none for Pro or Team. */}
             {planId !== 'pro' && planId !== 'team' ? (
@@ -165,7 +184,9 @@ export function Header() {
                 <IconButton {...p} label={intl.formatMessage({ id: 'header.settings' })} icon={<Icon name="gear" size={17} />} />
               )}
             >
-              <SettingsPopoverContent onClose={() => setOpen(null)} />
+              <Suspense fallback={null}>
+                <SettingsPopoverContent onClose={() => setOpen(null)} />
+              </Suspense>
             </Popover>
             <Popover
               open={open === 'account'}
@@ -188,12 +209,19 @@ export function Header() {
                 </button>
               )}
             >
-              <AccountMenuContent onClose={() => setOpen(null)} onHelp={() => setHelp(true)} onLogout={logout} />
+              <Suspense fallback={null}>
+                <AccountMenuContent onClose={() => setOpen(null)} onHelp={() => void HelpDialog.preload().then(() => setHelp(true))} onLogout={logout} />
+              </Suspense>
             </Popover>
           </>
         )}
       </div>
-      <HelpDialog open={help} onOpenChange={setHelp} />
+      {/* Mounted once opened, so it can animate out. */}
+      {help || helpMounted ? (
+        <Suspense fallback={null}>
+          <HelpDialog open={help} onOpenChange={setHelp} />
+        </Suspense>
+      ) : null}
     </header>
   );
 }

@@ -1,5 +1,4 @@
 import { createFileRoute, redirect } from '@tanstack/react-router';
-import { resolveNavCanvas } from '@/features/canvas/target/projects';
 import { englishMessages } from '@/i18n/messages';
 
 /**
@@ -11,7 +10,10 @@ import { englishMessages } from '@/i18n/messages';
  */
 export const Route = createFileRoute('/canvas')({
   beforeLoad: async ({ preload }) => {
-    const target = await resolveNavCanvas({ untitled: englishMessages['home.project.untitled'] ?? 'Untitled project', preload }).catch(() => ({ kind: 'none' }) as const);
+    // Imported here, not at the top: route options stay in the entry chunk (bundle splitting).
+    const target = await import('@/features/canvas/target/projects')
+      .then(({ resolveNavCanvas }) => resolveNavCanvas({ untitled: englishMessages['home.project.untitled'] ?? 'Untitled project', preload }))
+      .catch(() => ({ kind: 'none' }) as const);
     if (preload) return;
     if (target.kind === 'open') throw redirect({ to: '/p/$projectId', params: { projectId: target.projectId }, replace: true });
     // Nothing to open and nothing we may create (a viewer with no projects, or offline): Home's projects.

@@ -4,10 +4,17 @@ import { Link } from '@tanstack/react-router';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { MenuPopover } from '@/features/canvas/layers/Menu';
-import { DeleteProjectDialog } from '@/features/canvas/target/DeleteProjectDialog';
 import { renameRecentProject } from './api';
 import type { ProjectSummary } from './types';
 import styles from './HomePage.module.css';
+import { lazyLayer } from '@/lib/lazy';
+
+/** Loaded on demand (bundle splitting): opens from the card's menu. */
+const DeleteProjectDialog = lazyLayer(
+  () => import('@/features/canvas/target/DeleteProjectDialog'),
+  (m) => m.DeleteProjectDialog,
+  (p) => p.project != null,
+);
 
 /**
  * A Home project card (Main.dc.html “My projects”) with a “…” menu: Rename and Delete. The button shows on

@@ -4,13 +4,16 @@ import { useIntl } from 'react-intl';
 import { getPrefs } from '@/lib/prefs';
 import { noteFinishedVideo } from '@/lib/pwa/install';
 import { checkoutTopUp, getCredits, getSession, MockFlowError, onCheckoutResume, savePendingAction, startMockRun, takePendingAction, useCredits, type MockRun } from '@/lib/session';
-import { Paywall } from './Paywall';
 import { openUpgrade } from '@/lib/upgrade/store';
-import { RunConfirm } from './RunConfirm';
 import type { RunRowKind } from './types';
 import { isApiError, isMockApi, userEvents } from './backend';
 import { findRun, quoteSpec, resultItems, isFailedRun, runFinished, startQuote, type PromptSpec, type RunSurface, type RunView, type SpecQuote } from './runs';
 import { resolveAssetId } from '@/lib/transfers';
+import { lazyLayer } from '@/lib/lazy';
+
+/** Loaded on demand (bundle splitting): most runs start without either dialog. */
+const Paywall = lazyLayer(() => import('./Paywall'), (m) => m.Paywall);
+const RunConfirm = lazyLayer(() => import('./RunConfirm'), (m) => m.RunConfirm);
 
 /** What a finished run hands back: the mock run, or the real run with its first result asset. */
 export type FinishedRun = MockRun & { assetId?: string | null; run?: RunView };
