@@ -92,7 +92,8 @@ export async function loadDeletionJob(env: Env, id: string): Promise<DeletionJob
 /**
  * Retained D1 records keep their rows but carry the tombstone instead of the
  * user id: credit ledger mirror, safety log, agent usage, and authorship of
- * runs, jobs, quotes, exports and projects that stay with other workspaces.
+ * runs, jobs, quotes, exports and projects that stay with other workspaces,
+ * and trial claims (D-022).
  * Run again at the end of the job for ledger lines mirrored late. Idempotent.
  */
 export async function pseudonymizeD1(env: Env, userId: string, tombstone: string): Promise<void> {
@@ -107,6 +108,8 @@ export async function pseudonymizeD1(env: Env, userId: string, tombstone: string
     set("quotes", "created_by"),
     set("exports", "created_by"),
     set("projects", "created_by"),
+    // D-022: the trial claim stays (hashes only), so deleting and signing up again gets no second trial.
+    set("trial_claims", "user_id"),
   ]);
 }
 

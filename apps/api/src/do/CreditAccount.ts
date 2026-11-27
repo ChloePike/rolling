@@ -30,8 +30,10 @@ import {
   type ReleaseResult,
   type SeatsResult,
   type SettleResult,
+  type TrialGrantResult,
   reconcile,
 } from "@rolling/core/credits";
+import type { TrialStatus } from "@rolling/core/pricing/trial";
 import { newId } from "@rolling/core/ids";
 import type { PlanId } from "@rolling/core/pricing/config";
 import { creditsMigrations } from "@rolling/db/do/credits";
@@ -169,7 +171,8 @@ export class CreditAccount extends DurableObject<Env> {
     const balance = this.ledger.balance();
     const all = this.store.allLines();
     const fromLines = reconcile(all);
-    const ok = fromLines.plan === balance.plan && fromLines.purchased === balance.purchased && fromLines.held === balance.held;
+    const ok =
+      fromLines.plan === balance.plan && fromLines.purchased === balance.purchased && fromLines.held === balance.held && fromLines.trial === (balance.trial ?? 0);
     const out = { balance, fromLines, ok, unmirrored: this.store.unmirroredLines(10_000).length };
     if (before === undefined) return out;
     const older = all.filter((l) => l.createdAt < before);
@@ -197,6 +200,16 @@ export class CreditAccount extends DurableObject<Env> {
 
   async grant(period: GrantPeriod, idemKey: string): Promise<LedgerOutcome<GrantResult>> {
     return this.op(() => this.ledger.grant(period, idemKey));
+  }
+
+  /** The one-time sign-up trial (D-022); once per workspace, the caller checks one per person first. */
+  async grantTrial(credits: number, expiresAt: number, idemKey: string): Promise<LedgerOutcome<TrialGrantResult>> {
+    return this.op(() => this.ledger.grantTrial(credits, expiresAt, idemKey));
+  }
+
+  /** Trial state now: none, active, used (nothing left, nothing held) or expired. */
+  async trialStatus(): Promise<TrialStatus> {
+    return this.ledger.trialStatus();
   }
 
   /** `credits` from `quoteTopUp`; `ref` is the Stripe PaymentIntent id. */

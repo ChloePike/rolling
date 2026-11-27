@@ -9,7 +9,7 @@ import { z } from "zod";
 const Line = z.object({
   id: z.string().min(1),
   kind: z.enum(["grant", "purchase", "hold", "settle", "release", "refund", "expire", "adjust"]),
-  bucket: z.enum(["plan", "purchased"]),
+  bucket: z.enum(["plan", "purchased", "trial"]),
   amount: z.number().int(),
   userId: z.string().nullable(),
   runId: z.string().nullable(),

@@ -32,6 +32,7 @@ function holdFromRow(r: Row): HoldRecord {
     credits: num(r.credits),
     fromPlan: num(r.from_plan),
     fromPurchased: num(r.from_purchased),
+    ...(num(r.from_trial) > 0 && { fromTrial: num(r.from_trial) }),
     planExpiresAt: numOrNull(r.plan_expires_at),
     status: String(r.status) as HoldRecord["status"],
     spent: numOrNull(r.spent),
@@ -91,13 +92,17 @@ export class SqlLedgerStore implements LedgerStore {
       seats: Math.max(1, num(r.seats ?? 1)),
       sliceSeats: Math.max(1, num(r.slice_seats ?? 1)),
       grantedPlanId: strOrNull(r.granted_plan_id) as PlanId | null,
+      trial: num(r.trial),
+      trialExpiresAt: numOrNull(r.trial_expires_at),
+      trialGrantedAt: numOrNull(r.trial_granted_at),
     };
   }
 
   putAccount(s: AccountState): void {
     this.sql.exec(
       `UPDATE balance SET plan = ?, purchased = ?, held = ?, plan_expires_at = ?, plan_id = ?, plan_interval = ?,
-         period_start = ?, period_end = ?, auto_topup = ?, auto_topup_seq = ?, seats = ?, slice_seats = ?, granted_plan_id = ? WHERE id = 1`,
+         period_start = ?, period_end = ?, auto_topup = ?, auto_topup_seq = ?, seats = ?, slice_seats = ?, granted_plan_id = ?,
+         trial = ?, trial_expires_at = ?, trial_granted_at = ? WHERE id = 1`,
       s.plan,
       s.purchased,
       s.held,
@@ -111,6 +116,9 @@ export class SqlLedgerStore implements LedgerStore {
       s.seats,
       s.sliceSeats,
       s.grantedPlanId,
+      s.trial,
+      s.trialExpiresAt,
+      s.trialGrantedAt,
     );
   }
 
@@ -124,12 +132,13 @@ export class SqlLedgerStore implements LedgerStore {
       createdAt: num(r.created_at),
       expiresAt: num(r.expires_at),
       runId: strOrNull(r.run_id),
+      ...(num(r.trial) === 1 && { trial: true }),
     };
   }
 
   putQuote(q: StoredQuote): void {
     this.sql.exec(
-      `INSERT INTO quotes (id, items, total, expires_at, created_at, run_id) VALUES (?, ?, ?, ?, ?, ?)
+      `INSERT INTO quotes (id, items, total, expires_at, created_at, run_id, trial) VALUES (?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (id) DO UPDATE SET items = excluded.items, total = excluded.total, expires_at = excluded.expires_at, run_id = excluded.run_id`,
       q.id,
       JSON.stringify(q.items),
@@ -137,6 +146,7 @@ export class SqlLedgerStore implements LedgerStore {
       q.expiresAt,
       q.createdAt,
       q.runId,
+      q.trial ? 1 : 0,
     );
   }
 
@@ -147,8 +157,8 @@ export class SqlLedgerStore implements LedgerStore {
 
   putHold(h: HoldRecord): void {
     this.sql.exec(
-      `INSERT INTO holds (job_id, run_id, user_id, from_plan, from_purchased, created_at, quote_id, item_ref, model_id, credits, plan_expires_at, status, spent, closed_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO holds (job_id, run_id, user_id, from_plan, from_purchased, created_at, quote_id, item_ref, model_id, credits, plan_expires_at, status, spent, closed_at, from_trial)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (job_id) DO UPDATE SET status = excluded.status, spent = excluded.spent, closed_at = excluded.closed_at`,
       h.jobId,
       h.runId,
@@ -164,6 +174,7 @@ export class SqlLedgerStore implements LedgerStore {
       h.status,
       h.spent,
       h.closedAt,
+      h.fromTrial ?? 0,
     );
   }
 

@@ -1,12 +1,15 @@
 /**
  * Exports (canvas-flow step 11): `POST /api/canvases/:id/export` and
  * `GET /api/exports/:id`. Editors and owners of the project's workspace with
- * an active plan (D-007: `402 NO_PLAN`); free of credits for now.
+ * an active plan (D-007: `402 NO_PLAN`), or on the one-time trial up to 720p
+ * (D-022); free of credits for now.
  * Logic in `../exports/service.ts` and `ExportWorkflow`.
  */
 import { Hono, type Context } from "hono";
 import { z } from "zod";
-import { EXPORT_PRESETS } from "@rolling/core/export";
+import { EXPORT_PRESETS, exportShortSide } from "@rolling/core/export";
+import { TRIAL } from "@rolling/core/pricing/config";
+import { grantedTrial } from "../auth/trial";
 import type { AppEnv } from "../env";
 import { projectAccess, requireAuth, roomCaller } from "../lib/access";
 import { ApiError } from "../lib/errors";
@@ -40,9 +43,17 @@ export const canvasExports = new Hono<AppEnv>().post("/:id/export", validate("pa
   const projectId = projectIdForCanvas(canvasId);
   if (!projectId) throw new ApiError(404, "NOT_FOUND", "Canvas not found");
   const { auth, acc } = await access(c, projectId, "editor");
-  if (!acc.membership.plan) throw new ApiError(402, "NO_PLAN", "An active plan is required", { workspaceId: acc.project.workspace_id });
   const body = c.req.valid("json");
   const presets = [body.preset, ...(body.presets ?? [])];
+  if (!acc.membership.plan) {
+    // D-022: a workspace on its trial exports up to 720p; 1080p needs a plan.
+    const trial = await grantedTrial(c.env, acc.project.workspace_id);
+    const live = trial !== null && Date.now() < trial.expiresAt;
+    if (!live) throw new ApiError(402, "NO_PLAN", "An active plan is required", { workspaceId: acc.project.workspace_id, ...(trial && { trial: "expired" }) });
+    if (presets.some((p) => exportShortSide(p) > TRIAL.maxExportShortSide)) {
+      throw new ApiError(402, "NO_PLAN", "Exports above 720p need a plan", { workspaceId: acc.project.workspace_id, trial: "active", feature: "export_1080p" });
+    }
+  }
   const rows = await createExports(c.env, { caller: roomCaller(auth, acc), projectId, canvasId, presets, ...(body.range ? { range: body.range } : {}), ...(body.options ? { options: body.options } : {}) });
   const views = await Promise.all(rows.map((r) => exportView(c.env, r, { mayViewMature: acc.matureAllowed })));
   return c.json({ export: views[0], exports: views }, 201);

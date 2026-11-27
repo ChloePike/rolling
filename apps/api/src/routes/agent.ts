@@ -15,7 +15,8 @@ import { newId } from "@rolling/core/ids";
 import type { AgentCaller, AgentError, ApplyResult, ThreadView, TurnSummary } from "../do/AgentSession";
 import { allowancePeriod, allowanceView } from "../agent/allowance";
 import type { AppEnv } from "../env";
-import { requireMember, requireUser, type AuthContext } from "../auth/context";
+import { requireUser, type AuthContext } from "../auth/context";
+import { requireGenerator, trialAgentTurn, trialAllowanceView } from "../auth/trial";
 import { projectAccess } from "../lib/access";
 import { ApiError } from "../lib/errors";
 import { validate } from "../lib/validate";
@@ -118,11 +119,13 @@ async function proposalThread(c: Context<AppEnv>, auth: AuthContext, proposalId:
 
 export const agent = new Hono<AppEnv>()
   .get("/allowance", async (c) => {
-    const auth = requireMember(c);
+    // Members, or a workspace on its trial (D-022: the trial's own DeepSeek allowance).
+    const auth = await requireGenerator(c);
+    if (auth.trialUntil !== null) return c.json(await trialAllowanceView(c.env, auth.workspaceId, auth.trialUntil));
     return c.json(await allowanceView(c.env, { workspaceId: auth.workspaceId, plan: auth.plan, mature: auth.matureAllowed }));
   })
   .post("/threads", validate("json", CreateThread), async (c) => {
-    const auth = requireMember(c);
+    const auth = await requireGenerator(c);
     const body = c.req.valid("json");
     if ((body.surface === "canvas" || body.surface === "editor") && !body.projectId) {
       throw new ApiError(400, "VALIDATION_FAILED", "Canvas and editor threads need a projectId");
@@ -165,11 +168,13 @@ export const agent = new Hono<AppEnv>()
     return c.json({ thread: ok(await session(c.env, row.id).get(auth.workspaceId)) });
   })
   .post("/threads/:id/messages", validate("param", IdParam), validate("json", SendMessage), async (c) => {
-    const auth = requireMember(c);
+    const auth = await requireGenerator(c);
     const row = await threadRow(c, auth, c.req.valid("param").id);
     const body = c.req.valid("json");
-    const llm = body.llm && PUBLIC_CHAT_MODELS.some((m) => m.id === body.llm) ? body.llm : undefined;
-    if (body.llm && !llm) throw new ApiError(400, "VALIDATION_FAILED", "Unknown agent model", { llm: body.llm });
+    const picked = body.llm && PUBLIC_CHAT_MODELS.some((m) => m.id === body.llm) ? body.llm : undefined;
+    if (body.llm && !picked) throw new ApiError(400, "VALIDATION_FAILED", "Unknown agent model", { llm: body.llm });
+    // D-022: a trial plans with DeepSeek only, within the trial's agent allowance.
+    const llm = await trialAgentTurn(c, auth, picked);
     if (row.project_id) await projectAccess(c, auth, row.project_id);
     const allowance = await allowancePeriod(c.env, auth.workspaceId, auth.plan);
     const turnId = newId("event");
@@ -207,7 +212,7 @@ export const agent = new Hono<AppEnv>()
   })
   .get("/threads/:id/ws", validate("param", IdParam), async (c) => {
     if (c.req.header("Upgrade")?.toLowerCase() !== "websocket") throw new ApiError(426, "BAD_REQUEST", "Expected WebSocket upgrade");
-    const auth = requireMember(c);
+    const auth = await requireGenerator(c);
     const row = await threadRow(c, auth, c.req.valid("param").id);
     const h = new Headers(c.req.raw.headers);
     h.set("x-workspace-id", auth.workspaceId);
@@ -219,7 +224,7 @@ export const agent = new Hono<AppEnv>()
     validate("param", IdParam),
     validate("json", z.object({ optionIndex: z.number().int().min(0).max(2).optional(), title: z.string().trim().min(1).max(120).optional() })),
     async (c) => {
-      const auth = requireMember(c);
+      const auth = await requireGenerator(c);
       const proposalId = c.req.valid("param").id;
       const threadId = await proposalThread(c, auth, proposalId);
       const body = c.req.valid("json");

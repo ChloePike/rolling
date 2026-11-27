@@ -5,7 +5,8 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { PromptSpecSchema } from "@rolling/core/generation";
-import { requireMember, requireRole, requireUser } from "../auth/context";
+import { requireRole, requireUser } from "../auth/context";
+import { requireGenerator } from "../auth/trial";
 import type { AppEnv } from "../env";
 import { projectAccess, roomCaller } from "../lib/access";
 import { ApiError } from "../lib/errors";
@@ -65,7 +66,8 @@ export const runs = new Hono<AppEnv>()
   })
   .post("/", validate("json", StartBody), async (c) => {
     requireRole(c, "editor");
-    const auth = requireMember(c);
+    // Members, or a workspace on its one-time trial (D-022).
+    const auth = await requireGenerator(c);
     const { quoteId, options } = c.req.valid("json");
     return c.json(await startRun(c.env, auth, quoteId, options ?? {}), 201);
   })

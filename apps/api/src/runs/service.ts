@@ -117,6 +117,8 @@ const LEDGER_BLOCK: Record<string, { code: string; reason: string }> = {
   unknown_model: { code: "unknown_model", reason: "This model is not available." },
   unpriced: { code: "unpriced", reason: "This model has no price for these settings." },
   resolution_locked: { code: "resolution_locked", reason: "This resolution needs a higher plan." },
+  // D-022: a trial runs a curated set of cheap models at capped settings.
+  trial_locked: { code: "trial_locked", reason: "The trial doesn’t include this. Pick a plan to use it." },
 };
 
 /**
@@ -278,7 +280,7 @@ export async function quoteRun(env: Env, auth: AuthContext, req: QuoteRequest): 
     }
   } else {
     const b = await credits.balance();
-    balance = b.plan + b.purchased;
+    balance = b.plan + b.purchased + (b.trial ?? 0);
   }
   const total = stored.reduce((s, i) => s + (i.action === "run" ? i.credits : 0), 0);
   if (quoteId) {
@@ -322,8 +324,13 @@ export async function startRun(
   const total = items.reduce((s, i) => s + i.credits, 0);
   const credits = ports(env).credits(auth.workspaceId);
   const b = await credits.balance();
-  if (total > b.plan + b.purchased) {
-    throw new ApiError(402, "INSUFFICIENT_CREDITS", "Not enough credits", { needed: total, balance: b.plan + b.purchased });
+  // D-022: non-members get here only on a trial, which spends trial credits alone; when they run out the
+  // answer is a plan (the join paywall), never a top-up.
+  if (!auth.isMember && total > (b.trial ?? 0)) {
+    throw new ApiError(402, "NO_PLAN", "The trial credits are used up", { workspaceId: auth.workspaceId, trial: "used", needed: total, balance: b.trial ?? 0 });
+  }
+  if (total > b.plan + b.purchased + (b.trial ?? 0)) {
+    throw new ApiError(402, "INSUFFICIENT_CREDITS", "Not enough credits", { needed: total, balance: b.plan + b.purchased + (b.trial ?? 0) });
   }
   // Staging-only failure injection (canvas golden path, step 7).
   const options: RunOptions & ServerRunOptions = { ...(env.ENVIRONMENT === "production" ? {} : rawOptions), ...serverOptions };
@@ -371,7 +378,9 @@ export async function startRun(
 
   const result = await advanceRun(env, runId);
   if (result.started === 0 && result.firstError && LEDGER_API[result.firstError.code]) {
-    const [status, code] = LEDGER_API[result.firstError.code]!;
+    // A trial that cannot cover the run answers like no plan (D-022).
+    const trialUsed = result.firstError.code === "INSUFFICIENT_CREDITS" && result.firstError.data.trial !== undefined;
+    const [status, code] = trialUsed ? ([402, "NO_PLAN"] as const) : LEDGER_API[result.firstError.code]!;
     // Nothing started: surface the ledger refusal (the run is recorded as failed).
     throw new ApiError(status, code, result.firstError.message, { runId, ...result.firstError.data });
   }
@@ -572,9 +581,17 @@ export async function advanceStalledRuns(env: Env, now = Date.now()): Promise<{ 
 }
 
 /** Live balance push (D-003): the user socket and, for canvas runs, the project socket. */
-export async function pushCredits(env: Env, run: Pick<RunRow, "created_by" | "project_id" | "workspace_id">, balance: { plan: number; purchased: number; held: number }): Promise<void> {
+export async function pushCredits(env: Env, run: Pick<RunRow, "created_by" | "project_id" | "workspace_id">, balance: { plan: number; purchased: number; held: number; trial?: number }): Promise<void> {
   // workspaceId lets clients with several workspaces apply the balance to the right one.
-  const payload = { workspaceId: run.workspace_id, balance: balance.plan + balance.purchased, held: balance.held, plan: balance.plan, purchased: balance.purchased };
+  const trial = balance.trial ?? 0;
+  const payload = {
+    workspaceId: run.workspace_id,
+    balance: balance.plan + balance.purchased + trial,
+    held: balance.held,
+    plan: balance.plan,
+    purchased: balance.purchased,
+    ...(balance.trial !== undefined && { trial }),
+  };
   const p = ports(env);
   await quietly("credits.changed hub", () => p.hub(run.created_by).broadcast("credits.changed", payload));
   if (run.project_id) await quietly("credits.changed room", () => p.room(run.project_id!).broadcast("credits.changed", payload));

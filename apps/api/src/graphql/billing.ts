@@ -52,7 +52,7 @@ export const billingTypeDefs = /* GraphQL */ `
     id: ID!
     "grant, purchase, hold, settle, release, refund, expire or adjust."
     kind: String!
-    "plan or purchased."
+    "plan, purchased or trial (D-022)."
     bucket: String!
     "Signed credits (see docs/api.md)."
     amount: Int!

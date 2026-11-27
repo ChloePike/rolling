@@ -16,6 +16,7 @@ import { newId, type IdKind } from "@rolling/core/ids";
 import { languageFromAcceptLanguage } from "@rolling/core/auth/prefs";
 import { emailProviderName, enqueueEmail } from "./email";
 import { onUserCreated } from "./workspace";
+import { claimTrial, markTrialPending, trialRequestInfo } from "./trial";
 import { purgeAccount } from "./deleteAccount";
 import { googleAccessToken } from "./googleAccessToken";
 
@@ -174,6 +175,18 @@ async function buildAuth(env: Env) {
               name: user.name,
               acceptLanguage: ctx?.headers?.get("accept-language") ?? ctx?.request?.headers.get("accept-language") ?? null,
             });
+            // D-022: brand-new users get a pending trial claim, decided at their first session.
+            await markTrialPending(env, user.id).catch((err) => console.error(JSON.stringify({ msg: "trial: pending failed", userId: user.id, error: String(err) })));
+          },
+        },
+      },
+      session: {
+        create: {
+          after: async (session, ctx) => {
+            // D-022: the first session of a new user (email verified by its code, or Google) decides the trial.
+            await claimTrial(env, session.userId, trialRequestInfo(ctx?.headers ?? ctx?.request?.headers)).catch((err) =>
+              console.error(JSON.stringify({ msg: "trial: claim failed", userId: session.userId, error: String(err) })),
+            );
           },
         },
       },

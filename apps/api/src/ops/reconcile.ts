@@ -46,7 +46,9 @@ export async function reconcileWorkspace(env: Env, workspaceId: string, cutoff: 
   const doTotals = audit.before?.totals ?? { plan: 0, purchased: 0, held: 0 };
   const diff = { plan: doTotals.plan - d1.plan, purchased: doTotals.purchased - d1.purchased, held: doTotals.held - d1.held };
   const doLines = audit.before?.lines ?? 0;
-  const mirrorOk = doLines === rows.results.length && diff.plan === 0 && diff.purchased === 0 && diff.held === 0;
+  // Trial bucket (D-022): checked too, kept out of `diff` (the report shape stays the same).
+  const trialDiff = ((audit.before?.totals as { trial?: number } | undefined)?.trial ?? 0) - d1.trial;
+  const mirrorOk = doLines === rows.results.length && diff.plan === 0 && diff.purchased === 0 && diff.held === 0 && trialDiff === 0;
   const status: ReconcileStatus = !audit.ok ? "balance_mismatch" : mirrorOk ? "ok" : "mirror_mismatch";
   return { workspaceId, status, doLines, d1Lines: rows.results.length, diff };
 }

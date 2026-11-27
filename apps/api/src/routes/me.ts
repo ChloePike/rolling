@@ -16,6 +16,7 @@ import type { AppEnv } from "../env";
 import { requireUser, type AuthContext } from "../auth/context";
 import { ApiError } from "../lib/errors";
 import { validate } from "../lib/validate";
+import { trialView } from "../auth/trial";
 
 export interface BalanceView {
   plan: number;
@@ -26,8 +27,8 @@ export interface BalanceView {
 
 const ZERO_BALANCE: BalanceView = { plan: 0, purchased: 0, held: 0, planExpiresAt: null };
 
-/** CreditAccount (billing agent) `balance()` RPC when available; zeros otherwise. */
-async function readBalance(env: Env, workspaceId: string): Promise<BalanceView> {
+/** CreditAccount (billing agent) `balance()` RPC when available; zeros otherwise. `trial`: trial credits left (D-022), kept out of `balance`. */
+async function readBalance(env: Env, workspaceId: string): Promise<BalanceView & { trial?: number }> {
   try {
     const stub = env.CREDITS.get(env.CREDITS.idFromName(workspaceId)) as unknown as { balance?: () => Promise<Partial<BalanceView>> };
     if (typeof stub.balance !== "function") return ZERO_BALANCE;
@@ -37,6 +38,7 @@ async function readBalance(env: Env, workspaceId: string): Promise<BalanceView> 
       purchased: Number(b?.purchased ?? 0),
       held: Number(b?.held ?? 0),
       planExpiresAt: typeof b?.planExpiresAt === "number" ? b.planExpiresAt : null,
+      ...(typeof (b as { trial?: unknown })?.trial === "number" && { trial: (b as { trial: number }).trial }),
     };
   } catch {
     return ZERO_BALANCE;
@@ -101,7 +103,9 @@ export async function mePayload(env: Env, auth: AuthContext) {
     plan: planView(sub ?? null),
     isMember: auth.isMember,
     matureAllowed: auth.matureAllowed,
-    balance,
+    balance: { plan: balance.plan, purchased: balance.purchased, held: balance.held, planExpiresAt: balance.planExpiresAt },
+    // D-022: the one-time trial (null when the workspace never had one).
+    trial: await trialView(env, auth.workspaceId, balance).catch(() => null),
   };
 }
 

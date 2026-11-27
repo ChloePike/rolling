@@ -35,6 +35,7 @@ import { trust } from "./routes/trust";
 import { status } from "./routes/status";
 import { trackRequest } from "./ops/metrics";
 import { routeGroup } from "@rolling/core/ops/metrics";
+import { adminTrial } from "./routes/adminTrial";
 import { projects, nodes, canvases } from "./routes/projects";
 import { canvasExports, exportsRoute } from "./routes/exports";
 import { assetPost, brandKit, canvasPost, postJobs } from "./routes/post";
@@ -122,6 +123,8 @@ const api = new Hono<AppEnv>()
   .route("/test", testInbox)
   .route("/test", testPlan)
   .route("/admin", adminGrant)
+  // D-022 trial grant (ADMIN_TOKEN), before the console like `/admin/grant`.
+  .route("/admin", adminTrial)
   // Admin console (D-025): staff session or ADMIN_TOKEN; registered after `/admin/grant`, which keeps its own contract.
   .route("/admin", adminConsole)
   .route("/trust", trust)
