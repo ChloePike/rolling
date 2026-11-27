@@ -3,6 +3,7 @@
  * can send is checked with these before anything runs. Written with zod/v4 so
  * the JSON Schema sent to the model comes from the same definition.
  */
+import { CAMERA_ANGLES, CAMERA_MOVES, SHOT_SIZES } from '@rolling/core/prompting';
 import { z } from 'zod/v4';
 
 const Id = z.string().min(1).max(80);
@@ -48,16 +49,54 @@ export const TimelineGetInput = z.object({ canvasId: Id });
 
 // ---------------------------------------------------------------- propose tools
 
+/** Marks a property the model is not shown (still accepted when sent). */
+const HIDDEN = '@hidden';
+
+export const ShotCameraInput = z.object({
+  size: z.enum(SHOT_SIZES).optional().describe('Shot size'),
+  angle: z.enum(CAMERA_ANGLES).optional(),
+  move: z.enum(CAMERA_MOVES).optional().describe('One camera move for the whole shot; static when the camera should not move'),
+  lens: z.string().max(80).optional().describe('Lens or focus note, e.g. "85mm, shallow depth of field"'),
+});
+
+export const ShotDialogueInput = z.object({
+  speaker: z.string().min(1).max(40).describe('Character name, exactly as in characters'),
+  line: z.string().min(1).max(300).describe('The exact words, in the language they are spoken in, without quotes'),
+  tone: z.string().max(60).optional().describe('Delivery in a word or two, e.g. calm, laughing'),
+});
+
+/** The parts of a shot. The server writes the prompt each model reads best from them. */
+export const ShotFieldsInput = {
+  subject: z.string().min(1).max(400).optional().describe('Who or what we see, in English, with the visible details that matter. Name recurring characters by name only: their look comes from characters'),
+  action: z.string().min(1).max(400).optional().describe('What happens, in English, as one sentence naming who does what: one or two beats that fit the shot length'),
+  setting: z.string().max(300).optional().describe('Where and when, in English'),
+  camera: ShotCameraInput.optional(),
+  lighting: z.string().max(200).optional().describe('Light source, quality and color, in English'),
+  cast: z.array(z.string().min(1).max(40)).max(5).optional().describe('Names from characters that appear in this shot'),
+  dialogue: z.array(ShotDialogueInput).max(3).optional().describe('Words spoken on camera in this shot. Only on a model with audio; about 2 words per second'),
+  sound: z.string().max(200).optional().describe('Ambience and sound effects, in English. Only on a model with audio'),
+  text: z.string().max(80).optional().describe('On-screen text that must read exactly (a logo line, a sign)'),
+} as const;
+
 export const PlanShot = z.object({
   title: z.string().min(1).max(80),
-  seconds: z.number().positive().max(60),
-  visual: z.string().min(1).max(600).describe('What we see, in English, written as a generation prompt'),
-  line: z.string().max(400).optional().describe('Voiceover or caption line, in the user language'),
-  model: Id.describe('Video model id from models.capabilities'),
+  seconds: z.number().positive().max(60).describe('Whole seconds inside the model range'),
+  ...ShotFieldsInput,
+  visual: z.string().min(1).max(600).optional().describe(HIDDEN),
+  line: z.string().max(400).optional().describe('Voiceover or caption for this shot, in the user language; goes to the script and captions, not into the picture'),
+  model: Id.describe('Video model id, exactly as models.capabilities lists it'),
+});
+
+export const PlanCharacter = z.object({
+  name: z.string().min(1).max(40),
+  look: z.string().min(1).max(240).describe('Fixed look in English: age band, build, face, hair. Adults unless the user says otherwise'),
+  wardrobe: z.string().max(200).optional().describe('Outfit and props for this video, in English'),
 });
 
 export const PlanOption = z.object({
   title: z.string().min(1).max(80),
+  look: z.string().max(200).optional().describe('Look of the whole video in English (medium, palette, grade); applied to every shot'),
+  characters: z.array(PlanCharacter).max(5).optional().describe('Recurring characters. Each is described once here and reused word for word in every shot that lists it in cast'),
   shots: z.array(PlanShot).min(1).max(12),
   estimate: z.number().int().nonnegative().optional().describe('Ignored: the server computes the estimate'),
   ratio: z.string().min(3).max(12).describe('Aspect ratio for every shot: 9:16 vertical, 16:9 widescreen, 1:1 square'),
@@ -81,10 +120,15 @@ export const AgentGraphOp = z.discriminatedUnion('op', [
     tempId: z.string().min(1).max(40).describe('Short temp id like t1, referenced by later ops'),
     kind: z.enum(NODE_KINDS),
     title: z.string().max(200),
-    params: Params,
+    params: Params.describe('Video: shot {subject, action, setting?, camera?, lighting?, style?, characters?, dialogue?, sound?, text?} or prompt, plus model, mode, seconds, resolution, ratio, audio. Image: shot or prompt, plus model, mode, ratio, count'),
     position: XY.optional(),
   }),
-  z.object({ op: z.literal('updateNode'), nodeId: Id, params: Params, title: z.string().max(200).optional() }),
+  z.object({
+    op: z.literal('updateNode'),
+    nodeId: Id,
+    params: Params.describe('Only what changes. On a node that has a shot, send shot with just the fields that change (the server merges them and rewrites the prompt); otherwise send prompt'),
+    title: z.string().max(200).optional(),
+  }),
   z.object({ op: z.literal('connect'), from: PortRef, to: PortRef }),
   z.object({ op: z.literal('disconnect'), edgeId: Id }),
   z.object({ op: z.literal('removeNode'), nodeId: Id }),
@@ -187,6 +231,7 @@ function strip(value: unknown): unknown {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
     if (k === '$schema') continue;
+    if (v && typeof v === 'object' && (v as { description?: unknown }).description === HIDDEN) continue;
     if ((k === 'maximum' || k === 'minimum') && typeof v === 'number' && Math.abs(v) >= Number.MAX_SAFE_INTEGER) continue;
     if (k === 'propertyNames') continue;
     out[k] = strip(v);

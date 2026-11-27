@@ -41,6 +41,7 @@ const SendMessage = z.object({
       videoModel: z.string().max(120).nullable().optional(),
       ratio: z.enum(["9:16", "16:9", "1:1", "4:3", "3:4", "21:9"]).optional(),
       seconds: z.number().int().min(1).max(600).optional(),
+      resolution: z.string().max(12).optional(),
     })
     .optional(),
 });

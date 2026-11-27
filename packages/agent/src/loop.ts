@@ -159,6 +159,32 @@ export async function runTurn(opts: RunTurnOptions): Promise<TurnResult> {
       let callText = '';
       const calls: ToolCall[] = [];
       let failure: { code: string; message: string; retryable: boolean } | null = null;
+      // Text written ahead of a read tool is narration ("Checking the models"): it is never shown or stored. Text is
+      // held until the call shows what it is: a read tool drops it, a propose tool or the end of the call shows it.
+      let held = '';
+      let narration = false;
+      let shown = false;
+      const show = (delta: string) => {
+        if (!delta) return;
+        if (!shown && text && !/\s$/.test(text)) {
+          // Separate replies of consecutive calls in one turn.
+          text += '\n\n';
+          emit({ type: 'agent.delta', ...base, delta: '\n\n' });
+        }
+        shown = true;
+        text += delta;
+        emit({ type: 'agent.delta', ...base, delta });
+      };
+      const decide = (toolName: string) => {
+        if (narration) return;
+        if (getTool(toolName)?.kind === 'read') {
+          narration = true;
+          held = '';
+        } else {
+          show(held);
+          held = '';
+        }
+      };
       try {
         for await (const ev of opts.llm.chat({
           model: llm.gatewayId,
@@ -175,15 +201,13 @@ export async function runTurn(opts: RunTurnOptions): Promise<TurnResult> {
         })) {
           if (opts.signal?.aborted) throw new Canceled();
           if (ev.type === 'text') {
-            if (!callText && text && !/\s$/.test(text)) {
-              // Separate replies of consecutive calls in one turn.
-              text += '\n\n';
-              emit({ type: 'agent.delta', ...base, delta: '\n\n' });
-            }
             callText += ev.delta;
-            text += ev.delta;
-            emit({ type: 'agent.delta', ...base, delta: ev.delta });
+            if (textOnly) show(ev.delta);
+            else held += ev.delta;
+          } else if (ev.type === 'tool_call_delta') {
+            if (ev.name) decide(ev.name);
           } else if (ev.type === 'tool_call') {
+            decide(ev.call.name);
             calls.push(ev.call);
           } else if (ev.type === 'usage') {
             addUsage(ev.usage);
@@ -192,11 +216,17 @@ export async function runTurn(opts: RunTurnOptions): Promise<TurnResult> {
           }
         }
       } catch (err) {
-        if (err instanceof Canceled || opts.signal?.aborted) throw new Canceled();
+        if (err instanceof Canceled || opts.signal?.aborted) {
+          // A stopped turn keeps what was written so far.
+          if (!narration) show(held);
+          throw new Canceled();
+        }
         const e = err as { code?: string; message?: string; retryable?: boolean };
         failure = { code: e.code ?? 'llm_error', message: e.message ?? String(err), retryable: e.retryable ?? true };
       }
-      if (!failure) return { text: callText, toolCalls: calls };
+      if (!narration) show(held);
+      held = '';
+      if (!failure) return { text: narration ? '' : callText, toolCalls: calls };
       if (attempt === 0 && failure.retryable && !callText && !calls.length) continue;
       throw Object.assign(new Error(failure.message), { code: failure.code });
     }
@@ -263,6 +293,7 @@ export async function runTurn(opts: RunTurnOptions): Promise<TurnResult> {
           now,
           refs: ctx.refs,
           userText: input.text,
+          ...(input.settings ? { settings: input.settings } : {}),
         });
         if (result.ok) {
           proposal = result.proposal;

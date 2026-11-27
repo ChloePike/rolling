@@ -49,7 +49,10 @@ describe('runTurn', () => {
     expect(result.toolCalls).toBe(2);
     expect(result.llmCalls).toBe(2);
     expect(llm.requests).toHaveLength(2);
-    expect(result.text).toBe('Checking models. Here are two options.');
+    // Text written ahead of a read tool is narration: never shown, stored or sent back to the model.
+    expect(result.text).toBe('Here are two options.');
+    expect(events.filter((e) => e.type === 'agent.delta').map((e) => (e as { delta: string }).delta).join('')).toBe('Here are two options.');
+    expect(llm.requests[1]!.messages.find((m) => m.role === 'assistant')).toMatchObject({ content: null });
     expect(result.assistantMessage.proposalId).toBe(result.proposal!.id);
     // Second request carries the read tool result.
     const toolMsg = llm.requests[1]!.messages.find((m) => m.role === 'tool');

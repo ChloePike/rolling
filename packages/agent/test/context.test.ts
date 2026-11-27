@@ -36,7 +36,7 @@ describe('buildContext', () => {
   it('has the system prompt, skill, account, workspace and the user message', async () => {
     const ctx = await buildContext({ thread: thread(), input: { text: 'make shot 2 warmer', refs: [PRODUCT_PHOTO.id], selection: ['node_shot2'] }, account: world.account, ports, tools });
     const system = ctx.messages[0]!.content as string;
-    expect(system).toContain('# Rules');
+    expect(system).toContain('# Reply');
     expect(system).toContain('# TV ad');
     expect(system).toContain('"plan":"plus"');
     expect(system).toContain('Canvas revision: 7');

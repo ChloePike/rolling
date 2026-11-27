@@ -3,6 +3,7 @@
  */
 import type { LocalOp } from '@rolling/core/graph';
 import type { TimelineOp } from '@rolling/core/timeline';
+import type { ShotCharacter, ShotSpec } from '@rolling/core/prompting';
 import type { FieldTool } from './tools/schemas';
 
 export type Surface = 'home' | 'canvas' | 'editor' | 'tool';
@@ -41,16 +42,25 @@ export interface PlanShotOut {
   n: number;
   title: string;
   seconds: number;
+  /** The shot as neutral English prose (the node prompt and the script row). */
   visual: string;
+  /** The structured shot `visual` was written from; absent for a free-text shot. */
+  shot?: ShotSpec;
   line?: string;
   model: string;
   mode: 't2v' | 'i2v';
   resolution: string | null;
+  /** The clip is made with sound (speech or sound effects on an audio model). */
+  audio?: boolean;
   credits: number;
 }
 
 export interface PlanOptionOut {
   title: string;
+  /** Look shared by every shot. */
+  look?: string;
+  /** Recurring characters: the same descriptor in every shot they appear in. */
+  characters?: ShotCharacter[];
   ratio: string;
   resolution: string | null;
   seconds: number;

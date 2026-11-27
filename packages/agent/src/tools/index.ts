@@ -127,7 +127,8 @@ export const TOOLS: readonly ToolSpec[] = [
   {
     name: 'canvas.get',
     kind: 'read',
-    description: 'Nodes (kind, title, params, version, status, cost), edges and the current revision of a project canvas.',
+    description:
+      'Read the canvas before a graph patch: nodes (id, kind, title, params including shot and prompt, version, status, cost), edges with their ids, and the revision to pass as baseRevision. Pass nodeIds to get only those nodes in full.',
     input: CanvasGetInput,
     surfaces: PROJECT,
     run: async (input: z.infer<typeof CanvasGetInput>, ctx: ToolContext) => {
@@ -139,7 +140,7 @@ export const TOOLS: readonly ToolSpec[] = [
   {
     name: 'script.get',
     kind: 'read',
-    description: 'Scenes and shots of a script node.',
+    description: 'Rows of one script node (shot number, title, visual, line, seconds). Use it when the user refers to the script; canvas.get already lists the script node.',
     input: ScriptGetInput,
     surfaces: PROJECT,
     run: async (input: z.infer<typeof ScriptGetInput>, ctx: ToolContext) => {
@@ -154,7 +155,8 @@ export const TOOLS: readonly ToolSpec[] = [
   {
     name: 'assets.search',
     kind: 'read',
-    description: 'Search assets: uploads, team, built-in and the public library (poses, outfits, scenes). Returns id, name, kind, source, license.',
+    description:
+      'Find pictures, clips or audio by words: the user\'s uploads, team files, built-in items and the public library (poses, outfits, scenes). Returns up to 12 items with id, name, kind, source and license. Use it only when the user asks for an existing asset; `@` references are already resolved in the context.',
     input: AssetsSearchInput,
     surfaces: ALL,
     run: async (input: z.infer<typeof AssetsSearchInput>, ctx: ToolContext) => ({
@@ -164,7 +166,7 @@ export const TOOLS: readonly ToolSpec[] = [
   {
     name: 'characters.list',
     kind: 'read',
-    description: 'Saved characters of the workspace.',
+    description: 'Saved characters of the workspace (id, name, description). Call it when the brief names a character or asks for "my character"; reuse the saved description word for word in characters.',
     input: EmptyInput,
     surfaces: ALL,
     run: async (_input: unknown, ctx: ToolContext) => ({ items: await ctx.ports.assets.characters() }),
@@ -172,7 +174,7 @@ export const TOOLS: readonly ToolSpec[] = [
   {
     name: 'voices.list',
     kind: 'read',
-    description: 'Voices of the workspace.',
+    description: 'Saved voices of the workspace (id, name, description), for the avatar form.',
     input: EmptyInput,
     surfaces: ALL,
     run: async (_input: unknown, ctx: ToolContext) => ({ items: await ctx.ports.assets.voices() }),
@@ -180,7 +182,8 @@ export const TOOLS: readonly ToolSpec[] = [
   {
     name: 'models.capabilities',
     kind: 'read',
-    description: 'Models for a kind with modes, lengths, resolutions this plan allows, ratios and credits.',
+    description:
+      'Models the user can use for a kind, default first: id (use it exactly), modes, seconds range (whole seconds), resolutions this plan allows, ratios, audio (true = it can voice dialogue and sound), and creditsPer5s or creditsPerImage per resolution for comparing cost. Call it once before choosing models for a plan or a new node.',
     input: ModelsCapabilitiesInput,
     surfaces: ALL,
     run: modelsCapabilities as ToolSpec['run'],
@@ -188,7 +191,8 @@ export const TOOLS: readonly ToolSpec[] = [
   {
     name: 'pricing.estimate',
     kind: 'read',
-    description: 'Credits per item and total for planned runs, with the balance after.',
+    description:
+      'Credits for runs you describe (model, kind, seconds, resolution, count), with the total and the balance after. Not needed for plans or graph patches: the server prices those. Use it when the user asks what something would cost.',
     input: PricingEstimateInput,
     surfaces: ALL,
     run: pricingEstimate as ToolSpec['run'],
@@ -196,7 +200,7 @@ export const TOOLS: readonly ToolSpec[] = [
   {
     name: 'account.get',
     kind: 'read',
-    description: 'Plan, balance (plan, purchased, held), confirm threshold, creation mode and language.',
+    description: 'Plan, credit balance (plan, purchased, held, available), confirm threshold, creation mode and language. The same snapshot is already in the context; call it only after the user says the balance changed.',
     input: EmptyInput,
     surfaces: ALL,
     run: async (_input: unknown, ctx: ToolContext) => accountView(ctx.account),
@@ -204,7 +208,7 @@ export const TOOLS: readonly ToolSpec[] = [
   {
     name: 'templates.search',
     kind: 'read',
-    description: 'Templates with their slots.',
+    description: 'Built-in templates matching a few words, with the slots the user fills (product photo, logo, tagline). Use it when the user asks for a template.',
     input: TemplatesSearchInput,
     surfaces: ['home', 'canvas'],
     run: async (input: z.infer<typeof TemplatesSearchInput>, ctx: ToolContext) => ({ items: await ctx.ports.templates.search(input.query, 8) }),
@@ -212,7 +216,7 @@ export const TOOLS: readonly ToolSpec[] = [
   {
     name: 'timeline.get',
     kind: 'read',
-    description: 'EDL summary of a canvas: tracks, clips with ids and times, gaps, duration and revision.',
+    description: 'Read the timeline before a timeline patch: tracks, clips with ids, start and end times, gaps, total duration, and the revision to pass as baseRevision.',
     input: TimelineGetInput,
     surfaces: ['editor'],
     run: async (input: z.infer<typeof TimelineGetInput>, ctx: ToolContext) => {
@@ -224,21 +228,22 @@ export const TOOLS: readonly ToolSpec[] = [
     name: 'propose.plan',
     kind: 'propose',
     description:
-      'Propose 2-3 plan options for a brief. Each option lists shots with seconds, an English visual prompt, an optional line and a video model. The server computes estimates. Building nodes from a plan is free.',
+      'Propose 2-3 plan options for a brief. An option has a ratio, an optional look and characters shared by its shots, and shots made of fields (subject, action, setting, camera, lighting, cast, dialogue, sound, line) with whole seconds and a video model. The server writes each model\'s prompt from the fields, checks lengths, pacing, cast and the prompt box settings, prices every option and builds the nodes. An error names what to fix. Building nodes from a plan is free.',
     input: ProposePlanInput,
     surfaces: ['home', 'canvas'],
   },
   {
     name: 'propose.graphPatch',
     kind: 'propose',
-    description: 'Propose canvas changes as GraphOps against baseRevision. Applying is free; running changed nodes costs credits later.',
+    description:
+      'Propose canvas changes as GraphOps against the revision canvas.get returned. Change a planned shot through params.shot with only the fields that change; the server merges them, rewrites the prompt and prices the nodes that need a new run. Applying is free; running changed nodes costs credits later.',
     input: ProposeGraphPatchInput,
     surfaces: ['canvas'],
   },
   {
     name: 'propose.timelinePatch',
     kind: 'propose',
-    description: 'Propose timeline edits as TimelineOps against baseRevision. Free: no regeneration.',
+    description: 'Propose timeline edits (trim, move, split, remove, gain, captions, speed, fades, dissolves) as TimelineOps against the revision timeline.get returned. The result may not overlap clips on a track. Free: nothing is regenerated.',
     input: ProposeTimelinePatchInput,
     surfaces: ['editor'],
   },

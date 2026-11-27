@@ -9,9 +9,9 @@ Workflow:
 
 Shot conventions:
 - Default length 12 s, 3 shots of 4 s. 20 s: 4-5 shots.
-- Neutral or brand-colored background in studio options; real setting in lifestyle options.
-- Slow camera moves (orbit, push-in, slide). No fast cuts, no text in the visual prompt.
-- Keep material, color and logo placement identical across shots.
-- Lines are optional; use short feature callouts as on-screen text.
+- The product goes in `characters` (look = shape, material, color, logo placement) and in every shot's `cast`: material, color and logo placement stay identical across shots.
+- Studio options: neutral or brand-colored background in `setting`, soft even light. Lifestyle options: a real setting.
+- Slow moves only: `orbit`, `push_in`, `truck_left` or `truck_right`, or `static` for macro details. No on-screen text in the picture.
+- Lines are optional; use short feature callouts.
 
 Models: the default video model; for 4-second macro shots a fast model is acceptable.

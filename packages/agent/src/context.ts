@@ -51,6 +51,8 @@ export interface TurnSettings {
   ratio?: string;
   /** Total length in seconds. */
   seconds?: number;
+  /** Video resolution, e.g. 720p. */
+  resolution?: string;
 }
 
 /** The prompt box settings as one context line; null when there are none. */
@@ -59,9 +61,10 @@ export function settingsSection(s: TurnSettings | undefined): string | null {
   const parts: string[] = [];
   if (s.ratio) parts.push(`aspect ratio ${s.ratio}`);
   if (s.seconds) parts.push(`total length ${s.seconds} s`);
+  if (s.resolution) parts.push(`resolution ${s.resolution}`);
   if (s.videoModel !== undefined) parts.push(s.videoModel ? `video model ${s.videoModel}` : 'video model Auto (the default one)');
   if (!parts.length) return null;
-  return `# Prompt box settings\nThe user picked ${parts.join(', ')} on the prompt box. Use these in plans unless the brief asks for something else.`;
+  return `# Prompt box settings\nThe user picked ${parts.join(', ')} on the prompt box. Every plan option uses these unless the brief itself names a different one; the server checks.`;
 }
 
 export interface BuiltContext {
