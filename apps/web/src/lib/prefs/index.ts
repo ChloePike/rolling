@@ -88,6 +88,12 @@ export interface Prefs {
   notifyPlanRenewal: boolean;
   /** Product updates (server `notifications.product`). */
   notifyProductUpdates: boolean;
+  /** D-031: new comments in threads you are in (server `notifications.comments`). */
+  notifyComments: boolean;
+  /** D-031: @mentions, in-app and email (server `notifications.mentions`). */
+  notifyMentions: boolean;
+  /** D-031: client review decisions and comments (server `notifications.reviews`). */
+  notifyReviews: boolean;
   theme: ThemePref;
   /** Runs quoted below this many credits start without the run confirm (0 = always confirm). */
   confirmThreshold: number;
@@ -109,6 +115,9 @@ export const DEFAULT_PREFS: Prefs = {
   notifyCreditsLow: true,
   notifyPlanRenewal: true,
   notifyProductUpdates: false,
+  notifyComments: true,
+  notifyMentions: true,
+  notifyReviews: true,
   theme: 'system',
   confirmThreshold: DEFAULT_CONFIRM_THRESHOLD_CREDITS,
   matureContent: false,
@@ -161,6 +170,9 @@ function parse(creationRaw: string | null, languageRaw: string | null, rest: str
     notifyCreditsLow: typeof o.notifyCreditsLow === 'boolean' ? o.notifyCreditsLow : DEFAULT_PREFS.notifyCreditsLow,
     notifyPlanRenewal: typeof o.notifyPlanRenewal === 'boolean' ? o.notifyPlanRenewal : DEFAULT_PREFS.notifyPlanRenewal,
     notifyProductUpdates: typeof o.notifyProductUpdates === 'boolean' ? o.notifyProductUpdates : DEFAULT_PREFS.notifyProductUpdates,
+    notifyComments: typeof o.notifyComments === 'boolean' ? o.notifyComments : DEFAULT_PREFS.notifyComments,
+    notifyMentions: typeof o.notifyMentions === 'boolean' ? o.notifyMentions : DEFAULT_PREFS.notifyMentions,
+    notifyReviews: typeof o.notifyReviews === 'boolean' ? o.notifyReviews : DEFAULT_PREFS.notifyReviews,
     theme: oneOf(THEME_OPTIONS, o.theme, DEFAULT_PREFS.theme),
     confirmThreshold: threshold,
     matureContent: o.matureContent === true,
@@ -270,7 +282,7 @@ export interface ServerPrefsShape {
   defaultRatio: string;
   defaultModel: string;
   confirmThreshold: number;
-  notifications: { done: boolean; low: boolean; renewal: boolean; product: boolean };
+  notifications: { done: boolean; low: boolean; renewal: boolean; product: boolean; comments?: boolean; mentions?: boolean; reviews?: boolean };
   theme: ThemePref;
   matureContent: boolean;
   /** D-020; absent from servers before it (defaults on). */
@@ -298,6 +310,9 @@ export function fromServerPrefs(p: ServerPrefsShape): Prefs {
     notifyCreditsLow: p.notifications?.low ?? DEFAULT_PREFS.notifyCreditsLow,
     notifyPlanRenewal: p.notifications?.renewal ?? DEFAULT_PREFS.notifyPlanRenewal,
     notifyProductUpdates: p.notifications?.product ?? DEFAULT_PREFS.notifyProductUpdates,
+    notifyComments: p.notifications?.comments ?? DEFAULT_PREFS.notifyComments,
+    notifyMentions: p.notifications?.mentions ?? DEFAULT_PREFS.notifyMentions,
+    notifyReviews: p.notifications?.reviews ?? DEFAULT_PREFS.notifyReviews,
     theme: oneOf(THEME_OPTIONS, p.theme, DEFAULT_PREFS.theme),
     confirmThreshold: typeof p.confirmThreshold === 'number' ? p.confirmThreshold : DEFAULT_PREFS.confirmThreshold,
     matureContent: p.matureContent === true,
@@ -324,6 +339,9 @@ export function toServerPatch(patch: Partial<Prefs>): ServerPrefsPatchShape {
   if (patch.notifyCreditsLow !== undefined) notifications.low = patch.notifyCreditsLow;
   if (patch.notifyPlanRenewal !== undefined) notifications.renewal = patch.notifyPlanRenewal;
   if (patch.notifyProductUpdates !== undefined) notifications.product = patch.notifyProductUpdates;
+  if (patch.notifyComments !== undefined) notifications.comments = patch.notifyComments;
+  if (patch.notifyMentions !== undefined) notifications.mentions = patch.notifyMentions;
+  if (patch.notifyReviews !== undefined) notifications.reviews = patch.notifyReviews;
   if (Object.keys(notifications).length) out.notifications = notifications;
   return out;
 }

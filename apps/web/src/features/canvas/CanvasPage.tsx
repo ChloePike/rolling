@@ -50,6 +50,7 @@ import {
   type StartRunResult,
 } from './api';
 import { CanvasError } from './CanvasError';
+import { useCanvasCollab } from '@/features/collab/useCanvasCollab';
 import { forgetCanvas, rememberCanvas } from './target/projects';
 import { incomingParams, takeIncoming } from './target/incoming';
 import { freePosition } from './target/resolve';
@@ -1025,6 +1026,9 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
     close();
   };
 
+  // D-031: presence, comments, activity and review links (top bar, canvas layer, side panel).
+  const collab = useCanvasCollab({ projectId, session, rfNodes, selected, onShowNode: (id) => selectNode(id, true) });
+
   /** Selected nodes (multi-select), else the focused node. */
   const selectionIds = () => {
     const ids = rfNodes.filter((n) => n.selected).map((n) => n.id);
@@ -1569,6 +1573,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
             ariaLabelConfig={{}}
           >
             <GroupFrames graph={graph} rfNodes={rfNodes} />
+            {collab.layer}
           </ReactFlow>
         </div>
       </EdgeActionsContext.Provider>
@@ -1664,6 +1669,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
             <CanvasIcon name="plus" size={13} strokeWidth={2.2} stroke="var(--c-text-1)" />
           </span>
         </button>
+        {collab.bar}
         <button type="button" className={canvas.share} onClick={() => setOverlay('share')} aria-haspopup="dialog">
           <FormattedMessage id="canvas.share" />
         </button>
@@ -1767,6 +1773,8 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
           selectionCount={selectionIds().length}
           onSaveSelection={saveSelectionTemplate}
         /> : null}
+
+      {collab.panel}
 
       {assetPicker.element}
 

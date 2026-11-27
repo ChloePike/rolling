@@ -37,6 +37,7 @@ import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as LegalDocRouteImport } from './routes/legal.$doc'
 import { Route as PProjectIdRouteImport } from './routes/p/$projectId'
 import { Route as PreviewOverlaysRouteImport } from './routes/preview.overlays'
+import { Route as ReviewTokenRouteImport } from './routes/review.$token'
 import { Route as ShareIdRouteImport } from './routes/share.$id'
 import { Route as ShellAssetsIndexRouteImport } from './routes/_shell/assets/index'
 import { Route as ShellAssetsPublicRouteImport } from './routes/_shell/assets/public'
@@ -191,6 +192,11 @@ const PreviewOverlaysRoute = PreviewOverlaysRouteImport.update({
   path: '/preview/overlays',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ReviewTokenRoute = ReviewTokenRouteImport.update({
+  id: '/review/$token',
+  path: '/review/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ShareIdRoute = ShareIdRouteImport.update({
   id: '/share/$id',
   path: '/share/$id',
@@ -289,6 +295,7 @@ export interface FileRoutesByFullPath {
   '/legal/$doc': typeof LegalDocRoute
   '/p/$projectId': typeof PProjectIdRoute
   '/preview/overlays': typeof PreviewOverlaysRoute
+  '/review/$token': typeof ReviewTokenRoute
   '/share/$id': typeof ShareIdRoute
   '/admin/': typeof AdminIndexRoute
   '/assets/public': typeof ShellAssetsPublicRoute
@@ -330,6 +337,7 @@ export interface FileRoutesByTo {
   '/legal/$doc': typeof LegalDocRoute
   '/p/$projectId': typeof PProjectIdRoute
   '/preview/overlays': typeof PreviewOverlaysRoute
+  '/review/$token': typeof ReviewTokenRoute
   '/share/$id': typeof ShareIdRoute
   '/': typeof ShellIndexRoute
   '/admin': typeof AdminIndexRoute
@@ -375,6 +383,7 @@ export interface FileRoutesById {
   '/legal/$doc': typeof LegalDocRoute
   '/p/$projectId': typeof PProjectIdRoute
   '/preview/overlays': typeof PreviewOverlaysRoute
+  '/review/$token': typeof ReviewTokenRoute
   '/share/$id': typeof ShareIdRoute
   '/_shell/': typeof ShellIndexRoute
   '/admin/': typeof AdminIndexRoute
@@ -421,6 +430,7 @@ export interface FileRouteTypes {
     | '/legal/$doc'
     | '/p/$projectId'
     | '/preview/overlays'
+    | '/review/$token'
     | '/share/$id'
     | '/admin/'
     | '/assets/public'
@@ -462,6 +472,7 @@ export interface FileRouteTypes {
     | '/legal/$doc'
     | '/p/$projectId'
     | '/preview/overlays'
+    | '/review/$token'
     | '/share/$id'
     | '/'
     | '/admin'
@@ -506,6 +517,7 @@ export interface FileRouteTypes {
     | '/legal/$doc'
     | '/p/$projectId'
     | '/preview/overlays'
+    | '/review/$token'
     | '/share/$id'
     | '/_shell/'
     | '/admin/'
@@ -544,6 +556,7 @@ export interface RootRouteChildren {
   LegalDocRoute: typeof LegalDocRoute
   PProjectIdRoute: typeof PProjectIdRoute
   PreviewOverlaysRoute: typeof PreviewOverlaysRoute
+  ReviewTokenRoute: typeof ReviewTokenRoute
   ShareIdRoute: typeof ShareIdRoute
 }
 
@@ -745,6 +758,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PreviewOverlaysRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/review/$token': {
+      id: '/review/$token'
+      path: '/review/$token'
+      fullPath: '/review/$token'
+      preLoaderRoute: typeof ReviewTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/share/$id': {
       id: '/share/$id'
       path: '/share/$id'
@@ -926,6 +946,7 @@ const rootRouteChildren: RootRouteChildren = {
   LegalDocRoute: LegalDocRoute,
   PProjectIdRoute: PProjectIdRoute,
   PreviewOverlaysRoute: PreviewOverlaysRoute,
+  ReviewTokenRoute: ReviewTokenRoute,
   ShareIdRoute: ShareIdRoute,
 }
 export const routeTree = rootRouteImport

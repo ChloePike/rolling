@@ -15,6 +15,10 @@ export interface ServerNotificationPrefs {
   low: boolean;
   renewal: boolean;
   product: boolean;
+  /** D-031 (absent from servers before it). */
+  comments?: boolean;
+  mentions?: boolean;
+  reviews?: boolean;
 }
 
 export interface ServerPrefs {

@@ -23,8 +23,9 @@ import * as character from '@/features/tools/character/mocks';
 import * as quick from '@/features/tools/quick/mocks';
 import * as remix from '@/features/tools/remix/mocks';
 import * as share from '@/features/share/mocks';
+import * as collab from '@/features/collab/mocks';
 import * as session from '@/lib/session/mock';
 
-export const mockModules = { account, admin, trust, invite, activity, canvas, editor, room, home, library, overlays, overlayPreview, profile, prompt, share, templates, avatar, character, quick, remix, session };
+export const mockModules = { account, admin, trust, invite, activity, canvas, editor, room, home, library, overlays, overlayPreview, profile, prompt, share, collab, templates, avatar, character, quick, remix, session };
 
 export type MockData = typeof mockModules;

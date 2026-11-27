@@ -5,10 +5,10 @@ import { setPref, usePrefs } from '@/lib/prefs';
  * credits low, plan renewal, product updates. They live in lib/prefs with the
  * rest, so they sync to `PATCH /api/me/prefs` (`notifications.low|renewal|product`).
  */
-export type NotifyKey = 'creditsLow' | 'planRenewal' | 'productUpdates';
+export type NotifyKey = 'creditsLow' | 'planRenewal' | 'productUpdates' | 'comments' | 'mentions' | 'reviews';
 export type NotifyPrefs = Record<NotifyKey, boolean>;
 
-const PREF = { creditsLow: 'notifyCreditsLow', planRenewal: 'notifyPlanRenewal', productUpdates: 'notifyProductUpdates' } as const;
+const PREF = { creditsLow: 'notifyCreditsLow', planRenewal: 'notifyPlanRenewal', productUpdates: 'notifyProductUpdates', comments: 'notifyComments', mentions: 'notifyMentions', reviews: 'notifyReviews' } as const;
 
 export function setNotifyPref(key: NotifyKey, value: boolean) {
   setPref(PREF[key], value);
@@ -16,5 +16,5 @@ export function setNotifyPref(key: NotifyKey, value: boolean) {
 
 export function useNotifyPrefs(): NotifyPrefs {
   const p = usePrefs();
-  return { creditsLow: p.notifyCreditsLow, planRenewal: p.notifyPlanRenewal, productUpdates: p.notifyProductUpdates };
+  return { creditsLow: p.notifyCreditsLow, planRenewal: p.notifyPlanRenewal, productUpdates: p.notifyProductUpdates, comments: p.notifyComments, mentions: p.notifyMentions, reviews: p.notifyReviews };
 }

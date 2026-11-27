@@ -1724,6 +1724,10 @@ const NOTIFY_ROWS: Array<{ key: NotifyKey | 'generationFinished'; label: string;
   { key: 'creditsLow', label: 'account.settings.notify.low', hint: 'account.settings.notify.low.hint' },
   { key: 'planRenewal', label: 'account.settings.notify.renewal' },
   { key: 'productUpdates', label: 'account.settings.notify.updates' },
+  // D-031 collaboration.
+  { key: 'comments', label: 'collab.settings.comments', hint: 'collab.settings.comments.hint' },
+  { key: 'mentions', label: 'collab.settings.mentions', hint: 'collab.settings.mentions.hint' },
+  { key: 'reviews', label: 'collab.settings.reviews', hint: 'collab.settings.reviews.hint' },
 ];
 
 function NotificationsSection({ me }: { me: Me }) {

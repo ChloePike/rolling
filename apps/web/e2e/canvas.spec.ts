@@ -444,7 +444,8 @@ test.describe('canvas behavior', () => {
     await page.waitForTimeout(400);
     const credits = (await page.getByRole('button', { name: 'Credit balance' }).boundingBox())!;
     const agentBtn = (await page.getByRole('button', { name: 'Agent', exact: true }).boundingBox())!;
-    expect(credits.x).toBeGreaterThan(1000);
+    // The bar sits at the right edge again (avatars and Comments, D-031, sit left of credits).
+    expect(credits.x).toBeGreaterThan(900);
     expect(Math.abs(W - 16 - (agentBtn.x + agentBtn.width))).toBeLessThanOrEqual(1);
     await page.getByRole('button', { name: 'Agent', exact: true }).click();
     await expect(page.locator('aside[aria-label="Agent"]')).toBeVisible();
