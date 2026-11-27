@@ -438,7 +438,7 @@ export function ActivityPage({ initialFilter = 'all' }: { initialFilter?: Activi
             createdAt={new Date(Date.now() - (viewing?.minutesAgo ?? 0) * 60_000)}
             aspectRatio="9/16"
             mediaKind={viewing?.mediaKind ?? 'video'}
-            versions={viewing ? [{ id: viewing.id, label: 'v1' }] : []}
+            versions={viewing ? [{ id: viewing.id, label: 'v1', ...(viewing.review && { review: viewing.review }) }] : []}
             versionId={viewing?.id ?? ''}
             onVersionChange={() => {}}
             src={viewing?.assetId ? assetMediaUrl(viewing.assetId) : undefined}

@@ -744,8 +744,8 @@ export interface NodeVersionView {
   thumbUrl: string | null;
   model?: string | null;
   createdAt: number;
-  /** The job's output record; `expandedPrompt` (D-020) is the prompt that rendered when the gateway rewrote it. */
-  output?: { expandedPrompt?: string } | null;
+  /** The job's output record; `expandedPrompt` (D-020) is the prompt that rendered when the gateway rewrote it; `review` (D-024) the result review. */
+  output?: { expandedPrompt?: string; review?: unknown } | null;
 }
 
 /** `GET /api/nodes/:id/versions?projectId=` (newest first). Mock mode: none (the room only knows n/total). */

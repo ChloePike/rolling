@@ -30,6 +30,8 @@ export interface RunItemView {
   promptExpand?: true;
   /** D-020: the prompt that rendered when the gateway rewrote it ("Enhanced prompt"). */
   expandedPrompt?: string;
+  /** D-024: the result review of the item's outputs. */
+  review?: unknown;
 }
 
 /** Steps of a mature text-to-video chain (D-005): one generation made as "first frame → animating". */

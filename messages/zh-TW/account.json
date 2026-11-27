@@ -484,5 +484,7 @@
   "account.upgradeModal.error.expired": "此結帳已過期，未扣款。",
   "account.upgradeModal.recommended": "推薦",
   "account.settings.prefs.enhance": "強化提示詞",
-  "account.settings.prefs.enhance.hint": "在生成前，為簡短的提示詞補上更多細節。適用於首頁、各項工具與快速創作，每次生成也可單獨調整。"
+  "account.settings.prefs.enhance.hint": "在生成前，為簡短的提示詞補上更多細節。適用於首頁、各項工具與快速創作，每次生成也可單獨調整。",
+  "account.settings.prefs.review": "檢查結果",
+  "account.settings.prefs.review.hint": "檢查每個結果的手、臉、文字、與提示詞是否一致以及瑕疵，並提供修改建議。免費。"
 }

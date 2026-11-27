@@ -95,6 +95,7 @@ import { ConnectionLine, EdgeActionsContext, Wire, type EdgeActions, type WireEd
 import { PromptPanel } from './prompt/PromptPanel';
 import { formatLabel, usePricedNodes } from './pricing';
 import { getPrefs } from '@/lib/prefs';
+import { retryWithFixOp, reviewViewOf } from '@/features/review';
 import { modeLabel, modelLabel, type CatalogModel } from '@/lib/models';
 
 /** Layers the design opens through `initOverlay` (Canvas.dc.html), plus the canvas' own. */
@@ -399,6 +400,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
             blockedReason: blocked?.message ?? null,
             mediaUrl: mediaUrlOf(session, node.id),
             mediaRating: session.sync.getMedia(node.id)?.rating ?? null,
+            mediaQuality: session.sync.getMedia(node.id)?.quality ?? null,
             readOnly: !session.sync.canEdit,
           },
         };
@@ -1408,6 +1410,28 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
     staleTime: 30_000,
   });
   const expandedByN = new Map((resultVersions.data ?? []).flatMap((v) => (v.output?.expandedPrompt ? [[v.n, v.output.expandedPrompt] as const] : [])));
+  // D-024: each version's result review (badge, issues, "Retry with fix").
+  const reviewByN = new Map((resultVersions.data ?? []).flatMap((v) => {
+    const r = reviewViewOf(v.output?.review);
+    return r ? [[v.n, r] as const] : [];
+  }));
+  /** "Retry with fix" waits for the fix to reach the room, then runs the node like Regenerate. */
+  const retryAfterSave = useRef<string | null>(null);
+  useEffect(() => {
+    if (syncStatus !== 'saved' || !retryAfterSave.current) return;
+    const id = retryAfterSave.current;
+    retryAfterSave.current = null;
+    requestRun(id);
+  }, [syncStatus, requestRun]);
+  const onRetryWithFix = (versionId: string) => {
+    const n = shownResult;
+    const op = n ? retryWithFixOp(n, reviewByN.get(Number(versionId.slice(1)))) : null;
+    if (!n || !op) return;
+    if (!commit([op]).ok) return;
+    setResultFor(null);
+    if (isMockApi() || session.sync.getStatus() === 'saved') requestRun(n.id);
+    else retryAfterSave.current = n.id;
+  };
 
   const onResultAction = (id: ResultActionId) => {
     const n = shownResult;
@@ -1916,6 +1940,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
             label: `v${i + 1}`,
             tone: typeof shownResult.params.tone === 'string' ? shownResult.params.tone : undefined,
             ...(expandedByN.get(i + 1) ? { expandedPrompt: expandedByN.get(i + 1)! } : {}),
+            ...(reviewByN.get(i + 1) ? { review: reviewByN.get(i + 1)! } : {}),
           }))}
           versionId={`v${shownResult.version.n}`}
           currentVersionId={`v${shownResult.version.n}`}
@@ -1930,6 +1955,8 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
           assets={refsOf(shownResult).map((r) => ({ id: r.id, name: r.name, tone: r.tone }))}
           actions={[{ id: 'edit' }, { id: 'regenerate', cost: runCost(shownResult) }, { id: 'download' }]}
           onAction={onResultAction}
+          onRetryWithFix={onRetryWithFix}
+          {...(runCost(shownResult) !== undefined && { retryCost: runCost(shownResult)! })}
         />
       ) : null}
 

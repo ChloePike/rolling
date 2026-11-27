@@ -11,6 +11,8 @@ export interface NodeMedia {
   versionId?: string;
   /** D-005 content rating of the active version; `suggestive` / `explicit` thumbnails stay blurred until clicked. */
   rating?: 'safe' | 'suggestive' | 'explicit' | null;
+  /** D-024 result review of the active version (grade and score for the node's badge). */
+  quality?: { grade: 'good' | 'fair' | 'poor'; score: number } | null;
 }
 
 /** Envelope the sync layer does not handle itself (agent, proposals, timeline, unsolicited errors). */
@@ -194,8 +196,8 @@ export class ProjectSync {
       case 'snapshot': {
         const first = this.confirmed === null;
         this.confirmed = fromSnapshot(msg.payload);
-        for (const row of msg.payload.nodes as Array<{ id: string; asset_id?: string | null; active_version_id?: string | null; version_rating?: NodeMedia['rating'] }>) {
-          if (row.asset_id) this.media.set(row.id, { assetId: row.asset_id, versionId: row.active_version_id ?? undefined, rating: row.version_rating ?? null });
+        for (const row of msg.payload.nodes as Array<{ id: string; asset_id?: string | null; active_version_id?: string | null; version_rating?: NodeMedia['rating']; version_quality?: NodeMedia['quality'] }>) {
+          if (row.asset_id) this.media.set(row.id, { assetId: row.asset_id, versionId: row.active_version_id ?? undefined, rating: row.version_rating ?? null, ...(row.version_quality && { quality: row.version_quality }) });
         }
         this.mediaVersion++;
         for (const l of this.mediaListeners) l();
@@ -271,13 +273,13 @@ export class ProjectSync {
       case 'node.version': {
         const p = msg.payload as {
           nodeId: string;
-          version: { id?: string; n: number; total: number; assetId?: string | null; rating?: NodeMedia['rating'] } | null;
+          version: { id?: string; n: number; total: number; assetId?: string | null; rating?: NodeMedia['rating']; quality?: NodeMedia['quality'] } | null;
           status?: NodeStatus;
           statuses?: unknown;
         };
         if (p.version) {
           this.runtime(p.nodeId, { version: { n: p.version.n, total: p.version.total } });
-          if (p.version.assetId !== undefined) this.setMedia(p.nodeId, { assetId: p.version.assetId, versionId: p.version.id, rating: p.version.rating ?? null });
+          if (p.version.assetId !== undefined) this.setMedia(p.nodeId, { assetId: p.version.assetId, versionId: p.version.id, rating: p.version.rating ?? null, ...(p.version.quality && { quality: p.version.quality }) });
         }
         if (p.status) this.runtime(p.nodeId, { status: p.status, progress: undefined });
         this.applyStatuses(p.statuses);

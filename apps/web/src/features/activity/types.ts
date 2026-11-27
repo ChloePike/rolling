@@ -1,3 +1,4 @@
+import type { ReviewView } from '@/features/review/types';
 /** Activity rows, shaped like `GET /api/runs` items (docs/api.md, Runs). */
 export type RunStatus = 'queued' | 'running' | 'done' | 'partial' | 'failed' | 'review' | 'canceled';
 export type RunSource = 'home' | 'canvas' | 'agent' | 'quickCreate' | 'remix' | 'avatar' | 'characters';
@@ -29,6 +30,8 @@ export interface RunRow {
   mediaKind?: 'video' | 'image';
   /** D-020: the prompt that rendered when the gateway rewrote it ("Enhanced prompt"). */
   expandedPrompt?: string;
+  /** D-024: what the result review found on the first result. */
+  review?: ReviewView;
   failedNodeIds?: string[];
   /**
    * D-005 mature text-to-video chain: one generation in two steps (first frame

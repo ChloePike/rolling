@@ -484,5 +484,7 @@
   "account.upgradeModal.error.expired": "该结账已过期，未扣费。",
   "account.upgradeModal.recommended": "推荐",
   "account.settings.prefs.enhance": "增强提示词",
-  "account.settings.prefs.enhance.hint": "生成前先把简短的提示词扩写得更详细。适用于首页、各工具和快速创作，每次生成时也可单独更改。"
+  "account.settings.prefs.enhance.hint": "生成前先把简短的提示词扩写得更详细。适用于首页、各工具和快速创作，每次生成时也可单独更改。",
+  "account.settings.prefs.review": "检查结果",
+  "account.settings.prefs.review.hint": "检查每个结果的手、脸、文字、与提示词是否一致以及瑕疵，并给出修改建议。免费。"
 }

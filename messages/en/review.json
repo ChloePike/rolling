@@ -1,0 +1,15 @@
+{
+  "review.title": "Quality check",
+  "review.grade": "{grade, select, good {Looks good} fair {Minor issues} other {Has issues}}",
+  "review.badge.label": "Quality check: {grade, select, good {looks good} fair {minor issues} other {has issues}}, {score} out of 5",
+  "review.score": "{score}/5",
+  "review.dimension": "{dimension, select, anatomy {Anatomy} text {Text and logos} adherence {Prompt match} continuity {Continuity} framing {Framing} artifacts {Artifacts} other {Other}}",
+  "review.severity.major": "Major",
+  "review.noIssues": "No issues found.",
+  "review.fix": "Suggested fix: {note}",
+  "review.retry": "Retry with fix",
+  "review.retry.hint": "Updates the prompt with the fix and runs this node again.",
+  "review.autoRetried": "Retried once with the fix. The better version is current.",
+  "review.bestTake": "Best of {takes, plural, one {# take} other {# takes}}: take {n} is shown.",
+  "review.budget": "Not retried automatically: the retry is over this turn’s budget."
+}

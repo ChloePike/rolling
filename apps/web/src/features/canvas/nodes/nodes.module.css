@@ -40,6 +40,9 @@
   position:absolute;left:8px;top:8px;height:20px;padding:0 8px;border-radius:999px;background:var(--c-media-chip);
   font-size:11px;font-weight:600;line-height:20px;
 }
+/* D-024 quality badge on a reviewed result (top right). */
+.qualityChip{position:absolute;right:8px;top:8px;border:0;background:none;padding:0;cursor:pointer;border-radius:999px}
+.qualityChip:focus-visible{box-shadow:var(--focus-ring)}
 .playDisc{width:40px;height:40px;border-radius:999px;background:var(--c-media-disc);display:flex;align-items:center;justify-content:center}
 .duration{
   position:absolute;right:8px;bottom:8px;font:600 11px/1 var(--font-sans);padding:4px 6px;border-radius:6px;background:var(--c-media-chip);
@@ -144,3 +147,4 @@
 .node:hover .replace,.replace:focus-visible{opacity:1;transition:opacity var(--dur-base) var(--ease-standard)}
 .replace:focus-visible{box-shadow:var(--focus-ring);outline:0}
 @media (prefers-reduced-motion: reduce){.replace{transition:none}}
+.qualityChip > span{background:var(--c-media-chip)}

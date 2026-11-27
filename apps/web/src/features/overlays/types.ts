@@ -1,3 +1,4 @@
+import type { ReviewView } from '../review/types';
 /** Shared types for the overlay components. Shapes follow docs/api.md where a response exists. */
 
 /** Which catalog a model picker shows. */
@@ -99,6 +100,8 @@ export interface ResultVersion {
   thumbnailUrl?: string;
   /** D-020: the prompt this version rendered when the gateway rewrote it ("Enhanced prompt"). */
   expandedPrompt?: string;
+  /** D-024: what the result review found on this version. */
+  review?: ReviewView;
 }
 
 export interface ResultParam {

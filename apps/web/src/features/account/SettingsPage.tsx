@@ -865,6 +865,13 @@ function PreferencesSection() {
         checked={prefs.enhancePrompt}
         onChange={(v) => setPref('enhancePrompt', v)}
       />
+      {/* D-024: a vision model reviews each result (quality badge, issues, "Retry with fix"). */}
+      <SwitchRow
+        label={t('account.settings.prefs.review')}
+        hint={t('account.settings.prefs.review.hint')}
+        checked={prefs.reviewResults}
+        onChange={(v) => setPref('reviewResults', v)}
+      />
       {showMature && (
         <SwitchRow
           label={t('account.settings.prefs.mature')}

@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { isMockApi, userEvents } from '@/features/overlays/backend';
 import { chainOf, listRuns, resultItems, type RunView } from '@/features/overlays/runs';
 import { mockData } from '@/lib/api/mode';
+import { reviewViewOf } from '@/features/review/types';
 import type { ActivityData, RunRow, RunSource } from './types';
 
 const SURFACE_SOURCE: Record<NonNullable<RunView['surface']>, RunSource> = {
@@ -51,6 +52,7 @@ function rowFrom(r: RunView, now: number): RunRow {
     assetId: first?.assetId ?? null,
     mediaKind: first?.kind === 'image' ? 'image' : 'video',
     ...((first?.expandedPrompt ?? results.find((i) => i.expandedPrompt)?.expandedPrompt) && { expandedPrompt: first?.expandedPrompt ?? results.find((i) => i.expandedPrompt)!.expandedPrompt! }),
+    ...(reviewViewOf(first?.review) && { review: reviewViewOf(first?.review)! }),
     failedNodeIds: r.items.filter((i) => (i.status === 'failed' || i.status === 'canceled' || i.status === 'skipped') && i.nodeId).map((i) => i.nodeId!),
     ...(chain && { chain: { step: chain.current, failed: chain.failed } }),
   };

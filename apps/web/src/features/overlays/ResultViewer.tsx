@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
 import { FormattedMessage, FormattedNumber, useIntl, type IntlShape } from 'react-intl';
 import { Svg, type OverlayIcon } from './icons';
 import styles from './ResultViewer.module.css';
+import { QualityReview } from '../review/QualityReview';
 import type { ResultAction, ResultActionId, ResultAsset, ResultParam, ResultVersion } from './types';
 
 export interface ResultViewerContentProps {
@@ -40,6 +41,10 @@ export interface ResultViewerContentProps {
   /** Action buttons; the first is the primary (Edit from here). Paid ones show their cost. */
   actions: ResultAction[];
   onAction: (id: ResultActionId, versionId: string) => void;
+  /** D-024 "Retry with fix" on a version whose review suggests one; omitted where results cannot be retried. */
+  onRetryWithFix?: (versionId: string) => void;
+  /** Credits the retry costs at list price. */
+  retryCost?: number;
   favorite?: boolean;
   onFavoriteChange?: (favorite: boolean) => void;
   /** Close button. */
@@ -117,6 +122,8 @@ export function ResultViewerContent({
   assets,
   actions,
   onAction,
+  onRetryWithFix,
+  retryCost,
   favorite: favoriteProp = false,
   onFavoriteChange: onFavoriteProp,
   onClose,
@@ -295,6 +302,13 @@ export function ResultViewerContent({
               </div>
               <span className={styles.prompt}>{expandedPrompt}</span>
             </div>
+          ) : null}
+          {version?.review ? (
+            <QualityReview
+              review={version.review}
+              {...(onRetryWithFix && { onRetryWithFix: () => onRetryWithFix(version.id) })}
+              {...(retryCost !== undefined && { retryCost })}
+            />
           ) : null}
           <div className={styles.params}>
             {params.map((p, i) => (

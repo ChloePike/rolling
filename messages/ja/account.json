@@ -484,5 +484,7 @@
   "account.upgradeModal.error.expired": "決済の有効期限が切れました。課金はされていません。",
   "account.upgradeModal.recommended": "おすすめ",
   "account.settings.prefs.enhance": "プロンプトを補強",
-  "account.settings.prefs.enhance.hint": "短いプロンプトに詳細を補ってから生成します。ホーム、各ツール、クイック作成に適用され、生成ごとに変更できます。"
+  "account.settings.prefs.enhance.hint": "短いプロンプトに詳細を補ってから生成します。ホーム、各ツール、クイック作成に適用され、生成ごとに変更できます。",
+  "account.settings.prefs.review": "結果をチェック",
+  "account.settings.prefs.review.hint": "生成結果ごとに手、顔、文字、プロンプトとの一致、破綻をチェックし、修正案を出します。無料です。"
 }

@@ -95,6 +95,8 @@ export interface Prefs {
   matureContent: boolean;
   /** D-020 "Enhance prompt" default for Home, tools and Quick Create (each run can change it). */
   enhancePrompt: boolean;
+  /** D-024 "Review results": a vision model reviews each output (badge, issues, "Retry with fix"). */
+  reviewResults: boolean;
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -111,6 +113,7 @@ export const DEFAULT_PREFS: Prefs = {
   confirmThreshold: DEFAULT_CONFIRM_THRESHOLD_CREDITS,
   matureContent: false,
   enhancePrompt: true,
+  reviewResults: true,
 };
 
 export const CREATION_MODE_KEY = 'rolling.creationMode';
@@ -162,6 +165,7 @@ function parse(creationRaw: string | null, languageRaw: string | null, rest: str
     confirmThreshold: threshold,
     matureContent: o.matureContent === true,
     enhancePrompt: typeof o.enhancePrompt === 'boolean' ? o.enhancePrompt : DEFAULT_PREFS.enhancePrompt,
+    reviewResults: typeof o.reviewResults === 'boolean' ? o.reviewResults : DEFAULT_PREFS.reviewResults,
   };
 }
 
@@ -271,6 +275,8 @@ export interface ServerPrefsShape {
   matureContent: boolean;
   /** D-020; absent from servers before it (defaults on). */
   enhancePrompt?: boolean;
+  /** D-024; absent from servers before it (defaults on). */
+  reviewResults?: boolean;
 }
 
 export type ServerPrefsPatchShape = Partial<Omit<ServerPrefsShape, 'notifications'>> & { notifications?: Partial<ServerPrefsShape['notifications']> };
@@ -296,6 +302,7 @@ export function fromServerPrefs(p: ServerPrefsShape): Prefs {
     confirmThreshold: typeof p.confirmThreshold === 'number' ? p.confirmThreshold : DEFAULT_PREFS.confirmThreshold,
     matureContent: p.matureContent === true,
     enhancePrompt: typeof p.enhancePrompt === 'boolean' ? p.enhancePrompt : DEFAULT_PREFS.enhancePrompt,
+    reviewResults: typeof p.reviewResults === 'boolean' ? p.reviewResults : DEFAULT_PREFS.reviewResults,
   };
 }
 
@@ -312,6 +319,7 @@ export function toServerPatch(patch: Partial<Prefs>): ServerPrefsPatchShape {
   if (patch.theme !== undefined) out.theme = patch.theme;
   if (patch.matureContent !== undefined) out.matureContent = patch.matureContent;
   if (patch.enhancePrompt !== undefined) out.enhancePrompt = patch.enhancePrompt;
+  if (patch.reviewResults !== undefined) out.reviewResults = patch.reviewResults;
   if (patch.notifyWhenDone !== undefined) notifications.done = patch.notifyWhenDone;
   if (patch.notifyCreditsLow !== undefined) notifications.low = patch.notifyCreditsLow;
   if (patch.notifyPlanRenewal !== undefined) notifications.renewal = patch.notifyPlanRenewal;

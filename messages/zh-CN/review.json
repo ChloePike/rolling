@@ -1,0 +1,15 @@
+{
+  "review.title": "质量检查",
+  "review.grade": "{grade, select, good {没有问题} fair {有小问题} other {有问题}}",
+  "review.badge.label": "质量检查：{grade, select, good {没有问题} fair {有小问题} other {有问题}}，{score} 分（满分 5 分）",
+  "review.score": "{score}/5",
+  "review.dimension": "{dimension, select, anatomy {人体} text {文字和标志} adherence {符合提示词} continuity {一致性} framing {构图} artifacts {瑕疵} other {其他}}",
+  "review.severity.major": "严重",
+  "review.noIssues": "没有发现问题。",
+  "review.fix": "修改建议：{note}",
+  "review.retry": "按建议重新生成",
+  "review.retry.hint": "把修改建议写入提示词，并重新生成这个节点。",
+  "review.autoRetried": "已按建议重新生成一次，当前显示较好的版本。",
+  "review.bestTake": "{takes} 个结果中最好的：显示第 {n} 个。",
+  "review.budget": "超出本轮预算，未自动重新生成。"
+}

@@ -1,3 +1,4 @@
+import { QualityBadge } from '@/features/review/QualityBadge';
 import { cx, motionSafe } from '@rolling/ui';
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { createContext, memo, useContext, type CSSProperties, type ReactNode } from 'react';
@@ -23,6 +24,8 @@ export interface CardData extends Record<string, unknown> {
   mediaUrl?: string | null;
   /** D-005 rating of the media: `suggestive` / `explicit` are blurred until clicked. */
   mediaRating?: 'safe' | 'suggestive' | 'explicit' | null;
+  /** D-024 result review of the active version: the small quality badge on the result. */
+  mediaQuality?: { grade: 'good' | 'fair' | 'poor'; score: number } | null;
   /** Viewer of the project: no edits. */
   readOnly?: boolean;
   /** Blocked by a bypassed upstream node: the reason. */
@@ -219,7 +222,26 @@ function ReplaceButton({ node }: { node: GraphNode }) {
 }
 
 /** The card's result media URL (from `CardData.mediaUrl`). */
-const CardMediaContext = createContext<{ url: string | null; rating: CardData['mediaRating'] }>({ url: null, rating: null });
+const CardMediaContext = createContext<{ url: string | null; rating: CardData['mediaRating']; quality?: CardData['mediaQuality'] }>({ url: null, rating: null });
+
+/** D-024: the quality badge on a reviewed result (opens the result viewer, which lists the issues). */
+function ResultQuality({ node }: { node: GraphNode }) {
+  const { quality } = useContext(CardMediaContext);
+  const actions = useContext(NodeActionsContext);
+  if (!quality) return null;
+  return (
+    <button
+      type="button"
+      className={cx(styles.qualityChip, styles.chipBtn, 'nodrag')}
+      onClick={(e) => {
+        e.stopPropagation();
+        actions.openResult(node.id);
+      }}
+    >
+      <QualityBadge review={quality} compact />
+    </button>
+  );
+}
 
 function Result({ node, reveal }: { node: GraphNode; reveal: boolean }) {
   const intl = useIntl();
@@ -234,6 +256,7 @@ function Result({ node, reveal }: { node: GraphNode; reveal: boolean }) {
     return (
       <div className={cx(styles.reveal, reveal && 'rl-reveal')} style={{ background: tone }} {...motionSafe} onDoubleClick={() => actions.openResult(node.id)}>
         {media}
+        <ResultQuality node={node} />
         {node.version ? (
           <button
             type="button"
@@ -254,6 +277,7 @@ function Result({ node, reveal }: { node: GraphNode; reveal: boolean }) {
   return (
     <div className={cx(styles.reveal, reveal && 'rl-reveal')} style={{ background: tone }} {...motionSafe}>
       {media}
+      <ResultQuality node={node} />
       <button
         type="button"
         className={cx(styles.playDisc, styles.chipBtn, 'nodrag')}
@@ -479,7 +503,7 @@ function NodeCardImpl({ data, selected }: NodeProps<CardNode>) {
   const building = buildIndex >= 0;
   const intl = useIntl();
   return (
-    <CardMediaContext.Provider value={{ url: data.mediaUrl ?? null, rating: data.mediaRating ?? null }}>
+    <CardMediaContext.Provider value={{ url: data.mediaUrl ?? null, rating: data.mediaRating ?? null, quality: data.mediaQuality ?? null }}>
     <ConnectingContext.Provider value={connecting ?? null}>
       <div
         className={cx(

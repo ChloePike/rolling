@@ -484,5 +484,7 @@
   "account.upgradeModal.error.expired": "That checkout expired. Nothing was charged.",
   "account.upgradeModal.recommended": "Recommended",
   "account.settings.prefs.enhance": "Enhance prompt",
-  "account.settings.prefs.enhance.hint": "Rewrites short prompts with more detail before rendering. Applies to Home, tools and Quick Create; you can change it for each run."
+  "account.settings.prefs.enhance.hint": "Rewrites short prompts with more detail before rendering. Applies to Home, tools and Quick Create; you can change it for each run.",
+  "account.settings.prefs.review": "Review results",
+  "account.settings.prefs.review.hint": "Checks each result for hands, faces, text, prompt match and artifacts, and suggests a fix. Free."
 }
