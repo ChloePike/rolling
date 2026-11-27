@@ -42,6 +42,8 @@ export interface RunItemView {
   promptExpand?: true;
   /** D-020: the prompt that rendered when the gateway expanded it ("Enhanced prompt"). */
   expandedPrompt?: string;
+  /** D-024: the result review of this item's outputs (`jobs.review`). */
+  review?: unknown;
 }
 
 export interface RunView {
@@ -203,6 +205,7 @@ export function toRunView(r: RunRowWithProject, rows: RunItemRow[], jobs: Readon
       ...(step && { step }),
       ...(expand && { promptExpand: true as const }),
       ...(job?.expanded_prompt && { expandedPrompt: job.expanded_prompt }),
+      ...(job?.review && { review: parseJson<unknown>(job.review, undefined) }),
     };
   });
   const status = activityStatus(r.status);

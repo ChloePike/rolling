@@ -9,10 +9,11 @@ import type { PlanId } from '@rolling/core/pricing/config';
 import type { GraphState } from '@rolling/core/graph';
 import type { Edl } from '@rolling/core/timeline';
 import type { SafetyGate } from '@rolling/core/safety';
+import type { ReviewSummary } from '@rolling/core/review';
 
 export interface CanvasPort {
   /** Current graph of a project, or null when it does not exist / is not readable. */
-  getGraph(projectId: string): Promise<{ state: GraphState; assets: Record<string, string> } | null>;
+  getGraph(projectId: string): Promise<{ state: GraphState; assets: Record<string, string>; reviews?: Record<string, ReviewSummary> } | null>;
 }
 
 export type AssetScope = 'mine' | 'team' | 'builtin' | 'public' | 'all';

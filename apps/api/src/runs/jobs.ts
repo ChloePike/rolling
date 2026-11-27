@@ -23,6 +23,7 @@ import { getItem, getJob, getRun, parseJson, refreshRun, type RunOptions } from 
 import { ensureFrame, extractFrames } from "./frames";
 import { dropPlacements, settlePlacement } from "../post/placements";
 import { loadAccount } from "../auth/workspace";
+import type { ResultReview } from "@rolling/core/review";
 
 export interface GenerateParams {
   jobId: string;
@@ -590,24 +591,34 @@ export function expandedOf(status: JobStatus): string | null {
 }
 
 /** `commit`: new active version (broadcasts), settle, Activity row, pushes. */
-export async function commitJob(env: Env, ctx: JobContext, stored: Stored, prepared: Prepared, status: JobStatus, modelId: string): Promise<{ spent: number; version: number | null }> {
+export async function commitJob(
+  env: Env,
+  ctx: JobContext,
+  stored: Stored,
+  prepared: Prepared,
+  status: JobStatus,
+  modelId: string,
+  review: ResultReview | null = null,
+): Promise<{ spent: number; version: number | null }> {
   const p = ports(env);
   let version: number | null = null;
+  // D-024: a multi-take run preselects the best take the review found.
+  const lead = (review && stored.assetIds[review.best]) ?? stored.assetIds[0] ?? null;
   if (ctx.projectId && ctx.nodeId) {
     const room = p.room(ctx.projectId);
     // The postCheck's rating is stored on the version (ProjectRoom `node_versions.rating`) and kept in `output.rating` for older readers.
     const r = await room.addVersion({
       nodeId: ctx.nodeId,
-      assetId: stored.assetIds[0] ?? null,
+      assetId: lead,
       inputDigest: prepared.digest,
       model: modelId,
       jobId: ctx.jobId,
-      output: { assetIds: stored.assetIds, rating: stored.rating?.rating ?? null, ...(expandedOf(status) && { expandedPrompt: expandedOf(status) }) },
+      output: { assetIds: stored.assetIds, rating: stored.rating?.rating ?? null, ...(expandedOf(status) && { expandedPrompt: expandedOf(status) }), ...(review && { review }) },
       rating: stored.rating?.rating ?? null,
     });
     if (!isRoomError(r)) {
       version = r.version.n;
-      await quietly("job.done", () => room.broadcast("job.done", { jobId: ctx.jobId, nodeId: ctx.nodeId, version: { n: r.version.n, total: r.version.n }, assetId: stored.assetIds[0] ?? null }));
+      await quietly("job.done", () => room.broadcast("job.done", { jobId: ctx.jobId, nodeId: ctx.nodeId, version: { n: r.version.n, total: r.version.n }, assetId: lead }));
     }
   }
   const actual = await actualCredits(env, ctx, status, modelId);
@@ -619,7 +630,7 @@ export async function commitJob(env: Env, ctx: JobContext, stored: Stored, prepa
   await env.DB.batch([
     env.DB.prepare("UPDATE jobs SET status = 'succeeded', progress = 1, cost_actual = ?, asset_id = ?, model = ?, finished_at = ?, updated_at = ?, expanded_prompt = ? WHERE id = ?").bind(
       spent,
-      stored.assetIds[0] ?? null,
+      lead,
       modelId,
       now,
       now,

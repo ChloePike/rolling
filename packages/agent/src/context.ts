@@ -2,6 +2,7 @@
  * Context assembly per turn (docs/harness.md section 4), budgeted to ~24k
  * tokens with the cheap estimator in `./tokens`.
  */
+import type { ReviewSummary } from '@rolling/core/review';
 import type { ChatMessage, ToolDefinition } from '@rolling/core';
 import type { GraphState } from '@rolling/core/graph';
 import { SKILL_PROMPTS, SYSTEM_PROMPT } from './prompts.generated';
@@ -75,6 +76,7 @@ const SECTION_SURFACES: Record<string, readonly Surface[]> = {
   Continuity: ['home', 'canvas'],
   'Plans (`propose.plan`)': ['home', 'canvas'],
   'Graph patches (`propose.graphPatch`)': ['canvas'],
+  'Result reviews': ['canvas', 'editor'],
   'Timeline patches (`propose.timelinePatch`)': ['editor'],
   'Tool forms (`propose.fields`)': ['tool'],
 };
@@ -121,11 +123,33 @@ function proposalNote(p: Proposal): string {
   return `[proposal ${p.id} (${p.kind}), ${p.status}${cost}: ${p.summary}]`;
 }
 
+/**
+ * D-024: what the result review found on the current version of each node, worst first, one line per node with a
+ * problem (nodes whose review found nothing are left out). The agent mentions the worst one in its next reply.
+ */
+export function reviewLines(state: GraphState, reviews: Record<string, ReviewSummary> | undefined, max = 6): string | null {
+  if (!reviews) return null;
+  const rows = state.nodes
+    .map((n) => ({ n, r: reviews[n.id] }))
+    .filter((x): x is { n: GraphState['nodes'][number]; r: ReviewSummary } => !!x.r && (x.r.grade !== 'good' || x.r.issues.some((i) => i.severity === 'major')))
+    .sort((a, b) => a.r.score - b.r.score)
+    .slice(0, max);
+  if (rows.length === 0) return null;
+  const line = ({ n, r }: (typeof rows)[number]) => {
+    const issues = r.issues.slice(0, 2).map((i) => `${i.dimension} (${i.severity}): ${i.note}`).join('; ');
+    const takes = r.takes > 1 ? ` Best of ${r.takes} takes (take ${r.best + 1}) is current.` : '';
+    const fix = r.fix ? ` Fix: ${r.fix.note}${r.fix.prompt ? `; prompt: ${JSON.stringify(r.fix.prompt.slice(0, 300))}` : ''}${r.fix.negativePrompt ? `; avoid: ${r.fix.negativePrompt.slice(0, 120)}` : ''}.` : '';
+    const state = r.autoRetried ? ' Retried automatically.' : r.offer ? ' "Retry with fix" is offered.' : '';
+    return `${n.id} "${n.title}"${n.version ? ` v${n.version.n}` : ''}: ${r.grade}, ${r.score}/5. ${issues || 'No details.'}${takes}${fix}${state}`;
+  };
+  return `Result reviews (current versions with a problem, worst first):\n${rows.map(line).join('\n')}`;
+}
+
 /** Workspace section: selection in full, the rest one line per node, script, refs, brand kit. */
 export function workspaceSection(
   thread: ThreadState,
   input: TurnInput,
-  graph: { state: GraphState; assets: Record<string, string> } | null,
+  graph: { state: GraphState; assets: Record<string, string>; reviews?: Record<string, ReviewSummary> } | null,
   timeline: { revision: number; edl: Parameters<typeof timelineView>[1] } | null,
   refs: readonly AssetItem[],
   maxTokens: number,
@@ -143,6 +167,8 @@ export function workspaceSection(
     if (graph.state.edges.length) {
       parts.push(`Edges:\n${canvasView(graph.state, {}).edges.map((e) => `${String(e.id)} ${String(e.from)} -> ${String(e.to)}`).join('\n')}`);
     }
+    const reviews = reviewLines(graph.state, graph.reviews);
+    if (reviews) parts.push(reviews);
     const script = graph.state.nodes.find((n) => n.kind === 'script');
     if (script && !sel.has(script.id)) parts.push(`Script ${script.id}: ${JSON.stringify(compactParams(script.params, 300))}`);
   }

@@ -31,6 +31,7 @@ import {
 } from "@rolling/core/project";
 import { applyOps as applyTimelineOps, type Edl, type TimelineOp } from "@rolling/core/timeline";
 import { newId } from "@rolling/core/ids";
+import { summarizeReview, type ResultReview, type ReviewSummary } from "@rolling/core/review";
 import { refuseWebSocket } from "../lib/wsRefusal";
 
 /** Who is calling a ProjectRoom RPC. The Worker resolves it from the auth context; the DO re-checks the workspace. */
@@ -89,6 +90,8 @@ export interface RoomNodeRow extends NodeRow {
   asset_id?: string | null;
   /** D-005 content rating of the active version (null when unrated). */
   version_rating?: string | null;
+  /** D-024 result review of the active version (null when unreviewed). */
+  version_quality?: ReviewSummary | null;
 }
 
 export interface RoomSnapshot extends ProjectSnapshot {
@@ -160,6 +163,19 @@ interface ActiveVersion {
   assetId: string | null;
   createdAt: number;
   rating: string | null;
+  /** D-024 review summary of the version's output. */
+  quality: ReviewSummary | null;
+}
+
+/** The review summary of a version's `output.review` (D-024), null when absent or unreadable. */
+function qualityOf(raw: string | null | undefined): ReviewSummary | null {
+  if (!raw) return null;
+  try {
+    const r = JSON.parse(raw) as ResultReview;
+    return r && typeof r.score === "number" && Array.isArray(r.takes) ? summarizeReview(r) : null;
+  } catch {
+    return null;
+  }
 }
 
 const RATINGS = new Set(["safe", "suggestive", "explicit"]);
@@ -326,17 +342,21 @@ export class ProjectRoom extends DurableObject<Env> {
 
   /** Current graph (GraphState) with active version assets, for quotes, sharing and the agent. */
   /** Graph plus the active version's asset and content rating per node (`ratings` only lists rated nodes). */
-  async getGraph(caller: RoomCaller): Promise<{ state: GraphState; assets: Record<string, string>; ratings: Record<string, string> } | RoomError> {
+  async getGraph(
+    caller: RoomCaller,
+  ): Promise<{ state: GraphState; assets: Record<string, string>; ratings: Record<string, string>; reviews: Record<string, ReviewSummary> } | RoomError> {
     const denied = this.check(caller, false);
     if (denied) return denied;
     const state = this.loadState();
     const assets: Record<string, string> = {};
     const ratings: Record<string, string> = {};
+    const reviews: Record<string, ReviewSummary> = {};
     for (const [nodeId, v] of this.activeVersions()) {
       if (v.assetId) assets[nodeId] = v.assetId;
       if (v.rating) ratings[nodeId] = v.rating;
+      if (v.quality) reviews[nodeId] = v.quality;
     }
-    return { state, assets, ratings };
+    return { state, assets, ratings, reviews };
   }
 
   /** `opts.except`: the gateway socket that sent the patch gets an `ack` instead of `graph.patched` (D-014). */
@@ -1101,8 +1121,9 @@ export class ProjectRoom extends DurableObject<Env> {
 
   private activeVersions(): Map<string, ActiveVersion> {
     const rows = this.ctx.storage.sql
-      .exec<{ node_id: string; id: string; input_digest: string; n: number; asset_id: string | null; created_at: number; rating: string | null; total: number }>(
+      .exec<{ node_id: string; id: string; input_digest: string; n: number; asset_id: string | null; created_at: number; rating: string | null; review: string | null; total: number }>(
         `SELECT v.node_id, v.id, v.input_digest, v.n, v.asset_id, v.created_at, v.rating,
+                CASE WHEN json_valid(v.output) THEN json_extract(v.output, '$.review') END AS review,
                 (SELECT COUNT(*) FROM node_versions x WHERE x.node_id = v.node_id) AS total
          FROM nodes n JOIN node_versions v ON v.id = n.active_version_id`,
       )
@@ -1110,7 +1131,16 @@ export class ProjectRoom extends DurableObject<Env> {
     return new Map(
       rows.map((r) => [
         r.node_id,
-        { versionId: r.id, digest: r.input_digest, n: Number(r.n), total: Number(r.total), assetId: r.asset_id, createdAt: Number(r.created_at), rating: r.rating ?? null },
+        {
+          versionId: r.id,
+          digest: r.input_digest,
+          n: Number(r.n),
+          total: Number(r.total),
+          assetId: r.asset_id,
+          createdAt: Number(r.created_at),
+          rating: r.rating ?? null,
+          quality: qualityOf(typeof r.review === "string" ? r.review : r.review ? JSON.stringify(r.review) : null),
+        },
       ]),
     );
   }
@@ -1163,7 +1193,9 @@ export class ProjectRoom extends DurableObject<Env> {
 
   private versionPayload(v: VersionInfo) {
     const total = Number(this.ctx.storage.sql.exec<{ c: number }>("SELECT COUNT(*) AS c FROM node_versions WHERE node_id = ?", v.nodeId).one().c);
-    return { id: v.id, n: v.n, total, assetId: v.assetId, rating: v.rating, active: v.active, stale: v.stale, createdAt: v.createdAt };
+    const review = (v.output as { review?: unknown } | null)?.review;
+    const quality = review ? qualityOf(JSON.stringify(review)) : null;
+    return { id: v.id, n: v.n, total, assetId: v.assetId, rating: v.rating, active: v.active, stale: v.stale, createdAt: v.createdAt, ...(quality && { quality }) };
   }
 
   private snapshot(): RoomSnapshot {
@@ -1171,7 +1203,7 @@ export class ProjectRoom extends DurableObject<Env> {
     const active = this.activeVersions();
     const nodes = sql.exec<NodeRow & Record<string, SqlStorageValue>>("SELECT * FROM nodes ORDER BY rowid").toArray().map((r): RoomNodeRow => {
       const v = active.get(r.id);
-      return { ...r, ...(v ? { version_n: v.n, version_total: v.total, asset_id: v.assetId, version_rating: v.rating } : {}) };
+      return { ...r, ...(v ? { version_n: v.n, version_total: v.total, asset_id: v.assetId, version_rating: v.rating, ...(v.quality && { version_quality: v.quality }) } : {}) };
     });
     const timelineRow = sql.exec<{ canvas_id: string; edl: string; revision: number }>("SELECT * FROM timelines LIMIT 1").toArray()[0];
     return {

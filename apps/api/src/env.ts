@@ -39,6 +39,8 @@ interface RollingSecrets {
   MEDIA_CONTAINER?: string;
   /** Seconds between same-model resubmissions after a transient provider failure, e.g. "5,15" (tests: "0,0"). */
   GENERATE_RETRY_BACKOFF?: string;
+  /** `off` skips the D-024 result review (tests that do not fake the reviewer). Not a secret. */
+  RESULT_REVIEW?: string;
   // Direct browser uploads to R2 (D-011): S3 API credentials (an R2 API token scoped to the media bucket).
   R2_ACCESS_KEY_ID?: string;
   R2_SECRET_ACCESS_KEY?: string;

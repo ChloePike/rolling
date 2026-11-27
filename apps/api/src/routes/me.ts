@@ -126,6 +126,8 @@ async function savePrefs(env: Env, userId: string, prefs: Prefs): Promise<void> 
       prefs.enhancePrompt ? 1 : 0,
     )
     .run();
+  // D-024 "Review results" (migration 0032).
+  await env.DB.prepare("UPDATE user_prefs SET review_results = ?2 WHERE user_id = ?1").bind(userId, prefs.reviewResults ? 1 : 0).run();
 }
 
 export const me = new Hono<AppEnv>()

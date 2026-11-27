@@ -94,6 +94,9 @@ export interface JobRow {
   updated_at: number | null;
   /** Migration 0024 (D-020). */
   expanded_prompt?: string | null;
+  /** Migration 0032 (D-024): the result review (JSON) and its gateway cost. */
+  review?: string | null;
+  review_cost_usd?: number | null;
 }
 
 /** Quote item as stored in `quotes.items` and returned by the quote route. */

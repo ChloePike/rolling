@@ -5,6 +5,7 @@ import {
   JobFailure,
   advanceAfter,
   commitJob,
+  expandedOf,
   failJob,
   loadJobContext,
   nextFallback,
@@ -16,6 +17,8 @@ import {
   type GenerateParams,
   type JobContext,
 } from "../runs/jobs";
+import { decideReview, pickBetterVersion, reviewJob, startReviewRetry } from "../runs/review";
+import type { ResultReview } from "@rolling/core/review";
 
 export type GenerateWorkflowParams = GenerateParams;
 
@@ -34,6 +37,8 @@ const MAX_WAIT_S = 60;
 const MAX_WAITS = { image: 70, video: 190 } as const;
 
 const RETRY = { retries: { limit: 4, delay: "5 seconds", backoff: "exponential" }, timeout: "2 minutes" } as const;
+/** The result review (D-024): one retry, then the output stays unreviewed. */
+const REVIEW_STEP = { retries: { limit: 1, delay: "5 seconds", backoff: "constant" }, timeout: "2 minutes" } as const;
 
 /** Wraps a step body so job failures end the job instead of being retried. */
 function guard<T>(fn: () => Promise<T>): () => Promise<T> {
@@ -137,7 +142,19 @@ export class GenerateWorkflow extends WorkflowEntrypoint<Env, GenerateWorkflowPa
         const usedModel = modelId;
         try {
           const stored = await step.do(`store-${attempt}`, RETRY, guard(() => storeOutputs(env, ctx, done, usedModel)));
-          const committed = await step.do("commit", RETRY, async () => commitJob(env, ctx, stored, prepared, done, usedModel));
+          // D-024: the result review never fails the job (no review on any error); its decision rides on the version.
+          const review = await step.do(`review-${attempt}`, REVIEW_STEP, async () => {
+            const r = await reviewJob(env, ctx, stored, expandedOf(done));
+            return r ? JSON.stringify(await decideReview(env, ctx, r)) : "";
+          }).catch(() => "");
+          const verdict = review ? (JSON.parse(review) as ResultReview) : null;
+          const committed = await step.do("commit", RETRY, async () => commitJob(env, ctx, stored, prepared, done, usedModel, verdict));
+          if (verdict) {
+            await step.do("review-after-commit", REVIEW_STEP, async () => {
+              await pickBetterVersion(env, ctx, verdict);
+              return (await startReviewRetry(env, ctx, verdict)) ?? "";
+            }).catch(() => "");
+          }
           await step.do("advance-after-commit", RETRY, async () => advanceAfter(env, ctx));
           return { status: "succeeded" as const, model: usedModel, attempt, ...committed };
         } catch (err) {

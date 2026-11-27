@@ -74,7 +74,7 @@ export async function agentPorts(env: Env, caller: AgentCaller): Promise<AgentPo
     canvas: {
       async getGraph(projectId) {
         const res = await room(env, projectId).getGraph(rc);
-        return "state" in res ? { state: res.state, assets: res.assets } : null;
+        return "state" in res ? { state: res.state, assets: res.assets, reviews: res.reviews } : null;
       },
     },
     timeline: {

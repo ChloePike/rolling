@@ -37,6 +37,14 @@ import {
   type StoredQuoteItem,
 } from "./store";
 
+/** Run options only the server sets (stored in `runs.options` with the staging ones). */
+export interface ServerRunOptions {
+  /** D-021 Auto mode: credits the agent may still start in this turn after this run (review retries count against it). */
+  auto?: { budgetLeft: number; turnId?: string };
+  /** D-024: this run is an Auto retry of `jobId` with its review fix. */
+  reviewRetryOf?: { jobId: string; budgetKey: string };
+}
+
 export interface QuoteResponseItem {
   ref: string;
   nodeId: string | null;
@@ -276,7 +284,14 @@ const LEDGER_API: Partial<Record<LedgerErrorCode, [402 | 403 | 409 | 429, "NO_PL
 };
 
 /** Starts a run from a quote. Idempotent per quote: a second start returns the same run. */
-export async function startRun(env: Env, auth: AuthContext, quoteId: string, rawOptions: RunOptions = {}): Promise<{ runId: string; status: RunRow["status"] }> {
+export async function startRun(
+  env: Env,
+  auth: AuthContext,
+  quoteId: string,
+  rawOptions: RunOptions = {},
+  /** Set by the server only, never from a request body: Auto mode's budget and review retries (D-021, D-024). */
+  serverOptions: ServerRunOptions = {},
+): Promise<{ runId: string; status: RunRow["status"] }> {
   const quote = await env.DB.prepare("SELECT * FROM quotes WHERE id = ? AND workspace_id = ?").bind(quoteId, auth.workspaceId).first<QuoteRow>();
   if (!quote) throw new ApiError(404, "NOT_FOUND", "Quote not found", { quoteId });
   const existing = await env.DB.prepare("SELECT id, status FROM runs WHERE quote_id = ?").bind(quoteId).first<{ id: string; status: RunRow["status"] }>();
@@ -295,7 +310,7 @@ export async function startRun(env: Env, auth: AuthContext, quoteId: string, raw
     throw new ApiError(402, "INSUFFICIENT_CREDITS", "Not enough credits", { needed: total, balance: b.plan + b.purchased });
   }
   // Staging-only failure injection (canvas golden path, step 7).
-  const options: RunOptions = env.ENVIRONMENT === "production" ? {} : rawOptions;
+  const options: RunOptions & ServerRunOptions = { ...(env.ENVIRONMENT === "production" ? {} : rawOptions), ...serverOptions };
   const runId = newId("run");
   const first = items[0]!;
   const record = parseJson<RunRequestRecord | null>(quote.request, null);
