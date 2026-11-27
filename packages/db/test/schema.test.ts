@@ -63,7 +63,7 @@ describe("D1 migration", () => {
     const db = new DatabaseSync(":memory:");
     const dir = new URL("../migrations/d1/", import.meta.url);
     const files = readdirSync(dir).filter((f) => f.endsWith(".sql")).sort();
-    expect(files).toEqual(["0001_init.sql", "0002_models.sql", "0003_plan_names.sql", "0004_auth.sql", "0005_billing.sql", "0006_projects_assets.sql", "0007_runs.sql", "0008_agent.sql", "0009_safety.sql", "0010_uploads.sql", "0011_agent_allowance.sql", "0012_team.sql", "0013_account.sql", "0014_exports.sql", "0015_runs_templates.sql", "0016_seed_templates.sql", "0017_template_covers.sql", "0018_privacy.sql", "0019_seed_inspiration_templates.sql", "0020_template_media.sql", "0021_template_feed_order.sql", "0022_public_items_asset_index.sql", "0023_inspiration_people.sql", "0024_prompt_expand.sql", "0025_run_surface.sql"]);
+    expect(files).toEqual(["0001_init.sql", "0002_models.sql", "0003_plan_names.sql", "0004_auth.sql", "0005_billing.sql", "0006_projects_assets.sql", "0007_runs.sql", "0008_agent.sql", "0009_safety.sql", "0010_uploads.sql", "0011_agent_allowance.sql", "0012_team.sql", "0013_account.sql", "0014_exports.sql", "0015_runs_templates.sql", "0016_seed_templates.sql", "0017_template_covers.sql", "0018_privacy.sql", "0019_seed_inspiration_templates.sql", "0020_template_media.sql", "0021_template_feed_order.sql", "0022_public_items_asset_index.sql", "0023_inspiration_people.sql", "0024_prompt_expand.sql", "0025_run_surface.sql", "0031_post_production.sql"]);
     for (const f of files) db.exec(readFileSync(new URL(f, dir), "utf8"));
     expectSchemaMatches(db, tablesOf(d1));
     // 0015: run requests and retries, template listing fields; 0016 seeds the built-in templates.
@@ -127,5 +127,20 @@ describe.each<[string, readonly DoMigration[], Record<string, unknown>]>([
     expect(migrateDurableObject(storage, migrations)).toBe(migrations.length);
     expect(migrateDurableObject(storage, migrations)).toBe(migrations.length);
     expectSchemaMatches(db, tablesOf(mod));
+  });
+});
+
+describe("D1 0031 post-production (D-033 .. D-037)", () => {
+  it("keeps exports while widening the presets, and adds post jobs, placements and brand kits", () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec(readFileSync(new URL("../migrations/d1/0014_exports.sql", import.meta.url), "utf8"));
+    db.exec("INSERT INTO exports (id, workspace_id, project_id, canvas_id, preset, timeline_revision, status, width, height, duration, created_by, created_at) VALUES ('exp_1', 'ws', 'prj', 'cnv', 'mp4_720p', 1, 'done', 1280, 720, 5, 'u', 1)");
+    db.exec(readFileSync(new URL("../migrations/d1/0031_post_production.sql", import.meta.url), "utf8"));
+    expect({ ...(db.prepare("SELECT preset, options, preview FROM exports WHERE id = 'exp_1'").all()[0] as object) }).toEqual({ preset: "mp4_720p", options: "{}", preview: 0 });
+    db.exec("INSERT INTO exports (id, workspace_id, project_id, canvas_id, preset, timeline_revision, status, width, height, duration, created_by, created_at, batch_id) VALUES ('exp_2', 'ws', 'prj', 'cnv', 'vertical_9x16', 1, 'queued', 1080, 1920, 5, 'u', 1, 'b1')");
+    expect(() => db.exec("INSERT INTO exports (id, workspace_id, project_id, canvas_id, preset, timeline_revision, status, width, height, duration, created_by, created_at) VALUES ('exp_3', 'ws', 'prj', 'cnv', 'gif', 1, 'queued', 1, 1, 1, 'u', 1)")).toThrow();
+    expect(() => db.exec("INSERT INTO post_jobs (id, kind, workspace_id, status, created_by, created_at) VALUES ('p', 'dub', 'ws', 'queued', 'u', 1)")).toThrow();
+    expect(() => db.exec("INSERT INTO timeline_placements (id, quote_id, workspace_id, project_id, canvas_id, mode, anchor_clip_id, seconds, status, created_by, created_at, updated_at) VALUES ('p', 'q', 'ws', 'prj', 'cnv', 'before', 'v1', 5, 'quoted', 'u', 1, 1)")).toThrow();
+    expect(columnsIn(db, "brand_kits")).toEqual(["data", "updated_at", "updated_by", "workspace_id"]);
   });
 });

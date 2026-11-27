@@ -674,7 +674,7 @@ export const exports = sqliteTable(
     workspaceId: text("workspace_id").notNull(),
     projectId: text("project_id").notNull(),
     canvasId: text("canvas_id").notNull(),
-    preset: text("preset", { enum: ["mp4_1080p", "mp4_720p"] }).notNull(),
+    preset: text("preset", { enum: ["mp4_1080p", "mp4_720p", "vertical_9x16", "square_1x1", "landscape_16x9"] }).notNull(),
     rangeStart: real("range_start"),
     rangeEnd: real("range_end"),
     timelineRevision: integer("timeline_revision").notNull(),
@@ -691,10 +691,15 @@ export const exports = sqliteTable(
     createdBy: text("created_by").notNull(),
     createdAt: integer("created_at").notNull(),
     finishedAt: integer("finished_at"),
+    /** Migration 0031 (D-034): export options (captions, smoother motion, brand kit), batch and preview. */
+    options: text("options").notNull().default("{}"),
+    batchId: text("batch_id"),
+    preview: integer("preview", { mode: "boolean" }).notNull().default(false),
   },
   (t) => [
     index("exports_project").on(t.projectId, sql`${t.createdAt} DESC`),
-    check("exports_preset_check", sql`${t.preset} IN ('mp4_1080p','mp4_720p')`),
+    index("exports_batch").on(t.batchId),
+    check("exports_preset_check", sql`${t.preset} IN ('mp4_1080p','mp4_720p','vertical_9x16','square_1x1','landscape_16x9')`),
     check("exports_status_check", sql`${t.status} IN ('queued','running','done','failed')`),
   ],
 );
@@ -879,3 +884,67 @@ export type Asset = typeof assets.$inferSelect;
 export type PublicItem = typeof publicItems.$inferSelect;
 export type ModelRow = typeof models.$inferSelect;
 export type NewModelRow = typeof models.$inferInsert;
+
+/** Migration 0031 (D-033, D-034): auto captions / transcripts (Workers AI Whisper) and Resize jobs. */
+export const postJobs = sqliteTable(
+  "post_jobs",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind", { enum: ["captions", "transcript", "resize"] }).notNull(),
+    workspaceId: text("workspace_id").notNull(),
+    projectId: text("project_id"),
+    canvasId: text("canvas_id"),
+    assetId: text("asset_id"),
+    status: text("status", { enum: ["queued", "running", "done", "failed"] }).notNull(),
+    progress: real("progress").notNull().default(0),
+    params: text("params").notNull().default("{}"),
+    result: text("result"),
+    audioSeconds: real("audio_seconds").notNull().default(0),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    createdBy: text("created_by").notNull(),
+    createdAt: integer("created_at").notNull(),
+    finishedAt: integer("finished_at"),
+  },
+  (t) => [
+    index("post_jobs_ws").on(t.workspaceId, t.kind, sql`${t.createdAt} DESC`),
+    index("post_jobs_project").on(t.projectId, sql`${t.createdAt} DESC`),
+    check("post_jobs_kind_check", sql`${t.kind} IN ('captions','transcript','resize')`),
+    check("post_jobs_status_check", sql`${t.status} IN ('queued','running','done','failed')`),
+  ],
+);
+
+/** Migration 0031 (D-036, D-037): where a run's output lands on the timeline (extend after a clip, lip-sync replaces a shot). */
+export const timelinePlacements = sqliteTable(
+  "timeline_placements",
+  {
+    id: text("id").primaryKey(),
+    quoteId: text("quote_id").notNull().unique(),
+    runId: text("run_id"),
+    workspaceId: text("workspace_id").notNull(),
+    projectId: text("project_id").notNull(),
+    canvasId: text("canvas_id").notNull(),
+    mode: text("mode", { enum: ["after", "replace"] }).notNull(),
+    anchorClipId: text("anchor_clip_id").notNull(),
+    placedClipId: text("placed_clip_id"),
+    seconds: real("seconds").notNull(),
+    previous: text("previous"),
+    status: text("status", { enum: ["quoted", "pending", "placed", "dropped"] }).notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [
+    index("timeline_placements_run").on(t.runId),
+    check("timeline_placements_mode_check", sql`${t.mode} IN ('after','replace')`),
+    check("timeline_placements_status_check", sql`${t.status} IN ('quoted','pending','placed','dropped')`),
+  ],
+);
+
+/** Migration 0031 (D-035): one brand kit per workspace (`data`: BrandKit JSON from `@rolling/core/post`). */
+export const brandKits = sqliteTable("brand_kits", {
+  workspaceId: text("workspace_id").primaryKey(),
+  data: text("data").notNull(),
+  updatedBy: text("updated_by").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
