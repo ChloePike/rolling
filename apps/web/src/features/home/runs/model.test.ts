@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RunView } from '@/features/overlays/runs';
-import { applyProgress, applyRunView, cardStatus, clock, isActive, MAX_CARDS, parseStored, remainingSeconds, upsertCard, type HomeRunCard } from './model';
+import { applyProgress, applyRunView, cardErrorText, cardStatus, clock, isActive, MAX_CARDS, parseStored, remainingSeconds, upsertCard, type HomeRunCard } from './model';
 
 const card = (over: Partial<HomeRunCard> = {}): HomeRunCard => ({
   key: 'k1',
@@ -170,5 +170,15 @@ describe('home run cards: mature text-to-video chain (D-005)', () => {
     expect(failed.refunded).toBe(100);
     expect(failed.assetIds).toEqual([]);
     expect(failed.chain?.keyframeAssetId).toBe('ast_kf');
+  });
+});
+
+describe('failed card text (no duplicate “No credits were charged”)', () => {
+  it('drops the sentence the cost line already says', () => {
+    expect(cardErrorText('Forced failure for testing. No credits were charged.')).toBe('Forced failure for testing.');
+    expect(cardErrorText('The provider did not finish in time. No credits were charged.')).toBe('The provider did not finish in time.');
+    expect(cardErrorText('The model timed out.')).toBe('The model timed out.');
+    expect(cardErrorText('No credits were charged.')).toBe('');
+    expect(cardErrorText(null)).toBe('');
   });
 });

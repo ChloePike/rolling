@@ -44,6 +44,9 @@ test('HOME-1 run cards: an Image send becomes a card under the prompt box (no to
   await expect(page.getByText(/started · \d+ credits? held/)).toHaveCount(0);
   await expect(card).toHaveAttribute('data-status', 'failed', { timeout: 120_000 });
   await expect(card.getByTestId('home-run-error')).not.toBeEmpty();
+  // Said once, in the cost line; the reason above it does not repeat it.
+  await expect(card.getByTestId('home-run-error')).not.toContainText('No credits were charged');
+  await expect(card.getByText(/No credits were charged/)).toHaveCount(1);
   await expect(card.getByTestId('home-run-cost')).toHaveText(/^No credits were charged · \d+ held credits? released$/);
   await expect(card.getByRole('button', { name: 'Retry' })).toBeVisible();
   await shot(page, testInfo, 'home-card-failed');

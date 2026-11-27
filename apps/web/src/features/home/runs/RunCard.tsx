@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { assetMediaUrl, isMockApi, posterUrl } from '@/features/overlays/backend';
 import { EnhancedPrompt, PromptIcon } from '@/features/prompt';
-import { clock, isActive, remainingSeconds, type HomeRunCard } from './model';
+import { cardErrorText, clock, isActive, remainingSeconds, type HomeRunCard } from './model';
 import styles from './RunCard.module.css';
 
 export interface RunCardActions {
@@ -179,9 +179,9 @@ export function RunCard({ card, actions, index }: { card: HomeRunCard; actions: 
             <span className={cx('rl-progress-fill', pct === null && 'rl-indeterminate')} style={pct !== null ? { width: `${pct}%` } : undefined} />
           </div>
         ) : null}
-        {card.status === 'failed' && card.error ? (
+        {card.status === 'failed' && cardErrorText(card.error) ? (
           <p className={styles.error} data-testid="home-run-error">
-            {card.error}
+            {cardErrorText(card.error)}
           </p>
         ) : null}
         {card.status === 'failed' && card.chain?.keyframeAssetId ? (

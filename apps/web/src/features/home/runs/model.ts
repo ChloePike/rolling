@@ -73,6 +73,15 @@ export function cardStatus(s: RunView['status']): CardStatus {
   }
 }
 
+/**
+ * A failed card's reason without "No credits were charged": the cost line under it
+ * already says so ("No credits were charged · N held credits released"). Run errors
+ * come from the API in English. Empty when nothing else is left.
+ */
+export function cardErrorText(error: string | null): string {
+  return (error ?? '').replace(/\s*No credits were charged\.?/gi, '').trim();
+}
+
 /** The card after a fresh `GET /api/runs/:id`. */
 export function applyRunView(card: HomeRunCard, view: RunView): HomeRunCard {
   const chain = chainOf(view);
