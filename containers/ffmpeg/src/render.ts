@@ -4,13 +4,14 @@
  * URL (or keep it for `GET /render/:id/file`). Jobs live in memory; a
  * restarted container answers 404 and the workflow fails the export.
  */
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { createReadStream } from "node:fs";
-import { mkdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
-import { buildRender, type InputInfo, type RenderJob } from "./graph.ts";
+import { buildRender, type FocusKey, type InputInfo, type MediaClip, type RenderCard, type RenderJob } from "./graph.ts";
+import { analysisArgs, focusSamples, smoothPath, splitFrames, toClipTime } from "./reframe.ts";
 
 export type RenderStatus = "running" | "uploading" | "done" | "failed";
 
@@ -22,6 +23,8 @@ export interface RenderResult {
   videoCodec: string | null;
   audioCodec: string | null;
   uploaded: boolean;
+  /** Audio-only jobs: number of MP3 chunks (`GET /render/:id/file?part=n`). */
+  parts?: number;
 }
 
 export interface RenderState {
@@ -60,6 +63,14 @@ export interface RenderDeps {
   /** Concurrent ffmpeg processes. */
   concurrency?: number;
   workDir?: string;
+  /** Raw 64×64 gray frames of a source range (smart reframe). */
+  analyze?: (url: string, start: number, len: number) => Promise<Uint8Array>;
+  /** Family names inside a font file (`fc-scan`). */
+  fontFamilies?: (path: string) => Promise<string[]>;
+  /** A system font file for a fontconfig pattern (`fc-match`). */
+  systemFont?: (pattern: string) => Promise<string | null>;
+  /** Downloads a URL to a file. */
+  download?: (url: string, path: string) => Promise<void>;
 }
 
 const MAX_DURATION = 15 * 60;
@@ -103,6 +114,16 @@ export function validateJob(body: unknown): RenderJob {
     if (!v || typeof v.url !== "string" || !/^https?:\/\//.test(v.url)) throw new RenderError("BAD_REQUEST", "inputs must be http(s) URLs");
   }
   if (j.putUrl !== undefined && (typeof j.putUrl !== "string" || !/^https?:\/\//.test(j.putUrl))) throw new RenderError("BAD_REQUEST", "putUrl must be an http(s) URL");
+  if (j.interpolateFps !== undefined && j.interpolateFps !== 48 && j.interpolateFps !== 60) throw new RenderError("BAD_REQUEST", "interpolateFps must be 48 or 60");
+  for (const f of j.fonts ?? []) {
+    if (!f || typeof f.url !== "string" || !/^https?:\/\//.test(f.url) || typeof f.family !== "string" || !["woff2", "ttf", "otf"].includes(f.format)) throw new RenderError("BAD_REQUEST", "fonts are invalid");
+  }
+  const urls = [j.brand?.watermark?.url, j.brand?.intro?.logoUrl, j.brand?.outro?.logoUrl].filter((u) => u !== undefined);
+  if (urls.some((u) => typeof u !== "string" || !/^https?:\/\//.test(u))) throw new RenderError("BAD_REQUEST", "brand images must be http(s) URLs");
+  for (const c of [j.brand?.intro, j.brand?.outro]) {
+    if (c && (!isNum(c.seconds, 0.5, 10) || typeof c.text !== "string" || c.text.length > 200 || !/^#[0-9a-f]{6}$/i.test(c.background) || !/^#[0-9a-f]{6}$/i.test(c.color))) throw new RenderError("BAD_REQUEST", "a brand card is invalid");
+  }
+  if (j.audioOnly && (j.audioOnly.sampleRate !== 16000 || !isNum(j.audioOnly.chunkSeconds, 10, 900))) throw new RenderError("BAD_REQUEST", "audioOnly is invalid");
   return j as RenderJob;
 }
 
@@ -124,6 +145,48 @@ async function defaultUpload(url: string, path: string, size: number): Promise<v
     duplex: "half",
   } as RequestInit & { duplex: "half" });
   if (!res.ok) throw new RenderError("upload_failed", `Storage answered ${res.status}`);
+}
+
+function capture(cmd: string, args: string[], timeout = 60_000): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    execFile(cmd, args, { timeout, maxBuffer: 64 * 1024 * 1024, encoding: "buffer" }, (err, stdout) => (err ? reject(err) : resolve(stdout)));
+  });
+}
+
+const defaultAnalyze = (url: string, start: number, len: number) => capture("ffmpeg", analysisArgs(url, start, len), 120_000).then((b) => new Uint8Array(b));
+
+async function defaultFontFamilies(path: string): Promise<string[]> {
+  try {
+    const out = (await capture("fc-scan", ["--format", "%{family}\\n", path], 10_000)).toString("utf8");
+    return [...new Set(out.split(/[\n,]/).map((f) => f.trim()).filter(Boolean))];
+  } catch {
+    return [];
+  }
+}
+
+async function defaultSystemFont(pattern: string): Promise<string | null> {
+  try {
+    const f = (await capture("fc-match", ["-f", "%{file}", pattern], 10_000)).toString("utf8").trim();
+    return f || null;
+  } catch {
+    return null;
+  }
+}
+
+async function defaultDownload(url: string, path: string): Promise<void> {
+  const res = await fetch(url);
+  if (!res.ok) throw new RenderError("input_unreadable", `A font could not be read (${res.status})`);
+  await writeFile(path, new Uint8Array(await res.arrayBuffer()));
+}
+
+const CJK = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af]/;
+
+/** Clips whose crop follows the subject (auto reframe on the base video track). */
+export function autoReframeClips(job: RenderJob): MediaClip[] {
+  if (!job.reframe) return [];
+  const base = job.edl.tracks.find((t) => t.kind === "video");
+  if (!base || base.kind !== "video") return [];
+  return base.clips.filter((c) => c.assetId && job.inputs[c.assetId] && (!c.reframe || c.reframe.mode === "auto") && c.start < job.duration);
 }
 
 export class Renderer {
@@ -199,11 +262,28 @@ export class Renderer {
           throw new RenderError("input_unreadable", `An input could not be read (${assetId}): ${String(err instanceof Error ? err.message : err).slice(0, 200)}`);
         }
       }
-      const built = buildRender(job, { inputs, assPath: join(e.dir, "captions.ass"), filterPath: join(e.dir, "graph.txt"), outPath: e.out });
+      const prepared = await this.prepare(job, e, inputs);
+      const built = buildRender(prepared.job, {
+        inputs,
+        assPath: join(e.dir, "captions.ass"),
+        filterPath: join(e.dir, "graph.txt"),
+        outPath: e.out,
+        fontsDir: prepared.fontsDir,
+        focus: prepared.focus,
+        cards: prepared.cards,
+        audioPattern: join(e.dir, "part%03d.mp3"),
+      });
       await writeFile(join(e.dir, "graph.txt"), built.filter);
       if (built.ass) await writeFile(join(e.dir, "captions.ass"), built.ass);
-      await this.ffmpeg(built.args, job.duration, e);
+      await this.ffmpeg(built.args, built.totalDuration, e);
       if (e.canceled) return;
+      if (job.audioOnly) {
+        const parts = (await readdir(e.dir)).filter((f) => /^part\d{3}\.mp3$/.test(f)).sort();
+        let size = 0;
+        for (const f of parts) size += (await stat(join(e.dir, f))).size;
+        e.state = { id: job.id, status: "done", progress: 1, result: { durationSec: job.duration, size, width: null, height: null, videoCodec: null, audioCodec: "mp3", uploaded: false, parts: parts.length } };
+        return;
+      }
       const size = (await stat(e.out)).size;
       const p = await this.deps.probe(e.out);
       let uploaded = false;
@@ -228,6 +308,60 @@ export class Renderer {
       e.touched = Date.now();
       release();
     }
+  }
+
+  /**
+   * Fonts into the job's font folder (their real family names replace the
+   * labels the Worker sent), card text files with a font that has the glyphs,
+   * and subject paths for auto-reframed clips (a failed analysis centers).
+   */
+  private async prepare(job: RenderJob, e: Entry, inputs: Record<string, InputInfo>) {
+    const out: { job: RenderJob; fontsDir?: string; focus: Record<string, FocusKey[]>; cards: { intro?: { textPath: string; fontFile: string }; outro?: { textPath: string; fontFile: string } } } = { job, focus: {}, cards: {} };
+    const families = new Map<string, { path: string; real: string }>();
+    if (job.fonts?.length) {
+      const dir = join(e.dir, "fonts");
+      await mkdir(dir, { recursive: true });
+      for (const [i, f] of job.fonts.entries()) {
+        const path = join(dir, `font${i}.${f.format}`);
+        await (this.deps.download ?? defaultDownload)(f.url, path);
+        const real = (await (this.deps.fontFamilies ?? defaultFontFamilies)(path))[0] ?? f.family;
+        families.set(f.family, { path, real });
+      }
+      out.fontsDir = dir;
+    }
+    if (job.captions?.look) {
+      const mapped = families.get(job.captions.look.fontFamily);
+      if (mapped) out.job = { ...job, captions: { ...job.captions, look: { ...job.captions.look, fontFamily: mapped.real } } };
+    }
+    const systemFont = this.deps.systemFont ?? defaultSystemFont;
+    const cardFiles = async (name: "intro" | "outro", c: RenderCard | undefined) => {
+      if (!c) return;
+      const textPath = join(e.dir, `${name}.txt`);
+      await writeFile(textPath, c.text);
+      const brand = c.fontFamily ? families.get(c.fontFamily)?.path : undefined;
+      const fontFile = brand ?? (await systemFont(CJK.test(c.text) ? "Noto Sans CJK SC:bold" : "Noto Sans:bold")) ?? (await systemFont("DejaVu Sans:bold")) ?? "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
+      out.cards[name] = { textPath, fontFile };
+    };
+    await cardFiles("intro", job.brand?.intro);
+    await cardFiles("outro", job.brand?.outro);
+    for (const clip of autoReframeClips(job)) {
+      const info = inputs[clip.assetId!];
+      if (!info?.hasVideo) continue;
+      try {
+        const raw = await (this.deps.analyze ?? defaultAnalyze)(info.url, clip.in, clip.out - clip.in);
+        out.focus[clip.id] = toClipTime(smoothPath(focusSamples(splitFrames(raw))), clip);
+      } catch (err) {
+        console.warn(JSON.stringify({ msg: "reframe analysis failed", id: job.id, clip: clip.id, error: String(err).slice(0, 300) }));
+      }
+    }
+    return out;
+  }
+
+  /** Audio-only chunk file. */
+  partPath(id: string, part: number): string | null {
+    const e = this.jobs.get(id);
+    if (!e || e.state.status !== "done" || !e.state.result?.parts || part < 0 || part >= e.state.result.parts) return null;
+    return join(e.dir, `part${String(part).padStart(3, "0")}.mp3`);
   }
 
   private ffmpeg(args: string[], duration: number, e: Entry): Promise<void> {

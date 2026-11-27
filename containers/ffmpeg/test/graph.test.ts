@@ -125,7 +125,7 @@ describe("filter graph builder", () => {
       ],
     };
     const r = build(job(edl, 62), {});
-    expect(r.filter).toContain("ass=filename='/tmp/r/captions.ass',format=yuv420p[vout]");
+    expect(r.filter).toContain("ass=filename='/tmp/r/captions.ass',format=yuv420p,setsar=1,settb=AVTB,setpts=PTS-STARTPTS[vout]");
     const ass = r.ass!;
     expect(ass).toContain("PlayResX: 720\nPlayResY: 1280");
     expect(ass).toContain("Dialogue: 0,0:00:00.40,0:00:04.00,Caption,,0,0,0,,Morning. ｛The｝ first＼sip\\Nof the mountains.");

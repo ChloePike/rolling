@@ -7,16 +7,23 @@
  * `GET /render/:id/file` → the MP4 when the job had no `putUrl`;
  * `DELETE /render/:id`. /frames and /scenes (Remix shots, frames.ts): PNG
  * frames at given times PUT to presigned URLs, and detected scene cuts.
+ * Post-production (post.ts, jobs.ts): /last-frame, /silences, /audio-cut, and
+ * `/jobs` (Resize) in the background like /render.
  * Must stay erasable TypeScript (no enums/namespaces) so Node can strip types.
  */
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { execFile } from "node:child_process";
 import { createReadStream } from "node:fs";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { audioCutArgs, lastFrameArgs, parseSilences, silenceArgs } from "./post.ts";
+import { CommandJobs, JobError, validateResizeJob } from "./jobs.ts";
 import { Renderer, RenderError, validateJob } from "./render.ts";
 import { endFrameArgs, FramesError, frameArgs, isPng, parseSceneCuts, sceneArgs, validateFrames } from "./frames.ts";
 
 const PORT = Number(process.env.PORT ?? 8080);
-const MEDIA_ROUTES = new Set(["/probe", "/thumb", "/waveform", "/frames", "/scenes"]);
+const MEDIA_ROUTES = new Set(["/probe", "/thumb", "/waveform", "/frames", "/scenes", "/last-frame", "/silences", "/audio-cut"]);
 const MAX_OUTPUT = 64 * 1024 * 1024;
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
@@ -110,6 +117,46 @@ async function frames(body: Record<string, unknown>, res: ServerResponse): Promi
   sendJson(res, 200, { frames: out });
 }
 
+/**
+ * `/last-frame { url, width?, put? }` → PNG of the video's last frame;
+ * `/audio-cut { url, start, duration, put? }` → M4A of that range.
+ * With `put` (a presigned URL) the file is uploaded and the answer is JSON.
+ */
+async function fileCommand(path: string, url: string, body: Record<string, unknown>, res: ServerResponse): Promise<void> {
+  const put = body.put;
+  if (put !== undefined && (typeof put !== "string" || !/^https?:\/\//.test(put))) return sendJson(res, 400, { error: { code: "BAD_REQUEST", message: "put must be an http(s) URL", data: {} } });
+  const dir = await mkdtemp(join(tmpdir(), "cmd-"));
+  try {
+    let out: string;
+    let type: string;
+    if (path === "/last-frame") {
+      out = join(dir, "last.png");
+      type = "image/png";
+      const width = typeof body.width === "number" ? Math.round(num(body.width, 1280, 16, 4096)) : null;
+      // Short clips: the whole file is within reach of the seek.
+      await run("ffmpeg", lastFrameArgs(url, out, width, 1.5), 120_000);
+    } else {
+      const start = num(body.start, 0, 0, 36000);
+      const duration = num(body.duration, 0, 0.1, 600);
+      if (!(duration > 0)) return sendJson(res, 400, { error: { code: "BAD_REQUEST", message: "duration is required", data: {} } });
+      out = join(dir, "cut.m4a");
+      type = "audio/mp4";
+      await run("ffmpeg", audioCutArgs(url, start, duration, out), 120_000);
+    }
+    const bytes = await readFile(out);
+    if (!bytes.length || (type === "image/png" && !isPng(bytes))) return sendJson(res, 422, { error: { code: "MEDIA_FAILED", message: "No output", data: {} } });
+    if (typeof put === "string") {
+      const up = await fetch(put, { method: "PUT", body: new Uint8Array(bytes), headers: { "content-type": type, "content-length": String(bytes.length) } });
+      if (!up.ok) return sendJson(res, 502, { error: { code: "upload_failed", message: `Storage answered ${up.status}`, data: {} } });
+      return sendJson(res, 200, { size: bytes.length, uploaded: true, contentType: type });
+    }
+    res.writeHead(200, { "content-type": type, "content-length": bytes.length });
+    res.end(bytes);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
 function num(v: unknown, fallback: number, min: number, max: number): number {
   return typeof v === "number" && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback;
 }
@@ -158,6 +205,14 @@ async function media(path: string, body: Record<string, unknown>, res: ServerRes
     return;
   }
   if (path === "/frames") return frames(body, res);
+  if (path === "/last-frame" || path === "/audio-cut") return fileCommand(path, url, body, res);
+  if (path === "/silences") {
+    const start = num(body.start, 0, 0, 36000);
+    const duration = typeof body.duration === "number" ? num(body.duration, 0, 0.1, 3600) : undefined;
+    const log = await runLog("ffmpeg", silenceArgs(url, { start, ...(duration !== undefined && { duration }), noiseDb: num(body.noiseDb, -35, -80, -10), minSilence: num(body.minSilence, 0.45, 0.1, 5) }), 300_000);
+    sendJson(res, 200, { silences: parseSilences(log, duration) });
+    return;
+  }
   if (path === "/scenes") {
     const threshold = num(body.threshold, 0.3, 0.05, 0.95);
     const max = Math.round(num(body.max, 50, 1, 50));
@@ -178,6 +233,35 @@ async function media(path: string, body: Record<string, unknown>, res: ServerRes
 }
 
 export const renderer = new Renderer({ probe, concurrency: Number(process.env.RENDER_CONCURRENCY ?? 2) });
+export const jobs = new CommandJobs({ probe });
+
+async function jobsRoute(req: IncomingMessage, res: ServerResponse, path: string): Promise<void> {
+  if (path === "/jobs") {
+    if (req.method !== "POST") return sendJson(res, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "Use POST", data: {} } });
+    const body = await readJson(req);
+    if (!body) return sendJson(res, 400, { error: { code: "BAD_REQUEST", message: "Body must be JSON", data: {} } });
+    try {
+      return sendJson(res, 202, jobs.start(validateResizeJob(body)));
+    } catch (err) {
+      if (err instanceof JobError) return sendJson(res, 400, { error: { code: err.code, message: err.message, data: {} } });
+      throw err;
+    }
+  }
+  const m = /^\/jobs\/([A-Za-z0-9_-]{1,64})(\/file)?$/.exec(path);
+  if (!m) return sendJson(res, 404, { error: { code: "NOT_FOUND", message: "Route not found", data: { path } } });
+  const id = m[1]!;
+  if (m[2]) {
+    const file = jobs.file(id);
+    if (!file) return sendJson(res, 404, { error: { code: "NOT_FOUND", message: "No file for this job", data: {} } });
+    res.writeHead(200, { "content-type": file.contentType, "content-length": file.size });
+    createReadStream(file.path).pipe(res);
+    return;
+  }
+  if (req.method === "DELETE") return sendJson(res, 200, { ok: await jobs.remove(id) });
+  const state = jobs.get(id);
+  if (!state) return sendJson(res, 404, { error: { code: "NOT_FOUND", message: "No such job", data: {} } });
+  sendJson(res, 200, state);
+}
 
 async function renderRoute(req: IncomingMessage, res: ServerResponse, path: string): Promise<void> {
   if (path === "/render") {
@@ -196,6 +280,15 @@ async function renderRoute(req: IncomingMessage, res: ServerResponse, path: stri
   const id = m[1]!;
   if (m[2]) {
     if (req.method !== "GET") return sendJson(res, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "Use GET", data: {} } });
+    const part = new URL(req.url ?? "/", "http://container").searchParams.get("part");
+    if (part !== null) {
+      const p = renderer.partPath(id, Number(part));
+      if (!p) return sendJson(res, 404, { error: { code: "NOT_FOUND", message: "No such part", data: {} } });
+      const bytes = await readFile(p);
+      res.writeHead(200, { "content-type": "audio/mpeg", "content-length": bytes.length });
+      res.end(bytes);
+      return;
+    }
     const file = renderer.filePath(id);
     if (!file) return sendJson(res, 404, { error: { code: "NOT_FOUND", message: "No file for this render", data: {} } });
     res.writeHead(200, { "content-type": "video/mp4", "content-length": file.size });
@@ -230,6 +323,10 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
     } catch (err) {
       sendJson(res, 422, { error: { code: "MEDIA_FAILED", message: String(err instanceof Error ? err.message : err).slice(0, 500), data: {} } });
     }
+    return;
+  }
+  if (path === "/jobs" || path.startsWith("/jobs/")) {
+    await jobsRoute(req, res, path);
     return;
   }
   if (path === "/render" || path.startsWith("/render/")) {

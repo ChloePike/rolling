@@ -58,8 +58,11 @@ export interface MediaClip {
   transform?: ClipTransform;
   speed?: number;
   reverse?: boolean;
+  reframe?: { mode: "auto" | "center" | "manual"; x?: number; y?: number };
 }
-export type Track = { id: string; kind: "caption"; clips: CaptionClip[] } | { id: string; kind: "video" | "voice" | "music"; clips: MediaClip[] };
+export type Track =
+  | { id: string; kind: "caption"; clips: CaptionClip[]; style?: string; lang?: string }
+  | { id: string; kind: "video" | "voice" | "music"; clips: MediaClip[] };
 export interface Edl {
   fps: number;
   width: number;
@@ -77,6 +80,69 @@ export interface RenderJob {
   duration: number;
   inputs: Record<string, { url: string }>;
   putUrl?: string;
+  encode?: EncodeSettings;
+  reframe?: boolean;
+  interpolateFps?: 48 | 60;
+  /** Resolved caption look; null = no burn-in; absent = the default look. */
+  captions?: RenderCaptions | null;
+  fonts?: { family: string; url: string; format: "woff2" | "ttf" | "otf" }[];
+  brand?: RenderBrand;
+  audioOnly?: { sampleRate: 16000; chunkSeconds: number };
+  voiceLufs?: number;
+}
+
+/** `EncodeSettings` in `@rolling/core/export`. */
+export interface EncodeSettings {
+  crf: number | null;
+  videoKbps: number | null;
+  maxKbps: number | null;
+  bufferKbps: number | null;
+  profile: "high";
+  level: "4.1" | "4.2";
+  audioKbps: number;
+  loudnessLufs: number | null;
+  truePeakDb: number;
+}
+
+/** `ResolvedCaptionLook` in `@rolling/core/post` (colors `#RRGGBB`). */
+export interface CaptionLook {
+  id: string;
+  weight: number;
+  size: number;
+  outline: number;
+  box: { opacity: number } | null;
+  shadow: boolean;
+  marginV: number;
+  maxLines: number;
+  text: string;
+  outlineColor: string;
+  boxColor: string;
+  fontFamily: string;
+  cjkFamily: string;
+}
+export interface RenderCaptions {
+  look: CaptionLook;
+  lang: string | null;
+}
+export interface RenderCard {
+  seconds: number;
+  background: string;
+  color: string;
+  text: string;
+  fontFamily?: string;
+  logoUrl?: string;
+}
+export interface RenderBrand {
+  watermark?: { url: string; position: "top_left" | "top_right" | "bottom_left" | "bottom_right"; opacity: number; size: number };
+  intro?: RenderCard;
+  outro?: RenderCard;
+}
+
+/** Subject path of a reframed clip: focus point (0..1 of the source frame) at clip-local seconds. */
+export interface FocusKey {
+  t: number;
+  x: number;
+  y: number;
 }
 
 /** Probe facts per asset id. */
@@ -93,6 +159,14 @@ export interface BuildOptions {
   outPath: string;
   /** Where the caller writes `filter` (`-filter_complex_script`). */
   filterPath: string;
+  /** Folder with the job's font files (libass `fontsdir`). */
+  fontsDir?: string;
+  /** Reframe paths by clip id (auto mode, from `reframe.ts`); missing → the clip's manual point or the center. */
+  focus?: Record<string, FocusKey[]>;
+  /** Intro / outro card text files and font files (the caller writes them). */
+  cards?: { intro?: { textPath: string; fontFile: string }; outro?: { textPath: string; fontFile: string } };
+  /** Audio-only output pattern (`%03d` chunk number). */
+  audioPattern?: string;
 }
 
 export interface BuiltRender {
@@ -101,6 +175,8 @@ export interface BuiltRender {
   ass: string | null;
   /** Number of `-i` inputs. */
   inputCount: number;
+  /** Seconds of output (cut plus intro and outro cards). */
+  totalDuration: number;
 }
 
 export const SAMPLE_RATE = 48000;
@@ -168,11 +244,51 @@ export function assText(text: string): string {
     .join("\\N");
 }
 
-/** ASS subtitles for the caption tracks, sized to the output frame. Null without captions. */
-export function buildAss(edl: Edl, width: number, height: number, duration: number): string | null {
+/** `#RRGGBB` and opacity (0..1) to an ASS colour `&HAABBGGRR`. */
+export function assColor(hex: string, opacity = 1): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+  const v = m ? m[1]!.toUpperCase() : "FFFFFF";
+  const a = Math.round((1 - Math.min(1, Math.max(0, opacity))) * 255).toString(16).toUpperCase().padStart(2, "0");
+  return `&H${a}${v.slice(4, 6)}${v.slice(2, 4)}${v.slice(0, 2)}`;
+}
+
+/** The default look (captions before D-026): white DejaVu Sans with a thin outline. */
+const DEFAULT_LOOK: CaptionLook = {
+  id: "default", weight: 700, size: 0.055, outline: 0.08, box: null, shadow: false, marginV: 0.1, maxLines: 2,
+  text: "#FFFFFF", outlineColor: "#000000", boxColor: "#000000", fontFamily: "DejaVu Sans", cjkFamily: "Noto Sans CJK SC",
+};
+
+const CJK_LANG = /^(zh|ja|ko|yue)\b/i;
+
+/** The ASS `Style:` line for a look at the output size. CJK captions without a brand font use the regional Noto Sans CJK family. */
+export function assStyle(look: CaptionLook, width: number, height: number, lang: string | null): string {
+  const short = Math.min(width, height);
+  const size = Math.max(8, Math.round(short * look.size));
+  const margin = Math.round(short * 0.06);
+  const marginV = Math.round(height * look.marginV);
+  const font = (lang && CJK_LANG.test(lang) && (look.fontFamily === "Noto Sans" || look.fontFamily === "DejaVu Sans") ? look.cjkFamily : look.fontFamily).replace(/,/g, " ");
+  const bold = look.weight >= 600 ? -1 : 0;
+  let borderStyle = 1;
+  let outline = look.outline > 0 ? Math.max(1, Math.round(size * look.outline)) : 0;
+  let outlineColor = assColor(look.outlineColor);
+  if (look.box) {
+    // Opaque box: libass draws it in the outline colour, `Outline` is the padding.
+    borderStyle = 3;
+    outline = Math.max(2, Math.round(size * 0.28));
+    outlineColor = assColor(look.boxColor, look.box.opacity);
+  }
+  const shadow = look.shadow ? Math.max(1, Math.round(size * 0.06)) : 0;
+  return `Style: Caption,${font},${size},${assColor(look.text)},&H000000FF,${outlineColor},${assColor("#000000", 0.55)},${bold},0,0,0,100,100,0,0,${borderStyle},${outline},${shadow},2,${margin},${margin},${marginV},1`;
+}
+
+/** ASS subtitles for the caption tracks, sized to the output frame. Null without captions (or with burn-in off). */
+export function buildAss(edl: Edl, width: number, height: number, duration: number, captions?: RenderCaptions | null): string | null {
+  if (captions === null) return null;
   const lines: string[] = [];
+  let lang: string | null = captions?.lang ?? null;
   for (const t of edl.tracks) {
     if (t.kind !== "caption") continue;
+    lang ??= t.lang ?? null;
     for (const c of [...t.clips].sort((a, b) => a.start - b.start)) {
       const start = Math.max(0, c.start);
       const end = Math.min(duration, c.end);
@@ -181,11 +297,7 @@ export function buildAss(edl: Edl, width: number, height: number, duration: numb
     }
   }
   if (!lines.length) return null;
-  const short = Math.min(width, height);
-  const size = Math.round(short * 0.055);
-  const margin = Math.round(short * 0.06);
-  const marginV = Math.round(height * 0.1);
-  const outline = Math.max(1, Math.round(size * 0.08));
+  const look = captions?.look ?? DEFAULT_LOOK;
   return [
     "[Script Info]",
     "ScriptType: v4.00+",
@@ -196,13 +308,54 @@ export function buildAss(edl: Edl, width: number, height: number, duration: numb
     "",
     "[V4+ Styles]",
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-    `Style: Caption,DejaVu Sans,${size},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,${outline},0,2,${margin},${margin},${marginV},1`,
+    assStyle(look, width, height, lang),
     "",
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
     ...lines,
     "",
   ].join("\n");
+}
+
+/** Piecewise-linear expression of `v` over keys at times `t` (held before the first and after the last). */
+export function pwlExpr(keys: readonly { t: number; v: number }[], variable = "t"): string {
+  const k = [...keys].sort((a, b) => a.t - b.t);
+  if (!k.length) return "0";
+  if (k.length === 1) return n(k[0]!.v);
+  let expr = n(k[k.length - 1]!.v);
+  for (let i = k.length - 1; i >= 1; i--) {
+    const a = k[i - 1]!;
+    const b = k[i]!;
+    const span = b.t - a.t || 1;
+    expr = `if(lte(${variable},${n(b.t)}),${n(a.v)}+(${n(b.v - a.v)})*(${variable}-(${n(a.t)}))/${n(span)},${expr})`;
+  }
+  return `if(lte(${variable},${n(k[0]!.t)}),${n(k[0]!.v)},${expr})`;
+}
+
+/**
+ * `crop` for a reframed clip already scaled to cover W×H: the window follows
+ * the focus path, clamped inside the picture.
+ */
+export function reframeCrop(W: number, H: number, focus: readonly FocusKey[]): string {
+  const xs = focus.map((f) => ({ t: f.t, v: f.x }));
+  const ys = focus.map((f) => ({ t: f.t, v: f.y }));
+  const fx = pwlExpr(xs.length ? xs : [{ t: 0, v: 0.5 }]);
+  const fy = pwlExpr(ys.length ? ys : [{ t: 0, v: 0.5 }]);
+  return `crop=w=${W}:h=${H}:x='max(0,min(iw-ow,iw*(${fx})-ow/2))':y='max(0,min(ih-oh,ih*(${fy})-oh/2))'`;
+}
+
+/** Overlay position of the watermark at a corner, with a margin of 4% of the short side. */
+export function watermarkXY(position: RenderBrand["watermark"] extends infer W ? (W extends { position: infer P } ? P : never) : never, W: number, H: number): { x: string; y: string } {
+  const m = Math.round(Math.min(W, H) * 0.04);
+  const left = position === "top_left" || position === "bottom_left";
+  const top = position === "top_left" || position === "top_right";
+  return { x: left ? String(m) : `main_w-overlay_w-${m}`, y: top ? String(m) : `main_h-overlay_h-${m}` };
+}
+
+/** ffmpeg colour from `#RRGGBB` (`0xRRGGBB`). */
+function ffColor(hex: string): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+  return `0x${m ? m[1]!.toUpperCase() : "000000"}`;
 }
 
 function isIdentity(t: ClipTransform | undefined): boolean {
@@ -271,14 +424,25 @@ export function buildRender(job: RenderJob, opts: BuildOptions): BuiltRender {
     steps.push(`fps=${fps}`);
     // A short source holds its last frame to fill the clip.
     steps.push(`tpad=stop_mode=clone:stop_duration=${n(len)}`, `trim=duration=${n(len)}`, "setpts=PTS-STARTPTS");
-    steps.push(`scale=${W}:${H}:force_original_aspect_ratio=decrease:flags=bicubic`, "setsar=1");
     const pix = transparent ? "yuva420p" : "yuv420p";
     let out: string;
-    if (isIdentity(clip.transform) && !transparent) {
+    if (job.reframe && isIdentity(clip.transform) && !transparent) {
+      // Aspect change: cover the frame and crop around the subject (no letterbox).
+      const r = clip.reframe;
+      const focus =
+        r?.mode === "center" ? [{ t: 0, x: 0.5, y: 0.5 }]
+        : r?.mode === "manual" ? [{ t: 0, x: r.x ?? 0.5, y: r.y ?? 0.5 }]
+        : (opts.focus?.[clip.id] ?? [{ t: 0, x: 0.5, y: 0.5 }]);
+      steps.push(`scale=${W}:${H}:force_original_aspect_ratio=increase:flags=bicubic`, "setsar=1", reframeCrop(W, H, focus));
+      out = label("vc");
+      filters.push(`${steps.join(",")}[${out}]`);
+    } else if (isIdentity(clip.transform) && !transparent) {
+      steps.push(`scale=${W}:${H}:force_original_aspect_ratio=decrease:flags=bicubic`, "setsar=1");
       steps.push(`pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black`);
       out = label("vc");
       filters.push(`${steps.join(",")}[${out}]`);
     } else {
+      steps.push(`scale=${W}:${H}:force_original_aspect_ratio=decrease:flags=bicubic`, "setsar=1");
       const t = clip.transform ?? { scale: 1, x: 0, y: 0, rotation: 0, opacity: 1 };
       if (Math.abs(t.scale - 1) > EPS) steps.push(`scale=trunc(iw*${n(t.scale)}/2)*2:trunc(ih*${n(t.scale)}/2)*2`);
       steps.push("format=rgba");
@@ -343,17 +507,77 @@ export function buildRender(job: RenderJob, opts: BuildOptions): BuiltRender {
   };
 
   // ---- video
-  const videoTracks = job.edl.tracks.filter((t): t is Extract<Track, { clips: MediaClip[] }> => t.kind === "video");
-  let video = videoTracks.length ? videoTrack(videoTracks[0]!.clips, false) : blank(D, false);
-  for (const t of videoTracks.slice(1)) {
-    if (!t.clips.length) continue;
-    const layer = videoTrack(t.clips, true);
-    const out = label("comp");
-    filters.push(`[${video}][${layer}]overlay=0:0:eof_action=pass:format=auto,format=yuv420p[${out}]`);
-    video = out;
+  let outFps = fps;
+  let ass: string | null = null;
+  let introSec = 0;
+  let outroSec = 0;
+  let total = D;
+  // Audio-only jobs (transcription) build no picture at all.
+  if (!job.audioOnly) {
+    const videoTracks = job.edl.tracks.filter((t): t is Extract<Track, { clips: MediaClip[] }> => t.kind === "video");
+    let video = videoTracks.length ? videoTrack(videoTracks[0]!.clips, false) : blank(D, false);
+    for (const t of videoTracks.slice(1)) {
+      if (!t.clips.length) continue;
+      const layer = videoTrack(t.clips, true);
+      const out = label("comp");
+      filters.push(`[${video}][${layer}]overlay=0:0:eof_action=pass:format=auto,format=yuv420p[${out}]`);
+      video = out;
+    }
+    outFps = job.interpolateFps ?? fps;
+    if (job.interpolateFps && job.interpolateFps > fps) {
+      // Motion-compensated in-between frames; scene cuts are detected and not blended.
+      const out = label("smooth");
+      filters.push(`[${video}]minterpolate=fps=${job.interpolateFps}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1:scd=fdiff[${out}]`);
+      video = out;
+    }
+    const wm = job.brand?.watermark;
+    if (wm) {
+      if (/^https?:/.test(wm.url)) args.push("-reconnect", "1", "-reconnect_on_network_error", "1", "-reconnect_delay_max", "4");
+      args.push("-loop", "1", "-t", n(D), "-i", wm.url);
+      const idx = inputCount++;
+      const logo = label("logo");
+      const w = Math.max(16, Math.round((W * wm.size) / 2) * 2);
+      filters.push(`[${idx}:v]scale=${w}:-2:flags=lanczos,format=rgba,colorchannelmixer=aa=${n(wm.opacity)},fps=${outFps}[${logo}]`);
+      const { x, y } = watermarkXY(wm.position, W, H);
+      const out = label("wm");
+      filters.push(`[${video}][${logo}]overlay=x=${x}:y=${y}:eof_action=pass:format=auto,format=yuv420p[${out}]`);
+      video = out;
+    }
+    ass = buildAss(job.edl, W, H, D, job.captions);
+    const fontsdir = opts.fontsDir ? `:fontsdir=${filterPath(opts.fontsDir)}` : "";
+    const intro = job.brand?.intro && opts.cards?.intro ? job.brand.intro : null;
+    const outro = job.brand?.outro && opts.cards?.outro ? job.brand.outro : null;
+    const mainOut = intro || outro ? label("main") : "vout";
+    filters.push(`[${video}]${ass ? `ass=filename=${filterPath(opts.assPath)}${fontsdir},` : ""}format=yuv420p,setsar=1,settb=AVTB,setpts=PTS-STARTPTS[${mainOut}]`);
+    const card = (c: RenderCard, files: { textPath: string; fontFile: string }): string => {
+      const size = Math.round(Math.min(W, H) * 0.07);
+      let out = label("card");
+      filters.push(
+        `color=c=${ffColor(c.background)}:s=${W}x${H}:r=${outFps}:d=${n(c.seconds)},format=yuv420p` +
+          (c.text.trim() ? `,drawtext=fontfile=${filterPath(files.fontFile)}:textfile=${filterPath(files.textPath)}:fontcolor=${ffColor(c.color)}:fontsize=${size}:x=(w-text_w)/2:y=${c.logoUrl ? "h*0.62" : "(h-text_h)/2"}` : "") +
+          `,setsar=1,settb=AVTB[${out}]`,
+      );
+      if (c.logoUrl) {
+        if (/^https?:/.test(c.logoUrl)) args.push("-reconnect", "1", "-reconnect_on_network_error", "1", "-reconnect_delay_max", "4");
+        args.push("-loop", "1", "-t", n(c.seconds), "-i", c.logoUrl);
+        const idx = inputCount++;
+        const logo = label("cardlogo");
+        filters.push(`[${idx}:v]scale=${Math.round(W * 0.3)}:${Math.round(H * 0.3)}:force_original_aspect_ratio=decrease:flags=lanczos,format=rgba,fps=${outFps}[${logo}]`);
+        const withLogo = label("card");
+        filters.push(`[${out}][${logo}]overlay=x=(main_w-overlay_w)/2:y=(main_h-overlay_h)/2-main_h*0.06:eof_action=pass:format=auto,format=yuv420p,setsar=1,trim=duration=${n(c.seconds)},setpts=PTS-STARTPTS[${withLogo}]`);
+        out = withLogo;
+      }
+      return out;
+    };
+    introSec = intro ? intro.seconds : 0;
+    outroSec = outro ? outro.seconds : 0;
+    total = D + introSec + outroSec;
+    if (intro || outro) {
+      const parts = [...(intro ? [card(intro, opts.cards!.intro!)] : []), mainOut, ...(outro ? [card(outro, opts.cards!.outro!)] : [])];
+      filters.push(`${parts.map((p) => `[${p}]`).join("")}concat=n=${parts.length}:v=1:a=0,format=yuv420p[vout]`);
+    }
+
   }
-  const ass = buildAss(job.edl, W, H, D);
-  filters.push(`[${video}]${ass ? `ass=filename=${filterPath(opts.assPath)},` : ""}format=yuv420p[vout]`);
 
   // ---- audio
   const audioClip = (clip: MediaClip, kind: Track["kind"]): string | null => {
@@ -367,6 +591,8 @@ export function buildRender(job: RenderJob, opts: BuildOptions): BuiltRender {
     if (clip.reverse) steps.push("areverse");
     steps.push(...atempoChain(speed));
     steps.push(`aformat=sample_fmts=fltp:sample_rates=${SAMPLE_RATE}:channel_layouts=stereo`);
+    // Voice lanes (imported voiceovers) are evened out before the mix.
+    if (kind === "voice" && job.voiceLufs !== undefined) steps.push(`loudnorm=I=${n(job.voiceLufs)}:TP=-1.5:LRA=11`, `aresample=${SAMPLE_RATE}`);
     steps.push(`apad=whole_dur=${n(len)}`, `atrim=duration=${n(len)}`);
     if (clip.gainKeyframes?.length) steps.push(`volume='pow(10,(${keyframeDbExpr(clip.gainKeyframes)})/20)':eval=frame`);
     else if (clip.gainDb && Math.abs(clip.gainDb) > EPS) steps.push(`volume=${n(clip.gainDb)}dB`);
@@ -420,14 +646,35 @@ export function buildRender(job: RenderJob, opts: BuildOptions): BuiltRender {
     filters.push(`[${b.label}][${sc}]sidechaincompress=threshold=0.03:ratio=8:attack=20:release=350:makeup=1[${out}]`);
     b.label = out;
   }
-  if (!buses.length) filters.push(`anullsrc=r=${SAMPLE_RATE}:cl=stereo,atrim=duration=${n(D)}[aout]`);
+  const enc = job.encode;
+  const audioTail: string[] = [];
+  if (introSec > EPS) audioTail.push(`adelay=delays=${Math.round(introSec * 1000)}:all=1`);
+  audioTail.push(`apad=whole_dur=${n(total)}`, `atrim=duration=${n(total)}`, "asetpts=PTS-STARTPTS");
+  if (enc?.loudnessLufs !== null && enc?.loudnessLufs !== undefined) {
+    audioTail.push(`loudnorm=I=${n(enc.loudnessLufs)}:TP=${n(enc.truePeakDb)}:LRA=11`, `aresample=${SAMPLE_RATE}`, `atrim=duration=${n(total)}`);
+  }
+  const audioOut = job.audioOnly ? "amono" : "aout";
+  if (job.audioOnly) audioTail.push(`aformat=sample_fmts=s16:sample_rates=${job.audioOnly.sampleRate}:channel_layouts=mono`);
+  if (!buses.length) filters.push(`anullsrc=r=${SAMPLE_RATE}:cl=stereo,${[`atrim=duration=${n(total)}`, ...audioTail.filter((f) => !/^(adelay|apad|atrim|asetpts)/.test(f))].join(",")}[${audioOut}]`);
   else {
     const mix = buses.length === 1 ? buses[0]!.label : label("mix");
     if (buses.length > 1) filters.push(`${buses.map((b) => `[${b.label}]`).join("")}amix=inputs=${buses.length}:duration=longest:normalize=0[${mix}]`);
-    filters.push(`[${mix}]apad=whole_dur=${n(D)},atrim=duration=${n(D)},asetpts=PTS-STARTPTS[aout]`);
+    filters.push(`[${mix}]${audioTail.join(",")}[${audioOut}]`);
+  }
+
+  if (job.audioOnly) {
+    // Transcription input: mono 16 kHz MP3 chunks; the picture is not built at all.
+    const filter = filters.join(";\n");
+    args.push(
+      "-filter_complex_script", opts.filterPath, "-map", "[amono]", "-c:a", "libmp3lame", "-b:a", "48k", "-ar", String(job.audioOnly.sampleRate), "-ac", "1",
+      "-t", n(D), "-f", "segment", "-segment_time", String(job.audioOnly.chunkSeconds), "-reset_timestamps", "1",
+      opts.audioPattern ?? opts.outPath,
+    );
+    return { args, filter, ass: null, inputCount, totalDuration: D };
   }
 
   const filter = filters.join(";\n");
+  const rate = enc?.videoKbps ? ["-b:v", `${enc.videoKbps}k`, "-maxrate", `${enc.maxKbps ?? enc.videoKbps}k`, "-bufsize", `${enc.bufferKbps ?? enc.videoKbps * 2}k`] : ["-crf", String(enc?.crf ?? 20)];
   args.push(
     "-filter_complex_script",
     opts.filterPath,
@@ -439,16 +686,16 @@ export function buildRender(job: RenderJob, opts: BuildOptions): BuiltRender {
     "libx264",
     "-preset",
     "veryfast",
-    "-crf",
-    "20",
+    ...rate,
+    ...(enc ? ["-profile:v", enc.profile, "-level:v", enc.level] : []),
     "-pix_fmt",
     "yuv420p",
     "-r",
-    String(fps),
+    String(outFps),
     "-c:a",
     "aac",
     "-b:a",
-    "192k",
+    `${enc?.audioKbps ?? 192}k`,
     "-ar",
     String(SAMPLE_RATE),
     "-ac",
@@ -456,8 +703,8 @@ export function buildRender(job: RenderJob, opts: BuildOptions): BuiltRender {
     "-movflags",
     "+faststart",
     "-t",
-    n(D),
+    n(total),
     opts.outPath,
   );
-  return { args, filter, ass, inputCount };
+  return { args, filter, ass, inputCount, totalDuration: total };
 }
