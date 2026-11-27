@@ -149,7 +149,8 @@ test.describe('public library (PublicLibrary.dc.html)', () => {
     await openApp(page, '/assets/public');
     await page.locator('[data-item]').first().waitFor();
     const delays = await page.evaluate(() => Array.from(document.querySelectorAll('[data-item]')).slice(0, 8).map((e) => getComputedStyle(e).animationDelay));
-    expect(delays).toEqual(['0s', '0.03s', '0.06s', '0.09s', '0.12s', '0.15s', '0.18s', '0.18s']);
+    // Max 6 steps (handoff 7), as every other list: the seventh enters with the sixth.
+    expect(delays).toEqual(['0s', '0.03s', '0.06s', '0.09s', '0.12s', '0.15s', '0.15s', '0.15s']);
     await settle(page);
     await page.locator('[data-item]').nth(4).click();
     const t = await animationTiming(page, 'aside[aria-label="Asset details"]');

@@ -1,3 +1,4 @@
+import { duration } from '@rolling/ui';
 import { api } from '@/lib/api/client';
 import { isMockApi } from '@/lib/api/mode';
 
@@ -19,7 +20,7 @@ export interface ShowcaseItem {
 /** Each tile shows one clip; one tile changes every `ROTATE_MS`, round-robin, so no two change together. */
 export const ROTATE_MS = 6000;
 /** Crossfade length; the outgoing clip is dropped after it. */
-export const FADE_MS = 600;
+export const FADE_MS = duration.crossfade;
 
 /**
  * The panel's clips. Never throws: a failed request is an empty list, and the

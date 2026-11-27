@@ -15,7 +15,7 @@
 .status[data-status="generating"]{color:var(--c-generating)}
 .status[data-status="queued"]{color:var(--c-text-3)}
 .status[data-status="failed"]{color:var(--c-danger)}
-.statusIn{animation:rl-fade-in var(--dur-base) var(--ease-standard) both}
+.statusIn{animation:global(rl-fade-in) var(--dur-base) var(--ease-standard) both}
 .cost{
   display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 7px;border-radius:999px;background:var(--c-surface-4);
   font:600 11px/1 var(--font-sans);color:var(--c-text-2);
@@ -124,7 +124,7 @@
 .bypassed > :not(.flag){opacity:.45}
 .flag{
   position:absolute;right:0;top:-26px;height:20px;padding:0 8px;border-radius:999px;background:var(--c-surface-5);color:var(--c-text-2);
-  font:600 11px/20px var(--font-sans);animation:rl-fade-in var(--dur-base) var(--ease-standard) both;
+  font:600 11px/20px var(--font-sans);animation:global(rl-fade-in) var(--dur-base) var(--ease-standard) both;
 }
 .flagBlocked{background:color-mix(in srgb,var(--c-danger) 14%,transparent);color:var(--c-danger-strong)}
 .proposed .body,.proposed .collapsedBody{box-shadow:0 0 0 2px var(--c-accent),0 0 0 6px var(--c-accent-soft)}

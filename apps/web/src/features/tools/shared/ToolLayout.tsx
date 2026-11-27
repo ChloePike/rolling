@@ -1,4 +1,4 @@
-import { useToast } from '@rolling/ui';
+import { duration, useToast } from '@rolling/ui';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
@@ -138,7 +138,7 @@ export function ToolLayout(p: ToolLayoutProps) {
   /** A run waiting for the confirm dialog (Generate, Retry, Regenerate). */
   const pendingRun = useRef<{ prompt: string; cost: number; quote?: SpecQuote } | null>(null);
   const real = !isMockApi();
-  const adv = usePresence(p.advanced, 140);
+  const adv = usePresence(p.advanced, duration.fast);
   const pillsRef = useRef<HTMLDivElement>(null);
   const close = () => setOverlay(null);
   const session = useSession();

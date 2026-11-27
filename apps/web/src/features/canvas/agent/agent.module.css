@@ -58,7 +58,7 @@
 }
 .send:disabled{cursor:default}
 .caret{opacity:.7}
-.msgIn{animation:rl-row-in var(--dur-base) var(--ease-standard) both}
+.msgIn{animation:global(rl-row-in) var(--dur-base) var(--ease-standard) both}
 .pending{color:var(--c-text-4)}
 .pillText{max-width:120px;overflow:hidden;text-overflow:ellipsis}
 .composerWrap{position:relative}

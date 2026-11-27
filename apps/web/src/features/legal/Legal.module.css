@@ -8,7 +8,7 @@
 .nav{display:flex;gap:4px;flex-wrap:wrap}
 .navItem{
   padding:6px 10px;border-radius:var(--r-input);font-size:var(--fs-control);color:var(--c-text-3);text-decoration:none;
-  transition:background-color 150ms ease,color 150ms ease;
+  transition:background-color var(--dur-fast) var(--ease-standard),color var(--dur-fast) var(--ease-standard);
 }
 .navItem:hover{color:var(--c-text-1);background:var(--c-surface-hover)}
 .navItem[aria-current="page"]{color:var(--c-text-1);background:var(--c-surface-2)}

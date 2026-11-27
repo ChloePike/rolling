@@ -20,9 +20,9 @@
 /* "Continue with Google" (D-017): the design's inverted button; busy swaps the mark for a spinner. */
 .google:disabled:not([aria-busy]){opacity:.5}
 .mark,.spinner{flex:none;width:18px;height:18px}
-.spinner{box-sizing:border-box;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:rl-auth-spin .8s linear infinite}
+.spinner{box-sizing:border-box;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:rl-auth-spin var(--m-loop-spin) linear infinite}
 @keyframes rl-auth-spin{to{transform:rotate(360deg)}}
-@media (prefers-reduced-motion:reduce){.spinner{animation-duration:2.4s}}
+/* Reduced motion: the tokens.css safety net stops the rotation; aria-busy and the label carry the state. */
 .dark{background:var(--c-surface-4);color:var(--c-text-1)}
 .dark:hover:not(:disabled){background:var(--c-surface-5)}
 .mid{background:var(--c-surface-5);color:var(--c-text-1)}
@@ -83,7 +83,7 @@
 .caption{position:absolute;left:12px;right:12px;bottom:14px;text-align:center;font-size:12px;font-weight:600;line-height:1.4;z-index:1}
 /* Template previews (GET /api/showcase) fill the tile; the next one fades in over the current one. */
 .layer{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;border-radius:inherit}
-.incoming{opacity:0;transition:opacity 600ms var(--m-ease-standard)}
+.incoming{opacity:0;transition:opacity var(--m-crossfade) var(--m-ease-standard)}
 .incoming[data-state="in"]{opacity:1}
 .captionChip{display:inline-block;max-width:100%;box-sizing:border-box;padding:3px 8px;border-radius:999px;background:var(--c-media-chip);color:var(--c-text-1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
 @media (prefers-reduced-motion:reduce){.incoming{transition:none}}

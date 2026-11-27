@@ -29,7 +29,5 @@
 .installTitle{font-size:var(--fs-body);font-weight:700}
 .installBody{font-size:var(--fs-meta);line-height:1.4;color:var(--c-text-3)}
 
-@keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
-@media (prefers-reduced-motion:reduce){
-  @keyframes rise{from{opacity:0}to{opacity:1}}
-}
+/* Same rise as a toast (--m-move-toast collapses to 0 under reduced motion: a fade). */
+@keyframes rise{from{opacity:0;transform:translateY(var(--m-move-toast))}to{opacity:1;transform:none}}

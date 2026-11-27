@@ -1,3 +1,4 @@
+import { tween, usePrefersReducedMotion } from '@rolling/ui';
 import { LayoutGroup, motion as m } from 'motion/react';
 import { useId, useRef, type KeyboardEvent, type ReactNode } from 'react';
 
@@ -14,12 +15,10 @@ export interface SegmentedProps<T extends string> {
   indicatorClassName: string | undefined;
 }
 
-const SLIDE = { type: 'tween', duration: 0.2, ease: [0.2, 0, 0, 1] } as const;
-
 /**
- * Single choice with a sliding selection marker (200ms, standard curve).
- * Arrow keys move the selection. Reduced motion: the marker jumps (MotionConfig
- * in the app honours the user setting; see `useReducedMotion` below).
+ * Single choice with a sliding selection marker (200ms, standard curve: `tween`
+ * from the motion tokens). Arrow keys move the selection. Reduced motion: the
+ * marker jumps.
  */
 export function Segmented<T extends string>({
   label,
@@ -33,7 +32,7 @@ export function Segmented<T extends string>({
 }: SegmentedProps<T>) {
   const group = useId();
   const refs = useRef<Array<HTMLButtonElement | null>>([]);
-  const reduced = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  const reduced = usePrefersReducedMotion();
   const itemRole = kind === 'tablist' ? 'tab' : 'radio';
 
   function onKeyDown(e: KeyboardEvent, i: number) {
@@ -70,7 +69,7 @@ export function Segmented<T extends string>({
                 <m.span
                   layoutId="indicator"
                   className={indicatorClassName}
-                  transition={reduced ? { duration: 0 } : SLIDE}
+                  transition={tween('base', 'standard', reduced)}
                   style={{ position: 'absolute', zIndex: -1 }}
                   aria-hidden="true"
                 />
