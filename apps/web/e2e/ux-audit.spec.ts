@@ -57,6 +57,47 @@ test('dialogs: closing the template preview with Escape puts focus back on the c
   expect(await card.evaluate((el) => el === document.activeElement)).toBe(true);
 });
 
+test('template preview: a vertical template sits beside its details, a landscape one spans the panel with the details below (no large empty area)', async ({ page }) => {
+  await openApp(page, '/templates');
+  await settle(page);
+  const open = async (name: string) => {
+    await page.getByPlaceholder(/Search templates/).fill(name);
+    await page.locator('[data-template]').filter({ hasText: name }).first().click();
+    const preview = page.getByTestId('template-preview');
+    await expect(preview).toBeVisible();
+    await page.waitForTimeout(400);
+    return preview;
+  };
+  const box = (el: import('@playwright/test').Locator) => el.boundingBox().then((b) => b!);
+
+  // 9:16: side by side; the panel fits the media and a details column, the media fills the height.
+  let preview = await open('Portrait by a window');
+  await expect(preview).toHaveAttribute('data-layout', 'side');
+  let p = await box(preview);
+  let media = await box(preview.locator('> div').first());
+  let use = await box(preview.getByRole('button', { name: 'Use template' }));
+  expect(media.height).toBeGreaterThan(media.width * 1.5);
+  expect(use.x).toBeGreaterThan(media.x + media.width);
+  // Media + 340px of details + paddings and gap, not a fixed 980px panel with an empty column.
+  expect(p.width).toBeLessThanOrEqual(media.width + 340 + 52 + 2);
+  await page.screenshot({ path: 'e2e/__screens__/ux-audit/template-preview-side.png' });
+  await page.keyboard.press('Escape');
+  await expect(preview).toHaveCount(0);
+
+  // 16:10: stacked; the details sit under the media, Use template under it too.
+  preview = await open('Coffee maker features');
+  await expect(preview).toHaveAttribute('data-layout', 'stacked');
+  p = await box(preview);
+  media = await box(preview.locator('> div').first());
+  use = await box(preview.getByRole('button', { name: 'Use template' }));
+  const facts = await box(preview.locator('dl'));
+  expect(media.width).toBeGreaterThan(p.width - 40);
+  expect(facts.y).toBeGreaterThan(media.y + media.height - 1);
+  expect(use.y).toBeGreaterThan(facts.y);
+  expect(p.y + p.height).toBeLessThanOrEqual(900);
+  await page.screenshot({ path: 'e2e/__screens__/ux-audit/template-preview-stacked.png' });
+});
+
 test('header: at 1280 wide the header stays one row (icons-only nav below 1360, a usability departure from the 1280 in handoff §1)', async ({ page }) => {
   await asPlan(page, 'plus');
   for (const width of [1280, 1359]) {

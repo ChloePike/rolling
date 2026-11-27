@@ -18,6 +18,21 @@ export function graphFacts(graph: TemplateDetail['graph'] | undefined): { shots:
   return { shots: videos || gen.length, models };
 }
 
+/** CSS aspect (`w/h`) of a template's preview: its cover's size, else the card aspect. */
+function previewAspect(t: TemplateSummary): string {
+  return t.cover ? `${t.cover.width}/${t.cover.height}` : t.coverAspect;
+}
+
+/**
+ * Layout by the preview's shape: vertical and squarish media sit beside the details (`side`);
+ * landscape media span the panel with the details below (`stacked`), so neither leaves a large
+ * empty area next to or under the facts.
+ */
+export function previewLayout(aspect: string): 'side' | 'stacked' {
+  const [w = 1, h = 1] = aspect.split('/').map(Number);
+  return w / (h || 1) >= 1.2 ? 'stacked' : 'side';
+}
+
 /**
  * Template preview (a card on Home Inspiration or Templates): the silent preview clip large with
  * the native controls (play/pause, scrub, fullscreen; the cover for image templates), then name,
@@ -70,11 +85,12 @@ export function TemplatePreview({
   }, [t, prev, next, onSelect]);
 
   const shownRatio = ratio ?? t?.ratio;
+  const aspect = t ? previewAspect(t) : '1/1';
   return (
     <Dialog open={!!t} onOpenChange={(o) => !o && onClose()} bare labelledBy={titleId} label={t?.name ?? ''}>
       {t ? (
-        <div className={styles.panel} data-testid="template-preview">
-          <PreviewMedia key={t.id} t={t} tone={tone} />
+        <div className={styles.panel} data-testid="template-preview" data-layout={previewLayout(aspect)}>
+          <PreviewMedia key={t.id} t={t} tone={tone} aspect={aspect} />
           <div className={styles.body}>
             <div className={styles.head}>
               <h2 id={titleId} className={styles.title}>
@@ -153,13 +169,12 @@ export function TemplatePreview({
 }
 
 /** The silent clip (loops, native controls) or the cover. Reduced motion shows a play button instead of autoplay. */
-function PreviewMedia({ t, tone }: { t: TemplateSummary; tone: string }) {
+function PreviewMedia({ t, tone, aspect }: { t: TemplateSummary; tone: string; aspect: string }) {
   const intl = useIntl();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [still] = useState(reducedMotion);
   const [started, setStarted] = useState(!still);
   const c = t.cover;
-  const aspect = c ? `${c.width}/${c.height}` : t.coverAspect;
   const [aw = 1, ah = 1] = aspect.split('/').map(Number);
   useEffect(() => {
     const v = videoRef.current;

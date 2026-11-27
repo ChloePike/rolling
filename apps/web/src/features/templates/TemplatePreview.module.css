@@ -41,6 +41,19 @@
 .navBtn:hover:not(:disabled){background:var(--c-surface-6)}
 .navBtn:disabled{color:var(--c-text-4);cursor:default}
 .navBtn:focus-visible{outline:none;box-shadow:var(--focus-ring)}
+/* Vertical or squarish media: the panel fits the media plus a details column (no wide empty column beside short facts). */
+.panel[data-layout="side"]{width:auto;max-width:calc(100vw - 32px)}
+.panel[data-layout="side"] .body{flex:0 0 340px;width:340px;min-width:0}
+/* Use template follows the details instead of sitting at the bottom of a tall column with a gap above it. */
+.panel[data-layout="side"] .actions{margin-top:8px}
+.panel[data-layout="side"] .media[data-portrait]{height:min(600px,calc(100vh - 80px))}
+/* Landscape media: full width, the details below in one row of facts. */
+.panel[data-layout="stacked"]{width:min(880px,calc(100vw - 32px));flex-direction:column;gap:16px;overflow:auto}
+.panel[data-layout="stacked"] .media{align-self:stretch;max-width:none;width:100%;max-height:calc(100vh - 320px);flex:none}
+.panel[data-layout="stacked"] .body{flex:none;min-width:0;padding:0 4px 4px;overflow:visible}
+.panel[data-layout="stacked"] .facts{grid-template-columns:repeat(auto-fit,minmax(120px,1fr))}
+.panel[data-layout="stacked"] .wide{grid-column:auto}
+.panel[data-layout="stacked"] .actions{margin-top:4px}
 @media (max-width:760px){
   .panel{flex-direction:column;overflow:auto}
   .media,.media[data-portrait]{max-width:100%;width:100%;height:auto;max-height:55vh}
