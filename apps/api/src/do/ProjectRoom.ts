@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { migrateDurableObject } from "@rolling/db/do/migrate";
 import { projectMigrations } from "@rolling/db/do/project";
+import { dumpDurableObject, restoreDurableObject, type DoDump } from "@rolling/db/do/backup";
 import {
   envelope,
   parseEnvelope,
@@ -270,6 +271,23 @@ export class ProjectRoom extends DurableObject<Env> {
     await this.ctx.storage.deleteAlarm();
     await this.ctx.storage.deleteAll();
     return { ok: true };
+  }
+
+  /** Backups (D-030): every table of the room as JSON; null for a room that was never created or was wiped. */
+  async exportBackup(): Promise<DoDump | null> {
+    const projectId = this.getMeta("project_id");
+    if (!projectId) return null;
+    return dumpDurableObject(this.ctx.storage, "ProjectRoom", projectId);
+  }
+
+  /** Replaces the room's state with a backup of the same project (admin restore, docs/deploy.md). */
+  async restoreBackup(dump: DoDump): Promise<{ ok: true; rows: number } | { ok: false; error: string }> {
+    try {
+      const name = this.getMeta("project_id") ?? dump.name;
+      return { ok: true, rows: restoreDurableObject(this.ctx.storage, dump, { kind: "ProjectRoom", name }) };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
   }
 
   /**

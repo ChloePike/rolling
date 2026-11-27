@@ -71,22 +71,24 @@ export async function jobPreCheck(
   prompt: string,
   negativePrompt: string | undefined,
   references: SafetyReference[],
+  /** D-027: R2 keys of the references, preserved as evidence on a MINOR_SEXUAL block. */
+  evidenceKeys: string[] = [],
 ): Promise<SafetyJobError | "needsMature" | null> {
   if (job.spec.mature && (await workspaceFlagged(env, job.workspaceId))) return SAFETY_REVIEW_ERROR;
   const matureAllowed = specMatureAllowed(job.spec);
   const verdict = await preCheck({ prompt, ...(negativePrompt && { negativePrompt }), references, mature: job.spec.mature, matureAllowed, model }, await safetyDeps(env));
   if (shouldLog(verdict)) {
-    await logSafety(env, { id: `${job.jobId}:pre:${model.id}`, workspaceId: job.workspaceId, userId: job.userId, runId: job.runId, jobId: job.jobId, stage: "pre", verdict, prompt });
+    await logSafety(env, { id: `${job.jobId}:pre:${model.id}`, workspaceId: job.workspaceId, userId: job.userId, runId: job.runId, jobId: job.jobId, stage: "pre", verdict, prompt, evidenceKeys });
   }
   if (verdict.verdict === "block") return jobErrorFor(verdict, job.spec.matureAccess);
   return verdict.needsMature && !job.spec.mature ? "needsMature" : null;
 }
 
 /** `store`: the post-check over what was just stored. */
-export async function jobPostCheck(env: Env, job: JobRef, outputs: SafetyOutput[]): Promise<{ verdict: SafetyVerdict; error: SafetyJobError | null }> {
+export async function jobPostCheck(env: Env, job: JobRef, outputs: SafetyOutput[], evidenceKeys: string[] = []): Promise<{ verdict: SafetyVerdict; error: SafetyJobError | null }> {
   const verdict = await postCheck({ outputs, mature: job.spec.mature, matureAllowed: specMatureAllowed(job.spec), prompt: job.spec.prompt }, await safetyDeps(env));
   if (shouldLog(verdict)) {
-    await logSafety(env, { id: `${job.jobId}:post`, workspaceId: job.workspaceId, userId: job.userId, runId: job.runId, jobId: job.jobId, stage: "post", verdict, prompt: job.spec.prompt });
+    await logSafety(env, { id: `${job.jobId}:post`, workspaceId: job.workspaceId, userId: job.userId, runId: job.runId, jobId: job.jobId, stage: "post", verdict, prompt: job.spec.prompt, evidenceKeys });
   }
   return { verdict, error: verdict.verdict === "block" ? jobErrorFor(verdict, job.spec.matureAccess) : null };
 }

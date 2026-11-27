@@ -56,6 +56,8 @@ Seed data comes only from migrations (`0016_seed_templates.sql`, ...). Never cop
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | **owner** | checkout/portal answer `503 Payments are not configured`; nobody can buy a plan, so members-only features stay closed |
 | `RESEND_API_KEY` | optional | only needed with `EMAIL_PROVIDER=resend` (fallback) |
 | `TEST_INBOX_TOKEN` | never | staging only; `/api/test/*` are refused in production |
+| `ADMIN_TOKEN` | optional | scripts only (`POST /api/admin/grant` and every `/api/admin/*` route as admin); the console works with staff sign-in without it |
+| `CF_ANALYTICS_TOKEN` | optional (D-029) | API token with **Account Analytics Read**; without it the admin dashboard shows D1 metrics and no latency per colo |
 
 Generate server secrets without printing them: `openssl rand -base64 48 | tr -d '\n' | npx wrangler secret put BETTER_AUTH_SECRET --env production`.
 
@@ -153,6 +155,49 @@ curl -s https://rolling.actor/api/health?timing=1                       # d1.reg
 curl -sI https://rolling.actor/api/models | grep -i 'server-timing\|x-d1-bookmark'
 curl -sI https://rolling.actor/ | grep -i 'cf-cache-status\|link\|etag'  # ASSETS: cf-cache-status; Link for Early Hints
 ```
+
+## Operations (D-025 .. D-030)
+
+- **Admin console:** `/admin`. Migration 0027 seeds `phd.chloepike@gmail.com` as admin; sign in with that address (Google or email code) and the account is bound at first use. More staff: `POST /api/admin/staff {email, role, reason}`.
+- **Monitoring:** no Sentry and no error-rate tracking (D-029). Errors are in Workers Logs (`observability` is on). Product metrics go to the `rolling_<env>` Analytics Engine dataset; set `CF_ANALYTICS_TOKEN` for latency per colo on the dashboard.
+- **Status page:** `/status`, fed by the 5-minute sweep cron (no new cron). Check: `curl -s https://rolling.actor/api/status | jq .overall`.
+- **Child-safety evidence lock** (D-027), once per environment (bucket lock rules work by prefix):
+
+  ```sh
+  npx wrangler r2 bucket lock add rolling-media-production --name evidence-1y --prefix evidence/ --retention-days 365
+  npx wrangler r2 bucket lock list rolling-media-production
+  ```
+
+  Restrict who can open the bucket in the dashboard to the owner and the designated custodian (`docs/trust-safety.md`).
+- **Backup retention backstop** (D-030): `npx wrangler r2 bucket lifecycle add rolling-media-production --name backups-30d --prefix backups/ --expire-days 32` (the workflow deletes days older than 30 itself).
+- **New Workflow:** `rolling-<env>-backup` (`BackupWorkflow`) is created by the next deploy.
+
+## Backups and restore (D-030)
+
+**Durable Objects.** Every night at 03:17 UTC `BackupWorkflow` writes `backups/<YYYY-MM-DD>/credits/<workspaceId>.json` (CreditAccount: balance, ledger, holds, quotes, idempotency, agent holds) and `backups/<YYYY-MM-DD>/projects/<projectId>.json` (ProjectRoom: every table) to the private media bucket, plus `manifest.json`; `backup_runs` in D1 records each night (also on `/admin/ops`). Days older than 30 are deleted.
+
+Restore one object (admin, audited; refuses a dump of another object or schema version):
+
+```sh
+# Days that have a backup of the object
+curl -s -H "authorization: Bearer $ADMIN_TOKEN" "https://rolling.actor/api/admin/backups?kind=credits&id=ws_..." | jq .days
+# Replace its state with that day's dump
+curl -s -X POST -H "authorization: Bearer $ADMIN_TOKEN" -H 'content-type: application/json' \
+  -d '{"kind":"credits","id":"ws_...","date":"2026-11-26","reason":"Restore after incident #12"}' https://rolling.actor/api/admin/backups/restore
+```
+
+After restoring a CreditAccount, compare with the D1 mirror (`ledger_lines`) for lines written after the backup and re-apply them (Stripe events can be replayed from the Stripe dashboard; generation settles are idempotent by job). The nightly reconcile reports any remaining difference. A ProjectRoom restore drops edits made after the backup; users see the restored revision on reconnect.
+
+**D1 (Time Travel).** D1 keeps point-in-time history (30 days on paid plans). Restore the whole database to a time or bookmark; this overwrites the database in place, so pause writes first (deploy a maintenance banner via `/admin/ops`):
+
+```sh
+npx wrangler d1 time-travel info rolling-production                       # current bookmark
+npx wrangler d1 time-travel info rolling-production --timestamp 2026-11-27T03:00:00Z
+npx wrangler d1 time-travel restore rolling-production --timestamp 2026-11-27T03:00:00Z
+# or: --bookmark <bookmark from the info command or an x-d1-bookmark header>
+```
+
+Keep the bookmark printed before restoring: restoring to it undoes the restore. After a D1 restore, Durable Objects (credits, projects) are newer than D1; run the nightly reconcile by hand (or wait for 03:17 UTC) and re-run the ledger mirror if lines are missing.
 
 ## Follow-ups
 

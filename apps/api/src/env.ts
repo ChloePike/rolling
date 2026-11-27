@@ -54,6 +54,11 @@ interface RollingSecrets {
   STRIPE_API_VERSION?: string;
   /** Optional: Stripe API origin override (tests, stripe-mock). */
   STRIPE_API_BASE?: string;
+  /**
+   * Optional (D-029): Cloudflare API token with Account Analytics Read, for the admin dashboard's
+   * latency per colo (Analytics Engine SQL API). Without it the dashboard shows D1 metrics only.
+   */
+  CF_ANALYTICS_TOKEN?: string;
   /** Not a secret (var or secret): address that receives Help → Send feedback; empty = stored in D1 only. */
   FEEDBACK_TO?: string;
 }

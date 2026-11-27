@@ -20,6 +20,8 @@ import type { AppEnv } from "../env";
 import { ApiError } from "../lib/errors";
 import { getAuth } from "./betterAuth";
 import { ensurePersonalWorkspace, loadAccount, type Membership } from "./workspace";
+import { activeSuspensions, suspensionFor, type ActiveSuspension } from "../ops/suspension";
+import { SUSPENDED_MESSAGE } from "@rolling/core/ops/trust";
 
 export interface AuthUser {
   id: string;
@@ -48,6 +50,11 @@ export interface AuthContext {
   prefs: Prefs;
   /** Every workspace the user belongs to (switcher), personal first. */
   memberships: Membership[];
+  /**
+   * D-025: an active suspension of the user or of the current workspace. Suspended callers can
+   * browse; `requireMember` refuses generation and the agent with `403 SUSPENDED`.
+   */
+  suspension: ActiveSuspension | null;
 }
 
 const DEV_ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -79,6 +86,7 @@ export function buildContext(
   memberships: Membership[],
   prefs: Prefs,
   requested: string | null,
+  suspensions: readonly ActiveSuspension[] = [],
 ): AuthContext {
   const m = requested ? memberships.find((x) => x.workspaceId === requested) : memberships[0];
   if (!m) {
@@ -98,6 +106,7 @@ export function buildContext(
     matureAllowed: isMember && prefs.matureContent && m.matureAllowed,
     prefs,
     memberships,
+    suspension: suspensionFor(suspensions, userId, m.workspaceId),
   };
 }
 
@@ -138,18 +147,20 @@ export async function resolveAuth(c: Context<AppEnv>): Promise<AuthContext | nul
   if (!session) return null;
   if (session.setCookies.length) c.set("authSetCookies", session.setCookies);
   const requested = requestedWorkspace(c);
-  let { memberships, prefs } = await loadAccount(c.env, session.userId);
+  // Suspensions (D-025) load in parallel with the account: no extra round trip on the critical path.
+  const [account, suspensions] = await Promise.all([loadAccount(c.env, session.userId), activeSuspensions(c.env, session.userId)]);
+  let { memberships, prefs } = account;
   if (memberships.length === 0 || !prefs) {
     // Sign-up hook did not run or failed: bootstrap now (idempotent).
     await ensurePersonalWorkspace(c.env, session.userId, c.req.header("accept-language") ?? null);
     ({ memberships, prefs } = await loadAccount(c.env, session.userId));
   }
-  return buildContext(session.userId, session.user, session.sessionId, memberships, prefs ?? DEFAULT_PREFS, requested);
+  return buildContext(session.userId, session.user, session.sessionId, memberships, prefs ?? DEFAULT_PREFS, requested, suspensions);
 }
 
 /** Paths that never need the auth context (Better Auth handles its own routes). */
 function skips(path: string): boolean {
-  return path === "/api/health" || path.startsWith("/api/health/") || path.startsWith("/api/auth/");
+  return path === "/api/health" || path.startsWith("/api/health/") || path.startsWith("/api/auth/") || path === "/api/status";
 }
 
 /** Mounted once on `/api/*`. */
@@ -183,9 +194,15 @@ export function requireUser(c: Context<AppEnv>): AuthContext {
   return auth;
 }
 
-/** Signed in and the workspace has an active plan, else NO_PLAN (402, D-007). */
+/**
+ * Signed in and the workspace has an active plan, else NO_PLAN (402, D-007). A suspended user or
+ * workspace (D-025) gets `403 SUSPENDED` instead: generation and the agent go through here.
+ */
 export function requireMember(c: Context<AppEnv>): AuthContext {
   const auth = requireUser(c);
+  if (auth.suspension) {
+    throw new ApiError(403, "SUSPENDED", SUSPENDED_MESSAGE, { scope: auth.suspension.scope, suspensionId: auth.suspension.id, since: auth.suspension.since });
+  }
   if (!auth.isMember) throw new ApiError(402, "NO_PLAN", "An active plan is required", { workspaceId: auth.workspaceId });
   return auth;
 }

@@ -8,6 +8,8 @@
  * "jobs at once" (D-006), so holding a whole run-all up front would refuse it.
  * The start route checks the balance for the whole run first.
  */
+import { breakerOpen } from "../ops/breaker";
+import { GATEWAY_UNAVAILABLE_MESSAGE } from "@rolling/core/ops/breaker";
 import type { LedgerErrorCode } from "@rolling/core/credits";
 import { planPromptSpec, planRun, specAssetIds, specTitle, type ChainStep, type PlanItem, type PromptSpec, type RunScope, type SpecAsset } from "@rolling/core/generation";
 import { newId } from "@rolling/core/ids";
@@ -307,6 +309,8 @@ export async function startRun(
   if (items.length === 0) throw new ApiError(409, "CONFLICT", "Nothing to run in this quote", { quoteId });
   // No model gateway key (e.g. a fresh production before HYPEROUTER_API_KEY is set): refuse before any hold.
   if (!gatewayConfigured(env)) throw new ApiError(503, "INTERNAL", "Generation is not available right now", { reason: "gateway_not_configured" });
+  // D-030: the gateway's circuit breaker is open: fail fast, nothing is held.
+  if (await breakerOpen(env)) throw new ApiError(503, "GATEWAY_UNAVAILABLE", GATEWAY_UNAVAILABLE_MESSAGE, { reason: "gateway_unavailable" });
   const total = items.reduce((s, i) => s + i.credits, 0);
   const credits = ports(env).credits(auth.workspaceId);
   const b = await credits.balance();
@@ -391,6 +395,7 @@ export async function advanceRun(env: Env, runId: string): Promise<AdvanceResult
     .first<{ monthly_credit_limit: number | null }>();
   const now = () => Date.now();
   let changed = false;
+  let gatewayDown: boolean | null = null;
 
   for (const item of items) {
     if (item.status !== "pending") continue;
@@ -417,6 +422,17 @@ export async function advanceRun(env: Env, runId: string): Promise<AdvanceResult
       status.set(item.ref, "running");
       out.started++;
       changed = true;
+      continue;
+    }
+    // D-030: never hold while the gateway breaker is open: the item fails with nothing charged.
+    gatewayDown ??= await breakerOpen(env);
+    if (gatewayDown) {
+      await env.DB.prepare("UPDATE run_items SET status = 'failed', error_code = 'gateway_unavailable', error_message = ?, updated_at = ? WHERE run_id = ? AND ref = ? AND status = 'pending'")
+        .bind(GATEWAY_UNAVAILABLE_MESSAGE, now(), runId, item.ref)
+        .run();
+      status.set(item.ref, "failed");
+      changed = true;
+      if (room && item.node_id) await quietly("markFailed", () => room.markFailed({ nodeId: item.node_id!, jobId: "", refunded: 0, reason: GATEWAY_UNAVAILABLE_MESSAGE }));
       continue;
     }
     const chain = chainOf(item);

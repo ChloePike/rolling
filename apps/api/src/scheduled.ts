@@ -8,6 +8,8 @@ import { failStalledJobs } from "./runs/sweep";
 import { runR2Cleanup } from "./auth/deleteAccount";
 import { resumeAccountDeletions } from "./auth/deletionJob";
 import { runRetentionPurge } from "./ops/retention";
+import { runStatusProbes } from "./ops/status";
+import { scheduleNightlyBackup } from "./ops/backup";
 
 /** Model catalog sync (D-002) and expired upload cleanup (D-011). */
 export const MODEL_SYNC_CRON = "0 */6 * * *";
@@ -18,7 +20,8 @@ export const MODEL_SYNC_CRON = "0 */6 * * *";
 export const SWEEP_CRON = "*/5 * * * *";
 /**
  * Nightly ledger reconcile: CreditAccount vs. the D1 `ledger_lines` mirror for workspaces touched in the last day.
- * Also the retention purge (`@rolling/core/privacy`) and restarting unfinished account deletion jobs.
+ * Also the retention purge (`@rolling/core/privacy`), restarting unfinished account deletion jobs and the
+ * nightly Durable Object backup (D-030).
  */
 export const RECONCILE_CRON = "17 3 * * *";
 
@@ -43,11 +46,15 @@ export async function handleScheduled(controller: ScheduledController, env: Env,
       run(ctx, "media: requeue pending", () => requeuePendingMedia(env));
       // Account deletion: private media of removed workspaces.
       run(ctx, "r2: cleanup", () => runR2Cleanup(env));
+      // Status page probes (D-029): API, gateway (free listing), media, auth.
+      run(ctx, "status: probes", () => runStatusProbes(env));
       return;
     case RECONCILE_CRON:
       run(ctx, "ledger: reconcile", () => reconcileLedgers(env));
       run(ctx, "privacy: retention purge", () => runRetentionPurge(env));
       run(ctx, "privacy: resume account deletions", () => resumeAccountDeletions(env));
+      // Nightly Durable Object backups to the private R2 prefix (D-030).
+      run(ctx, "backup: nightly", () => scheduleNightlyBackup(env));
       return;
     default:
       console.warn(JSON.stringify({ msg: "scheduled: unknown cron", cron: controller.cron }));

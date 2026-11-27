@@ -17,6 +17,9 @@ import { ports, quietly } from "./ports";
 import { advanceRun, advanceWorkspace, pushCredits } from "./service";
 import { isMatureRating, type FaceResult, type SafetyOutput, type SafetyReference } from "@rolling/core/safety";
 import { jobExpandedCheck, jobPostCheck, jobPreCheck, referenceSource } from "../safety/pipeline";
+import { breakerOpen } from "../ops/breaker";
+import { trackGeneration, trackSpend } from "../ops/metrics";
+import { GATEWAY_UNAVAILABLE_MESSAGE } from "@rolling/core/ops/breaker";
 import { gatewayFeatureEnabled, markGatewayFeatureOff } from "../models/features";
 import { faceResultFromMeta, pictureDataUrl, r2Picture, sha256OfBytes } from "../safety/service";
 import { getItem, getJob, getRun, parseJson, refreshRun, type RunOptions } from "./store";
@@ -234,6 +237,8 @@ export async function prepareJob(env: Env, ctx: JobContext, modelId: string): Pr
   }
   await checkDeclaredDurations(env, ctx);
   const resolved: ResolvedInput[] = [];
+  /** R2 keys of the inputs (D-027 evidence on a MINOR_SEXUAL block). */
+  const evidenceKeys: string[] = [];
   const references: SafetyReference[] = [];
   for (const input of ctx.spec.inputs as GenInput[]) {
     let assetId: string | undefined;
@@ -267,6 +272,7 @@ export async function prepareJob(env: Env, ctx: JobContext, modelId: string): Pr
     }
     const origin: ImageSource = "node" in input.from || "item" in input.from ? "generated" : (input.from as { origin: ImageSource }).origin;
     resolved.push({ input, url: a.url, origin });
+    evidenceKeys.push(a.key);
     const ref: SafetyReference = { kind: input.media, source: referenceSource(origin), caption: a.name };
     // Mature runs: image references go to the vision check as inline pictures (the gateway can't reach private media).
     if (ctx.spec.mature && input.media === "image") {
@@ -283,7 +289,7 @@ export async function prepareJob(env: Env, ctx: JobContext, modelId: string): Pr
   const problems = requestProblems(model, request);
   if (problems.length) fail("invalid_request", `The request does not fit ${model.displayName}: ${problems.join("; ")}.`);
   // The check reads what is sent: the prompt as composed for this model, and its negative prompt (the node's own when the model takes none).
-  const blocked = await jobPreCheck(env, safetyJob(ctx), model, request.prompt, request.negativePrompt ?? ctx.spec.negativePrompt, references);
+  const blocked = await jobPreCheck(env, safetyJob(ctx), model, request.prompt, request.negativePrompt ?? ctx.spec.negativePrompt, references, evidenceKeys);
   if (blocked === "needsMature") {
     // Mature runs re-resolve their references for the vision and face checks, then pre-check again as mature.
     const next = await replanAsMature(env, ctx, model);
@@ -307,6 +313,8 @@ export async function submitJob(env: Env, ctx: JobContext, modelId: string, requ
     return { externalId: `forced_${ctx.jobId}`, forced: true };
   }
   const model = await modelFor(env, modelId);
+  // D-030: the gateway is failing: end the job now (the hold is released by failJob, no resubmits).
+  if (await breakerOpen(env)) fail("gateway_unavailable", GATEWAY_UNAVAILABLE_MESSAGE);
   let externalId: string;
   try {
     ({ externalId } = await submitWithExpansionFallback(env, ctx, model, request, providerKey(ctx.jobId, attempt)));
@@ -322,6 +330,7 @@ export async function submitJob(env: Env, ctx: JobContext, modelId: string, requ
   await env.DB.prepare("UPDATE jobs SET status = 'submitted', external_id = ?, model = ?, attempt = ?, updated_at = ? WHERE id = ?")
     .bind(externalId, modelId, attempt, now, ctx.jobId)
     .run();
+  if (attempt === 1) trackGeneration(env, { model: modelId, kind: ctx.spec.kind, outcome: "started", credits: ctx.credits }); // D-029
   if (ctx.projectId && ctx.nodeId) {
     const room = ports(env).room(ctx.projectId);
     await quietly("markRunning", () => room.markRunning({ nodeId: ctx.nodeId!, jobId: ctx.jobId, progress: 0, status: "generating" }));
@@ -514,7 +523,8 @@ export async function storeOutputs(env: Env, ctx: JobContext, status: JobStatus,
     files.push({ key, meta, size: file.body.byteLength, contentType: file.contentType });
   }
 
-  const checked = await jobPostCheck(env, safetyJob(ctx), review);
+  // D-027: the stored outputs are evidence if the check finds a MINOR_SEXUAL hard limit (copied before the delete below).
+  const checked = await jobPostCheck(env, safetyJob(ctx), review, written);
   if (checked.error) {
     await env.MEDIA.delete(written);
     fail(checked.error.code, checked.error.message);
@@ -638,7 +648,11 @@ export async function commitJob(
       ctx.jobId,
     ),
     env.DB.prepare("UPDATE run_items SET status = 'succeeded', updated_at = ? WHERE run_id = ? AND ref = ?").bind(now, ctx.runId, ctx.ref),
+    // D-029: the gateway's own cost, for the margin dashboard.
+    env.DB.prepare("UPDATE jobs SET gateway_cost_usd = ? WHERE id = ?").bind(status.costUsd !== null && Number.isFinite(status.costUsd) ? status.costUsd : null, ctx.jobId),
   ]);
+  trackGeneration(env, { model: modelId, kind: ctx.spec.kind, outcome: "succeeded", credits: spent, costUsd: status.costUsd });
+  if (spent > 0) trackSpend(env, spent, modelId);
   await refreshRun(env.DB, ctx.runId, now);
   if (settled.ok) await pushCredits(env, { created_by: ctx.createdBy, project_id: ctx.projectId, workspace_id: ctx.workspaceId }, settled.value.balance);
   // D-036 / D-037: an extend or lip-sync result lands on the timeline where it was planned.
@@ -670,6 +684,7 @@ export async function failJob(env: Env, ctx: JobContext, error: JobError): Promi
       ctx.ref,
     ),
   ]);
+  trackGeneration(env, { model: ctx.modelId, kind: ctx.spec.kind, outcome: "failed", code: error.code }); // D-029
   if (ctx.projectId && ctx.nodeId) {
     const room = p.room(ctx.projectId);
     await quietly("markFailed", () => room.markFailed({ nodeId: ctx.nodeId!, jobId: ctx.jobId, refunded, reason: error.message }));

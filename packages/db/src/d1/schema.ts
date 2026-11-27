@@ -383,11 +383,14 @@ export const jobs = sqliteTable(
     /** Migration 0032 (D-024): the result review (JSON) and its gateway cost, covered from the margin. */
     review: text("review"),
     reviewCostUsd: real("review_cost_usd"),
+    /** Migration 0027: the gateway's `usage.cost` in USD (margin dashboard). */
+    gatewayCostUsd: real("gateway_cost_usd"),
   },
   (t) => [
     index("jobs_activity").on(t.runId),
     index("jobs_ext").on(t.provider, t.externalId),
     index("jobs_ws").on(t.workspaceId, sql`${t.createdAt} DESC`),
+    index("jobs_time").on(t.createdAt),
     check(
       "jobs_status_check",
       sql`${t.status} IN ('queued','submitted','running','succeeded','failed','canceled','unknown')`,
@@ -892,6 +895,168 @@ export const reviewRetries = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.budgetKey, t.nodeId] })],
 );
+
+/*
+ * Operations (migration 0027, D-025 .. D-030): staff, admin audit, suspensions, notices,
+ * trust & safety cases and evidence, status probes, ops settings, gateway breaker, backups.
+ */
+export const staffRoles = ["admin", "reviewer"] as const;
+
+export const staff = sqliteTable("staff", {
+  email: text("email").primaryKey(),
+  userId: text("user_id").unique(),
+  role: text("role", { enum: staffRoles }).notNull(),
+  createdAt: integer("created_at").notNull(),
+  createdBy: text("created_by"),
+});
+
+/** Append-only (UPDATE and DELETE are refused by triggers). */
+export const adminAudit = sqliteTable(
+  "admin_audit",
+  {
+    id: text("id").primaryKey(),
+    actorKind: text("actor_kind", { enum: ["staff", "token", "system"] }).notNull(),
+    actorId: text("actor_id"),
+    actorRole: text("actor_role"),
+    action: text("action").notNull(),
+    targetKind: text("target_kind"),
+    targetId: text("target_id"),
+    reason: text("reason"),
+    data: text("data").notNull().default("{}"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [index("admin_audit_time").on(sql`${t.createdAt} DESC`), index("admin_audit_target").on(t.targetKind, t.targetId, sql`${t.createdAt} DESC`)],
+);
+
+export const suspensions = sqliteTable(
+  "suspensions",
+  {
+    id: text("id").primaryKey(),
+    subjectKind: text("subject_kind", { enum: ["user", "workspace"] }).notNull(),
+    subjectId: text("subject_id").notNull(),
+    reason: text("reason").notNull(),
+    caseId: text("case_id"),
+    createdBy: text("created_by"),
+    createdAt: integer("created_at").notNull(),
+    liftedAt: integer("lifted_at"),
+    liftedBy: text("lifted_by"),
+  },
+  (t) => [index("suspensions_subject").on(t.subjectKind, t.subjectId, t.liftedAt)],
+);
+
+export const userNotices = sqliteTable(
+  "user_notices",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    workspaceId: text("workspace_id"),
+    kind: text("kind", { enum: ["warning", "content_removed", "suspended", "restored"] }).notNull(),
+    message: text("message").notNull(),
+    caseId: text("case_id"),
+    createdAt: integer("created_at").notNull(),
+    readAt: integer("read_at"),
+  },
+  (t) => [index("user_notices_user").on(t.userId, t.readAt, sql`${t.createdAt} DESC`)],
+);
+
+export const trustCaseKinds = ["safety", "report", "appeal", "dmca", "counter_notice", "child_safety"] as const;
+export const trustCaseStatuses = ["open", "actioned", "dismissed", "closed"] as const;
+
+export const trustCases = sqliteTable(
+  "trust_cases",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind", { enum: trustCaseKinds }).notNull(),
+    status: text("status", { enum: trustCaseStatuses }).notNull().default("open"),
+    priority: integer("priority").notNull().default(0),
+    workspaceId: text("workspace_id"),
+    userId: text("user_id"),
+    targetKind: text("target_kind"),
+    targetId: text("target_id"),
+    targetUrl: text("target_url"),
+    category: text("category"),
+    details: text("details"),
+    reporterUserId: text("reporter_user_id"),
+    reporterEmail: text("reporter_email"),
+    data: text("data").notNull().default("{}"),
+    dedupeKey: text("dedupe_key"),
+    relatedCaseId: text("related_case_id"),
+    resolution: text("resolution"),
+    resolvedBy: text("resolved_by"),
+    resolvedAt: integer("resolved_at"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [
+    index("trust_cases_queue").on(t.status, sql`${t.priority} DESC`, t.createdAt),
+    index("trust_cases_workspace").on(t.workspaceId, sql`${t.createdAt} DESC`),
+    index("trust_cases_user").on(t.userId, sql`${t.createdAt} DESC`),
+    uniqueIndex("trust_cases_open_dedupe").on(t.dedupeKey).where(sql`${t.status} = 'open' AND ${t.dedupeKey} IS NOT NULL`),
+  ],
+);
+
+/** Locked evidence of child-safety cases (rows cannot be deleted before the case is closed and retention passed). */
+export const evidenceItems = sqliteTable(
+  "evidence_items",
+  {
+    id: text("id").primaryKey(),
+    caseId: text("case_id").notNull(),
+    kind: text("kind", { enum: ["object", "text"] }).notNull(),
+    r2Key: text("r2_key").notNull(),
+    sourceKey: text("source_key").notNull(),
+    sha256: text("sha256"),
+    size: integer("size"),
+    contentType: text("content_type"),
+    capturedAt: integer("captured_at").notNull(),
+    retainUntil: integer("retain_until").notNull(),
+  },
+  (t) => [uniqueIndex("evidence_items_case_id_source_key_unique").on(t.caseId, t.sourceKey), index("evidence_items_case").on(t.caseId)],
+);
+
+export const statusComponents = ["api", "gateway", "media", "auth"] as const;
+
+export const statusChecks = sqliteTable(
+  "status_checks",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    component: text("component", { enum: statusComponents }).notNull(),
+    ok: integer("ok", { mode: "boolean" }).notNull(),
+    latencyMs: integer("latency_ms"),
+    detail: text("detail"),
+    checkedAt: integer("checked_at").notNull(),
+  },
+  (t) => [index("status_checks_component").on(t.component, sql`${t.checkedAt} DESC`)],
+);
+
+export const opsSettings = sqliteTable("ops_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+  updatedBy: text("updated_by"),
+});
+
+export const gatewayBreaker = sqliteTable("gateway_breaker", {
+  gateway: text("gateway").primaryKey(),
+  state: text("state", { enum: ["closed", "open"] }).notNull().default("closed"),
+  failures: integer("failures").notNull().default(0),
+  windowStart: integer("window_start").notNull().default(0),
+  openedAt: integer("opened_at"),
+  openUntil: integer("open_until"),
+  lastError: text("last_error"),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const backupRuns = sqliteTable("backup_runs", {
+  id: text("id").primaryKey(),
+  status: text("status", { enum: ["running", "done", "failed"] }).notNull(),
+  creditAccounts: integer("credit_accounts").notNull().default(0),
+  projectRooms: integer("project_rooms").notNull().default(0),
+  bytes: integer("bytes").notNull().default(0),
+  pruned: integer("pruned").notNull().default(0),
+  error: text("error"),
+  startedAt: integer("started_at").notNull(),
+  finishedAt: integer("finished_at"),
+});
 
 export type Workspace = typeof workspaces.$inferSelect;
 export type UserPrefs = typeof userPrefs.$inferSelect;

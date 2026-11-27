@@ -4,6 +4,7 @@
  * as a fallback, lazily by the auth middleware (e.g. a hook that failed, or a
  * dev-header user in development and tests).
  */
+import { trackSignup } from "../ops/metrics";
 import { initialPrefs, prefsFromRow, type Prefs, type PrefsRow } from "@rolling/core/auth/prefs";
 import { isRole, type Role } from "@rolling/core/auth/roles";
 import type { PlanId } from "@rolling/core/pricing/config";
@@ -67,6 +68,7 @@ export async function ensurePersonalWorkspace(env: Env, userId: string, acceptLa
 /** Better Auth `user.create.after` hook. */
 export async function onUserCreated(env: Env, userId: string, info: UserCreatedInfo): Promise<void> {
   await ensurePersonalWorkspace(env, userId, info.acceptLanguage);
+  trackSignup(env); // D-029 product metric (no personal data)
   console.log(JSON.stringify({ msg: "auth: user created", userId }));
 }
 

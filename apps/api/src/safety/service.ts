@@ -30,6 +30,8 @@ import {
 import { newId } from "@rolling/core/ids";
 import { loadCatalog } from "../models/catalog";
 import { gatewayConfigured, hyperouterClient } from "../runs/provider";
+import { noteSafetyEvent } from "../ops/cases";
+import { openChildSafetyCase } from "../ops/childSafety";
 
 /** Cached assessments live 30 days (content hash + prompt version keyed). */
 const CACHE_TTL_MS = 30 * 24 * 3600 * 1000;
@@ -81,6 +83,11 @@ export interface LogInput {
   stage: SafetyEvent["stage"];
   verdict: SafetyVerdict;
   prompt?: string | null;
+  /**
+   * D-027: R2 keys of the media the check looked at (outputs, references, the upload). A `MINOR_SEXUAL`
+   * block copies them into the locked evidence prefix before the caller deletes anything.
+   */
+  evidenceKeys?: string[];
 }
 
 /** Codes of a verdict, plus outage markers from failed checks on allowed runs. */
@@ -124,14 +131,40 @@ export async function logSafety(env: Env, input: LogInput): Promise<{ flagged: b
   }
   console.warn(JSON.stringify({ msg: "safety: event", stage: input.stage, verdict: input.verdict.verdict, codes, workspaceId: input.workspaceId, jobId: input.jobId ?? null }));
   if (!hard) return { flagged: false };
+  if (codes.includes("MINOR_SEXUAL")) {
+    // D-027: evidence is preserved and a restricted case opened before anything is deleted. Never blocks the check.
+    try {
+      await openChildSafetyCase(env, {
+        source: "automated_check",
+        workspaceId: input.workspaceId,
+        userId: input.userId ?? null,
+        stage: input.stage,
+        codes,
+        runId: input.runId ?? null,
+        jobId: input.jobId ?? null,
+        safetyEventId: id,
+        prompt: input.prompt ?? null,
+        objectKeys: input.evidenceKeys ?? [],
+        dedupeKey: input.jobId ? `cs:job:${input.jobId}` : `cs:event:${id}`,
+      });
+    } catch (err) {
+      console.error(JSON.stringify({ msg: "safety: CHILD SAFETY ESCALATION FAILED", eventId: id, workspaceId: input.workspaceId, error: String(err) }));
+    }
+  }
   const count = await env.DB.prepare("SELECT COUNT(*) AS n FROM safety_events WHERE workspace_id = ? AND hard = 1 AND created_at > ?")
     .bind(input.workspaceId, now - FLAG_WINDOW_MS)
     .first<{ n: number }>();
-  if ((count?.n ?? 0) >= FLAG_THRESHOLD) {
+  const flagged = (count?.n ?? 0) >= FLAG_THRESHOLD;
+  if (flagged) {
     await env.DB.prepare("UPDATE workspaces SET safety_flag = 1, safety_flagged_at = COALESCE(safety_flagged_at, ?) WHERE id = ?").bind(now, input.workspaceId).run();
-    return { flagged: true };
   }
-  return { flagged: false };
+  // D-026: every hard-limit block lands in the workspace's review case (high priority once flagged).
+  try {
+    await noteSafetyEvent(env, { workspaceId: input.workspaceId, userId: input.userId ?? null, eventId: id, codes, flagged });
+  } catch (err) {
+    console.error(JSON.stringify({ msg: "safety: review case update failed", error: String(err) }));
+  }
+  return { flagged };
 }
 
 /** D-005: a flagged workspace has mature runs refused until review clears it. */
@@ -274,7 +307,7 @@ export async function rateAsset(env: Env, assetId: string): Promise<{ rating: st
   }
   if (blocked) await env.DB.prepare("UPDATE assets SET status = 'failed' WHERE id = ?").bind(assetId).run();
   if (row.workspace_id && shouldLog(verdict)) {
-    await logSafety(env, { id: `${assetId}:upload`, workspaceId: row.workspace_id, userId: row.created_by, stage: "upload", verdict });
+    await logSafety(env, { id: `${assetId}:upload`, workspaceId: row.workspace_id, userId: row.created_by, stage: "upload", verdict, evidenceKeys: [row.r2_key, ...(pictureKey && pictureKey !== row.r2_key ? [pictureKey] : [])] });
   }
   return { rating: rating?.rating ?? null, blocked, ...(faces && { faces }) };
 }

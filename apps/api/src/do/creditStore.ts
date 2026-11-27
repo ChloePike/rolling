@@ -250,7 +250,8 @@ export class SqlLedgerStore implements LedgerStore {
 
   /** Drops idempotency records and quotes nobody can use any more. Expiry markers stay. */
   purge(now: number, keepMs: number): void {
-    this.sql.exec("DELETE FROM idempotency WHERE op <> 'expire' AND created_at < ?", now - keepMs);
+    // Expiry markers and staff refund markers (one refund per job, D-025) stay.
+    this.sql.exec("DELETE FROM idempotency WHERE op NOT IN ('expire', 'refundJobMarker') AND created_at < ?", now - keepMs);
     this.sql.exec("DELETE FROM quotes WHERE expires_at < ? AND id NOT IN (SELECT quote_id FROM holds WHERE status = 'held')", now - 2 * 86_400_000);
   }
 }

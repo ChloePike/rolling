@@ -19,6 +19,7 @@ import { assetMeta, mediaSigningKey, mediaUrlFor } from "../lib/mediaUrls";
 import { visibleAsset } from "./assets";
 import { readShare } from "../lib/share";
 import { serveR2 } from "../lib/serveR2";
+import { isRestrictedKey } from "../ops/restricted";
 
 export const signedMedia = new Hono<AppEnv>().on(["GET", "HEAD"], "/media/*", async (c) => {
   const url = new URL(c.req.url);
@@ -28,6 +29,8 @@ export const signedMedia = new Hono<AppEnv>().on(["GET", "HEAD"], "/media/*", as
   } catch {
     return errorResponse(c, 400, "BAD_REQUEST", "Invalid media path");
   }
+  // Locked evidence and backups (D-027, D-030) are never served, signed or not.
+  if (isRestrictedKey(key)) return errorResponse(c, 404, "NOT_FOUND", "Not found");
   const result = await verifyMediaSignature(
     key,
     { exp: url.searchParams.get("exp"), ws: url.searchParams.get("ws"), sig: url.searchParams.get("sig") },

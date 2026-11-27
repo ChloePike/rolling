@@ -21,7 +21,8 @@
   "workers_dev": true,
   // Crons (apps/api/src/scheduled.ts), repeated in each env: model catalog sync + upload cleanup every 6 hours;
   // safety-net sweep every 5 minutes (stalled runs, uploads left processing: pending); nightly ledger reconcile 03:17 UTC,
-  // which also runs the retention purge and restarts unfinished account deletions (packages/core/src/privacy.ts).
+  // which also runs the retention purge and restarts unfinished account deletions (packages/core/src/privacy.ts)
+  // and starts the nightly DO backup (BackupWorkflow, D-030). The 5-minute sweep also runs the status probes (D-029).
   "triggers": {
     "crons": [
       "0 */6 * * *",
@@ -139,6 +140,11 @@
       "binding": "DATA_EXPORT",
       "name": "rolling-dev-data-export",
       "class_name": "DataExportWorkflow"
+    },
+    {
+      "binding": "BACKUP",
+      "name": "rolling-dev-backup",
+      "class_name": "BackupWorkflow"
     }
   ],
   "queues": {
@@ -347,6 +353,11 @@
           "binding": "DATA_EXPORT",
           "name": "rolling-staging-data-export",
           "class_name": "DataExportWorkflow"
+        },
+        {
+          "binding": "BACKUP",
+          "name": "rolling-staging-backup",
+          "class_name": "BackupWorkflow"
         }
       ],
       "queues": {
@@ -546,6 +557,11 @@
           "binding": "DATA_EXPORT",
           "name": "rolling-production-data-export",
           "class_name": "DataExportWorkflow"
+        },
+        {
+          "binding": "BACKUP",
+          "name": "rolling-production-backup",
+          "class_name": "BackupWorkflow"
         }
       ],
       "queues": {

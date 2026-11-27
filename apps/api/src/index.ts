@@ -30,6 +30,11 @@ import { workspace } from "./routes/workspace";
 import { testInbox } from "./routes/testInbox";
 import { testPlan } from "./routes/testPlan";
 import { adminGrant } from "./routes/adminGrant";
+import { adminConsole } from "./routes/admin";
+import { trust } from "./routes/trust";
+import { status } from "./routes/status";
+import { trackRequest } from "./ops/metrics";
+import { routeGroup } from "@rolling/core/ops/metrics";
 import { projects, nodes, canvases } from "./routes/projects";
 import { canvasExports, exportsRoute } from "./routes/exports";
 import { assetPost, brandKit, canvasPost, postJobs } from "./routes/post";
@@ -50,6 +55,7 @@ export { BillingWorkflow } from "./workflows/Billing";
 export { AccountDeletionWorkflow } from "./workflows/AccountDeletion";
 export { DataExportWorkflow } from "./workflows/DataExport";
 export { PostWorkflow } from "./workflows/Post";
+export { BackupWorkflow } from "./workflows/Backup";
 
 export const app = new Hono<AppEnv>();
 
@@ -88,6 +94,16 @@ app.use("*", async (c, next) => {
   return errorResponse(c, 404, "NOT_FOUND", "Not found");
 });
 
+// Request timing per colo for the admin dashboard (D-029, Analytics Engine; no ids, no personal data).
+app.use("/api/*", async (c, next) => {
+  const started = Date.now();
+  await next();
+  if (c.res.status === 101) return;
+  const cf = (c.req.raw as { cf?: { colo?: string } }).cf;
+  const d1 = /d1;dur=([\d.]+)/.exec(c.res.headers.get("server-timing") ?? "");
+  trackRequest(c.env, { colo: cf?.colo ?? null, route: routeGroup(c.req.path), method: c.req.method, status: c.res.status, ms: Date.now() - started, d1Ms: d1 ? Number(d1[1]) : 0 });
+});
+
 // D1 read replication (Sessions API): one session per API request, bookmark in/out, Server-Timing (lib/d1Session.ts).
 app.use("/api/*", d1SessionMiddleware);
 
@@ -104,6 +120,10 @@ const api = new Hono<AppEnv>()
   .route("/test", testInbox)
   .route("/test", testPlan)
   .route("/admin", adminGrant)
+  // Admin console (D-025): staff session or ADMIN_TOKEN; registered after `/admin/grant`, which keeps its own contract.
+  .route("/admin", adminConsole)
+  .route("/trust", trust)
+  .route("/status", status)
   .route("/projects", projects)
   .route("/nodes", nodes)
   .route("/canvases", canvases)

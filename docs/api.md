@@ -670,3 +670,50 @@ Share settings: `audience` (`link` = anyone with the link, default; `workspace` 
 | GET | `/api/share/:shareId` | `link`: public, no auth; `workspace`: only signed-in members of the project's workspace (others `404`) → `{ shareId, title, revision, createdAt, allowDownload, audience, showPrompt, nodes: [{ id, kind, title, params, position, groupId, media: { kind, url, thumbUrl, downloadUrl } \| null }], edges, groups }`; `404` when missing or revoked. URLs are signed for 1 h at read time; `downloadUrl` only when downloads are allowed |
 
 D-005: a share never includes mature outputs. At share time nodes are dropped (with their edges) when their output asset is mature, their model is mature, `params.mature` is true, or an asset node references a mature asset; mature and foreign asset ids are scrubbed from the remaining params. At read time every asset is re-checked and newly mature ones lose their media.
+
+## Operations (D-025 .. D-030)
+
+Errors use the usual envelope. New codes: `SUSPENDED` (403, `{ scope: "user"|"workspace", suspensionId, since }`) from every route that needs `requireMember` (runs start, agent threads, messages, apply) when the user or workspace is suspended; `GATEWAY_UNAVAILABLE` (503, `{ reason: "gateway_unavailable" }`) from `POST /api/runs` while the gateway circuit breaker is open (nothing is held). Run items failed by the breaker carry `error_code: "gateway_unavailable"`.
+
+### Public
+
+| Route | Body / answer |
+|---|---|
+| `GET /api/status` | `{ overall: "operational"|"degraded"|"outage", components: [{ id: "api"|"gateway"|"media"|"auth", status: "operational"|"degraded"|"down"|"unknown", latencyMs, checkedAt, uptime24h }], generation: { available, breaker: "closed"|"open"|"half_open", since }, incident: { message, level, updatedAt } | null, updatedAt }`. No auth, `cache-control: public, max-age=30`. |
+| `POST /api/trust/reports` | `{ targetKind: "share"|"profile"|"url", targetId?, url?, category, details?, email? }` → `201 { caseId }`. Signed in or not; rate-limited. Categories: `child_safety, sexual_real_person, non_consensual, violence, extremism, self_harm, harassment, impersonation, illegal, spam, other`. |
+| `POST /api/trust/dmca` | `{ fullName, onBehalfOf?, email, phone, address, workDescription, infringingUrls: string[1..20], goodFaith: true, accuracyUnderPenalty: true, signature }` → `201 { caseId }`. |
+
+### Signed in
+
+| Route | Body / answer |
+|---|---|
+| `GET /api/trust/me` | `{ suspension: { id, scope, since, message } | null, notices: [{ id, kind: "warning"|"content_removed"|"suspended"|"restored", message, caseId, createdAt }] }` (unread). |
+| `POST /api/trust/notices/:id/read` | `{ ok: true }` |
+| `POST /api/trust/appeals` | `{ subject: "suspension"|"block", suspensionId?, runId?, jobId?, message }` → `201 { caseId }`. One open appeal per subject (a second message is appended). 404 without an active suspension (subject `suspension`) or for another workspace's run. |
+| `POST /api/trust/counter-notices` | `{ caseId, fullName, email, phone, address, materialDescription, mistakeUnderPenalty: true, consentToJurisdiction: true, acceptService: true, signature }` → `201 { caseId }`. Only the owner of content taken down by that DMCA case; 409 when one is already open. |
+
+### Admin console (`/api/admin/*`)
+
+Staff session (`staff` table) or `authorization: Bearer <ADMIN_TOKEN>` (acts as admin). Signed out 401, not staff 404, missing permission 403. Every change writes `admin_audit`. Reasons are 3 to 1,000 characters. `POST /api/admin/grant` (token only, by email) is unchanged and now audited.
+
+| Route | Permission | Body / answer |
+|---|---|---|
+| `GET /me` | view | `{ role: "admin"|"reviewer", email, actor, permissions }` |
+| `GET /search?q=` | view | `{ users: [{ id, email, name, created_at }], workspaces: [{ id, name, kind, safety_flag, created_at }] }` |
+| `GET /users/:id` | view | `{ user, memberships, suspensions, notices, safetyEvents, cases }` |
+| `GET /workspaces/:id` | view | `{ workspace, members, subscriptions, plan, balance, account, ledger (CreditAccount lines, newest first), runs, safetyEvents, suspensions, cases }` |
+| `POST /workspaces/:id/grant` | plans | `{ planId, months?, seats?, extraCredits?, workspaceName?, reason }` → the comp grant (`subscriptionId`, `periodEnd`, `balance`, `auditId`) |
+| `POST /workspaces/:id/credits` | credits | `{ amount (≠ 0, ±10,000,000), reason, idemKey }` → `{ amount, balance, auditId }`. Positive: purchased credits; negative: purchased first, then plan (`402 INSUFFICIENT_CREDITS` below zero). Same `idemKey` replays. |
+| `POST /runs/:id/refund` | credits | `{ reason }` → `{ runId, refunded: [{ jobId, credits }], skipped, total, balance, auditId }`; each settled job once (`409` when nothing is left to refund). |
+| `POST /suspensions` | review | `{ subjectKind: "user"|"workspace", subjectId, action: "suspend"|"unsuspend", reason, message? }` |
+| `GET /cases?status=&kind=` | review | `{ items: [{ id, kind, status, priority, category, workspaceId, userId, targetKind, targetId, resolution, createdAt, updatedAt }], flaggedWorkspaces }`; open cases by default, child-safety cases only for admins. |
+| `GET /cases/:id` | review | `{ case, user, workspace, events, evidence (manifest only), history, actions }`; child-safety: admins only, no details or excerpts, `data: { submission, packet }`. |
+| `POST /cases/:id/actions` | review | `{ action, reason, message?, scope?: "user"|"workspace", reportId? }` → `{ caseId, status, resolution, auditId, childSafetyCaseId? }`. Actions per kind: safety `dismiss, warn, suspend, escalate_child_safety, close`; report `dismiss, warn, suspend, delete_content, escalate_child_safety`; appeal `uphold, overturn`; dmca `takedown, dismiss`; counter_notice `forward_counter`, then `restore` (after `restoreAfter`) or `dismiss`; child_safety `suspend, delete_content, mark_submitted { reportId }, close` (close needs the report number). |
+| `GET /metrics?days=1..90` | view | `{ days, daily: [{ day, signups, planStarts, started, succeeded, failed, agentTurns, creditsSpent, gatewayCostUsd, agentCostUsd }], models: [{ model, started, succeeded, failed, successRate, creditsSpent, gatewayCostUsd, p50Ms, p90Ms }], totals, latency: { available, reason, colos: [{ colo, requests, p50Ms, p90Ms }] } }` |
+| `GET /status` | view | the public status plus `breakerDetail` and the last `backups` |
+| `PUT /incident` | ops | `{ message (≤ 280, empty clears), level: "info"|"degraded"|"outage" }` → `{ incident }` |
+| `POST /breaker/reset` | ops | `{ reason }` |
+| `GET /backups?kind=&id=` | ops | `{ runs, days? }` |
+| `POST /backups/restore` | ops | `{ kind: "credits"|"projects", id, date: "YYYY-MM-DD", reason }` → `{ ok, rows }` (`409` with the reason when refused) |
+| `GET /audit?before=&limit=&targetId=` | view | `{ items: [{ id, actor_kind, actor_id, actor_role, action, target_kind, target_id, reason, data, created_at }] }` |
+| `GET /staff`, `POST /staff { email, role, reason }`, `DELETE /staff/:email { reason }` | staff | staff list and changes (you cannot remove yourself) |

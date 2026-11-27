@@ -38,6 +38,7 @@ import { gatewayConfigured, hyperouterClient } from "../runs/provider";
 import { agentPorts, roomCallerOf, type AgentCaller } from "./agentPorts";
 import { canvasIdFor } from "./ProjectRoom";
 import { postContext } from "../post/agentContext";
+import { trackAgentTurn } from "../ops/metrics";
 
 export type { AgentCaller };
 
@@ -422,6 +423,7 @@ export class AgentSession extends DurableObject<Env> {
       )
         .bind(turnId, caller.workspaceId, caller.userId, this.meta("thread_id"), close.llm, close.period.periodStart, cost, overrun, charge.tokensIn, charge.tokensOut, status, Date.now())
         .run();
+      trackAgentTurn(this.env, close.llm, cost); // D-029 product metric
       const view = await allowanceView(this.env, { workspaceId: caller.workspaceId, plan: caller.plan, mature: caller.matureAllowed, chatModels: close.chat, period: close.period });
       const hub = this.env.USER_HUB.get(this.env.USER_HUB.idFromName(caller.userId)) as unknown as { broadcast(t: ServerMessageType, p: unknown): Promise<number> };
       await hub.broadcast("agent.allowance", view);

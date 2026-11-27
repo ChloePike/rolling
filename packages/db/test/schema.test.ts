@@ -63,11 +63,21 @@ describe("D1 migration", () => {
     const db = new DatabaseSync(":memory:");
     const dir = new URL("../migrations/d1/", import.meta.url);
     const files = readdirSync(dir).filter((f) => f.endsWith(".sql")).sort();
-    expect(files).toEqual(["0001_init.sql", "0002_models.sql", "0003_plan_names.sql", "0004_auth.sql", "0005_billing.sql", "0006_projects_assets.sql", "0007_runs.sql", "0008_agent.sql", "0009_safety.sql", "0010_uploads.sql", "0011_agent_allowance.sql", "0012_team.sql", "0013_account.sql", "0014_exports.sql", "0015_runs_templates.sql", "0016_seed_templates.sql", "0017_template_covers.sql", "0018_privacy.sql", "0019_seed_inspiration_templates.sql", "0020_template_media.sql", "0021_template_feed_order.sql", "0022_public_items_asset_index.sql", "0023_inspiration_people.sql", "0024_prompt_expand.sql", "0025_run_surface.sql", "0031_post_production.sql", "0032_review.sql"]);
+    expect(files).toEqual(["0001_init.sql", "0002_models.sql", "0003_plan_names.sql", "0004_auth.sql", "0005_billing.sql", "0006_projects_assets.sql", "0007_runs.sql", "0008_agent.sql", "0009_safety.sql", "0010_uploads.sql", "0011_agent_allowance.sql", "0012_team.sql", "0013_account.sql", "0014_exports.sql", "0015_runs_templates.sql", "0016_seed_templates.sql", "0017_template_covers.sql", "0018_privacy.sql", "0019_seed_inspiration_templates.sql", "0020_template_media.sql", "0021_template_feed_order.sql", "0022_public_items_asset_index.sql", "0023_inspiration_people.sql", "0024_prompt_expand.sql", "0025_run_surface.sql", "0027_operations.sql", "0031_post_production.sql", "0032_review.sql"]);
     for (const f of files) db.exec(readFileSync(new URL(f, dir), "utf8"));
     expectSchemaMatches(db, tablesOf(d1));
     // 0015: run requests and retries, template listing fields; 0016 seeds the built-in templates.
     expect(columnsIn(db, "runs")).toEqual(expect.arrayContaining(["request", "retry_of", "tool", "character_id"]));
+    // 0027: operations (staff seeded with the owner, audit log append-only, evidence locked).
+    expect(String(db.prepare("SELECT role FROM staff WHERE email = 'phd.chloepike@gmail.com'").all()[0]?.role)).toBe("admin");
+    db.exec("INSERT INTO admin_audit (id, actor_kind, action, created_at) VALUES ('aud_1', 'system', 'test', 1)");
+    expect(() => db.exec("UPDATE admin_audit SET action = 'x'")).toThrow(/append-only/);
+    expect(() => db.exec("DELETE FROM admin_audit")).toThrow(/append-only/);
+    db.exec("INSERT INTO trust_cases (id, kind, created_at, updated_at) VALUES ('case_1', 'child_safety', 1, 1)");
+    db.exec("INSERT INTO evidence_items (id, case_id, kind, r2_key, source_key, captured_at, retain_until) VALUES ('evi_1', 'case_1', 'text', 'evidence/case_1/prompt.txt', 'prompt', 1, 2)");
+    expect(() => db.exec("DELETE FROM evidence_items")).toThrow(/locked/);
+    db.exec("UPDATE trust_cases SET status = 'closed' WHERE id = 'case_1'");
+    db.exec("DELETE FROM evidence_items");
     // 0025: where a run was started.
     expect(columnsIn(db, "runs")).toContain("surface");
     expect(columnsIn(db, "templates")).toEqual(expect.arrayContaining(["description", "meta", "created_at"]));

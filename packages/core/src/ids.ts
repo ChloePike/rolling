@@ -36,6 +36,12 @@ export const ID_PREFIXES = {
   feedback: 'fbk',
   export: 'exp',
   dataExport: 'dex',
+  // Operations (D-025 .. D-030).
+  audit: 'aud',
+  case: 'case',
+  suspension: 'sus',
+  notice: 'ntc',
+  evidence: 'evi',
   /** Post-production (D-033 .. D-037). */
   postJob: 'pjb',
   placement: 'plc',

@@ -31,6 +31,8 @@ export type ErrorCode =
   | "OWNER_OF_TEAM"
   | "AVATAR_REJECTED"
   | "SAFETY_UNAVAILABLE"
+  | "SUSPENDED"
+  | "GATEWAY_UNAVAILABLE"
   | "NOT_IMPLEMENTED"
   | "INTERNAL";
 

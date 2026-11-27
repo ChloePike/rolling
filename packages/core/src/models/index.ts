@@ -6,4 +6,5 @@ export * from './overlay';
 export * from './chat';
 export * from './expand';
 export * from './poll';
+export * from './gateway';
 export * as hyperouter from './providers/hyperouter';

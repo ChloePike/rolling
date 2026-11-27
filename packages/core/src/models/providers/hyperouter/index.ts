@@ -7,3 +7,4 @@ export * from './chat';
 export * from './webhooks';
 export * from './job-errors';
 export * from './provider';
+export * from './gateway';

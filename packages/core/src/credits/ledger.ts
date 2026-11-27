@@ -75,6 +75,40 @@ export interface LedgerStore {
   appendLines(lines: LedgerLine[]): void;
 }
 
+/** Kept forever by the DO housekeeping (like `expire` markers): a job is refunded by staff at most once. */
+export const REFUND_MARKER_OP = 'refundJobMarker';
+export const refundMarker = (jobId: string): string => `refund-job:${jobId}`;
+
+export interface AdjustInput {
+  /** Positive grants purchased credits; negative deducts. */
+  amount: number;
+  reason: string;
+  /** Staff id or `token` (scripts). */
+  actor: string;
+  /** The user the correction concerns, when there is one. */
+  userId?: string | null;
+  idemKey: string;
+}
+
+export interface AdjustResult {
+  amount: number;
+  balance: Balance;
+}
+
+export interface RefundJobInput {
+  jobId: string;
+  reason: string;
+  actor: string;
+  idemKey: string;
+}
+
+export interface RefundJobResult {
+  jobId: string;
+  runId: string;
+  refunded: number;
+  balance: Balance;
+}
+
 export interface LedgerDeps {
   now(): number;
   newId(kind: 'quote' | 'job' | 'ledger'): string;
@@ -586,6 +620,80 @@ export class CreditLedger {
       s.autoTopUpSeq += 1;
       this.store.putAccount(s);
       return s.autoTopUp;
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Staff corrections (D-025): every line is kind `adjust` and names the actor
+  // -------------------------------------------------------------------------
+
+  /**
+   * Grants (`amount > 0`, purchased credits: they never expire) or deducts
+   * (`amount < 0`: purchased first, then plan credits; never below zero, held
+   * credits are untouched) with the staff member and reason on the line.
+   */
+  adjust(input: AdjustInput): AdjustResult {
+    const key = requireKey(input.idemKey);
+    if (typeof input.amount !== 'number' || !Number.isInteger(input.amount) || input.amount === 0 || Math.abs(input.amount) > 10_000_000) {
+      throw new LedgerError('BAD_REQUEST', 'amount must be a non-zero integer.');
+    }
+    const reason = String(input.reason ?? '').trim().slice(0, 200);
+    if (!reason) throw new LedgerError('BAD_REQUEST', 'A reason is required.');
+    const actor = String(input.actor ?? '').slice(0, 120);
+    return this.idempotent('adjust', key, { amount: input.amount, reason, actor }, (now) => {
+      const s = this.store.getAccount();
+      const lines: LedgerLine[] = [];
+      const note = `staff:${actor}:${reason}`.slice(0, 300);
+      const ctx = { userId: input.userId ?? null, note };
+      if (input.amount > 0) {
+        s.purchased += input.amount;
+        lines.push(this.line(key, 0, 'adjust', 'purchased', input.amount, now, ctx));
+      } else {
+        const want = -input.amount;
+        if (want > s.purchased + s.plan) {
+          throw new LedgerError('INSUFFICIENT_CREDITS', 'The balance is lower than the deduction.', { available: s.purchased + s.plan, amount: want });
+        }
+        const fromPurchased = Math.min(want, s.purchased);
+        const fromPlan = want - fromPurchased;
+        if (fromPurchased > 0) lines.push(this.line(key, lines.length, 'adjust', 'purchased', -fromPurchased, now, ctx));
+        if (fromPlan > 0) lines.push(this.line(key, lines.length, 'adjust', 'plan', -fromPlan, now, ctx));
+        s.purchased -= fromPurchased;
+        s.plan -= fromPlan;
+      }
+      this.store.putAccount(s);
+      this.store.appendLines(lines);
+      return { amount: input.amount, balance: balanceOf(s) };
+    });
+  }
+
+  /**
+   * Refunds what a settled job spent, once per job (a durable marker is kept;
+   * a second refund of the same job is `JOB_CLOSED`). Returned as purchased
+   * credits (`adjust` lines carry the run and job), so a refund after the
+   * plan slice ended does not expire at once.
+   */
+  refundJob(input: RefundJobInput): RefundJobResult {
+    const key = requireKey(input.idemKey);
+    const reason = String(input.reason ?? '').trim().slice(0, 200);
+    if (!reason) throw new LedgerError('BAD_REQUEST', 'A reason is required.');
+    const actor = String(input.actor ?? '').slice(0, 120);
+    return this.idempotent('refundJob', key, { jobId: input.jobId, reason, actor }, (now) => {
+      const hold = this.store.getHold(input.jobId);
+      if (!hold) throw new LedgerError('NOT_FOUND', 'No hold for this job.', { jobId: input.jobId });
+      if (hold.status !== 'settled') throw new LedgerError('JOB_CLOSED', 'Only a settled job can be refunded (open holds are released, released jobs cost nothing).', { jobId: input.jobId, status: hold.status });
+      const marker = refundMarker(input.jobId);
+      if (this.store.getIdem(marker)) throw new LedgerError('JOB_CLOSED', 'This job was already refunded.', { jobId: input.jobId });
+      const s = this.store.getAccount();
+      const refunded = hold.spent ?? 0;
+      const lines: LedgerLine[] = [];
+      if (refunded > 0) {
+        s.purchased += refunded;
+        lines.push(this.line(key, 0, 'adjust', 'purchased', refunded, now, { userId: hold.userId, runId: hold.runId, jobId: hold.jobId, note: `refund:${actor}:${reason}`.slice(0, 300) }));
+      }
+      this.store.putAccount(s);
+      this.store.appendLines(lines);
+      this.store.putIdem({ key: marker, op: REFUND_MARKER_OP, fingerprint: '', result: { refunded }, createdAt: now });
+      return { jobId: input.jobId, runId: hold.runId, refunded, balance: balanceOf(s) };
     });
   }
 

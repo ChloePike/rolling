@@ -1,4 +1,5 @@
 /** Stripe client and D1 helpers shared by the billing routes, the webhook and BillingWorkflow. */
+import { trackPlanStart } from "../ops/metrics";
 import { nameTeamWorkspace } from "../auth/workspace";
 import { parsePlanLookupKey, parseTeamSeatLookupKey, planLookupKey, StripeClient, idOf, subscriptionPeriod, teamSeatLookupKey, type StripeSubscription } from "@rolling/core/billing";
 import type { PlanInterval } from "@rolling/core/credits";
@@ -128,6 +129,10 @@ export function readSubscription(sub: StripeSubscription, workspaceId: string): 
 }
 
 export async function upsertSubscription(env: Env, s: SubscriptionState): Promise<void> {
+  // D-029: a plan (or trial) starts when a subscription first becomes active or trialing.
+  const live = (st: string | null | undefined) => st === "active" || st === "trialing";
+  const before = live(s.status) ? await env.DB.prepare("SELECT status FROM subscriptions WHERE id = ?").bind(s.id).first<{ status: string }>() : null;
+  if (live(s.status) && !live(before?.status)) trackPlanStart(env, s.planId, s.interval, s.status === "trialing");
   await env.DB.prepare(
     `INSERT INTO subscriptions (id, workspace_id, plan, interval, status, current_period_end, cancel_at_period_end, updated_at, stripe_price_id, current_period_start, seats)
      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)

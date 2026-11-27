@@ -10,6 +10,10 @@ import {
   type AgentReleaseResult,
   type AgentSettleResult,
   type AgentUsageResult,
+  type AdjustInput,
+  type AdjustResult,
+  type RefundJobInput,
+  type RefundJobResult,
   type AutoTopUpSettings,
   type Balance,
   type ExpireResult,
@@ -31,6 +35,7 @@ import {
 import { newId } from "@rolling/core/ids";
 import type { PlanId } from "@rolling/core/pricing/config";
 import { creditsMigrations } from "@rolling/db/do/credits";
+import { dumpDurableObject, restoreDurableObject, type DoDump } from "@rolling/db/do/backup";
 import { migrateDurableObject } from "@rolling/db/do/migrate";
 import { SqlAgentAllowanceStore } from "./agentAllowanceStore";
 import { SqlLedgerStore } from "./creditStore";
@@ -218,6 +223,43 @@ export class CreditAccount extends DurableObject<Env> {
 
   async setAutoTopUp(settings: AutoTopUpSettings): Promise<LedgerOutcome<AutoTopUpSettings>> {
     return this.op(() => this.ledger.setAutoTopUp(settings));
+  }
+
+  // --- staff corrections (D-025) ---------------------------------------------
+
+  /** Grant (> 0) or deduct (< 0) with a reason; the admin route writes the audit entry. */
+  async adjust(input: AdjustInput): Promise<LedgerOutcome<AdjustResult>> {
+    return this.op(() => this.ledger.adjust(input));
+  }
+
+  /** Refunds what a settled job spent, once per job. */
+  async refundJob(input: RefundJobInput): Promise<LedgerOutcome<RefundJobResult>> {
+    return this.op(() => this.ledger.refundJob(input));
+  }
+
+  /** Lines of this account, newest first (admin ledger view). */
+  async lines(limit = 100, before?: number): Promise<LedgerLine[]> {
+    const all = this.store.allLines();
+    const filtered = before === undefined ? all : all.filter((l) => l.createdAt < before);
+    return filtered.slice(-Math.max(1, Math.min(500, limit))).reverse();
+  }
+
+  // --- backups (D-030) ---------------------------------------------------------
+
+  /** Every table of this object's SQLite storage as JSON (BackupWorkflow). */
+  async exportBackup(): Promise<DoDump> {
+    return dumpDurableObject(this.ctx.storage, "CreditAccount", this.workspaceId());
+  }
+
+  /** Replaces this object's state with a backup of the same workspace (admin restore, docs/deploy.md). */
+  async restoreBackup(dump: DoDump): Promise<{ ok: true; rows: number } | { ok: false; error: string }> {
+    try {
+      const rows = restoreDurableObject(this.ctx.storage, dump, { kind: "CreditAccount", name: this.workspaceId() });
+      await this.scheduleAlarm();
+      return { ok: true, rows };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
   }
 
   // --- agent allowance (D-012) -----------------------------------------------

@@ -7,7 +7,10 @@ import {
   hyperouter,
   type CatalogModel,
   type GenerationProvider,
+  type ModelGateway,
 } from "@rolling/core";
+import { countsAsOutage } from "@rolling/core/ops/breaker";
+import { recordGatewayFailure, recordGatewaySuccess } from "../ops/breaker";
 import { llmClassifier, type Classify } from "@rolling/core/generation";
 import { newId } from "@rolling/core/ids";
 import { loadCatalog } from "../models/catalog";
@@ -36,8 +39,39 @@ export function hyperouterClient(env: Env): hyperouter.HyperouterClient {
   return new hyperouter.HyperouterClient({ apiKey, baseUrl, fetch: gatewayFetch() });
 }
 
+/** The model gateway (D-002: Hyperouter only). A second gateway would be chosen here (D-030). */
+export function modelGateway(env: Env): ModelGateway {
+  return new hyperouter.HyperouterGateway(hyperouterClient(env), env.HYPEROUTER_WEBHOOK_SECRET);
+}
+
+/**
+ * Generation provider of the gateway, reporting to the circuit breaker (D-030): 5xx, timeouts and
+ * network errors on submit and status count toward opening it; answers close a half-open breaker.
+ * Fail-fast while open happens in `submitJob` (before the provider is called).
+ */
 export function generationProvider(env: Env, model: CatalogModel): GenerationProvider {
-  return hyperouter.createHyperouterGenerationProvider(model, hyperouterClient(env), env.HYPEROUTER_WEBHOOK_SECRET);
+  const gateway = modelGateway(env);
+  const inner = gateway.generation(model);
+  const observe = async <T>(fn: () => Promise<T>): Promise<T> => {
+    try {
+      const out = await fn();
+      await recordGatewaySuccess(env, gateway.id);
+      return out;
+    } catch (err) {
+      const status = gateway.errorStatus(err);
+      if (status !== null && countsAsOutage(status)) await recordGatewayFailure(env, `${status}: ${err instanceof Error ? err.message.slice(0, 120) : "error"}`, gateway.id);
+      throw err;
+    }
+  };
+  const wrapped: GenerationProvider = {
+    id: inner.id,
+    kind: inner.kind,
+    capabilities: inner.capabilities,
+    submit: (req, key) => observe(() => inner.submit(req, key)),
+    status: (externalId) => observe(() => inner.status(externalId)),
+  };
+  if (inner.verifyWebhook) wrapped.verifyWebhook = (req) => inner.verifyWebhook!(req);
+  return wrapped;
 }
 
 /**
