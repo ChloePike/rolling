@@ -292,6 +292,8 @@
   "tools.run.step.describe": "Build description",
   "tools.run.step.generating": "Generating {pct, number, ::percent}",
   "tools.run.step.lipSync": "Lip-sync {pct, number, ::percent}",
+  "tools.run.step.generatingNoProgress": "Generating",
+  "tools.run.step.lipSyncNoProgress": "Lip-sync",
   "tools.toast.noCredits": "Not enough credits for this run.",
   "tools.toast.topUp": "Top up",
   "tools.toast.concurrency": "Too many jobs running for your plan. Wait for one to finish, or upgrade.",
@@ -352,6 +354,8 @@
   "tools.quick.shotCount": "{n, plural, one {# shot} other {# shots}}",
   "tools.feed.step.keyframe": "Making the first frame",
   "tools.feed.step.animate": "Animating · {pct}%",
+  "tools.feed.step.animateNoProgress": "Animating",
+  "tools.feed.elapsed": "Elapsed {time}",
   "tools.confirm.step.keyframe": "First frame",
   "tools.confirm.step.animate": "Animation"
 }

@@ -14,6 +14,7 @@ import { runError } from '@/features/canvas/api';
 import { useSendToCanvas, type IncomingItem } from '@/features/canvas/target';
 import type { RunAction, RunRow, RunStatus } from './types';
 import styles from './Activity.module.css';
+import { elapsedClock, knownProgress, useElapsed } from '@/lib/progress';
 
 const cx = (...c: Array<string | false | undefined>) => c.filter(Boolean).join(' ');
 
@@ -500,6 +501,10 @@ function Row({ run, index, onAction }: { run: RunRow; index: number; onAction: (
           ? 'activity.cost.chargedRefunded'
           : 'activity.cost.charged';
   const statusLabel = intl.formatMessage({ id: `activity.status.${run.status}` });
+  // Real progress only: with none reported, an indeterminate bar and the elapsed time (never a stuck percentage).
+  const running = run.status === 'running';
+  const pct = running ? knownProgress(run.progress) : null;
+  const elapsed = useElapsed(running && pct === null, run.startedAt ?? Date.now() - run.minutesAgo * 60_000);
   return (
     <div className={cx(styles.rowWrap, motion.stagger)} style={{ '--i': index } as CSSProperties} data-run-status={run.status}>
       <div className={cx(styles.cols, styles.row)} role="row">
@@ -532,19 +537,29 @@ function Row({ run, index, onAction }: { run: RunRow; index: number; onAction: (
           <span className={styles.badge} style={{ background: st.bg, color: st.fg }}>
             {statusLabel}
           </span>
-          {run.status === 'running' && run.progress !== undefined && (
+          {running && (
             <span
               className={styles.track}
               role="progressbar"
               aria-label={intl.formatMessage({ id: 'activity.progress' }, { name: run.name })}
               aria-valuemin={0}
               aria-valuemax={100}
-              aria-valuenow={Math.round(run.progress * 100)}
-              aria-valuetext={intl.formatNumber(run.progress, { style: 'percent' })}
+              {...(pct !== null
+                ? { 'aria-valuenow': Math.round(pct * 100), 'aria-valuetext': intl.formatNumber(pct, { style: 'percent' }) }
+                : { 'aria-valuetext': intl.formatMessage({ id: 'activity.elapsed' }, { time: elapsedClock(elapsed) }) })}
             >
-              <span className={cx(styles.fill, motion.progress)} style={{ width: `${run.progress * 100}%` }} />
+              {pct !== null ? (
+                <span className={cx(styles.fill, motion.progress)} style={{ width: `${pct * 100}%` }} />
+              ) : (
+                <span className={cx(styles.fill, 'rl-indeterminate')} />
+              )}
             </span>
           )}
+          {running && pct === null ? (
+            <span className={styles.elapsed} data-testid="activity-elapsed">
+              <FormattedMessage id="activity.elapsed" values={{ time: elapsedClock(elapsed) }} />
+            </span>
+          ) : null}
         </span>
         <span className={styles.cost} role="cell">
           <span className={styles.costValue} style={{ color: run.credits ? 'var(--c-text-1)' : 'var(--c-text-4)' }}>

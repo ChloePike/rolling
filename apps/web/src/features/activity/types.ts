@@ -21,6 +21,8 @@ export interface RunRow {
   /** Failure reason shown under failed rows. */
   error?: string;
   minutesAgo: number;
+  /** Real mode: epoch ms the run started (elapsed time while no progress is reported). */
+  startedAt?: number;
   /** Real mode: where the run belongs, its first result and the canvas nodes to retry. */
   projectId?: string | null;
   assetId?: string | null;

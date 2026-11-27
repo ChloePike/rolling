@@ -232,6 +232,23 @@ test('video run card: the cost line is the server quote, the card holds the same
   await expect(page.getByTestId('home-run').first()).toHaveAttribute('data-status', 'done');
 });
 
+test('a running card whose provider reports no progress shows the elapsed time and an indeterminate bar, never a percentage', async ({ page }) => {
+  const s = await setup(page);
+  await page.goto('/');
+  await send(page, 'Video', 'A lamp turning on');
+  await page.getByRole('button', { name: 'Start' }).click();
+  const card = page.getByTestId('home-run').first();
+  await expect(card).toHaveAttribute('data-status', 'queued');
+  s.run = runView({ status: 'running', progress: 0 });
+  userEvent(s, 'activity.updated', { runId: 'run_stub1', jobId: 'job_1', progress: 0 });
+  await expect(card).toHaveAttribute('data-status', 'running');
+  const bar = card.getByRole('progressbar');
+  await expect(bar).not.toHaveAttribute('aria-valuenow', /.*/);
+  await expect(bar.locator('.rl-indeterminate')).toHaveCount(1);
+  await expect(card).not.toContainText('%');
+  await expect(card).toContainText(/\d+:\d{2}/);
+});
+
 test('a run left running survives a reload and keeps following; Cancel releases the hold', async ({ page }) => {
   const s = await setup(page);
   await page.goto('/');

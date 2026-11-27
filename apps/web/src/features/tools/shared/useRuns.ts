@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useIntl } from 'react-intl';
 import type { FeedItem, MediaRun, MediaTile } from '../types';
 import { assetMediaUrl, userEvents } from '@/features/overlays/backend';
 import { chainOf, findRun, resultItems, isFailedRun, runFinished, type RunView } from '@/features/overlays/runs';
@@ -22,6 +23,8 @@ export interface RunSpec {
   steps: string[];
   /** Label of the generating step; `{pct}` is replaced by the percentage. */
   generating: (pct: number) => string;
+  /** Label of the generating step while the provider reports no progress (default “Generating”, never a number). */
+  generatingIdle?: string;
   durationSec?: number;
   cost: number;
   actions: MediaRun['actions'];
@@ -52,6 +55,11 @@ export function useRuns(seed: FeedItem[], events: RunEvents = {}) {
   ev.current = events;
   const itemsRef = useRef(items);
   itemsRef.current = items;
+  const intl = useIntl();
+  const intlRef = useRef(intl);
+  intlRef.current = intl;
+  /** The generating step's label: a percentage only for real progress (above 0). */
+  const genLabel = (spec: RunSpec, pct: number) => (pct > 0 ? spec.generating(pct) : (spec.generatingIdle ?? intlRef.current.formatMessage({ id: 'tools.run.step.generatingNoProgress' })));
 
   useEffect(() => {
     const t = timers.current;
@@ -77,9 +85,9 @@ export function useRuns(seed: FeedItem[], events: RunEvents = {}) {
     const tiles: MediaTile[] = (spec.tiles.length ? spec.tiles : [undefined]).map((label) => (label ? { label, tone: 'var(--c-tone-blank)' } : { tone: 'var(--c-tone-blank)' }));
     const steps = (pct: number) => [
       ...spec.steps.map((label) => ({ label, state: 'done' as const })),
-      { label: spec.generating(pct), state: 'now' as const },
+      { label: genLabel(spec, pct), state: 'now' as const },
     ];
-    const run: MediaRun = { kind: 'media', id, aspect: spec.aspect, tiles, prompt: spec.prompt, tags: spec.tags, progress: 0, video: spec.video, steps: steps(0), actions: spec.actions, cost: spec.cost };
+    const run: MediaRun = { kind: 'media', id, aspect: spec.aspect, tiles, prompt: spec.prompt, tags: spec.tags, progress: 0, startedAt: Date.now(), video: spec.video, steps: steps(0), actions: spec.actions, cost: spec.cost };
     setItems((all) => [run, ...all]);
     const fails = !!mocks().runFails;
     let pct = 0;
@@ -117,9 +125,9 @@ export function useRuns(seed: FeedItem[], events: RunEvents = {}) {
   const startReal = useCallback((spec: RunSpec, runId: string): string => {
     const id = runId;
     specs.current.set(id, spec);
-    const steps = (pct: number) => [...spec.steps.map((label) => ({ label, state: 'done' as const })), { label: spec.generating(pct), state: 'now' as const }];
+    const steps = (pct: number) => [...spec.steps.map((label) => ({ label, state: 'done' as const })), { label: genLabel(spec, pct), state: 'now' as const }];
     const tiles: MediaTile[] = (spec.tiles.length ? spec.tiles : [undefined]).map((label) => (label ? { label, tone: 'var(--c-tone-blank)' } : { tone: 'var(--c-tone-blank)' }));
-    const run: MediaRun = { kind: 'media', id, runId, aspect: spec.aspect, tiles, prompt: spec.prompt, tags: spec.tags, progress: 0, video: spec.video, steps: steps(0), actions: spec.actions, cost: spec.cost };
+    const run: MediaRun = { kind: 'media', id, runId, aspect: spec.aspect, tiles, prompt: spec.prompt, tags: spec.tags, progress: 0, startedAt: Date.now(), video: spec.video, steps: steps(0), actions: spec.actions, cost: spec.cost };
     setItems((all) => [run, ...all]);
     let finished = false;
     const apply = (r: RunView) => {
@@ -132,10 +140,10 @@ export function useRuns(seed: FeedItem[], events: RunEvents = {}) {
           chain && spec.chainLabels
             ? [
                 { label: spec.chainLabels.keyframe, state: chain.current === 'keyframe' ? ('now' as const) : ('done' as const) },
-                { label: spec.chainLabels.animate(pct), state: chain.current === 'animate' ? ('now' as const) : ('todo' as const) },
+                { label: pct > 0 ? spec.chainLabels.animate(pct) : intlRef.current.formatMessage({ id: 'tools.feed.step.animateNoProgress' }), state: chain.current === 'animate' ? ('now' as const) : ('todo' as const) },
               ]
             : steps(pct);
-        update(id, (cur) => ({ ...cur, progress: pct, steps: shown }));
+        update(id, (cur) => ({ ...cur, progress: pct, startedAt: r.createdAt || cur.startedAt, steps: shown }));
         return;
       }
       finished = true;

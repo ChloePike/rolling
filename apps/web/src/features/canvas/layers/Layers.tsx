@@ -16,6 +16,7 @@ import { MenuPopover, MenuRows, rovingKeys } from './Menu';
 import { useLayer } from './useLayer';
 import { isMockApi } from '@/features/overlays/backend';
 import { fetchTemplate, useTemplates } from '@/features/templates/api';
+import { knownProgress } from '@/lib/progress';
 
 interface LayerProps {
   state: PresenceState;
@@ -822,7 +823,11 @@ export function HistoryDrawer({ state, onClose, rows, onOpen, loading }: LayerPr
               </span>
               <span className={canvas.historyState} data-status={r.status}>
                 {r.status === 'running' ? (
-                  <FormattedMessage id="canvas.history.running" values={{ p: r.progress ?? 0 }} />
+                  knownProgress(r.progress) !== null ? (
+                    <FormattedMessage id="canvas.history.running" values={{ p: knownProgress(r.progress) }} />
+                  ) : (
+                    <FormattedMessage id="canvas.history.runningNoProgress" />
+                  )
                 ) : r.status === 'failed' ? (
                   <FormattedMessage id="canvas.history.failed" values={{ n: r.refunded ?? 0 }} />
                 ) : (

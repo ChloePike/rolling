@@ -5,6 +5,7 @@ import type { FeedItem, MediaRun, ScriptDraft } from '../types';
 import styles from './FeedCard.module.css';
 import { formatAgo, formatClock } from './format';
 import { ToolIcon, type ToolIconName } from './icons';
+import { elapsedClock, useElapsed } from '@/lib/progress';
 
 const ACTION_LABEL: Partial<Record<ToolIconName, string>> = {
   redo: 'tools.feed.action.regenerate',
@@ -68,7 +69,10 @@ function Media({
 }) {
   const intl = useIntl();
   const running = item.progress !== undefined;
-  const pct = running ? intl.formatNumber(item.progress! / 100, { style: 'percent' }) : '';
+  // Real progress only: a provider that reports none leaves 0, and the tile shows the elapsed time instead.
+  const known = running && item.progress! > 0;
+  const elapsed = useElapsed(running && !known, item.startedAt);
+  const pct = known ? intl.formatNumber(item.progress! / 100, { style: 'percent' }) : running ? elapsedClock(elapsed) : '';
   return (
     <>
       <button type="button" className={styles.open} aria-label={intl.formatMessage({ id: 'tools.feed.details' })} onClick={onOpen}>
@@ -82,16 +86,20 @@ function Media({
                   <ToolIcon name="play" size={14} filled color="var(--c-text-1)" />
                 </span>
               )}
-              {running && <span className={styles.pct}>{pct}</span>}
+              {running && (
+                <span className={styles.pct} {...(!known && { 'aria-label': intl.formatMessage({ id: 'tools.feed.elapsed' }, { time: pct }) })}>
+                  {pct}
+                </span>
+              )}
               {!running && item.video && item.durationSec !== undefined && (
                 <span className={styles.dur}>{formatClock(intl, item.durationSec)}</span>
               )}
               {running && (
                 <span
-                  className={styles.bar}
-                  style={{ width: `${item.progress}%` }}
+                  className={`${styles.bar}${known ? '' : ' rl-indeterminate'}`}
+                  style={known ? { width: `${item.progress}%` } : undefined}
                   role="progressbar"
-                  aria-valuenow={item.progress}
+                  {...(known ? { 'aria-valuenow': item.progress } : { 'aria-valuetext': pct })}
                   aria-valuemin={0}
                   aria-valuemax={100}
                   aria-label={intl.formatMessage({ id: 'tools.feed.progress' })}

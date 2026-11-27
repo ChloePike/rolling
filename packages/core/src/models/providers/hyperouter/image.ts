@@ -139,14 +139,17 @@ const GENERATION_STATE: Record<HyperouterGeneration['status'], JobState> = {
   failed: 'failed',
 };
 
-/** Normalizes a generation record. The gateway reports no image progress, so it is coarse. */
+/**
+ * Normalizes a generation record. The gateway reports no progress for generations, so a running one
+ * stays at 0 (the UI reads 0 as "no progress reported" and shows the elapsed time, never a made-up %).
+ */
 export function generationToJobStatus(gen: HyperouterGeneration): JobStatus {
   const state = GENERATION_STATE[gen.status] ?? 'running';
   const outputKind = gen.kind === 'video' ? 'video' : 'image';
   return {
     externalId: gen.id,
     state,
-    progress: state === 'succeeded' ? 100 : state === 'running' ? 50 : 0,
+    progress: state === 'succeeded' ? 100 : 0,
     outputs:
       state === 'succeeded'
         ? (gen.outputs ?? []).map((o) => {

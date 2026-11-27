@@ -4,8 +4,14 @@ import { InvalidGenerateRequestError } from '../../../errors';
 import { MatureRoutingError } from '../../../capabilities';
 import { createHyperouterGenerationProvider } from '../provider';
 import { errorJson, json, mockFetch } from './mock-fetch';
+import { generationToJobStatus, type HyperouterGeneration } from '../image';
 
 describe('Hyperouter image provider', () => {
+  it('reports no made-up progress while a generation runs (0 = none reported, docs/ux-audit.md #29)', () => {
+    const running = generationToJobStatus({ id: 'gen_1', kind: 'image', status: 'running', usage: { cost: 0 }, error: null, outputs: [] } as HyperouterGeneration);
+    expect(running).toMatchObject({ state: 'running', progress: 0 });
+  });
+
   it('creates async (Prefer: respond-async) and polls the generation to done', async () => {
     const { client, calls } = mockFetch([
       json({ id: 'gen_1', status: 'queued' }, 202, { 'preference-applied': 'respond-async' }),

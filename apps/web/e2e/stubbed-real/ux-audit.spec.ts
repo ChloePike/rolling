@@ -124,6 +124,25 @@ test('Activity: the Source says where a run started (Home, Quick Create, Canvas)
   await expect(row('Video')).toContainText('Quick Create');
 });
 
+test('Activity: a running row with no progress reported shows the elapsed time and an indeterminate bar, not a stuck percentage', async ({ page }) => {
+  const runs = [
+    {
+      id: 'run_slow1', ref: 'T-SLOW1', name: 'A pear in the rain', source: 'quickCreate', surface: 'quick', projectId: null, projectTitle: null, params: 'Seedance 2.0 Mini · 480p · 5s',
+      status: 'running', progress: 0, credits: 53, quoted: 53, spent: 0, refunded: 0, error: null, createdAt: Date.now() - 125_000, finishedAt: null,
+      items: [{ ref: 'r1', nodeId: null, title: 'A pear', kind: 'video', model: 'bytedance/seedance-2.0-mini', modelName: 'Seedance 2.0 Mini', status: 'running', jobId: 'job_1', progress: 0, credits: 53, spent: null, refunded: 0, assetId: null, error: null, errorCode: null }],
+      request: null, tool: 'quick', retryOf: null, characterId: null, retryable: false,
+    },
+  ];
+  await stub(page, (method, path) => (path === '/api/runs' && method === 'GET' ? { runs, stats: { usedThisMonth: 0, usedLastMonth: 0, running: 1, successRate: null, runsLast7Days: 1, refundedThisMonth: 0 }, nextCursor: null } : undefined));
+  await page.goto('/activity');
+  const row = page.getByRole('row').filter({ hasText: 'A pear in the rain' });
+  await expect(row.getByTestId('activity-elapsed')).toHaveText(/^2:0\d elapsed$/);
+  const bar = row.getByRole('progressbar');
+  await expect(bar).not.toHaveAttribute('aria-valuenow', /.*/);
+  await expect(bar.locator('.rl-indeterminate')).toHaveCount(1);
+  await expect(row).not.toContainText('%');
+});
+
 test('Assets: the detail panel shows the media, the file type and the project by name (not “SHOT 1: …” and a prj_ id); an empty library offers Upload', async ({ page }) => {
   let assets: unknown[] = [];
   await stub(page, (method, path, body, route) => {

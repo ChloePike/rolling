@@ -28,6 +28,7 @@
   "activity.col.credits": "Credits",
   "activity.col.time": "Time",
   "activity.col.actions": "Actions",
+  "activity.elapsed": "{time} elapsed",
   "activity.source.home": "Home",
   "activity.source.canvas": "Canvas · {project}",
   "activity.source.agent": "Agent · {project}",

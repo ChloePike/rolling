@@ -47,8 +47,9 @@
   align-self:flex-start;height:22px;padding:0 8px;border-radius:6px;font-size:11px;font-weight:700;line-height:22px;
   transition:background-color var(--m-fast) var(--m-ease-standard),color var(--m-fast) var(--m-ease-standard);
 }
-.track{display:block;height:3px;border-radius:999px;background:var(--c-surface-5);width:90px}
+.track{display:block;position:relative;overflow:hidden;height:3px;border-radius:999px;background:var(--c-surface-5);width:90px}
 .fill{display:block;height:3px;border-radius:999px;background:var(--c-accent)}
+.elapsed{font-size:10.5px;line-height:1;color:var(--c-text-4);font-variant-numeric:tabular-nums}
 
 .cost{text-align:right;display:flex;flex-direction:column;gap:3px}
 .costValue{font-size:13px;font-weight:700;line-height:1}

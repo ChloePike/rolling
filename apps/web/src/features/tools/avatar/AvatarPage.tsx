@@ -322,6 +322,7 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
         tiles: [],
         steps: [t('tools.run.step.script'), t('tools.run.step.tts')],
         generating: (n) => t('tools.run.step.lipSync', { pct: n / 100 }),
+        generatingIdle: t('tools.run.step.lipSyncNoProgress'),
         durationSec: seconds || undefined,
       }}
       actions={['redo', 'sliders', 'frame', 'down', 'star']}

@@ -7,6 +7,7 @@ import { hasInputs, inputPorts, outputType, type PortType } from '@rolling/core/
 import type { GraphNode } from '@rolling/core/graph';
 import { CanvasIcon } from '../icons';
 import styles from './nodes.module.css';
+import { elapsedClock, knownProgress, useElapsed } from '@/lib/progress';
 
 export interface CardData extends Record<string, unknown> {
   node: GraphNode;
@@ -283,13 +284,18 @@ function GenerativeBody({ node, height, selected, refused }: { node: GraphNode; 
   );
   let content: ReactNode;
   let bodyClass = styles.media;
-  if (node.status === 'generating' || node.status === 'queued') {
-    const p = node.progress ?? 0;
+  const active = node.status === 'generating' || node.status === 'queued';
+  const pct = knownProgress(node.progress);
+  const elapsed = useElapsed(active && pct === null);
+  if (active) {
+    // Real progress only: with none reported, the elapsed time and an indeterminate fill (never a stuck 0% or 50%).
     bodyClass = cx(styles.progressBody);
     content = (
       <>
-        <div className={styles.progressFill} style={{ width: `${Math.round(p * 100)}%` }} />
-        <span className={styles.progressLabel}>{intl.formatNumber(p, { style: 'percent' })}</span>
+        {pct !== null ? <div className={styles.progressFill} style={{ width: `${Math.round(pct * 100)}%` }} /> : <div className={cx(styles.progressFill, 'rl-indeterminate')} />}
+        <span className={styles.progressLabel} data-testid="node-progress">
+          {pct !== null ? intl.formatNumber(pct, { style: 'percent' }) : intl.formatMessage({ id: 'canvas.node.elapsed' }, { time: elapsedClock(elapsed) })}
+        </span>
       </>
     );
   } else if (node.status === 'failed') {

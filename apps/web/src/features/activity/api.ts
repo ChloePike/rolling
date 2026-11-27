@@ -46,6 +46,7 @@ function rowFrom(r: RunView, now: number): RunRow {
     refunded: r.refunded,
     ...(r.error ? { error: r.error } : {}),
     minutesAgo: Math.max(0, Math.round((now - r.createdAt) / 60_000)),
+    startedAt: r.createdAt,
     projectId: r.projectId,
     assetId: first?.assetId ?? null,
     mediaKind: first?.kind === 'image' ? 'image' : 'video',

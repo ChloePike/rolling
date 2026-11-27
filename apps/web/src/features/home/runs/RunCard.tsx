@@ -175,7 +175,8 @@ export function RunCard({ card, actions, index }: { card: HomeRunCard; actions: 
             aria-valuemax={100}
             {...(pct !== null ? { 'aria-valuenow': pct } : { 'aria-valuetext': statusLabel })}
           >
-            <span className="rl-progress-fill" style={{ width: `${pct ?? 0}%` }} />
+            {/* No progress reported: an indeterminate bar beside the elapsed time, never a made-up number. */}
+            <span className={cx('rl-progress-fill', pct === null && 'rl-indeterminate')} style={pct !== null ? { width: `${pct}%` } : undefined} />
           </div>
         ) : null}
         {card.status === 'failed' && card.error ? (

@@ -23,8 +23,10 @@ export interface MediaRun {
   tiles: MediaTile[];
   prompt: string;
   tags: string[];
-  /** 0–100 while running; undefined when done. */
+  /** 0–100 while running; undefined when done. 0 while running means no progress reported (the card shows the elapsed time). */
   progress?: number;
+  /** Epoch ms the run started, for the elapsed time while no progress is reported. */
+  startedAt?: number;
   video: boolean;
   /** Seconds, for the duration badge. */
   durationSec?: number;
