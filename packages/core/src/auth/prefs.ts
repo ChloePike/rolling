@@ -6,8 +6,11 @@ import { DEFAULT_CONFIRM_THRESHOLD_CREDITS } from '../pricing/config';
  * The API shape is camelCase; D1 stores them in `user_prefs` (snake_case).
  */
 
-/** Handoff 6: English source; first wave ja, zh-TW, zh-HK, ko; second wave id, th, vi, es, pt-BR, de, fr. */
-export const SUPPORTED_LANGUAGES = ['en', 'ja', 'zh-TW', 'zh-HK', 'ko', 'id', 'th', 'vi', 'es', 'pt-BR', 'de', 'fr'] as const;
+/**
+ * D-023: English source; translated zh-CN, zh-TW, ja, ko; second wave id, th, vi, es, pt-BR, de, fr
+ * (English text). `zh-HK` is still accepted from older clients and reads as Traditional Chinese.
+ */
+export const SUPPORTED_LANGUAGES = ['en', 'zh-CN', 'zh-TW', 'ja', 'ko', 'zh-HK', 'id', 'th', 'vi', 'es', 'pt-BR', 'de', 'fr'] as const;
 export type Language = (typeof SUPPORTED_LANGUAGES)[number];
 
 /** Display currencies. Charges stay in USD (D-006). */
@@ -115,9 +118,9 @@ function canonical(tag: string): { lang: string; region: string | null; script: 
 export function matchLanguage(tag: string): Language | null {
   const { lang, region, script } = canonical(tag);
   if (lang === 'zh') {
-    if (region === 'HK' || region === 'MO') return 'zh-HK';
-    if (region === 'TW' || script === 'Hant') return 'zh-TW';
-    return null; // Simplified Chinese is not offered.
+    // D-023: by script, then region; Traditional for Hant, TW, HK and MO, else Simplified.
+    if (script) return script === 'Hant' ? 'zh-TW' : 'zh-CN';
+    return region === 'TW' || region === 'HK' || region === 'MO' ? 'zh-TW' : 'zh-CN';
   }
   if (lang === 'pt') return region === 'BR' || region === null ? 'pt-BR' : null;
   if (lang === 'in') return 'id'; // Legacy tag for Indonesian.

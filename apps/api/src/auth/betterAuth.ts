@@ -13,6 +13,7 @@ import { betterAuth, type BetterAuthOptions } from "better-auth";
 import { emailOTP } from "better-auth/plugins";
 import { waitUntil } from "cloudflare:workers";
 import { newId, type IdKind } from "@rolling/core/ids";
+import { languageFromAcceptLanguage } from "@rolling/core/auth/prefs";
 import { emailProviderName, enqueueEmail } from "./email";
 import { onUserCreated } from "./workspace";
 import { purgeAccount } from "./deleteAccount";
@@ -145,9 +146,11 @@ async function buildAuth(env: Env) {
         storeOTP: "hashed",
         // Email change: a code to the new address (`/api/auth/email-otp/request-email-change`, then `/change-email`).
         changeEmail: { enabled: true },
-        async sendVerificationOTP({ email, otp, type }) {
+        async sendVerificationOTP({ email, otp, type }, ctx) {
+          // D-023: the recipient's saved language wins; a new address gets the browser's language.
+          const locale = languageFromAcceptLanguage(ctx?.headers?.get("accept-language") ?? ctx?.request?.headers.get("accept-language") ?? null);
           if (type === "change-email") {
-            await enqueueEmail(env, { to: email, template: "change-email-code", data: { code: otp, expiresInMinutes: OTP_TTL_SECONDS / 60 } });
+            await enqueueEmail(env, { to: email, template: "change-email-code", data: { code: otp, expiresInMinutes: OTP_TTL_SECONDS / 60 }, locale });
             return;
           }
           if (type !== "sign-in") return; // Only sign-in and email change are offered.
@@ -155,6 +158,7 @@ async function buildAuth(env: Env) {
             to: email,
             template: "sign-in-code",
             data: { code: otp, expiresInMinutes: OTP_TTL_SECONDS / 60 },
+            locale,
           });
         },
       }),

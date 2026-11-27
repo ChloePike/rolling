@@ -6,7 +6,8 @@
     "dev": "vite",
     "build": "vite build && node scripts/prerender-legal.mjs && node scripts/early-hints.mjs",
     "typecheck": "tsc -p .",
-    "test": "node scripts/check-colors.mjs && vitest run --passWithNoTests",
+    "test": "node scripts/check-colors.mjs && node scripts/check-messages.mjs --quiet && vitest run --passWithNoTests",
+    "check:messages": "node scripts/check-messages.mjs",
     "check:colors": "node scripts/check-colors.mjs",
     "e2e": "playwright test --trace off"
   },
@@ -23,6 +24,7 @@
     "react-intl": "^7.1.14"
   },
   "devDependencies": {
+    "@formatjs/icu-messageformat-parser": "2.11.4",
     "@lobehub/icons-static-svg": "^1.106.0",
     "@playwright/test": "1.56.1",
     "@tanstack/router-plugin": "^1.133.0",

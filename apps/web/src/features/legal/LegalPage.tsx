@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router';
 import { Fragment, useEffect, useMemo, type ReactNode } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
+import { DEFAULT_LOCALE, SUPPORTED_LOCALES } from '@/i18n/locale';
 import { LEGAL_DOCS, legalBlocks, type LegalDocId } from './docs';
 import type { Block, Inline } from './markdown';
 import styles from './Legal.module.css';
@@ -151,6 +152,7 @@ export function LegalPage({ doc }: { doc: LegalDocId }) {
   const body = useMemo(() => blocks.filter((b) => b !== title), [blocks, title]);
   const toc = useMemo(() => blocks.filter((b): b is Extract<Block, { t: 'heading' }> => b.t === 'heading' && b.level === 2), [blocks]);
   const titleText = title && title.t === 'heading' ? title.text : '';
+  const showGoverns = intl.locale !== DEFAULT_LOCALE && (SUPPORTED_LOCALES as readonly string[]).includes(intl.locale);
 
   useEffect(() => {
     const prev = document.title;
@@ -190,7 +192,7 @@ export function LegalPage({ doc }: { doc: LegalDocId }) {
             <p className={styles.tocTitle}>
               <FormattedMessage id="legal.toc" />
             </p>
-            <ol className={styles.tocList}>
+            <ol className={styles.tocList} lang="en">
               {toc.map((h) => (
                 <li key={h.id}>
                   <a href={`#${h.id}`} className={styles.tocItem}>
@@ -201,7 +203,13 @@ export function LegalPage({ doc }: { doc: LegalDocId }) {
             </ol>
           </nav>
         )}
-        <article className={styles.article}>
+        {/* D-023: the documents stay English; a translated UI says which version governs. */}
+        <article className={styles.article} lang="en">
+          {showGoverns && (
+            <p className={styles.note} role="note" lang={intl.locale} data-testid="legal-governs">
+              <FormattedMessage id="legal.englishGoverns" />
+            </p>
+          )}
           {title && title.t === 'heading' && (
             <h1 id={title.id} className={styles.h1}>
               <Inlines nodes={title.c} />

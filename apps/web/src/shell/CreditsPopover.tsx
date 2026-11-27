@@ -149,7 +149,7 @@ export function CreditsPopoverContent({
                   style={staggerStyle(i)}
                   onClick={() => setAmount(p.amountUsd)}
                 >
-                  <span className={styles.presetUsd}>{money(p.amountUsd)}</span>
+                  <span className={styles.presetUsd}>{money(p.amountUsd, { narrow: true })}</span>
                   <span className={styles.presetCredits}>
                     <FormattedMessage id="shell.credits.presetCredits" values={{ credits: p.credits }} />
                   </span>

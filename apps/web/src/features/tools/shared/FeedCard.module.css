@@ -37,7 +37,7 @@
 }
 .cancel:hover{color:var(--c-text-1);background:var(--c-surface-5)}
 .done{display:flex;align-items:center;gap:2px}
-.time{font-size:11px;color:var(--c-text-4);flex:1}
+.time{font-size:11px;color:var(--c-text-4);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .act{
   width:30px;height:30px;border-radius:var(--r-pill);border:0;background:none;color:var(--c-text-3);cursor:pointer;
   display:flex;align-items:center;justify-content:center;padding:0;

@@ -93,7 +93,7 @@ describe('inspector meta line', () => {
   it('lists only the parts a shot has', async () => {
     const { createIntl } = await import('react-intl');
     const { shotMetaLine } = await import('./Inspector');
-    const intl = createIntl({ locale: 'en', messages: { 'editor.inspector.seconds': '{seconds, number}s' } });
+    const intl = createIntl({ locale: 'en', messages: { 'editor.inspector.seconds': '{value, number}s' } });
     expect(shotMetaLine(intl, { model: 'Seedance 2.0 Mini', resolution: '720p', seconds: 5 })).toBe('Seedance 2.0 Mini, 720p, 5s');
     expect(shotMetaLine(intl, { model: '', resolution: '', seconds: 0 })).toBe('');
     expect(shotMetaLine(intl, { model: 'Wan 2.2', resolution: null, seconds: 0 })).toBe('Wan 2.2');

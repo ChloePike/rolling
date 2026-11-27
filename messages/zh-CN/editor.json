@@ -25,7 +25,6 @@
   "editor.monitor.pause": "暂停",
   "editor.monitor.notGenerated": "未生成",
   "editor.inspector.label": "检查器",
-  "editor.inspector.seconds": "{seconds, number} 秒",
   "editor.inspector.audioMeta": "音频，{length}",
   "editor.inspector.captionTitle": "字幕",
   "editor.inspector.captionMeta": "{start} 至 {end}",

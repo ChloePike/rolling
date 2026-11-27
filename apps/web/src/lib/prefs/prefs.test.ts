@@ -98,7 +98,10 @@ describe('lib/prefs server sync', () => {
       theme: 'light',
       notifications: { done: false, product: true },
     });
-    expect(prefs.toServerPatch({ language: 'zh-HK' })).toEqual({ language: 'zh-HK' });
+    // D-023: a pre-D-023 zh-HK choice saves as Traditional Chinese; zh-CN is offered.
+    expect(prefs.toServerPatch({ language: 'zh-HK' })).toEqual({ language: 'zh-TW' });
+    expect(prefs.toServerPatch({ language: 'zh-CN' })).toEqual({ language: 'zh-CN' });
+    expect(prefs.toServerPatch({ language: 'zh-Hans-SG' })).toEqual({ language: 'zh-CN' });
     const p = prefs.fromServerPrefs({ language: 'ja', currency: 'JPY', creationMode: 'advanced', defaultRatio: '1:1', defaultModel: 'auto', confirmThreshold: 0, notifications: { done: true, low: false, renewal: true, product: false }, theme: 'dark', matureContent: true });
     expect(p).toMatchObject({ language: 'ja', currency: 'JPY', defaultAspectRatio: '1:1', notifyCreditsLow: false, confirmThreshold: 0, theme: 'dark', matureContent: true });
   });

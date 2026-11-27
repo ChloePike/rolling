@@ -19,7 +19,7 @@ export function shotMetaLine(intl: Pick<IntlShape, 'formatMessage' | 'formatList
   const parts = [
     shot.model?.trim() || null,
     shot.resolution?.trim() || null,
-    typeof shot.seconds === 'number' && shot.seconds > 0 ? intl.formatMessage({ id: 'editor.inspector.seconds' }, { seconds: shot.seconds }) : null,
+    typeof shot.seconds === 'number' && shot.seconds > 0 ? intl.formatMessage({ id: 'editor.inspector.seconds' }, { value: shot.seconds }) : null,
   ].filter((p): p is string => !!p);
   return parts.length ? intl.formatList(parts, { type: 'unit', style: 'short' }) : '';
 }

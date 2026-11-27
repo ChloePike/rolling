@@ -15,6 +15,20 @@ import { plainText, type Block, type Inline } from './markdown';
 export const SITE_ORIGIN = 'https://rolling.actor';
 
 const msg = { ...legal, ...shell } as Record<string, string>;
+
+/**
+ * D-023: "The English version governs" in each translated locale. The static pages run no script
+ * (Google reads them without JavaScript), so one note lists every translation, each in its language.
+ */
+const localeLegal = import.meta.glob<Record<string, string>>(['@messages/*/legal.json', '!@messages/en/legal.json'], { import: 'default', eager: true });
+export function governsNotes(): string {
+  const lines = Object.entries(localeLegal)
+    .map(([path, m]) => [path.split('/').at(-2)!, m['legal.englishGoverns']] as const)
+    .filter(([, text]) => !!text)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([locale, text]) => `<p lang="${escapeHtml(locale)}">${escapeHtml(text!)}</p>`);
+  return lines.length ? `<div class="note governs" role="note">${lines.join('')}</div>` : '';
+}
 const APP = msg['app.name']!;
 
 const TOKENS = [
@@ -60,6 +74,7 @@ p,ul,ol{margin:0 0 14px}
 li{margin:0 0 6px}
 code{font:.88em ui-monospace,SFMono-Regular,Menlo,monospace;padding:1px 5px;border-radius:4px;background:var(--c-surface-2);color:var(--c-text-1)}
 mark{padding:0 3px;border-radius:3px;background:var(--c-warning-soft);color:var(--c-warning-text)}
+.governs{font-size:13px;line-height:1.5}.governs p{margin:0}
 .note{margin:0 0 24px;padding:12px 16px;border:1px solid var(--c-border);border-radius:var(--r-input);background:var(--c-surface-1)}
 .table{margin:0 0 18px;overflow-x:auto;border:1px solid var(--c-border);border-radius:var(--r-input)}
 table{width:100%;border-collapse:collapse;font-size:14px;line-height:1.5}
@@ -163,7 +178,8 @@ export function legalPageHtml(id: LegalDocId): string {
 </header>
 <div class="layout">
 <nav class="toc" aria-label="${escapeHtml(msg['legal.toc']!)}"><p>${escapeHtml(msg['legal.toc']!)}</p><ol>${toc.map((h) => `<li><a href="#${h.id}">${escapeHtml(h.text)}</a></li>`).join('')}</ol></nav>
-<main><article>
+<main><article lang="en">
+${governsNotes()}
 ${blocksHtml(blocks)}
 </article></main>
 </div>

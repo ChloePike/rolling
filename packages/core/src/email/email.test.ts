@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { EmailSendError } from './EmailProvider';
 import { ResendEmailProvider } from './resend';
-import { renderEmail } from './templates';
+import { EMAIL_CATALOG } from './catalog.gen';
+import { emailLocale, renderEmail } from './templates';
 
 describe('email templates', () => {
   it('renders the sign-in code (plain, sentence case)', () => {
@@ -75,5 +76,58 @@ describe('CloudflareEmailProvider', () => {
     expect(parseAddress('"Rolling Team" <a@b.co>')).toEqual({ email: 'a@b.co', name: 'Rolling Team' });
     expect(parseAddress('<a@b.co>')).toBe('a@b.co');
     expect(parseAddress(' a@b.co ')).toBe('a@b.co');
+  });
+});
+
+describe('email localization (D-023)', () => {
+  it.each([
+    [null, 'en'],
+    ['ja', 'ja'],
+    ['ja-JP', 'ja'],
+    ['ko-KR', 'ko'],
+    ['zh', 'zh-CN'],
+    ['zh-CN', 'zh-CN'],
+    ['zh-Hans-HK', 'zh-CN'],
+    ['zh-TW', 'zh-TW'],
+    ['zh-HK', 'zh-TW'],
+    ['zh-Hant', 'zh-TW'],
+    ['de', 'en'],
+    ['', 'en'],
+  ])('locale for %s is %s', (tag, want) => {
+    expect(emailLocale(tag)).toBe(want);
+  });
+
+  const samples = {
+    'sign-in-code': { code: '123456', expiresInMinutes: 10 },
+    'workspace-invite': { workspaceName: 'A & B', inviterName: '', role: 'viewer', acceptUrl: 'https://rolling.actor/invite/x', expiresInDays: 1 },
+    'change-email-code': { code: '654321', expiresInMinutes: 10 },
+    'delete-account-code': { code: '111222', expiresInMinutes: 10 },
+    'data-export-ready': { downloadUrl: 'https://rolling.actor/media/x?t=1&a=2', expiresInDays: 7 },
+  } as const;
+
+  it.each(Object.keys(EMAIL_CATALOG))('every template renders in %s with no ICU left over', (locale) => {
+    for (const [template, data] of Object.entries(samples)) {
+      const e = renderEmail(template as keyof typeof samples, data, 'Rolling', 'https://rolling.actor', locale);
+      for (const part of [e.subject, e.text, e.html]) expect(part).not.toMatch(/\{|\}|<b>/);
+      expect(e.html).toContain(`<html lang="${emailLocale(locale)}">`);
+      if ('code' in data) expect(e.text).toContain(data.code);
+      if ('acceptUrl' in data) expect(e.text).toContain(data.acceptUrl);
+      // Values are escaped in HTML.
+      if (template === 'workspace-invite') expect(e.html).toContain('A &amp; B');
+    }
+  });
+
+  it('falls back to English per key and formats plurals in the locale', () => {
+    const saved = EMAIL_CATALOG.ja;
+    EMAIL_CATALOG.ja = { 'email.signInCode.expires': '{minutes, plural, other {#分}}で期限切れになります。' };
+    try {
+      const e = renderEmail('sign-in-code', { code: '123456', expiresInMinutes: 1 }, 'Rolling', undefined, 'ja');
+      expect(e.text).toContain('1分で期限切れになります。');
+      expect(e.subject).toBe('Your Rolling sign-in code is 123456');
+      expect(renderEmail('sign-in-code', { code: '123456', expiresInMinutes: 1 }).text).toContain('It expires in 1 minute.');
+    } finally {
+      if (saved) EMAIL_CATALOG.ja = saved;
+      else delete EMAIL_CATALOG.ja;
+    }
   });
 });

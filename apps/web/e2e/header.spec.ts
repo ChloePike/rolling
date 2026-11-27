@@ -431,7 +431,11 @@ test.describe('header interactions', () => {
     const list = settings(page).getByRole('menu', { name: 'Language' });
     await expect(list.getByRole('menuitemradio')).toHaveCount(12);
     await expect(list.getByRole('menuitemradio', { name: /^English/ })).toHaveAttribute('aria-checked', 'true');
-    for (const name of ['日本語', '繁體中文（台灣）', '繁體中文（香港）', '한국어', 'Deutsch']) {
+    // D-023: zh-CN, zh-TW, ja and ko are translated; the second wave is English text.
+    for (const name of ['简体中文', '繁體中文', '日本語', '한국어']) {
+      await expect(list.getByRole('menuitemradio', { name: new RegExp(`^${name}`) })).not.toContainText('Not translated yet');
+    }
+    for (const name of ['Deutsch', 'Español']) {
       await expect(list.getByRole('menuitemradio', { name: new RegExp(`^${name}`) })).toContainText('Not translated yet');
     }
     await list.getByRole('menuitemradio', { name: /^Deutsch/ }).click();

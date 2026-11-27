@@ -10,20 +10,25 @@ import { TestInboxEmailProvider } from "./testInbox";
 import { EmailSendError, type EmailProvider } from "@rolling/core/email/EmailProvider";
 import { isEmailTemplateId, renderEmail, type EmailTemplateData, type EmailTemplateId } from "@rolling/core/email/templates";
 
-/** `notify-email` queue message. `to` or `userId` (resolved from `users.email`) is required. */
+/**
+ * `notify-email` queue message. `to` or `userId` (resolved from `users.email`) is required.
+ * `locale` is a hint for recipients without an account yet (the request's Accept-Language);
+ * a recipient's saved language preference always wins (D-023).
+ */
 export const NotifyEmailMessage = z
   .object({
     to: z.string().email().optional(),
     userId: z.string().optional(),
     template: z.string().min(1),
     data: z.record(z.unknown()).default({}),
+    locale: z.string().max(100).optional(),
   })
   .refine((m) => m.to || m.userId, { message: "to or userId is required" });
 export type NotifyEmailMessage = z.infer<typeof NotifyEmailMessage>;
 
 export async function enqueueEmail<T extends EmailTemplateId>(
   env: Env,
-  message: { to?: string; userId?: string; template: T; data: EmailTemplateData<T> },
+  message: { to?: string; userId?: string; template: T; data: EmailTemplateData<T>; locale?: string },
 ): Promise<void> {
   await env.NOTIFY_EMAIL_QUEUE.send(message, { contentType: "json" });
 }
@@ -90,6 +95,17 @@ export function emailProvider(env: Env): EmailProvider {
 }
 
 /**
+ * The recipient's saved language (D-023): by user id, else by the address of an existing account.
+ * Null for an address without an account (an invite to a new person, a first sign-in code).
+ */
+async function recipientLanguage(env: Env, userId: string | undefined, to: string): Promise<string | null> {
+  const row = userId
+    ? await env.DB.prepare("SELECT language FROM user_prefs WHERE user_id = ?1").bind(userId).first<{ language: string }>()
+    : await env.DB.prepare("SELECT p.language FROM users u JOIN user_prefs p ON p.user_id = u.id WHERE u.email = ?1").bind(to.toLowerCase()).first<{ language: string }>();
+  return row?.language || null;
+}
+
+/**
  * `notify-email` consumer: validate, render, send. Invalid messages (bad shape,
  * unknown template, bad data, unknown user) are acked and logged; retryable
  * provider errors retry with backoff, then go to the dead-letter queue.
@@ -110,6 +126,7 @@ export async function handleNotifyEmail(batch: MessageBatch<unknown>, env: Env):
         const row = await env.DB.prepare("SELECT email FROM users WHERE id = ?1").bind(userId).first<{ email: string }>();
         to = row?.email;
       }
+      const locale = template === "feedback" ? null : ((to ? await recipientLanguage(env, userId, to) : null) ?? parsed.data.locale ?? null);
       if (!to) {
         console.warn(JSON.stringify({ queue: "notify-email", msg: "no recipient, dropped", id: msg.id, template }));
         msg.ack();
@@ -117,7 +134,7 @@ export async function handleNotifyEmail(batch: MessageBatch<unknown>, env: Env):
       }
       let rendered;
       try {
-        rendered = renderEmail(template, data, env.APP_NAME || "Rolling", env.PUBLIC_APP_URL || undefined);
+        rendered = renderEmail(template, data, env.APP_NAME || "Rolling", env.PUBLIC_APP_URL || undefined, locale);
       } catch {
         console.warn(JSON.stringify({ queue: "notify-email", msg: "template data invalid, dropped", id: msg.id, template }));
         msg.ack();

@@ -17,7 +17,22 @@ button,input,textarea,select{font:inherit;color:inherit}
 ::-webkit-scrollbar{width:6px;height:6px;background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--c-control-off);border-radius:999px}
 ::-webkit-scrollbar-track{background:transparent}
-:lang(ko){word-break:keep-all}
+/*
+ * CJK (D-023). System fonts only, no CJK webfont: Geist draws Latin and digits, then the
+ * platform's font for the element's language (Han glyphs differ between ja, zh-Hans, zh-Hant
+ * and ko, so each language names its own fonts). Any element with a lang attribute re-applies
+ * the stack, so an English legal article inside a Japanese UI, or the endonyms in the language
+ * picker, get their own fonts.
+ */
+:lang(ja){--font-sans:'Geist','Hiragino Sans','Hiragino Kaku Gothic ProN','Yu Gothic UI','Meiryo UI','Noto Sans JP','Noto Sans CJK JP',system-ui,sans-serif}
+:lang(zh-CN),:lang(zh-Hans),:lang(zh-SG){--font-sans:'Geist','PingFang SC','Microsoft YaHei UI','Microsoft YaHei','Noto Sans SC','Noto Sans CJK SC','Source Han Sans SC',system-ui,sans-serif}
+:lang(zh-TW),:lang(zh-HK),:lang(zh-Hant){--font-sans:'Geist','PingFang TC','Microsoft JhengHei UI','Microsoft JhengHei','Noto Sans TC','Noto Sans CJK TC','Source Han Sans TC',system-ui,sans-serif}
+:lang(ko){--font-sans:'Geist','Apple SD Gothic Neo','Malgun Gothic','Noto Sans KR','Noto Sans CJK KR',system-ui,sans-serif}
+[lang]{font-family:var(--font-sans)}
+/* Korean breaks between words (keep-all); a word longer than its box still wraps instead of overflowing. */
+:lang(ko){word-break:keep-all;overflow-wrap:break-word}
+/* Japanese and Chinese: strict kinsoku (no small kana or closing punctuation at a line start). */
+:lang(ja),:lang(zh){line-break:strict}
 .rl-visually-hidden{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 
 /*

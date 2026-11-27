@@ -1,5 +1,8 @@
-/** Locales with a messages/<locale>.json file. English is the source locale. */
-export const SUPPORTED_LOCALES = ['en'] as const;
+/**
+ * Locales with translated messages (`messages/<locale>/<feature>.json`, D-023).
+ * English is the source locale and ships in the main bundle; the others load lazily.
+ */
+export const SUPPORTED_LOCALES = ['en', 'zh-CN', 'zh-TW', 'ja', 'ko'] as const;
 export type Locale = (typeof SUPPORTED_LOCALES)[number];
 export const DEFAULT_LOCALE: Locale = 'en';
 
@@ -14,13 +17,29 @@ function canonical(tag: string): string | null {
   }
 }
 
-/** Finds the best supported match for one requested tag: exact, then by base language. */
+const TRADITIONAL_REGIONS = new Set(['TW', 'HK', 'MO']);
+
+/**
+ * Chinese by script, then region: Hant, TW, HK and MO read Traditional; Hans, CN, SG and a bare
+ * `zh` read Simplified. Returns the first of `zh-TW` / `zh-CN` that `supported` lists, else null.
+ */
+function matchChinese(c: string, supported: readonly string[]): string | null {
+  const parts = c.split('-').slice(1);
+  const script = parts.find((p) => /^[A-Za-z]{4}$/.test(p))?.toLowerCase();
+  const region = parts.find((p) => /^([A-Za-z]{2}|\d{3})$/.test(p))?.toUpperCase();
+  const traditional = script ? script === 'hant' : region ? TRADITIONAL_REGIONS.has(region) : false;
+  const want = traditional ? 'zh-tw' : 'zh-cn';
+  return supported.find((s) => s.toLowerCase() === want) ?? null;
+}
+
+/** Finds the best supported match for one requested tag: exact, then Chinese by script, then by base language. */
 export function matchLocale(tag: string, supported: readonly string[]): string | null {
   const c = canonical(tag);
   if (!c) return null;
   const exact = supported.find((s) => s.toLowerCase() === c.toLowerCase());
   if (exact) return exact;
   const base = c.split('-')[0]!.toLowerCase();
+  if (base === 'zh') return matchChinese(c, supported);
   return supported.find((s) => s.toLowerCase() === base) ?? null;
 }
 

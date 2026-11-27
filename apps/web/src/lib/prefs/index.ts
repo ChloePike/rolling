@@ -1,6 +1,6 @@
 import { DEFAULT_CONFIRM_THRESHOLD_CREDITS } from '@rolling/core/pricing/config';
 import { useSyncExternalStore } from 'react';
-import { LOCALE_PREF_KEY } from '@/i18n/locale';
+import { LOCALE_PREF_KEY, matchLocale, SUPPORTED_LOCALES } from '@/i18n/locale';
 
 /**
  * Client preferences: one shared state for the header settings popover,
@@ -39,21 +39,28 @@ export interface LanguageOption {
   translated: boolean;
 }
 
-/** Handoff 6: English source; first wave ja, zh-TW, zh-HK, ko; second wave id, th, vi, es, pt-BR, de, fr. */
-export const LANGUAGE_OPTIONS: readonly LanguageOption[] = [
-  { tag: 'en', name: 'English', wave: 'source', translated: true },
-  { tag: 'ja', name: '日本語', wave: 'first', translated: false },
-  { tag: 'zh-TW', name: '繁體中文（台灣）', wave: 'first', translated: false },
-  { tag: 'zh-HK', name: '繁體中文（香港）', wave: 'first', translated: false },
-  { tag: 'ko', name: '한국어', wave: 'first', translated: false },
-  { tag: 'id', name: 'Bahasa Indonesia', wave: 'second', translated: false },
-  { tag: 'th', name: 'ไทย', wave: 'second', translated: false },
-  { tag: 'vi', name: 'Tiếng Việt', wave: 'second', translated: false },
-  { tag: 'es', name: 'Español', wave: 'second', translated: false },
-  { tag: 'pt-BR', name: 'Português (Brasil)', wave: 'second', translated: false },
-  { tag: 'de', name: 'Deutsch', wave: 'second', translated: false },
-  { tag: 'fr', name: 'Français', wave: 'second', translated: false },
-];
+/**
+ * D-023: English source; translated zh-CN, zh-TW, ja, ko (one lazy chunk each); the second wave
+ * (id, th, vi, es, pt-BR, de, fr) shows English text with that language's formats. A saved
+ * `zh-HK` (before D-023) reads as Traditional Chinese.
+ */
+const translated = (tag: string) => (SUPPORTED_LOCALES as readonly string[]).includes(tag);
+export const LANGUAGE_OPTIONS: readonly LanguageOption[] = (
+  [
+    { tag: 'en', name: 'English', wave: 'source' },
+    { tag: 'zh-CN', name: '简体中文', wave: 'first' },
+    { tag: 'zh-TW', name: '繁體中文', wave: 'first' },
+    { tag: 'ja', name: '日本語', wave: 'first' },
+    { tag: 'ko', name: '한국어', wave: 'first' },
+    { tag: 'id', name: 'Bahasa Indonesia', wave: 'second' },
+    { tag: 'th', name: 'ไทย', wave: 'second' },
+    { tag: 'vi', name: 'Tiếng Việt', wave: 'second' },
+    { tag: 'es', name: 'Español', wave: 'second' },
+    { tag: 'pt-BR', name: 'Português (Brasil)', wave: 'second' },
+    { tag: 'de', name: 'Deutsch', wave: 'second' },
+    { tag: 'fr', name: 'Français', wave: 'second' },
+  ] as const
+).map((o) => ({ ...o, translated: translated(o.tag) }));
 
 export const CURRENCY_OPTIONS = ['USD', 'EUR', 'GBP', 'JPY', 'TWD', 'HKD', 'KRW', 'IDR', 'THB', 'VND', 'BRL'] as const;
 export type CurrencyCode = (typeof CURRENCY_OPTIONS)[number];
@@ -381,11 +388,11 @@ export function useLanguagePref(): string | null {
   return usePref('language');
 }
 
-/** The language option for a tag (exact, then base language). */
+/** The language option for a tag (exact, Chinese by script and region, then base language). */
 export function languageOption(tag: string | null | undefined): LanguageOption | undefined {
   if (!tag) return undefined;
-  const lower = tag.toLowerCase();
-  return LANGUAGE_OPTIONS.find((o) => o.tag.toLowerCase() === lower) ?? LANGUAGE_OPTIONS.find((o) => o.tag.toLowerCase() === lower.split('-')[0]);
+  const hit = matchLocale(tag, LANGUAGE_OPTIONS.map((o) => o.tag));
+  return hit ? LANGUAGE_OPTIONS.find((o) => o.tag === hit) : undefined;
 }
 
 export { applyTheme, resolvedTheme } from './theme';

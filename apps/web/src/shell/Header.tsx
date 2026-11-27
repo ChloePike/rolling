@@ -16,8 +16,19 @@ import { NARROW_NAV_QUERY, useMediaQuery } from './useMediaQuery';
 /**
  * Shift of the credits popover past the credits button's right edge so it sits
  * at `right:68px` like Main.dc.html (measured at 1440 wide, see header.spec.ts).
+ * Measured when it opens (`creditsAlignOffset`), since what sits right of the button
+ * (Upgrade, whose width follows the language, or nothing for Pro and Team) varies;
+ * this is the fallback before a measurement.
  */
 const CREDITS_ALIGN_OFFSET = 129;
+const CREDITS_RIGHT_INSET = 68;
+
+/** The offset that puts the credits popover's right edge `CREDITS_RIGHT_INSET` from the viewport's. */
+function creditsAlignOffset(): number {
+  const button = document.querySelector<HTMLElement>('[data-credits-trigger]');
+  if (!button) return CREDITS_ALIGN_OFFSET;
+  return Math.max(0, Math.round(document.documentElement.clientWidth - CREDITS_RIGHT_INSET - button.getBoundingClientRect().right));
+}
 
 /**
  * Shared header (Main.dc.html): logo, nav pill with a sliding active pill,
@@ -28,7 +39,11 @@ export function Header() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const narrow = useMediaQuery(NARROW_NAV_QUERY);
   const [open, setOpen] = useState<'credits' | 'settings' | 'account' | null>(null);
-  const toggle = (which: 'credits' | 'settings' | 'account') => (next: boolean) => setOpen(next ? which : (o) => (o === which ? null : o));
+  const [creditsOffset, setCreditsOffset] = useState(CREDITS_ALIGN_OFFSET);
+  const toggle = (which: 'credits' | 'settings' | 'account') => (next: boolean) => {
+    if (next && which === 'credits') setCreditsOffset(creditsAlignOffset());
+    setOpen(next ? which : (o) => (o === which ? null : o));
+  };
   const navRef = useRef<HTMLElement>(null);
   // The active pill slides between items (200ms, standard curve) on navigation.
   const pill = useIndicator(navRef, `${pathname}-${narrow}`, '[aria-current="page"]');
@@ -111,13 +126,14 @@ export function Header() {
               label={intl.formatMessage({ id: 'shell.credits.title' })}
               align="end"
               offset={5}
-              alignOffset={CREDITS_ALIGN_OFFSET}
+              alignOffset={creditsOffset}
               className={styles.creditsLayer}
               trigger={(p) => (
                 <button
                   {...p}
                   type="button"
                   className={styles.credits}
+                  data-credits-trigger=""
                   aria-label={intl.formatMessage({ id: 'header.credits.label' }, { balance: available })}
                 >
                   <Icon name="coin" size={15} className={styles.creditsCoin} />

@@ -4,7 +4,7 @@ import { createRouter, RouterProvider } from '@tanstack/react-router';
 import { StrictMode, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { useIntl } from 'react-intl';
-import { I18nProvider } from '@/i18n/I18nProvider';
+import { I18nProvider, preloadLocale } from '@/i18n/I18nProvider';
 import { routeTree } from '@/routeTree.gen';
 import { queryClient } from '@/lib/api/queryClient';
 import { loadMockData } from '@/lib/api/mode';
@@ -42,8 +42,9 @@ else window.addEventListener('load', registerServiceWorker, { once: true });
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root');
 
-// Mock builds load their data first (a no-op that ships nothing in real builds, lib/api/mode.ts).
-void loadMockData().then(() =>
+// Mock builds load their data first (a no-op that ships nothing in real builds, lib/api/mode.ts);
+// the saved or browser locale's messages load alongside, so the first paint is in that language.
+void Promise.all([loadMockData(), preloadLocale()]).then(() =>
   createRoot(root).render(
     <StrictMode>
       <I18nProvider>
