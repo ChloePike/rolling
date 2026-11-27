@@ -195,7 +195,8 @@ export function watchErrors(page: Page, opts: { ignore?: RegExp[] } = {}) {
 export async function shot(page: Page, testInfo: TestInfo, name: string) {
   const dir = `${env.out}/shots`;
   mkdirSync(dir, { recursive: true });
-  const safe = `${testInfo.titlePath.slice(1, 2).join('-')}-${name}`.replace(/[^a-z0-9._-]+/gi, '_').slice(0, 120);
+  // The test id prefix plus the shot name (long titles are cut before the name, so names never collide).
+  const safe = `${testInfo.title.replace(/[^a-z0-9._-]+/gi, '_').slice(0, 60)}-${name.replace(/[^a-z0-9._-]+/gi, '_')}`;
   const path = `${dir}/${safe}.png`;
   await page.screenshot({ path, fullPage: false }).catch(() => undefined);
   return path;
@@ -233,5 +234,28 @@ export async function balance(request: APIRequestContext) {
   return (await getJson<{ balance: { plan: number; purchased: number; held: number } }>(request, '/api/billing')).balance;
 }
 
-/** Budget guard: the whole suite may charge at most this many credits on staging ($20 retail at $0.01/credit). */
-export const SPEND_CEILING_CREDITS = 2000;
+/** Budget guard: the whole suite may charge at most this many credits on staging ($5 retail at $0.01/credit). */
+export const SPEND_CEILING_CREDITS = 500;
+
+/** Whether this environment takes payments (`GET /api/billing/plans` → `paymentsEnabled`). */
+export async function paymentsEnabled(request: APIRequestContext): Promise<boolean> {
+  return ((await getJson<{ paymentsEnabled?: boolean }>(request, '/api/billing/plans')).paymentsEnabled ?? true) !== false;
+}
+
+/**
+ * The shared upgrade modal (every locked click opens it in place). With payments on it is titled by the reason
+ * (“The agent needs a plan”, “1080p needs Plus”, …) and offers “Continue with <plan>”; while the environment takes
+ * no payments (staging today) it says “Payments aren’t available yet” whatever the reason.
+ */
+export async function expectUpgradeModal(page: Page, title: string | RegExp) {
+  const dialog = page.getByRole('dialog').filter({ has: page.getByTestId('upgrade-modal') });
+  await expect(dialog).toBeVisible({ timeout: 20_000 });
+  if (await paymentsEnabled(page.request)) {
+    await expect(dialog.getByRole('heading').first()).toHaveText(title);
+    await expect(dialog.getByRole('button', { name: /^Continue with/ })).toBeVisible();
+  } else {
+    await expect(dialog.getByTestId('upgrade-modal')).toHaveAttribute('data-phase', 'unavailable');
+    await expect(dialog).toContainText('Payments aren’t available yet');
+  }
+  return dialog;
+}

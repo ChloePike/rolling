@@ -300,3 +300,30 @@ test('CANVAS-13 the initial fit keeps every node clear of the left tool rail and
     expect(box!.x, 'node starts right of the tool rail').toBeGreaterThanOrEqual(rail.x + rail.width + 8);
   }
 });
+
+test('CANVAS-14 canvas targets: nav Canvas opens the last canvas opened (else the latest one); a missing canvas offers “Go to your canvases” and “New canvas”', async ({ page, context, baseURL }) => {
+  await account(context, baseURL, 'targets');
+  const a = await seedProject(page.request, baseURL, 'Target A', SAMPLE_OPS.slice(0, 1));
+  const b = await seedProject(page.request, baseURL, 'Target B', SAMPLE_OPS.slice(0, 1));
+  // No last canvas yet: the most recently updated project (B).
+  await page.goto('/');
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Canvas' }).click();
+  await expect(page).toHaveURL(new RegExp(`/p/${b.id}$`), { timeout: 30_000 });
+  // Open A; the nav goes back to A next time.
+  await openCanvas(page, a.id);
+  await page.goto('/activity');
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Canvas' }).click();
+  await expect(page).toHaveURL(new RegExp(`/p/${a.id}$`), { timeout: 30_000 });
+  // Missing canvas: the copy, a way back and a new canvas; no prj_demo anywhere.
+  await page.goto('/p/prj_01JDNOTAREALPROJECT0000000');
+  const error = page.getByTestId('canvas-error');
+  await expect(error).toHaveAttribute('data-reason', 'NOT_FOUND', { timeout: 30_000 });
+  await expect(error.getByRole('heading')).toHaveText('This canvas doesn’t exist');
+  await expect(error.getByRole('link', { name: 'Go to your canvases' })).toBeVisible();
+  await error.getByRole('button', { name: 'New canvas' }).click();
+  await expect(page).toHaveURL(/\/p\/prj_[A-Za-z0-9]+$/, { timeout: 30_000 });
+  await expect(page.getByTestId('canvas')).toBeVisible({ timeout: 45_000 });
+  expect(page.url()).not.toContain('prj_demo');
+  const list = await page.request.post('/api/graphql', { data: { query: '{ projects(first: 20) { edges { node { id } } } }' } });
+  expect(((await list.json()) as { data: { projects: { edges: unknown[] } } }).data.projects.edges).toHaveLength(3);
+});

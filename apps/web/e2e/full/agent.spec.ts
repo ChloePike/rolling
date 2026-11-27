@@ -165,3 +165,73 @@ test('AGENT-6 agent UI: the canvas agent model pill lists public LLMs with turns
   const deepseekRow = menu.getByText('DeepSeek V4.1 Flash', { exact: true }).first().locator('xpath=ancestor::*[@role="menuitemradio" or @role="option" or self::button][1]');
   await expect(deepseekRow).not.toContainText(/turns left/);
 });
+
+interface PlanShot { n: number; seconds: number; model: string; mode?: string; shot?: { subject?: string; action?: string; characters?: Array<{ name: string }> }; cast?: string[] }
+interface PlanOption { title: string; ratio: string; seconds: number; characters?: Array<{ name: string; look?: string }>; shots: PlanShot[]; estimate: { credits: number; items: Array<{ ref: string; kind: string; model: string }> } }
+interface Turn { text: string; reason: string; error: unknown; proposal: { id: string; kind: string; body: { kind: string; seconds: number; options: PlanOption[] } } | null }
+
+test('AGENT-7 harness: the prompt box pills are honoured (ratio, length), shots come as fields, a recurring character is described once, keyframes only for image-to-video shots, no tool narration', async ({ context, baseURL }) => {
+  test.setTimeout(5 * 60_000);
+  await account(context, baseURL, 'harness', 'plus');
+  const req = context.request;
+  const t = await api(req, baseURL, 'POST', '/api/agent/threads', { surface: 'home' });
+  const { thread } = (await t.json()) as { thread: { id: string } };
+  const r = await api(req, baseURL, 'POST', `/api/agent/threads/${thread.id}/messages`, {
+    text: 'An ad for a coffee brand. Our mascot Mia, a young adult barista with red curly hair and a green apron, appears in every shot.',
+    settings: { ratio: '16:9', seconds: 10, videoModel: null },
+  });
+  expect(r.status(), await r.text()).toBe(200);
+  const turn = (await r.json()) as Turn;
+  expect(turn.error).toBeNull();
+  // No narration of reads (“I’ll check the models first”, “Checking …”).
+  expect(turn.text).not.toMatch(/^(I['’]ll|I will|Let me) (check|look|read|fetch|first)|^Checking\b/i);
+  expect(turn.proposal?.kind).toBe('plan');
+  const options = turn.proposal!.body.options;
+  expect(options.length).toBeGreaterThanOrEqual(1);
+  for (const o of options) {
+    // The pills: 16:9 and 10 s (the brief names neither).
+    expect(o.ratio, o.title).toBe('16:9');
+    expect(o.seconds, o.title).toBe(10);
+    expect(o.shots.reduce((s, x) => s + x.seconds, 0), `${o.title}: shot lengths add up`).toBe(10);
+    // Shots as fields: the server writes the model prompt from subject / action / camera …
+    for (const s of o.shots) {
+      expect(s.shot, `${o.title} shot ${s.n} has fields`).toBeTruthy();
+      expect(s.shot!.subject ?? s.shot!.action, `${o.title} shot ${s.n}`).toBeTruthy();
+    }
+    // The recurring character is described once and reused by name.
+    expect((o.characters ?? []).map((c) => c.name), o.title).toContain('Mia');
+    // #4: a keyframe image only for image-to-video shots.
+    const i2v = o.shots.filter((s) => s.mode === 'i2v' || s.mode === 'first_last_frame').length;
+    const keys = o.estimate.items.filter((i) => i.kind === 'image' && /^key/.test(i.ref)).length;
+    expect(keys, `${o.title}: keyframes ≤ image-to-video shots`).toBeLessThanOrEqual(i2v);
+  }
+});
+
+test('AGENT-8 Build on canvas from a plan: nodes carry the shot fields and the ratio; agent-planned nodes have Enhance prompt off (D-020); nothing runs', async ({ context, baseURL }) => {
+  test.setTimeout(5 * 60_000);
+  await account(context, baseURL, 'harnessbuild', 'plus');
+  const req = context.request;
+  const t = await api(req, baseURL, 'POST', '/api/agent/threads', { surface: 'home' });
+  const { thread } = (await t.json()) as { thread: { id: string } };
+  const r = await api(req, baseURL, 'POST', `/api/agent/threads/${thread.id}/messages`, { text: 'A 10-second vertical ad for a desk lamp: the switch, then the warm glow on a notebook.', settings: { ratio: '9:16', seconds: 10, videoModel: null } });
+  const turn = (await r.json()) as Turn;
+  expect(turn.proposal?.kind, turn.text).toBe('plan');
+  const options = turn.proposal!.body.options;
+  const cheapest = options.reduce((best, o, i) => (o.estimate.credits < options[best]!.estimate.credits ? i : best), 0);
+  const applied = await api(req, baseURL, 'POST', `/api/agent/proposals/${turn.proposal!.id}/apply`, { optionIndex: cheapest });
+  expect(applied.status(), await applied.text()).toBe(200);
+  const { projectId } = (await applied.json()) as { projectId: string };
+  const snap = await projectSnapshot(req, projectId);
+  const videos = snap.nodes.filter((n) => n.kind === 'video');
+  expect(videos.length).toBe(options[cheapest]!.shots.length);
+  for (const v of videos) {
+    expect(v.params.shot, `${v.title} keeps its shot fields`).toBeTruthy();
+    expect(v.params.ratio).toBe('9:16');
+    expect(v.params.promptExpand ?? false, `${v.title}: Enhance prompt is off for agent-planned nodes`).toBe(false);
+  }
+  expect((await getJson<{ runs: unknown[] }>(req, '/api/runs')).runs).toHaveLength(0);
+  // The quote for the built canvas does not price prompt enhancement on composed prompts.
+  const q = await api(req, baseURL, 'POST', '/api/runs/quote', { projectId, scope: 'all' });
+  const quote = (await q.json()) as { items: Array<{ kind: string; promptExpand?: boolean }> };
+  expect(quote.items.filter((i) => i.promptExpand)).toEqual([]);
+});

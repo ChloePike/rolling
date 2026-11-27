@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext } from '@playwright/test';
 import { PLANS } from '@rolling/core/pricing/config';
-import { account, api, env, errorCode, freshEmail, apiSignIn, getJson, grantPlan, waitMail, seedProject, SAMPLE_OPS, shot, watchErrors } from './support';
+import { account, api, env, errorCode, expectUpgradeModal, freshEmail, apiSignIn, getJson, grantPlan, waitMail, seedProject, SAMPLE_OPS, shot, watchErrors } from './support';
 
 /** Matrix: GATE-1 … GATE-9. Nothing here spends credits (quotes only; starts are refused). */
 test.skip(!env.inboxToken, 'TEST_INBOX_TOKEN (or PW_TEST_INBOX_TOKEN_FILE) is required');
@@ -53,20 +53,28 @@ test('GATE-2 non-member: agent and generation answer 402 NO_PLAN; quotes stay op
   expect(await errorCode(await api(req, baseURL, 'PATCH', '/api/billing/auto-topup', { enabled: true }))).toBe('NO_PLAN');
 });
 
-test('GATE-3 non-member: sending a Home brief opens “Pick a plan to generate” and keeps the brief', async ({ page, context, baseURL }, testInfo) => {
+test('GATE-3 non-member: a Home brief opens the upgrade modal (“The agent needs a plan”; Image mode “Pick a plan to generate”) and keeps the brief', async ({ page, context, baseURL }, testInfo) => {
   await account(context, baseURL, 'paywall');
   await page.goto('/');
   const brief = page.locator('#brief');
   const text = 'A 15-second vertical ad for a sparkling water brand by a river at dawn';
   await brief.fill(text);
   await brief.press('Enter');
-  const dialog = page.getByRole('dialog').filter({ hasText: 'Pick a plan to generate' });
-  await expect(dialog).toBeVisible({ timeout: 20_000 });
+  // Agent mode (the default): the agent is members-only (D-007).
+  let dialog = await expectUpgradeModal(page, 'The agent needs a plan');
   await shot(page, testInfo, 'join-paywall');
-  await expect(dialog.getByRole('button', { name: /Continue with/ })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
   await expect(brief).toHaveValue(text);
+  await expect(page).toHaveURL(/\/$/);
+  // Image mode: generating is members-only too.
+  await page.getByRole('tab', { name: 'Image', exact: true }).click();
+  await brief.fill('A glass bottle on a mossy rock at dawn');
+  await brief.press('Enter');
+  dialog = await expectUpgradeModal(page, 'Pick a plan to generate');
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(brief).toHaveValue('A glass bottle on a mossy rock at dawn');
 });
 
 test('GATE-4 resolution caps in the API: Starter 720p, Plus 1080p, Pro 4K (video); locked rows name the lowest plan', async ({ context, baseURL }) => {
@@ -126,9 +134,18 @@ test('GATE-6 Team: inviting without Team answers TEAM_REQUIRED and the UI points
   expect(body.error.data.currentPlan).toBe('pro');
   await page.goto('/settings/team');
   await page.getByRole('button', { name: 'Invite member' }).click();
-  await expect(page.getByText(/Team/).filter({ hasText: /plan|seat|Team/ }).first()).toBeVisible();
-  await expect(page.getByTestId('start-team').or(page.getByRole('button', { name: /Team/ })).first()).toBeVisible();
+  // The upgrade modal's Team variant (seat stepper and the price from the config) when payments are on.
+  const dialog = page.getByRole('dialog').filter({ has: page.getByTestId('upgrade-modal') });
+  await expect(dialog).toBeVisible({ timeout: 20_000 });
   await shot(page, testInfo, 'invite-needs-team');
+  if (((await getJson<{ paymentsEnabled?: boolean }>(page.request, '/api/billing/plans')).paymentsEnabled ?? true) !== false) {
+    await expect(dialog.getByTestId('upgrade-modal')).toHaveAttribute('data-variant', 'team');
+    await expect(dialog.getByRole('spinbutton', { name: 'Seats' })).toBeVisible();
+    await expect(dialog.getByTestId('team-total')).toHaveText(/\$\d+ a month/);
+  } else {
+    await expect(dialog).toContainText('Payments aren’t available yet');
+  }
+  await expect(page).toHaveURL(/\/settings\/team$/);
 });
 
 test('GATE-7 Team seats, roles and per-member monthly limits: SEATS_REQUIRED, MEMBER_LIMIT_REACHED, viewers cannot spend or edit', async ({ browser, context, baseURL }) => {

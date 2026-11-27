@@ -34,6 +34,11 @@ test('PROMPT-1 model picker (video and image): curated list, Auto first, Berry s
   for (const mode of ['Video', 'Image'] as const) {
     await page.getByRole('tab', { name: mode, exact: true }).click();
     const picker = await openPicker(page);
+    // The list loads after the panel opens (it says “No models match” meanwhile); models with placement `more`
+    // sit behind “More models (N)”.
+    await expect(picker.getByRole('button', { name: /\d+ \/ (\d+s|image)/ }).first()).toBeVisible({ timeout: 20_000 });
+    const more = picker.getByRole('button', { name: /^More models/ });
+    if (await more.isVisible().catch(() => false)) await more.click();
     await shot(page, testInfo, `picker-${mode}`);
     const text = (await picker.innerText()).replace(/\s+/g, ' ');
     expect(text).toContain('Auto model');
@@ -91,13 +96,11 @@ test('PROMPT-2 image count follows the model (Seedream 5.0 Flash = 1); plan lock
   const flash = models.find((x) => x.id === 'bytedance/seedream-5.0-flash')!;
   let picker = await openPicker(page);
   await picker.getByText(flash.name, { exact: true }).first().click();
-  const sizePill = page.getByRole('button', { name: /×\s?1\b|1 image/ }).first();
+  // Nothing to choose (one size, one image): the pills are read-only text, never an empty popover (UX audit #26).
+  const sizePill = page.locator('[data-pill-static]').filter({ hasText: /1 image/ }).first();
   await expect(sizePill).toBeVisible();
-  await sizePill.click();
-  const imgPop = page.getByRole('dialog', { name: /Image settings/ });
-  await expect(imgPop).toBeVisible();
-  await expect(imgPop.getByRole('radiogroup', { name: 'Images' })).toHaveCount(0);
-  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: /1 image/ })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: /Image settings/ })).toHaveCount(0);
 
   // Video on Starter (720p cap, D-006): a model with 1080p shows it locked; picking it opens the upgrade instead,
   // and the cost line never shows a number for a blocked quote.
@@ -149,7 +152,8 @@ test('PROMPT-4 Enter sends, Shift+Enter adds a line, Enter during IME compositio
   await account(context, baseURL, 'enter');
   await page.goto('/');
   const brief = page.locator('#brief');
-  const paywall = page.getByRole('dialog').filter({ hasText: 'Pick a plan to generate' });
+  // A send by a non-member opens the upgrade modal (agent mode: “The agent needs a plan”, or “Payments aren’t available yet”).
+  const paywall = page.getByRole('dialog').filter({ has: page.getByTestId('upgrade-modal') });
   await brief.fill('first line');
   await brief.press('Shift+Enter');
   await brief.type('second line');

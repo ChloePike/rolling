@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { expect, test, type APIRequestContext } from '@playwright/test';
 import { account, api, env, getJson, seedProject, shot, watchErrors } from './support';
 
@@ -35,20 +36,23 @@ test('LIB-1 public library: categories with counts, license labels, search and c
   expect(q.every((n) => /stand/i.test(n.title) || n.category)).toBe(true);
 });
 
-test('LIB-2 mature public items are hidden signed out and for non-mature users (counts never exceed the safe set)', async ({ request, browser, baseURL }) => {
+test('LIB-2 mature public items are hidden signed out and for members without mature access; allowed members get more (D-005 amendment, details in MAT-4)', async ({ request, browser, baseURL }) => {
   const anon = (await gql<{ publicCategories: Array<{ key: string; count: number }> }>(request, CATS)).publicCategories;
   const ctx = await browser.newContext({ baseURL });
   await account(ctx, baseURL, 'matureoff', 'plus');
   const member = (await gql<{ publicCategories: Array<{ key: string; count: number }> }>(ctx.request, CATS)).publicCategories;
   expect(member).toEqual(anon);
-  // Even a mature-allowed member gets no mature items on the public surface (D-005: never on public surfaces).
+  // REST listing of public items: none mature without access.
+  const pub = await getJson<{ items: Array<{ mature: boolean }> }>(ctx.request, '/api/assets?scope=public&first=100');
+  expect(pub.items.filter((i) => i.mature)).toEqual([]);
+  // Mature-allowed (plan + preference): the mature items and their counts are added (2026-11-27 amendment).
   expect((await api(ctx.request, baseURL, 'PATCH', '/api/me/prefs', { matureContent: true })).status()).toBe(200);
   const mature = (await gql<{ publicCategories: Array<{ key: string; count: number }> }>(ctx.request, CATS)).publicCategories;
   const total = (xs: typeof anon) => xs.reduce((s, c) => s + c.count, 0);
-  expect(total(mature)).toBeGreaterThanOrEqual(total(anon));
-  // REST asset listing of public items marks none mature for a non-mature viewer.
-  const pub = await getJson<{ items: Array<{ mature: boolean }> }>(ctx.request, '/api/assets?scope=public&first=100');
-  expect(pub.items.filter((i) => i.mature)).toEqual([]);
+  expect(total(mature)).toBeGreaterThan(total(anon));
+  // Turning it off again gives exactly the general set back.
+  expect((await api(ctx.request, baseURL, 'PATCH', '/api/me/prefs', { matureContent: false })).status()).toBe(200);
+  expect((await gql<{ publicCategories: Array<{ key: string; count: number }> }>(ctx.request, CATS)).publicCategories).toEqual(anon);
   await ctx.close();
 });
 
@@ -125,7 +129,8 @@ test('LIB-6 Home Inspiration grid shows template covers; tabs switch', async ({ 
   await account(context, baseURL, 'inspiration');
   await page.goto('/');
   await page.getByRole('heading', { name: 'Inspiration' }).scrollIntoViewIfNeeded();
-  const cards = page.getByRole('link', { name: /^Use template:/ });
+  // At rest a card shows only its poster and duration; Use template appears on hover or focus.
+  const cards = page.locator('[data-template-card]');
   await expect(cards.first()).toBeVisible({ timeout: 20_000 });
   await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => undefined);
   // Every card shows a cover: a loaded <img>/<video>, or a background image (never just a flat tone).
@@ -134,12 +139,14 @@ test('LIB-6 Home Inspiration grid shows template covers; tabs switch', async ({ 
       .filter((el) => {
         const img = el.querySelector('img') as HTMLImageElement | null;
         const vid = el.querySelector('video');
-        const bg = getComputedStyle(el).backgroundImage;
+        const bg = [el, ...el.querySelectorAll('div')].map((x) => getComputedStyle(x).backgroundImage).join(' ');
         return !(img && img.naturalWidth > 0) && !vid && !/url\(/.test(bg);
       })
-      .map((el) => el.getAttribute('aria-label')),
+      .map((el) => el.getAttribute('data-template')),
   );
   expect(noCover, 'Inspiration cards without a cover').toEqual([]);
+  await cards.first().hover();
+  await expect(cards.first().getByRole('link', { name: /^Use template:/ })).toBeVisible();
   await page.getByRole('tab', { name: 'Short drama' }).click();
   await expect(page.getByRole('tab', { name: 'Short drama' })).toHaveAttribute('aria-selected', 'true');
   await shot(page, testInfo, 'inspiration');
@@ -175,4 +182,23 @@ test('LIB-8 project thumbnails and node counts on Home follow the canvas', async
   await expect.poll(async () => (await getJson<{ items: Array<{ title: string; nodeCount: number }> }>(page.request, '/api/projects')).items[0]?.nodeCount, { timeout: 20_000 }).toBe(2);
   await page.goto('/');
   await expect(page.getByText(/2 nodes/).first()).toBeVisible();
+});
+
+test('LIB-9 every sub-category chip has a label (no raw keys such as “couple-facing-lying” or “hair-color”), for everyone and for mature-allowed members', async ({ request, browser, baseURL }) => {
+  const labels = JSON.parse(readFileSync(new URL('../../../../messages/en/library.json', import.meta.url), 'utf8')) as Record<string, string>;
+  const missing = async (req: APIRequestContext) => {
+    const cats = (await gql<{ publicCategories: Array<{ key: string }> }>(req, CATS)).publicCategories.map((c) => c.key);
+    const out: string[] = [];
+    for (const c of cats) {
+      const subs = (await gql<{ publicSubCategories: Array<{ key: string }> }>(req, 'query($c: String!) { publicSubCategories(category: $c) { key } }', { c })).publicSubCategories;
+      for (const s of subs) if (!labels[`library.sub.${s.key}`]) out.push(`${c}/${s.key}`);
+    }
+    return out;
+  };
+  expect(await missing(request), 'signed out').toEqual([]);
+  const ctx = await browser.newContext({ baseURL });
+  await account(ctx, baseURL, 'sublabels', 'plus');
+  expect((await api(ctx.request, baseURL, 'PATCH', '/api/me/prefs', { matureContent: true })).status()).toBe(200);
+  expect(await missing(ctx.request), 'mature-allowed').toEqual([]);
+  await ctx.close();
 });

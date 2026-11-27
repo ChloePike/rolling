@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { checkAdminGrantLocked, checkReplicaHeaders, checkStaticAssets } from './platform-checks';
 import { watchErrors } from './support';
 
 /**
@@ -57,4 +58,13 @@ test('PROD-4 auth providers and plans are public; paid features answer cleanly w
   expect((await request.get('/api/me')).status()).toBe(401);
   const manifest = await request.get('/manifest.webmanifest');
   expect(manifest.status()).toBe(200);
+});
+
+test('PROD-5 admin grant is locked: 401 without the owner token (wrong or missing), never a grant', async ({ request }) => {
+  await checkAdminGrantLocked(request, 401);
+});
+
+test('PROD-6 platform: Server-Timing and D1 bookmarks on API responses; Workers static assets with Early Hints', async ({ request }) => {
+  await checkReplicaHeaders(request);
+  await checkStaticAssets(request);
 });

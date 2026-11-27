@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext } from '@playwright/test';
-import { account, api, env, getJson, logSpend, seedProject, shot, waitRun, type RunView } from './support';
+import { account, api, env, expectUpgradeModal, getJson, logSpend, seedProject, shot, waitRun, type RunView } from './support';
 
 /** Matrix: EDIT-1 … EDIT-4. Timeline ops through the API and the editor UI; export needs generated shots (PW_GENERATE + PW_EXPORT). */
 test.skip(!env.inboxToken, 'TEST_INBOX_TOKEN (or PW_TEST_INBOX_TOKEN_FILE) is required');
@@ -90,16 +90,15 @@ test('EDIT-3 editor UI: opens with the assembled cut, monitor and timeline; trim
   expect((await timeline(page.request, canvasId)).revision).toBe(before.revision);
 });
 
-test('EDIT-5 non-member: Generate on a placeholder clip opens the join paywall (not “Not enough credits”), with no saved card shown', async ({ page, context, baseURL }, testInfo) => {
+test('EDIT-5 non-member: Generate on a placeholder clip opens the upgrade modal (not “Not enough credits”), with no saved card shown', async ({ page, context, baseURL }, testInfo) => {
   await account(context, baseURL, 'editornm');
   const p = await seedProject(page.request, baseURL, 'Editor non-member', THREE_SHOTS);
   await page.goto(`/p/${p.id}?overlay=edit`);
   await expect(page.getByTestId('editor')).toBeVisible({ timeout: 45_000 });
   await page.getByRole('button', { name: /^Generate/ }).first().click();
-  const dialog = page.getByRole('dialog').filter({ hasText: /Pick a plan|Not enough credits/ });
-  await expect(dialog).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('dialog').filter({ hasText: 'Not enough credits' })).toHaveCount(0);
+  const dialog = await expectUpgradeModal(page, 'Pick a plan to generate');
   await shot(page, testInfo, 'editor-generate-nonmember');
-  await expect(dialog).toContainText('Pick a plan to generate');
   await expect(dialog, 'no card on file').not.toContainText(/ending \d{4}/);
   expect((await getJson<{ runs: unknown[] }>(page.request, '/api/runs')).runs).toHaveLength(0);
 });

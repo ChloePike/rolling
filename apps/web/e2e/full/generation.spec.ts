@@ -74,6 +74,12 @@ test.describe('real generation (PW_GENERATE=1)', () => {
     const ranged = await req.get(url.href, { headers: { range: 'bytes=0-99' } });
     expect(ranged.status()).toBe(206);
     expect(ranged.headers()['content-range']).toMatch(/^bytes 0-99\//);
+    // Every clip has a poster: the provider's, else stills from the clip itself (FfmpegRenderer /frames).
+    const poster = await req.get(`/api/media/private/${run.items[0]!.assetId}?variant=poster`, { maxRedirects: 0 });
+    expect([301, 302, 303, 307], `poster: ${poster.status()}`).toContain(poster.status());
+    const img = await req.get(poster.headers()['location']!);
+    expect(img.status()).toBe(200);
+    expect(img.headers()['content-type']).toMatch(/^image\//);
   });
 
   test('GEN-3 cancel: a running video is canceled and its hold refunded in full', async ({ context, baseURL }, testInfo) => {
@@ -125,6 +131,10 @@ test.describe('real generation (PW_GENERATE=1)', () => {
     const card = page.getByTestId('home-run').first();
     await expect(card).toHaveAttribute('data-status', 'done', { timeout: 60_000 });
     await expect(card.getByTestId('home-run-cost')).toContainText(`${run.spent} credit`);
+    // D-020: Enhance prompt is on by default; the rendered prompt is shown with a copy button when the gateway rewrote it.
+    const expanded = (run.items[0] as { expandedPrompt?: string }).expandedPrompt;
+    testInfo.annotations.push({ type: 'expanded-prompt', description: String(expanded ?? null).slice(0, 200) });
+    if (expanded) await expect(card.getByText('Enhanced prompt')).toBeVisible();
     await shot(page, testInfo, 'home-image-done');
     await card.getByRole('button', { name: 'View' }).click();
     await expect(page.getByRole('dialog', { name: 'Result' })).toBeVisible();
