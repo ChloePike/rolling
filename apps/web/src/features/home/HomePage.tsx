@@ -100,7 +100,7 @@ export function HomePage() {
   const { data: skills } = useSkills();
   // Real mode, Avatar: the voice pill uploads a voice track; it joins the `@` references.
   const voiceInput = useRef<HTMLInputElement>(null);
-  const { pills, renderPillPopover, credits, blocked, run, llm, agentSettings } = useHomePills(mode, { onUploadVoice: () => voiceInput.current?.click() });
+  const { pills, renderPillPopover, credits, blocked, run, llm, agentSettings, agentMode } = useHomePills(mode, { onUploadVoice: () => voiceInput.current?.click() });
   const allowance = useAgentAllowance();
   // Settings commands open the pill they name; a mode without that pill does not list them.
   const pillIds = {
@@ -332,9 +332,20 @@ export function HomePage() {
         return { text: f.message === 'safety_blocked' ? t('home.agent.safety') : t('home.agent.error'), retryable: f.message !== 'safety_blocked' };
     }
   };
-  const thread = useHomeThread(failureText);
+  // D-021 Auto: "Build on canvas" happens without a click; open the canvas it built (runs start there within the budget).
+  const autoBuilt = (b: { projectId: string | null; proposalId: string; title: string }) => {
+    toast.show({ message: t('agent.auto.homeBuilt') });
+    if (b.projectId) {
+      void qc.invalidateQueries({ queryKey: ['projects'] });
+      void navigate({ to: '/p/$projectId', params: { projectId: b.projectId } });
+    } else build(b.proposalId, 0, b.title);
+  };
+  const thread = useHomeThread(failureText, (b) => autoBuiltRef.current(b));
+  const autoBuiltRef = useRef(autoBuilt);
+  autoBuiltRef.current = autoBuilt;
   const [newCanvas, newCanvasBusy] = useNewCanvas();
-  const askAgent = (brief: string, refIds: string[], skillName: string | null) => void thread.send({ text: brief, refs: refIds, skill: skillName, llm: llm.id, settings: agentSettings });
+  const askAgent = (brief: string, refIds: string[], skillName: string | null) =>
+    void thread.send({ text: brief, refs: refIds, skill: skillName, llm: llm.id, settings: agentSettings, mode: agentMode.mode, ...(agentMode.mode === 'auto' ? { autoBudget: agentMode.budget } : {}) });
 
   const build = (proposalId: string, optionIndex: number, optionTitle?: string) => {
     setBuilding(proposalId);

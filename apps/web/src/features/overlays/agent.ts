@@ -9,6 +9,9 @@
  *   `agent.tool`, `proposal.created` stream over the thread socket
  *   (`/api/agent/threads/:id/ws`).
  * - `POST /api/agent/proposals/:id/apply|discard`
+ * - D-021 modes: `mode: read | edit | auto` and `autoBudget` on a message; Auto turns
+ *   answer with `auto { budget, spent, changes, runs }` (also streamed as `agent.auto`);
+ *   `POST /api/agent/threads/:id/auto/undo { changeId } | { turnId }` undoes changes.
  *
  * Errors: `402 NO_PLAN` (join paywall, keep the brief), `429
  * AGENT_ALLOWANCE_EXHAUSTED { allowanceUsd, usedUsd, resetsAt, model }`,
@@ -68,6 +71,42 @@ export interface Proposal {
   body: ProposalBody;
 }
 
+/** D-021 agent modes. */
+export type AgentMode = 'read' | 'edit' | 'auto';
+
+/** One change an Auto turn applied (a revision attributed to the agent), undoable on its own. */
+export interface AutoChange {
+  id: string;
+  proposalId: string;
+  kind: 'plan' | 'graphPatch' | 'timelinePatch';
+  summary: string;
+  projectId: string | null;
+  revision: number;
+  ops: number;
+  nodeIds: string[];
+  status: 'applied' | 'undone';
+}
+
+/** One `run.start` of an Auto turn: started, waiting for approval (over the budget), or refused. */
+export interface AutoRun {
+  id: string;
+  nodeIds: string[];
+  credits: number;
+  status: 'started' | 'needs_approval' | 'refused';
+  runId?: string;
+  code?: string;
+}
+
+export interface AutoTurn {
+  turnId: string;
+  budget: number;
+  spent: number;
+  changes: AutoChange[];
+  runs: AutoRun[];
+  /** Thread views: the assistant message of the turn. */
+  messageId?: string | null;
+}
+
 export interface Thread {
   id: string;
   workspaceId: string;
@@ -77,8 +116,12 @@ export interface Thread {
   skill: string | null;
   tool: string | null;
   llm: string | null;
+  /** D-021: the mode this thread last ran in (null before its first turn, or from older servers). */
+  mode?: AgentMode | null;
+  autoBudget?: number | null;
   messages: Array<{ id: string; role: 'user' | 'assistant'; content: string; createdAt: number; proposalId?: string }>;
   proposals: Proposal[];
+  auto?: AutoTurn[];
 }
 
 export type TurnReason = 'completed' | 'proposal' | 'max_tool_calls' | 'invalid_proposal' | 'canceled' | 'error' | 'safety_blocked' | (string & {});
@@ -91,6 +134,8 @@ export interface TurnResult {
   proposal: Proposal | null;
   error: { code: string; message: string } | null;
   llm: string;
+  mode?: AgentMode;
+  auto?: AutoTurn | null;
 }
 
 export interface ApplyResult {
@@ -223,6 +268,8 @@ export interface TurnStream {
   onDelta?: (delta: string) => void;
   onTool?: (tool: { name: string; status: 'started' | 'ok' | 'error' }) => void;
   onProposal?: (proposal: Proposal) => void;
+  /** Auto turns: changes and runs so far (`agent.auto`). */
+  onAuto?: (auto: AutoTurn) => void;
 }
 
 /**
@@ -241,17 +288,18 @@ export interface TurnSettings {
 
 export async function sendTurn(
   threadId: string,
-  input: { text: string; refs?: string[]; selection?: string[]; llm?: string | null; settings?: TurnSettings },
+  input: { text: string; refs?: string[]; selection?: string[]; llm?: string | null; settings?: TurnSettings; mode?: AgentMode; autoBudget?: number },
   stream: TurnStream = {},
   /** Where the thread's events arrive: the user channel (Home, tools; default) or the project channel (canvas, editor). D-014. */
   subscribe: (listener: (msg: Envelope) => void) => () => void = userEvents,
 ): Promise<TurnResult> {
   const off = subscribe((msg: Envelope) => {
-    const p = msg.payload as { threadId?: string; delta?: string; name?: string; status?: 'started' | 'ok' | 'error'; proposal?: Proposal };
+    const p = msg.payload as { threadId?: string; delta?: string; name?: string; status?: 'started' | 'ok' | 'error'; proposal?: Proposal; auto?: AutoTurn };
     if (!p || p.threadId !== threadId) return;
     if (msg.type === 'agent.delta' && typeof p.delta === 'string') stream.onDelta?.(p.delta);
     else if (msg.type === 'agent.tool' && p.name && p.status) stream.onTool?.({ name: p.name, status: p.status });
     else if (msg.type === 'proposal.created' && p.proposal) stream.onProposal?.(p.proposal);
+    else if ((msg.type as string) === 'agent.auto' && p.auto) stream.onAuto?.(p.auto);
   });
   try {
     const body: Record<string, unknown> = { text: input.text };
@@ -259,6 +307,8 @@ export async function sendTurn(
     if (input.selection?.length) body.selection = input.selection;
     if (input.llm) body.llm = input.llm;
     if (input.settings) body.settings = input.settings;
+    if (input.mode) body.mode = input.mode;
+    if (input.mode === 'auto' && typeof input.autoBudget === 'number') body.autoBudget = input.autoBudget;
     return await apiFetch<TurnResult>(`/agent/threads/${encodeURIComponent(threadId)}/messages`, { method: 'POST', body });
   } finally {
     off();
@@ -271,6 +321,11 @@ export async function cancelTurn(threadId: string, turnId?: string): Promise<voi
 
 export async function applyProposal(proposalId: string, body: { optionIndex?: number; title?: string } = {}): Promise<ApplyResult> {
   return apiFetch<ApplyResult>(`/agent/proposals/${encodeURIComponent(proposalId)}/apply`, { method: 'POST', body });
+}
+
+/** Undoes one change an Auto turn applied, or every change of the turn (D-021). */
+export async function undoAuto(threadId: string, target: { changeId: string } | { turnId: string }): Promise<{ undone: string[]; failed: Array<{ id: string; code: string; message: string }>; auto: AutoTurn | null }> {
+  return apiFetch(`/agent/threads/${encodeURIComponent(threadId)}/auto/undo`, { method: 'POST', body: target });
 }
 
 export async function discardProposal(proposalId: string): Promise<void> {

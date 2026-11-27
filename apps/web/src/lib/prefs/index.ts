@@ -101,9 +101,17 @@ export interface Prefs {
   matureContent: boolean;
   /** D-020 "Enhance prompt" default for Home, tools and Quick Create (each run can change it). */
   enhancePrompt: boolean;
+  /** D-021: the agent mode Home and new projects start in (each project remembers its own). */
+  agentMode: AgentModePref;
+  /** D-021: Auto mode's per-turn budget in credits; null follows `confirmThreshold`. */
+  autoBudget: number | null;
   /** D-024 "Review results": a vision model reviews each output (badge, issues, "Retry with fix"). */
   reviewResults: boolean;
 }
+
+/** D-021 agent modes: Read (read only), Edit (propose, the default), Auto (apply and run within a budget). */
+export const AGENT_MODE_OPTIONS = ['read', 'edit', 'auto'] as const;
+export type AgentModePref = (typeof AGENT_MODE_OPTIONS)[number];
 
 export const DEFAULT_PREFS: Prefs = {
   creationMode: 'simple',
@@ -122,6 +130,8 @@ export const DEFAULT_PREFS: Prefs = {
   confirmThreshold: DEFAULT_CONFIRM_THRESHOLD_CREDITS,
   matureContent: false,
   enhancePrompt: true,
+  agentMode: 'edit',
+  autoBudget: null,
   reviewResults: true,
 };
 
@@ -177,6 +187,8 @@ function parse(creationRaw: string | null, languageRaw: string | null, rest: str
     confirmThreshold: threshold,
     matureContent: o.matureContent === true,
     enhancePrompt: typeof o.enhancePrompt === 'boolean' ? o.enhancePrompt : DEFAULT_PREFS.enhancePrompt,
+    agentMode: oneOf(AGENT_MODE_OPTIONS, o.agentMode, DEFAULT_PREFS.agentMode),
+    autoBudget: typeof o.autoBudget === 'number' && o.autoBudget >= 0 ? Math.round(o.autoBudget) : null,
     reviewResults: typeof o.reviewResults === 'boolean' ? o.reviewResults : DEFAULT_PREFS.reviewResults,
   };
 }
@@ -287,6 +299,9 @@ export interface ServerPrefsShape {
   matureContent: boolean;
   /** D-020; absent from servers before it (defaults on). */
   enhancePrompt?: boolean;
+  /** D-021; absent from servers before it. */
+  agentMode?: string;
+  autoBudget?: number | null;
   /** D-024; absent from servers before it (defaults on). */
   reviewResults?: boolean;
 }
@@ -317,6 +332,8 @@ export function fromServerPrefs(p: ServerPrefsShape): Prefs {
     confirmThreshold: typeof p.confirmThreshold === 'number' ? p.confirmThreshold : DEFAULT_PREFS.confirmThreshold,
     matureContent: p.matureContent === true,
     enhancePrompt: typeof p.enhancePrompt === 'boolean' ? p.enhancePrompt : DEFAULT_PREFS.enhancePrompt,
+    agentMode: oneOf(AGENT_MODE_OPTIONS, p.agentMode, DEFAULT_PREFS.agentMode),
+    autoBudget: typeof p.autoBudget === 'number' ? p.autoBudget : null,
     reviewResults: typeof p.reviewResults === 'boolean' ? p.reviewResults : DEFAULT_PREFS.reviewResults,
   };
 }
@@ -334,6 +351,8 @@ export function toServerPatch(patch: Partial<Prefs>): ServerPrefsPatchShape {
   if (patch.theme !== undefined) out.theme = patch.theme;
   if (patch.matureContent !== undefined) out.matureContent = patch.matureContent;
   if (patch.enhancePrompt !== undefined) out.enhancePrompt = patch.enhancePrompt;
+  if (patch.agentMode !== undefined) out.agentMode = patch.agentMode;
+  if ('autoBudget' in patch) out.autoBudget = patch.autoBudget === null || patch.autoBudget === undefined ? null : Math.max(0, Math.round(patch.autoBudget));
   if (patch.reviewResults !== undefined) out.reviewResults = patch.reviewResults;
   if (patch.notifyWhenDone !== undefined) notifications.done = patch.notifyWhenDone;
   if (patch.notifyCreditsLow !== undefined) notifications.low = patch.notifyCreditsLow;

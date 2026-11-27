@@ -9,7 +9,8 @@ import { useAgentAllowance } from '@/lib/session/agentAllowance';
 import { pickerModels, useModels } from '@/lib/models';
 import { ModelIcon, modelIcon } from '@/lib/modelIcons';
 import { FormattedMessage, useIntl } from 'react-intl';
-import { agentFailure, existingThread } from '@/features/overlays/agent';
+import { agentFailure, existingThread, undoAuto, type AutoRun, type AutoTurn } from '@/features/overlays/agent';
+import { AgentModeSwitch, AutoSummary, useAgentMode } from '@/features/agent-mode';
 import { isMockApi, savePendingAction, takePendingAction } from '@/features/overlays/backend';
 import { agentPlanOptions, applyAgentProposal, discardAgentProposal, graphProposalFrom, planOptionsFrom, sendAgentMessage, type GraphProposal } from '../api';
 import type { GraphNode } from '@rolling/core/graph';
@@ -28,6 +29,8 @@ interface Message {
   proposal?: GraphProposal;
   /** Proposal outcome once the user acted on it. */
   outcome?: 'applied' | 'discarded' | 'stale';
+  /** D-021 Auto turns: what the agent changed and ran, against the turn budget. */
+  auto?: AutoTurn;
 }
 
 interface AgentPanelProps {
@@ -46,6 +49,10 @@ interface AgentPanelProps {
   nodes?: GraphNode[];
   /** Nodes the open proposal changes (outlined on the canvas), or null. */
   onPreview: (nodeIds: string[] | null) => void;
+  /** D-021: a run Auto left for approval goes through the normal run flow (quote, confirm per threshold). */
+  onRunNodes?: (nodeIds: string[]) => void;
+  /** Mock mode: undo the change Auto applied locally. */
+  onUndoLocal?: () => void;
 }
 
 /** Agent LLM choice (D-009), remembered per browser until `PATCH /api/me/prefs` carries it. */
@@ -58,9 +65,16 @@ export const AGENT_MODEL_KEY = 'rolling.agent.model';
  * "Build on canvas", composer with the LLM pill and Auto. The agent only
  * proposes; building nodes is free and nothing runs until the user runs it.
  */
-export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal, onPreview, projectId, selection, nodes }: AgentPanelProps) {
+export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal, onPreview, projectId, selection, nodes, onRunNodes, onUndoLocal }: AgentPanelProps) {
   const mock = isMockApi();
   const real = !mock && !!projectId;
+  // D-021: Read / Edit / Auto, remembered per project (default from Preferences).
+  const agentMode = useAgentMode(projectId ? `canvas:${projectId}` : 'canvas');
+  const threadId = useRef<string | null>(null);
+  const [undoBusy, setUndoBusy] = useState<Set<string>>(() => new Set());
+  const [undoFailed, setUndoFailed] = useState<Set<string>>(() => new Set());
+  const [approved, setApproved] = useState<Set<string>>(() => new Set());
+  const [liveAuto, setLiveAuto] = useState<AutoTurn | null>(null);
   const [paywall, setPaywall] = useState(false);
   const intl = useIntl();
   const [messages, setMessages] = useState<Message[]>(() => (mock ? mockData().canvas.MOCK_AGENT.messages : []));
@@ -90,13 +104,18 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
       (t) => {
         if (!live) return;
         if (t) {
+          threadId.current = t.id;
+          agentMode.adopt(t.mode);
           const byId = new Map(t.proposals.map((p) => [p.id, p]));
+          const autoByMessage = new Map((t.auto ?? []).filter((a) => a.messageId).map((a) => [a.messageId!, a]));
           setMessages(
             t.messages.map((m) => {
+              const auto = autoByMessage.get(m.id);
               const p = m.proposalId ? byId.get(m.proposalId) : undefined;
-              const gp = p ? graphProposalFrom(p, nodes) : null;
+              // A change Auto applied shows in its summary, not as a proposal card.
+              const gp = p && !(auto && p.status === 'applied') ? graphProposalFrom(p, nodes) : null;
               const outcome = p && p.status !== 'proposed' ? (p.status as Message['outcome']) : undefined;
-              return { role: m.role === 'user' ? 'user' : 'agent', text: m.content, ...(gp ? { proposal: gp, outcome } : {}) };
+              return { role: m.role === 'user' ? 'user' : 'agent', text: m.content, ...(gp ? { proposal: gp, outcome } : {}), ...(auto ? { auto } : {}) };
             }),
           );
           const openPlan = [...t.proposals].reverse().find((p) => p.kind === 'plan' && p.status === 'proposed');
@@ -165,29 +184,48 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
     setDraft('');
     setPending(true);
     setStreamed('');
+    const mode = agentMode.mode;
+    const budget = agentMode.budget;
+    setLiveAuto(null);
     void sendAgentMessage(text, {
       llm: llmModel?.id ?? 'default',
       model,
       projectId: real ? projectId : undefined,
       selection,
       nodes,
+      mode,
+      autoBudget: budget,
       onDelta: (d) => setStreamed((s) => s + d),
+      onAuto: setLiveAuto,
     }).then(
-      (reply) => {
+      async (reply) => {
+        if (reply.threadId) threadId.current = reply.threadId;
+        // Mock Auto: the change applies here (the real server applied it already) and the run follows the budget.
+        let auto = reply.auto ?? undefined;
+        let proposal = reply.proposal;
+        if (mock && mode === 'auto' && proposal) {
+          const ok = await Promise.resolve(onApplyProposal(proposal));
+          if (ok) {
+            auto = mockAutoTurn(proposal, text, budget, nodes ?? []);
+            proposal = undefined;
+          }
+        }
         setPending(false);
         setStreamed('');
+        setLiveAuto(null);
         const replyText = reply.reason === 'safety_blocked' ? reply.text || intl.formatMessage({ id: 'canvas.agent.error.safety' }) : reply.text;
-        setMessages((m) => [...m.map((x) => (x.proposal && !x.outcome ? { ...x, outcome: 'discarded' as const } : x)), { role: 'agent', text: replyText, fresh: true, proposal: reply.proposal }]);
+        setMessages((m) => [...m.map((x) => (x.proposal && !x.outcome ? { ...x, outcome: 'discarded' as const } : x)), { role: 'agent', text: replyText, fresh: true, proposal, ...(auto ? { auto } : {}) }]);
         if (reply.plan) {
           setPlanProposal(reply.plan);
           setOption(0);
           setBuilt(null);
         }
-        onPreview(reply.proposal ? reply.proposal.changes.map((c) => c.nodeId) : null);
+        onPreview(proposal ? proposal.changes.map((c) => c.nodeId) : auto?.changes.length ? auto.changes.flatMap((c) => c.nodeIds) : null);
       },
       (e: unknown) => {
         setPending(false);
         setStreamed('');
+        setLiveAuto(null);
         const t = failText(e);
         if (t) setMessages((m) => [...m, { role: 'agent', text: t, fresh: true }]);
       },
@@ -195,6 +233,36 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
   };
   const deliverRef = useRef(deliver);
   deliverRef.current = deliver;
+
+  /* ---------- D-021 Auto: undo and approvals ---------- */
+  const patchAuto = (turnId: string, fn: (a: AutoTurn) => AutoTurn) => setMessages((list) => list.map((x) => (x.auto?.turnId === turnId ? { ...x, auto: fn(x.auto) } : x)));
+  const undo = (target: { changeId: string } | { turnId: string }) => {
+    const owner = messages.find((x) => x.auto && ('turnId' in target ? x.auto.turnId === target.turnId : x.auto.changes.some((c) => c.id === target.changeId)))?.auto;
+    if (!owner) return;
+    const ids = 'turnId' in target ? owner.changes.filter((c) => c.status === 'applied').map((c) => c.id) : [target.changeId];
+    if (!real || !threadId.current) {
+      // Mock: the local room undoes the change Auto applied.
+      for (const _ of ids) onUndoLocal?.();
+      patchAuto(owner.turnId, (a) => ({ ...a, changes: a.changes.map((c) => (ids.includes(c.id) ? { ...c, status: 'undone' } : c)) }));
+      return;
+    }
+    setUndoBusy((s) => new Set([...s, ...ids]));
+    void undoAuto(threadId.current, target).then(
+      (r) => {
+        setUndoBusy((s) => new Set([...s].filter((id) => !ids.includes(id))));
+        if (r.auto) patchAuto(owner.turnId, () => ({ ...r.auto!, turnId: owner.turnId }));
+        if (r.failed.length) setUndoFailed((s) => new Set([...s, ...r.failed.map((f) => f.id)]));
+      },
+      () => {
+        setUndoBusy((s) => new Set([...s].filter((id) => !ids.includes(id))));
+        setUndoFailed((s) => new Set([...s, ...ids]));
+      },
+    );
+  };
+  const approveRun = (r: AutoRun) => {
+    setApproved((s) => new Set([...s, r.id]));
+    onRunNodes?.(r.nodeIds);
+  };
   const settle = (index: number, outcome: 'applied' | 'discarded') => {
     const msg = messages[index];
     if (!msg?.proposal) return;
@@ -276,6 +344,16 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
           </button>
         ) : null}
         <span className={styles.spacer} />
+        {/* D-021: the mode switch sits in the panel head, above the agent model pill (the composer row has no room in the approved layout). */}
+        <AgentModeSwitch
+          mode={agentMode.mode}
+          onModeChange={agentMode.setMode}
+          budget={agentMode.budget}
+          threshold={agentMode.threshold}
+          onBudgetChange={agentMode.setBudget}
+          side="bottom"
+          pillClassName={styles.pill}
+        />
         <button type="button" className={styles.close} aria-label={intl.formatMessage({ id: 'canvas.agent.hide' })} onClick={onClose}>
           <CanvasIcon name="close" size={16} />
         </button>
@@ -360,11 +438,23 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
                 )}
               </div>
             ) : null}
+            {m.auto ? (
+              <AutoSummary
+                turn={m.auto}
+                onUndo={(changeId) => undo({ changeId })}
+                onUndoAll={(turnId) => undo({ turnId })}
+                onApproveRun={approveRun}
+                busy={undoBusy}
+                failed={undoFailed}
+                approved={approved}
+              />
+            ) : null}
           </div>
         ))}
         {pending ? (
           <div className={cx(styles.agent, styles.pending, styles.msgIn)} data-motion="" role="status">
             {streamed || <FormattedMessage id="canvas.agent.thinking" />}
+            {liveAuto ? <AutoSummary turn={liveAuto} onUndo={() => {}} onUndoAll={() => {}} onApproveRun={() => {}} busy={new Set(liveAuto.changes.map((c) => c.id))} /> : null}
           </div>
         ) : null}
       </div>
@@ -509,4 +599,25 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
       />
     </aside>
   );
+}
+
+/** Mock mode (D-021): the summary the server would send for a patch Auto applied, plus a run when the brief asks to run. */
+function mockAutoTurn(proposal: GraphProposal, text: string, budget: number, nodes: GraphNode[]): AutoTurn {
+  const turnId = `turn_mock_${proposal.id}`;
+  const runs: AutoRun[] = [];
+  let spent = 0;
+  if (/\brun\b/i.test(text)) {
+    const ids = proposal.changes.map((c) => c.nodeId);
+    const credits = ids.reduce((s, id) => s + (nodes.find((n) => n.id === id)?.cost ?? 0), 0);
+    const fits = credits > 0 && credits <= budget;
+    if (fits) spent = credits;
+    runs.push({ id: `${turnId}:run:1`, nodeIds: ids, credits, status: fits ? 'started' : 'needs_approval', ...(fits ? { runId: `run_mock_${proposal.id}` } : {}) });
+  }
+  return {
+    turnId,
+    budget,
+    spent,
+    changes: [{ id: `${turnId}:chg:1`, proposalId: proposal.id, kind: 'graphPatch', summary: proposal.summary, projectId: null, revision: proposal.baseRevision + 1, ops: proposal.ops.length, nodeIds: proposal.changes.map((c) => c.nodeId), status: 'applied' }],
+    runs,
+  };
 }

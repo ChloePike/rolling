@@ -9,6 +9,8 @@ export interface PillOption {
   modelId?: string;
   /** Secondary text at the end of the row (e.g. "~12 turns left"). */
   meta?: string;
+  /** One-line tooltip of the row. */
+  hint?: string;
 }
 
 /**
@@ -38,6 +40,8 @@ export function PillListPopover({
             type="button"
             className={styles.pillOption}
             aria-pressed={o.id === value}
+            title={o.hint}
+            data-option={o.id}
             onClick={() => {
               onPick(o.id);
               state.close();

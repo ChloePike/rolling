@@ -1,4 +1,4 @@
-import { planMonthlyCredits, PLANS, TOP_UP, teamPriceCents } from '@rolling/core/pricing/config';
+import { AUTO_BUDGET, planMonthlyCredits, PLANS, TOP_UP, teamPriceCents } from '@rolling/core/pricing/config';
 import { Dialog, Skeleton, Switch, useToast } from '@rolling/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
@@ -6,6 +6,8 @@ import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } fr
 import { FormattedMessage, useIntl } from 'react-intl';
 import { pickerModels, useModels } from '@/lib/models';
 import {
+  AGENT_MODE_OPTIONS,
+  type AgentModePref,
   ASPECT_RATIO_OPTIONS,
   CONFIRM_THRESHOLD_OPTIONS,
   LANGUAGE_OPTIONS,
@@ -876,6 +878,26 @@ function PreferencesSection() {
           onChange={(v) => (v && !session.isMember ? void openUpgrade({ kind: 'mature' }, { onResume: () => setPref('matureContent', true) }) : setPref('matureContent', v))}
         />
       )}
+      {/* D-021: the agent mode Home and new projects start in, and Auto's per-turn run budget. */}
+      <Row label={t('agent.prefs.mode')} hint={t('agent.prefs.mode.hint')}>
+        <SelectMenu<AgentModePref>
+          label={t('agent.prefs.mode')}
+          value={prefs.agentMode}
+          options={AGENT_MODE_OPTIONS.map((m) => ({ value: m, label: t(`agent.mode.${m}`) }))}
+          onChange={(m) => setPref('agentMode', m)}
+        />
+      </Row>
+      <Row label={t('agent.prefs.budget')} hint={t('agent.prefs.budget.hint')}>
+        <SelectMenu
+          label={t('agent.prefs.budget')}
+          value={prefs.autoBudget === null ? 'default' : String(prefs.autoBudget)}
+          options={[
+            { value: 'default', label: t('agent.prefs.budget.default', { n: prefs.confirmThreshold }) },
+            ...[...new Set<number>([...AUTO_BUDGET.choices, ...(prefs.autoBudget === null ? [] : [prefs.autoBudget])])].sort((a, b) => a - b).map((n) => ({ value: String(n), label: t('agent.budget.option', { n }) })),
+          ]}
+          onChange={(v) => setPref('autoBudget', v === 'default' ? null : Number(v))}
+        />
+      </Row>
     </>
   );
 }

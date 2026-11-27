@@ -51,6 +51,8 @@ export interface PromptPill {
   modelId?: string;
   /** A fixed value the model offers no choice for: shown read-only, never opens a popover. */
   readOnly?: boolean;
+  /** One-line tooltip (e.g. what the agent mode does, D-021). */
+  hint?: string;
 }
 
 /** A row in the `/` command palette or the Skills list of the `+` menu. */

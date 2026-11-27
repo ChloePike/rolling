@@ -406,6 +406,7 @@ export function PromptBox(props: PromptBoxProps) {
                   className={styles.pill}
                   data-model={i === 0 || undefined}
                   aria-label={p.ariaLabel}
+                  title={p.hint}
                   aria-haspopup={renderPillPopover ? 'dialog' : undefined}
                   aria-expanded={renderPillPopover ? openPill === p.id : undefined}
                   onClick={() => setOverlay(openPill === p.id ? { kind: 'none' } : { kind: 'pill', id: p.id })}

@@ -365,7 +365,15 @@ test.describe('settings (Settings.dc.html)', () => {
         feature: 'account',
         name: `settings-${s.key}`,
         design: () => openDesign(page, 'Settings.dc.html', { initSection: s.label }),
-        app: () => openApp(page, `/settings/${s.key}`),
+        app: async () => {
+          await openApp(page, `/settings/${s.key}`);
+          // The agent mode rows (D-021) postdate the design too.
+          if (s.key === 'preferences') {
+            for (const name of [/^Agent mode:/, /^Auto run budget:/]) {
+              await page.getByRole('button', { name }).locator('xpath=ancestor::div[contains(@class, "row")][1]').evaluate((el) => ((el as HTMLElement).style.display = 'none'));
+            }
+          }
+        },
       });
       // Billing and the confirm threshold carry D-006 prices and amounts instead of the drawn placeholders.
       expectDiffUnder(r, s.key === 'billing' ? 0.03 : 0.01);

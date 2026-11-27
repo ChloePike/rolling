@@ -124,13 +124,19 @@ async function portCenter(page: Page, nodeId: string, port: 'in' | 'out') {
 }
 
 test.describe('canvas fidelity (1440×900)', () => {
+  // The agent mode switch (D-021) postdates the design: compared with its pill masked.
+  const modeSwitch = async (page: Page): Promise<Box[]> => {
+    const b = await page.getByTestId('agent-mode').boundingBox();
+    return b ? [{ x: b.x - 2, y: b.y - 2, width: b.width + 4, height: b.height + 4 }] : [];
+  };
+
   test('default state: pixel diff under 1% against Canvas.dc.html', async ({ page }) => {
-    expect(await diffState(page, 'default', '')).toBeLessThan(MAX_DIFF);
+    expect(await diffState(page, 'default', '', modeSwitch)).toBeLessThan(MAX_DIFF);
   });
 
   for (const overlay of ['addMenu', 'script', 'share', 'at'] as const) {
     test(`${overlay} state: pixel diff under 1% against Canvas.dc.html initOverlay=${overlay}`, async ({ page }) => {
-      expect(await diffState(page, overlay, overlay)).toBeLessThan(MAX_DIFF);
+      expect(await diffState(page, overlay, overlay, modeSwitch)).toBeLessThan(MAX_DIFF);
     });
   }
 

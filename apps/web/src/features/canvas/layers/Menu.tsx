@@ -15,6 +15,8 @@ export interface MenuEntry {
   disabled?: boolean;
   /** Tooltip for disabled rows (why it cannot be used). */
   reason?: string;
+  /** One-line tooltip of an enabled row. */
+  hint?: string;
   danger?: boolean;
   /** Keep the menu open after picking (checkbox rows). */
   keepOpen?: boolean;
@@ -49,7 +51,7 @@ export function MenuRows({ entries, onClose, title }: { entries: MenuEntry[]; on
             role={role}
             aria-checked={it.checked}
             aria-disabled={it.disabled || undefined}
-            title={it.disabled ? it.reason : undefined}
+            title={it.disabled ? it.reason : it.hint}
             className={cx(styles.item, it.danger && styles.danger, 'rl-stagger')}
             style={staggerStyle(i)}
             data-motion=""

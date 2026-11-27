@@ -28,6 +28,7 @@ import { defaultModel, quoteCredits, toModelOption } from './catalog';
 import { formatSeconds } from './format';
 import { FRAME_MODES, PERSONAS, VOICES, type HomeModeId } from './modes';
 import { PillListPopover } from './PillListPopover';
+import { AGENT_MODES, budgetChoices, useAgentMode, type AgentModeState } from '@/features/agent-mode/useAgentMode';
 import { lazyLayer } from '@/lib/lazy';
 
 /** Pill popovers load on demand (bundle splitting); fetched when idle after Home renders. */
@@ -81,11 +82,14 @@ export function useHomePills(
   llm: { id: string | null; name: string };
   /** Agent mode: the video model, ratio and length pills, sent with each turn so the plan follows them. */
   agentSettings: { videoModel: string | null; ratio: string; seconds: number };
+  /** D-021: Read / Edit / Auto for Home's agent, and Auto's per-turn run budget. */
+  agentMode: AgentModeState;
 } {
   const intl = useIntl();
   const { planId } = useSession();
   const plan = planId ?? undefined;
   const allowance = useAgentAllowance();
+  const agentMode = useAgentMode('home');
   // The default aspect ratio preference (header settings, Settings → Preferences) seeds the video settings.
   const prefRatio = usePref('defaultAspectRatio') as VideoParams['aspectRatio'];
   const seedRatio = <T extends VideoParams>(v: T): T => (VIDEO_RATIOS.includes(prefRatio) ? { ...v, aspectRatio: prefRatio } : v);
@@ -232,6 +236,48 @@ export function useHomePills(
     const duration: PromptPill = { id: 'duration', kind: 'param', icon: 'clock', label: secs(agentVideo.duration) };
     const chatNames = (chat ?? []).map((m) => m.name);
     const params = videoParams(agentVideo, setAgentVideo, null, agentCaps, agentM, null);
+    // D-021: the mode switch sits next to the agent model pill; in Auto, the per-turn run budget follows it.
+    const modeName = (m: string) => t(`agent.mode.${m}`);
+    const modePill: PromptPill = {
+      id: 'agentMode',
+      kind: 'param',
+      icon: 'bolt',
+      label: modeName(agentMode.mode),
+      ariaLabel: `${t('agent.mode.label')}: ${modeName(agentMode.mode)}`,
+      hint: t(`agent.mode.${agentMode.mode}.hint`),
+    };
+    const choices = budgetChoices(agentMode.budget, agentMode.threshold);
+    const budgetPill: PromptPill = { id: 'autoBudget', kind: 'param', icon: 'coin', label: t('agent.budget.pill', { n: agentMode.budget }), ariaLabel: t('agent.budget.label'), hint: t('agent.budget.hint') };
+    const modeSpecs: PillSpec[] = [
+      {
+        pill: modePill,
+        render: (s: PillPopoverState) => (
+          <PillListPopover
+            pill={modePill}
+            state={s}
+            value={agentMode.mode}
+            options={AGENT_MODES.map((m) => ({ id: m, label: modeName(m), meta: t(`agent.mode.${m}.hint`), hint: t(`agent.mode.${m}.hint`) }))}
+            onPick={(id) => agentMode.setMode(id as (typeof AGENT_MODES)[number])}
+          />
+        ),
+      },
+      ...(agentMode.mode === 'auto'
+        ? [
+            {
+              pill: budgetPill,
+              render: (s: PillPopoverState) => (
+                <PillListPopover
+                  pill={budgetPill}
+                  state={s}
+                  value={String(agentMode.budget)}
+                  options={choices.map((n) => ({ id: String(n), label: t(n === agentMode.threshold ? 'agent.budget.optionDefault' : 'agent.budget.option', { n }) }))}
+                  onPick={(id) => agentMode.setBudget(Number(id) === agentMode.threshold ? null : Number(id))}
+                />
+              ),
+            },
+          ]
+        : []),
+    ];
     specs = [
       {
         pill: llm,
@@ -250,6 +296,8 @@ export function useHomePills(
       { pill: videoModelPill, render: modelPicker('video', videos, agentModel, setAgentModel) },
       { pill: ratio, render: params },
       { pill: duration, render: params },
+      // Last in the row, so the approved layout of the other pills stays put.
+      ...modeSpecs,
     ];
   } else if (mode === 'image') {
     const m = imageM;
@@ -358,6 +406,7 @@ export function useHomePills(
         run,
         llm: llmInfo,
         agentSettings,
+        agentMode,
       };
     }
     run = {
@@ -386,6 +435,7 @@ export function useHomePills(
     run,
     llm: llmInfo,
     agentSettings,
+    agentMode,
   };
 }
 

@@ -1,0 +1,24 @@
+/* D-021 agent mode switch and the Auto change summary. Tokens only (D-010). */
+.modePill{min-width:0}
+.budget{
+  flex:none;white-space:nowrap;height:28px;padding:0 10px;border-radius:999px;border:0;background:var(--c-accent-soft);color:var(--c-link);
+  font:inherit;font-size:12px;font-weight:600;cursor:pointer;
+}
+.budget:hover{background:var(--c-info-soft)}
+.summary{border-radius:16px;background:var(--c-surface-4);padding:12px;display:flex;flex-direction:column;gap:8px;color:var(--c-text-1);margin-top:8px}
+.head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-weight:600;font-size:13px}
+.spend{font:600 12px/1.6 var(--font-sans);color:var(--c-text-3);white-space:nowrap}
+.row{display:flex;align-items:center;gap:8px;font-size:12px;line-height:1.5;color:var(--c-text-2)}
+.rowText{flex:1;min-width:0}
+.rowUndone{text-decoration:line-through;color:var(--c-text-4)}
+.small{
+  flex:none;height:26px;padding:0 10px;border-radius:999px;border:0;background:var(--c-surface-5);color:var(--c-text-1);font:inherit;font-size:12px;font-weight:600;cursor:pointer;
+  transition:background-color var(--dur-fast) var(--ease-standard);
+}
+.small:hover{background:var(--c-surface-6)}
+.small:disabled{cursor:default;color:var(--c-disabled-text)}
+.primary{background:var(--c-text-1);color:var(--c-bg)}
+.primary:hover{background:var(--c-primary-hover)}
+.status{flex:none;font-size:12px;color:var(--c-text-3)}
+.note{margin:0;font-size:12px;line-height:1.5;color:var(--c-text-3)}
+.actions{display:flex;gap:6px;justify-content:flex-end}

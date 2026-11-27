@@ -1760,6 +1760,8 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
           projectId={projectId}
           selection={selected ? [selected] : undefined}
           nodes={graph.nodes}
+          onRunNodes={(ids) => runRequest({ scope: 'selection', nodeIds: ids })}
+          onUndoLocal={() => session.sync.undo()}
         />
       ) : null}
 

@@ -20,7 +20,9 @@ import {
   type Thread,
   type ThreadSummary,
   type TurnSettings,
+  type AgentMode,
 } from '@/features/overlays/agent';
+import { writeScopeMode } from '@/features/agent-mode/useAgentMode';
 import { isMockApi } from '@/features/overlays/backend';
 import { mockData } from '@/lib/api/mode';
 import { resolveAssetId } from '@/lib/transfers';
@@ -62,6 +64,9 @@ export interface SendInput {
   llm?: string | null;
   /** The prompt box's video model, ratio and length pills. */
   settings?: TurnSettings;
+  /** D-021 mode and Auto's per-turn budget. */
+  mode?: AgentMode;
+  autoBudget?: number;
 }
 
 export interface HomeThread {
@@ -92,13 +97,21 @@ export interface HomeThread {
 /** What a failure means for the view (`join` is handled by the page: paywall, brief kept). */
 export type FailureHandler = (f: AgentFailure, input: SendInput) => { text: string; retryable: boolean } | null;
 
+/**
+ * D-021 Auto on Home: the plan was built on a canvas without a click. Real mode: the server built it
+ * (`projectId`); mock mode: the page builds the proposal's first option itself (`projectId` null).
+ */
+export type AutoBuiltHandler = (built: { projectId: string | null; proposalId: string; title: string }) => void;
+
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Mock mode: a reply streamed word by word, small talk without a plan (the real agent does the same, harness 6). */
 async function mockTurn(input: SendInput, onDelta: (d: string) => void): Promise<{ text: string; proposal: Proposal | null }> {
   const m = mockData().home;
-  const small = isSmallTalk(input.text);
-  const text = small ? m.MOCK_HOME_SMALL_TALK : m.MOCK_HOME_PLAN.text;
+  // D-021 Read: the agent explains; it has no propose tools.
+  const readOnly = input.mode === 'read';
+  const small = isSmallTalk(input.text) || readOnly;
+  const text = readOnly ? 'Read mode: I can explain and estimate, but I won’t plan or build anything. Switch to Edit or Auto for a plan.' : small ? m.MOCK_HOME_SMALL_TALK : m.MOCK_HOME_PLAN.text;
   const latency = (window as unknown as { __rollingMocks?: { latencyMs?: number } }).__rollingMocks?.latencyMs ?? 400;
   await wait(latency);
   for (const word of text.split(/(?<= )/)) {
@@ -128,7 +141,7 @@ async function mockTurn(input: SendInput, onDelta: (d: string) => void): Promise
  * the turn's plan proposal lands on that reply. Nothing here spends: Build on
  * canvas applies the plan as a new project (free).
  */
-export function useHomeThread(onFailure: FailureHandler): HomeThread {
+export function useHomeThread(onFailure: FailureHandler, onAutoBuilt?: AutoBuiltHandler): HomeThread {
   const mock = isMockApi();
   const [id, setId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ThreadMsg[]>([]);
@@ -139,6 +152,8 @@ export function useHomeThread(onFailure: FailureHandler): HomeThread {
   const turnRef = useRef<{ stop: boolean } | null>(null);
   const failRef = useRef(onFailure);
   failRef.current = onFailure;
+  const builtRef = useRef(onAutoBuilt);
+  builtRef.current = onAutoBuilt;
 
   const [recent, setRecent] = useState<ThreadSummary[]>([]);
 
@@ -205,7 +220,11 @@ export function useHomeThread(onFailure: FailureHandler): HomeThread {
       try {
         if (mock) {
           const r = await mockTurn(input, onDelta);
-          if (!turn.stop) patchMsg(replyId, (m) => ({ ...m, text: r.text, status: 'done', proposal: r.proposal }));
+          if (turn.stop) return;
+          // D-021 Auto: the plan is built without a click (the page builds its first option).
+          const autoBuild = input.mode === 'auto' && r.proposal?.body.kind === 'plan';
+          patchMsg(replyId, (m) => ({ ...m, text: r.text, status: 'done', proposal: autoBuild && r.proposal ? { ...r.proposal, status: 'applied' } : r.proposal }));
+          if (autoBuild && r.proposal && r.proposal.body.kind === 'plan') builtRef.current?.({ projectId: null, proposalId: r.proposal.id, title: r.proposal.body.options[0]?.title ?? '' });
           return;
         }
         let threadId = idRef.current;
@@ -218,7 +237,7 @@ export function useHomeThread(onFailure: FailureHandler): HomeThread {
         }
         // `@` uploads still in flight resolve to their asset ids first.
         const refs = input.refs?.length ? (await Promise.all(input.refs.map((r) => resolveAssetId(r)))).filter((r) => r.startsWith('ast_')) : [];
-        const r = await sendTurn(threadId, { text, refs, llm: input.llm ?? null, ...(input.settings ? { settings: input.settings } : {}) }, { onDelta, onTool: (tool) => !turn.stop && patchMsg(replyId, (m) => ({ ...m, tool: tool.status === 'started' ? tool.name : null })) });
+        const r = await sendTurn(threadId, { text, refs, llm: input.llm ?? null, ...(input.settings ? { settings: input.settings } : {}), ...(input.mode ? { mode: input.mode } : {}), ...(input.autoBudget !== undefined ? { autoBudget: input.autoBudget } : {}) }, { onDelta, onTool: (tool) => !turn.stop && patchMsg(replyId, (m) => ({ ...m, tool: tool.status === 'started' ? tool.name : null })) });
         const failed = r.reason === 'error' || (!r.text && !r.proposal && r.reason !== 'canceled');
         if (failed) {
           const shown = failRef.current({ kind: 'error', message: r.error?.message ?? '' }, input);
@@ -227,6 +246,14 @@ export function useHomeThread(onFailure: FailureHandler): HomeThread {
         }
         const safety = r.reason === 'safety_blocked' && !r.text ? failRef.current({ kind: 'error', message: 'safety_blocked' }, input)?.text : null;
         patchMsg(replyId, (m) => ({ ...m, text: r.text || safety || m.text, status: 'done', tool: null, proposal: r.proposal?.kind === 'plan' ? r.proposal : null }));
+        // D-021 Auto: the server built the plan on a new canvas; the thread continues there (in Auto).
+        const built = r.auto?.changes.find((c) => c.kind === 'plan' && c.projectId && c.status === 'applied');
+        if (built?.projectId) {
+          rememberThread(`canvas:${built.projectId}`, threadId);
+          writeScopeMode(`canvas:${built.projectId}`, 'auto');
+          startFresh(HOME_THREAD_KEY);
+          builtRef.current?.({ projectId: built.projectId, proposalId: built.proposalId, title: built.summary });
+        }
       } catch (e) {
         const f = agentFailure(e);
         const shown = failRef.current(f, input);

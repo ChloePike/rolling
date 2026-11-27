@@ -2,7 +2,7 @@ import { useEffect, useSyncExternalStore } from 'react';
 import { getPrefs } from '@/lib/prefs';
 import { checkoutTopUp, getCredits as getSessionCredits } from '@/lib/session';
 import { apiFetch, ApiError, isApiError, isMockApi, openProjectChannel } from '@/features/overlays/backend';
-import { applyProposal, discardProposal, sendTurn, threadFor, type ApplyResult, type Proposal } from '@/features/overlays/agent';
+import { applyProposal, discardProposal, sendTurn, threadFor, type AgentMode, type ApplyResult, type AutoTurn, type Proposal } from '@/features/overlays/agent';
 import { listRuns } from '@/features/overlays/runs';
 import type { MockProjectRoom } from './graph/mockRoom';
 import { GraphStore } from './graph/store';
@@ -793,6 +793,10 @@ export interface GraphProposal {
 
 export interface AgentReply {
   text: string;
+  /** Real mode: the canvas thread (for Undo of Auto changes). */
+  threadId?: string;
+  /** D-021 Auto turns: changes applied and runs, against the budget. */
+  auto?: AutoTurn | null;
   proposal?: GraphProposal;
   /** A plan proposal (2–3 options): Build on canvas applies the picked option. */
   plan?: { proposalId: string; options: AgentPlanOption[] };
@@ -812,6 +816,10 @@ export interface AgentSendOptions {
   /** Current nodes, to describe a graph patch's changes by title. */
   nodes?: GraphNode[];
   onDelta?: (delta: string) => void;
+  /** D-021: Read / Edit / Auto, and Auto's per-turn budget. */
+  mode?: AgentMode;
+  autoBudget?: number;
+  onAuto?: (auto: AutoTurn) => void;
 }
 
 const SHOT_TONES = ['var(--c-tone-indigo)', 'var(--c-tone-teal)', 'var(--c-tone-plum)', 'var(--c-tone-sand)'];
@@ -856,14 +864,16 @@ async function sendRealAgentMessage(text: string, opts: AgentSendOptions): Promi
   const thread = await threadFor(`canvas:${projectId}`, { surface: 'canvas', projectId });
   const r = await sendTurn(
     thread.id,
-    { text, selection: opts.selection, refs: opts.refs, llm: opts.llm === 'default' ? null : opts.llm },
-    { onDelta: opts.onDelta },
+    { text, selection: opts.selection, refs: opts.refs, llm: opts.llm === 'default' ? null : opts.llm, ...(opts.mode ? { mode: opts.mode } : {}), ...(opts.autoBudget !== undefined ? { autoBudget: opts.autoBudget } : {}) },
+    { onDelta: opts.onDelta, ...(opts.onAuto ? { onAuto: opts.onAuto } : {}) },
     // Canvas threads stream on the project channel (D-014).
     (l) => subscribeProjectMessages(projectId, l),
   );
-  const reply: AgentReply = { text: r.text || r.error?.message || '', reason: r.reason };
-  if (r.proposal?.body.kind === 'graphPatch') reply.proposal = graphProposalFrom(r.proposal, opts.nodes) ?? undefined;
-  if (r.proposal?.body.kind === 'plan') reply.plan = { proposalId: r.proposal.id, options: planOptionsFrom(r.proposal) };
+  const reply: AgentReply = { text: r.text || r.error?.message || '', reason: r.reason, threadId: thread.id, auto: r.auto ?? null };
+  // A proposal Auto already applied shows in the change summary, not as a card to apply.
+  const open = r.proposal && r.proposal.status === 'proposed' ? r.proposal : null;
+  if (open?.body.kind === 'graphPatch') reply.proposal = graphProposalFrom(open, opts.nodes) ?? undefined;
+  if (open?.body.kind === 'plan') reply.plan = { proposalId: open.id, options: planOptionsFrom(open) };
   return reply;
 }
 
@@ -895,7 +905,10 @@ let proposalSeq = 0;
 export async function sendAgentMessage(text: string, opts: AgentSendOptions): Promise<AgentReply> {
   if (!isMockApi() && opts.projectId) return sendRealAgentMessage(text, opts);
   await new Promise((r) => setTimeout(r, MOCK_AGENT_LATENCY));
-  void opts;
+  if (opts.mode === 'read') {
+    // D-021 Read: the agent explains; it has no propose tools.
+    return { text: 'Read mode: I can explain and estimate, but nothing on the canvas changes. Switch to Edit or Auto to make the change.' };
+  }
   const state = room?.state;
   const shots = (state?.nodes ?? []).filter((n) => n.kind === 'video');
   const m = /shot\s*(\d+|[a-z])\b/i.exec(text);
