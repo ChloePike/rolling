@@ -254,8 +254,10 @@ export async function expectUpgradeModal(page: Page, title: string | RegExp) {
     await expect(dialog.getByRole('heading').first()).toHaveText(title);
     await expect(dialog.getByRole('button', { name: /^Continue with/ })).toBeVisible();
   } else {
+    // Payments off: the reason stays the headline and the notice under it says payments are not available (UX fix 7).
     await expect(dialog.getByTestId('upgrade-modal')).toHaveAttribute('data-phase', 'unavailable');
-    await expect(dialog).toContainText('Payments aren’t available yet');
+    await expect(dialog.getByRole('heading').first()).toHaveText(title);
+    await expect(dialog.getByTestId('upgrade-unavailable')).toContainText('Payments aren’t available yet');
   }
   return dialog;
 }

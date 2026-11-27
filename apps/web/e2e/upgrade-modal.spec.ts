@@ -126,14 +126,17 @@ test.describe('Upgrade modal', () => {
     await expect(page).toHaveURL(/\/settings\/team$/);
   });
 
-  test('payments not configured: the modal shows “Payments aren’t available yet” and closes cleanly', async ({ page }) => {
+  test('payments not configured: the modal keeps the reason headline, shows “Payments aren’t available yet” under it and closes cleanly', async ({ page }) => {
     await fast(page, { payments: 'off' });
     await asPlan(page, 'starter');
     await setMode(page, 'advanced');
     await page.goto('/create/quick');
     await page.locator('main aside [data-group="res"] button[data-locked]').click();
-    const dlg = modal(page, 'Payments aren’t available yet');
+    const dlg = modal(page, '1080p needs Plus');
     await expect(dlg).toBeVisible();
+    await expect(dlg.getByRole('heading').first()).toHaveText('1080p needs Plus');
+    await expect(dlg.getByTestId('upgrade-modal')).toHaveAttribute('data-phase', 'unavailable');
+    await expect(dlg.getByTestId('upgrade-unavailable')).toContainText('Payments aren’t available yet');
     await dlg.getByRole('button', { name: 'Close', exact: true }).last().click();
     await expect(dlg).toHaveCount(0);
     await expect(page.locator('main aside [data-group="res"] [aria-pressed="true"]')).toHaveText('720p');

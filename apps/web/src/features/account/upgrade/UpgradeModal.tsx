@@ -328,6 +328,18 @@ export function UpgradeModal({ request, open }: { request: UpgradeRequest; open:
   const values = reasonValues(reason, variant === 'team' ? 'team' : required === 'team' ? 'pro' : required);
   const pending = phase.kind === 'pending';
 
+  /** The headline and line under it for the reason the modal opened (the same copy the offer shows). */
+  const reasonHead = (): { title: string; sub: string } => {
+    if (variant === 'topUp') return { title: t('overlays.paywall.credits.title'), sub: t('overlays.paywall.credits.sub') };
+    if (variant === 'team') {
+      return reason.kind === 'team-invite'
+        ? { title: t('account.team.start.title'), sub: t('account.team.start.lead') }
+        : { title: t('account.upgradeModal.title.team'), sub: t('account.upgradeModal.sub.team') };
+    }
+    const titleKey = reason.kind === 'plan' && initial.member ? 'upgrade' : reason.kind;
+    return { title: t(`account.upgradeModal.title.${titleKey}`, values), sub: t(`account.upgradeModal.sub.${reason.kind === 'plan' ? 'plan' : reason.kind}`, values) };
+  };
+
   let body: React.ReactNode;
   let label: string;
   if (phase.kind === 'success') {
@@ -353,10 +365,20 @@ export function UpgradeModal({ request, open }: { request: UpgradeRequest; open:
       </div>
     );
   } else if (unavailable) {
-    label = t('account.upgradeModal.unavailable.title');
+    // Payments are off here: the headline still says why the modal opened; the notice under it says why it can't go on.
+    const head = reasonHead();
+    label = head.title;
     body = (
       <div className={styles.panel} data-testid="upgrade-modal" data-phase="unavailable">
-        <Head titleId={titleId} title={label} sub={t('account.upgradeModal.unavailable.sub')} onClose={() => onOpenChange(false)} closeLabel={t('account.upgradeModal.close')} />
+        <Head titleId={titleId} title={head.title} sub={head.sub} onClose={() => onOpenChange(false)} closeLabel={t('account.upgradeModal.close')} />
+        <div className={styles.notice} role="status" data-testid="upgrade-unavailable">
+          <p className={styles.noticeTitle}>
+            <FormattedMessage id="account.upgradeModal.unavailable.title" />
+          </p>
+          <p className={styles.noticeText}>
+            <FormattedMessage id="account.upgradeModal.unavailable.sub" />
+          </p>
+        </div>
         <button type="button" className={cx(styles.cta, styles.ctaQuiet, motion.press)} onClick={() => onOpenChange(false)}>
           <FormattedMessage id="account.upgradeModal.close" />
         </button>

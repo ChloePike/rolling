@@ -14,7 +14,7 @@ PW_AXE_PATH=/path/to/axe.min.js …                                             
 - Members get a plan through `POST /api/test/plan` (staging only). Nothing in the default run spends credits: quotes, forced failures (`options.forceFailure`, refunded) and refused starts only.
 - `PW_GENERATE=1` runs the specs that generate for real: Seedream 5.0 Flash images (about 7 credits with Enhance prompt), Grok Imagine Video 1.5 Lite at 480p for 1–2 s (about 6–12 credits) and one mature keyframe → animation chain (Z-Image Spicy + Wan 2.2 i2v Spicy, 480p, 1 s, Enhance prompt off, about 34 credits). Each charge is appended to `<PW_FULL_OUT>/spend.jsonl`. The suite budget is 500 credits ($5 retail, `SPEND_CEILING_CREDITS`).
 - Mature tests use only mildly explicit prompts about fictional adults. Hard limits are checked only at quote time (the rules refuse them before anything is held); no run is ever started with them.
-- While an environment takes no payments (`GET /api/billing/plans` → `paymentsEnabled: false`, staging today), every locked click opens the upgrade modal as “Payments aren’t available yet”; with payments on it is titled by the reason. `expectUpgradeModal` accepts either.
+- While an environment takes no payments (`GET /api/billing/plans` → `paymentsEnabled: false`, staging today), every locked click opens the upgrade modal titled by the reason (“The agent needs a plan”, “1080p needs Plus”) with a “Payments aren’t available yet” notice under it instead of the offer; with payments on it shows the offer. `expectUpgradeModal` checks the reason headline either way.
 - The crawl (X-1) never clicks sign-out, delete, buy, or plan-switch controls. It answers run starts, checkout and agent sends with stubbed errors, so it cannot spend.
 
 Sources: **PRD** = `docs/PRD.md`, **M*n*** = `docs/milestones.md`, **CF*n*** = `docs/canvas-flow.md` step, **D-*nnn*** = `docs/decisions.md`, **HO** = `docs/design/handoff.md`, **API** = `docs/api.md`.
@@ -39,7 +39,7 @@ Sources: **PRD** = `docs/PRD.md`, **M*n*** = `docs/milestones.md`, **CF*n*** = `
 |---|---|---|---|
 | Non-members browse | Home, Templates, Public library, Assets, Activity, Upgrade and Billing load with no errors | D-007 | GATE-1 |
 | `NO_PLAN` | The agent (threads, allowance) and run starts (tool and canvas) return `402 NO_PLAN`; quotes stay open. Top-up and auto top-up are members-only. | D-007, API | GATE-2 |
-| Upgrade modal keeps the brief | A non-member’s Home brief opens the upgrade modal in place: Agent mode “The agent needs a plan”, Image mode “Pick a plan to generate” (or “Payments aren’t available yet”). Escape keeps the brief and the URL. | D-007, CF13 | GATE-3, PROMPT-4 |
+| Upgrade modal keeps the brief | A non-member’s Home brief opens the upgrade modal in place: Agent mode “The agent needs a plan”, Image mode “Pick a plan to generate” (with the “Payments aren’t available yet” notice while payments are off). Escape keeps the brief and the URL. | D-007, CF13 | GATE-3, PROMPT-4 |
 | Resolution caps (API) | Video caps: Starter 720p, Plus 1080p, Pro 4K. Locked rows are `resolution_locked` with `lowestPlan` and nothing to start. MiniMax 768p needs Plus. Unknown labels are refused. | D-006 | GATE-4 |
 | Resolution caps (UI) | For Starter, 1080p is shown locked with “Available on Plus” | D-006, HO | GATE-5 |
 | Team required | Inviting without Team returns `402 TEAM_REQUIRED {currentPlan}`. Invite member opens the upgrade modal’s Team variant (seat stepper, monthly total from the config) in place. | D-013 | GATE-6 |
@@ -174,7 +174,7 @@ Sources: **PRD** = `docs/PRD.md`, **M*n*** = `docs/milestones.md`, **CF*n*** = `
 | Clip ops | Trim, speed, fade and dissolve persist. A stale revision gets 409; an invalid speed gets 4xx. | M7 | EDIT-2 |
 | Editor UI | Timeline canvas, monitor timecode, placeholder clips with Generate. The inspector speed control persists. | HO Editor | EDIT-3 |
 | Export | Three 1 s shots → Export 720p via the FFmpeg container → done → Download `.mp4`. Generated clips show their controls (transform, speed, volume, fade) in the inspector. | M7, CF11 | EDIT-4 |
-| Non-member Generate in the editor | A placeholder clip’s Generate opens the upgrade modal (“Pick a plan to generate”, or “Payments aren’t available yet”), never “Not enough credits”, shows no saved card and starts nothing | D-007 | EDIT-5 |
+| Non-member Generate in the editor | A placeholder clip’s Generate opens the upgrade modal (“Pick a plan to generate”, with the “Payments aren’t available yet” notice while payments are off), never “Not enough credits”, shows no saved card and starts nothing | D-007 | EDIT-5 |
 
 ## Uploads and downloads
 

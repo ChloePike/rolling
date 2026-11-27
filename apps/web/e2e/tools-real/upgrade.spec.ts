@@ -6,7 +6,7 @@ import { ME, stubApi } from './support';
  * stubbed API: Stripe Checkout opens in a popup, the popup's return page tells
  * the app and closes, `/api/me` refetches and the picked 1080p applies, with
  * the page URL unchanged throughout. Without Stripe keys the modal shows its
- * "Payments aren't available yet" state.
+ * "Payments aren't available yet" notice under the reason headline.
  */
 
 const PREFS = { ...ME.prefs, creationMode: 'advanced' };
@@ -60,12 +60,13 @@ test('1080p in the Advanced panel: checkout in a popup, the app keeps its URL, �
   await expect(page).toHaveURL(url);
 });
 
-test('payments not configured: “Payments aren’t available yet” inside the modal, nothing breaks', async ({ page, context }) => {
+test('payments not configured: the reason headline stays, “Payments aren’t available yet” under it, nothing breaks', async ({ page, context }) => {
   await billing(page, context, { paymentsEnabled: false });
   await page.goto('/create/quick');
   await page.locator('main aside [data-group="res"] button[data-locked]').click();
-  const dlg = page.getByRole('dialog', { name: 'Payments aren’t available yet' });
+  const dlg = page.getByRole('dialog', { name: '1080p needs Plus' });
   await expect(dlg).toBeVisible();
+  await expect(dlg.getByTestId('upgrade-unavailable')).toContainText('Payments aren’t available yet');
   await page.keyboard.press('Escape');
   await expect(dlg).toHaveCount(0);
   await expect(page).toHaveURL(/\/create\/quick$/);
@@ -81,5 +82,7 @@ test('a checkout that answers 503 (no Stripe keys) also lands on the unavailable
   await page.goto('/create/quick');
   await page.locator('main aside [data-group="res"] button[data-locked]').click();
   await page.getByRole('dialog', { name: '1080p needs Plus' }).getByRole('button', { name: 'Continue with Plus' }).click();
-  await expect(page.getByRole('dialog', { name: 'Payments aren’t available yet' })).toBeVisible();
+  const dlg = page.getByRole('dialog', { name: '1080p needs Plus' });
+  await expect(dlg.getByTestId('upgrade-modal')).toHaveAttribute('data-phase', 'unavailable');
+  await expect(dlg.getByTestId('upgrade-unavailable')).toContainText('Payments aren’t available yet');
 });

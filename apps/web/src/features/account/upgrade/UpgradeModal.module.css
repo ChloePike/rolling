@@ -53,6 +53,9 @@
 .perk svg{flex:none;color:var(--c-text-3)}
 
 .note{margin:0;font-size:13px;color:var(--c-text-2)}
+.notice{display:flex;flex-direction:column;gap:4px;padding:12px 14px;border-radius:10px;border:1px solid var(--c-border);background:var(--c-surface-2)}
+.noticeTitle{margin:0;font-size:13px;font-weight:600;color:var(--c-text-1)}
+.noticeText{margin:0;font-size:13px;line-height:1.5;color:var(--c-text-2)}
 .small{margin:0;font-size:12px;line-height:1.5;color:var(--c-text-4)}
 .error{margin:0;font-size:13px;color:var(--c-danger)}
 
