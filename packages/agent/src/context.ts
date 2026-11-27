@@ -67,9 +67,8 @@ export function settingsSection(s: TurnSettings | undefined): string | null {
   return `# Prompt box settings\nThe user picked ${parts.join(', ')} on the prompt box. Every plan option uses these unless the brief itself names a different one; the server checks.`;
 }
 
-/** Which surfaces a section of the system prompt (by its `# ` heading) is for; unlisted sections go everywhere. */
+/** Which surfaces a section of the system prompt (by its `# ` heading) is for; unlisted sections (role, reply, when not to plan, how to work) go everywhere. */
 const SECTION_SURFACES: Record<string, readonly Surface[]> = {
-  'When not to plan': ['home', 'canvas'],
   'Shots are fields, not prose': ['home', 'canvas'],
   Continuity: ['home', 'canvas'],
   'Plans (`propose.plan`)': ['home', 'canvas'],

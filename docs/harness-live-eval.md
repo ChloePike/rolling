@@ -18,8 +18,8 @@ The first live run of the harness described in `docs/harness-research.md`: all 8
 | 2 | After the first round of fixes | 88 | $0.073 |
 | 3 to 6 | After each further round | 88 each | $0.063, $0.066, $0.066, $0.063 |
 | 7 | Final harness | 88 | $0.053 |
-| Partial | 43 partial runs of 1 to 15 cases (smoke tests, repeats of weak cases, debugging) and 3 classifier probes | | $0.127 |
-| **Total** | 50 result files | | **$0.63 of the $3 budget** |
+| Partial | 45 partial runs of 1 to 27 cases (smoke tests, repeats of weak cases, debugging) and 3 classifier probes | | $0.153 |
+| **Total** | 52 result files | | **$0.65 of the $3 budget** |
 
 Costs are the gateway's `usage.cost` per response, classifier calls included.
 
@@ -232,7 +232,7 @@ Counted over run 1 (50 plans, 145 options, 559 shots, 220 declared characters) a
 
 ## 6. What is left
 
-- **Run-to-run variance.** Runs 2 to 7 passed 85 to 87 of 88. Still seen in the last runs: a small-talk answer of three short sentences instead of two (about 1 in 5), the contradiction brief answered without a question (in run 7 only; the rule was sharpened after it and held in 4 of 4 repeats), the stringified `options` list (about 1 plan in 25; recovered on the retry since the clearer error), and the empty response after two read tools (recovered by the forced tool call in the runs since).
+- **Run-to-run variance.** Runs 2 to 7 passed 85 to 87 of 88. After run 7 the small-talk, clarify and mature-off rules were kept on every surface and the 27 edit, form, timeline and talking-head cases were run twice more: 27 of 27 both times. Still seen in the last runs: a small-talk answer of three short sentences instead of two (about 1 in 5), the contradiction brief answered without a question (in run 7 only; the rule was sharpened after it and held in 4 of 4 repeats), the stringified `options` list (about 1 plan in 25; recovered on the retry since the clearer error), and the empty response after two read tools (recovered by the forced tool call in the runs since).
 - **Six-second bumpers.** The model wants two shots in 6 seconds. It now gets them on a model that takes 3-second shots (Wan 3.0) when the user picked none; with a picked model it is refused once and merges them.
 - **Keyframes with three or more characters** run to 185 to 235 words against a 180-word target for Seedream (an assumed limit, `families.ts`). The descriptors are repeated by design; whether the reference pictures alone would hold the faces is the generation test below.
 - **Estimates for mature plans** price the model the plan names, while the run is re-routed to the mature models. Not new, not changed here.

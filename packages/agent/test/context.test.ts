@@ -73,6 +73,7 @@ describe('buildContext', () => {
     expect(editor).not.toContain('# Shots are fields');
     expect(tool).toContain('# Tool forms (`propose.fields`)');
     expect(tool).not.toContain('# Plans');
+    for (const text of [home, canvas, editor, tool]) expect(text).toContain('# When not to plan');
     // One line per video model, default first: a Home plan needs no models.capabilities call.
     expect(home).toMatch(/# Video models\n.*\nbytedance\/seedance-2\.5 \| 4-15 s \| default, audio, default resolution 480p \| credits per 5 s: 480p \d+/);
     expect(home).toContain('minimax/minimax-h3 | 4-15 s | silent');
