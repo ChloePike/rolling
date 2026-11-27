@@ -288,7 +288,7 @@
   "account.team.gets": "チームに含まれる内容",
   "account.team.gets.credits": "毎月{n, number}の共有クレジット",
   "account.team.gets.jobs": "同時{n, plural, one {#件} other {#件}}の生成",
-  "account.team.gets.agent": "毎月{amount}分のエージェント利用",
+  "account.team.gets.agent": "毎月{amount}のエージェント利用",
   "account.team.perSeat": "追加シートごとに、毎月{credits, number}クレジット、同時生成{jobs, number}件（最大{max, number}件）、エージェント利用{agent}が加わります。",
   "account.team.perks": "4Kの動画と画像、チャージのたびに+{pct, number, ::percent}",
   "account.team.cta.start": "Teamを始める",
