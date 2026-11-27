@@ -2,6 +2,47 @@
 
 Decisions made after the original spec. Where this file disagrees with `PRD.md`, `architecture.md`, `api.md` or `harness.md`, this file wins. Newest first.
 
+## D-037 — Imported voiceover: upload or record, rights note, lip-sync, no mature lip-sync with an uploaded voice (2026-11-27)
+
+Owner: users bring their own voiceover; TTS and voice cloning stay “coming soon” (no provider chosen).
+
+- **Import.** Voiceover audio (MP3, WAV, M4A, AAC, OGG; or a browser recording through MediaRecorder, WebM/Opus) goes into Assets as an audio asset through the shared upload queue (D-011, straight to R2); media.process probes its length and stores the waveform. It lands on the voice lane at the playhead (Effects → Import voiceover). On export every voice-lane clip is evened out to −16 LUFS (one-pass `loudnorm`) before the mix; social presets then normalise the mix to −14 LUFS (D-034).
+- **Rights.** The uploader confirms “I have the rights to use this voice” (one line, on import and on the Avatar page). It is stored on the asset (`meta.voiceRights {by, at}`; `voiceRights: true` on `POST /api/assets/uploads`, or `POST /api/assets/:id/voice-rights`). Lip-sync from the editor refuses a voice without it (`VOICE_RIGHTS_REQUIRED`).
+- **Real-person rule (D-005).** An uploaded voice may be a real, identifiable person's, so a **mature lip-sync with an uploaded voice is blocked** (plan code `mature_voice`, `packages/core/generation/specPlan.ts`). Until a TTS provider exists, that means no mature lip-sync at all. Non-mature lip-sync is allowed.
+- **Editor.** Drag, trim, gain and fade work as on any clip; Effects → “Duck under the voiceover” sets `duckUnder` on a music clip (new `setDuck` op; the renderer's sidechain compressor does the ducking). “Split voiceover on pauses” runs ffmpeg `silencedetect` in the container (`/silences`) and cuts in the middle of each pause (parts ≥ 0.8 s), then moves part *i* to the start of shot *i* when that keeps the lane free of overlaps.
+- **Lip-sync.** Effects → “Lip-sync to voice” on a shot: the shot's first frame (or a chosen picture) and the voice clip's range (cut in the container, `/audio-cut`) go to the Avatar lip-sync model (`lumina/wan2.7-i2v-spicy`, D-009) as an `avatar` spec through quote → hold → settle (RunConfirm above the threshold). The result replaces the shot in place. The Avatar tool page takes the same uploaded voiceover.
+- **Agent.** When a project's voice lane holds an imported voiceover, the agent's context lists each clip's place, length and transcript (Whisper, D-033; the transcript runs free on import) so plans can pace shots to the voice.
+
+## D-036 — Extend clip: last frame → image-to-video, placed after the original (2026-11-27)
+
+- The container extracts the clip's true last frame (`-sseof` and decode to the end with `-update 1`, `/last-frame`), stored as an image asset (`meta.frameOf: "last"`, a platform asset when the clip was generated, D-005).
+- The continuation is a normal `video` PromptSpec with `inputs.firstFrameAssetId` = that frame and the user's prompt: quote → hold → settle, RunConfirm and the paywall like every run. Model: the clip's own model when it takes a first frame (`i2v`), else Auto. Ratio follows the clip; Enhance prompt is off (the continuation keeps the shot's look).
+- Placement (`timeline_placements`, migration 0031): when the run lands the new clip goes right after the original on its track; later clips move right by its length. The join skips the new clip's first frame (it repeats the original's last frame), so the cut is seamless. A run started through `POST …/placed-runs` shows a planned (not generated) clip at once; a failed or canceled run takes it back out and closes the gap.
+- Hyperouter lists an `extend` operation on three models (Grok Imagine Video, Seedance 2.5, Seedance 2.5 Flash); we use first-frame i2v instead because it works on every i2v model and keeps the original untouched.
+
+## D-035 — Brand kit per workspace (2026-11-27)
+
+- One kit per workspace (`brand_kits`, JSON): logo (an image asset), up to 6 brand colors, up to 4 fonts (WOFF2 / TTF / OTF up to 4 MB in R2 under `ws/<id>/brand/fonts/`; the uploader confirms the font's license allows use in published videos; the file signature is checked), a heading font and a caption font, intro and end cards (text, 1–5 s, background = first brand color by default, optional logo), a logo watermark (corner, opacity, size) and a tone note.
+- Exports with “Apply brand kit”: the watermark is overlaid, the cards are rendered before and after the cut (`drawtext` in the card font, or bundled Noto Sans / Noto Sans CJK), caption looks use the caption font and the first brand color. The container reads each font file's real family name (`fc-scan`) and points libass at the job's font folder.
+- The agent's context carries a one-line summary of the kit (colors, fonts, cards, tone) as data.
+- Where: Effects → Brand kit, and from the export dialog.
+
+## D-034 — Export presets, reframing, Smoother motion and Resize (2026-11-27)
+
+- **Presets:** `vertical_9x16` (1080×1920, TikTok / Reels / Shorts, 8 Mbps, VBV 10 Mbps), `square_1x1` (1080×1080, 6 Mbps), `landscape_16x9` (1920×1080, YouTube, 10 Mbps, AAC 384 kbps) next to the original-aspect `mp4_1080p` / `mp4_720p`. All H.264 High, yuv420p, AAC 48 kHz; social presets normalise the mix to **−14 LUFS integrated, −1 dBTP** (one-pass `loudnorm`). Several presets export at once (one export per preset, `batch_id`). Values live in `packages/core/src/export.ts` (`PRESET_ENCODE`).
+- **Smart reframe:** when the preset's aspect differs from the cut's, each shot of the base video track covers the frame and is cropped around its subject instead of letterboxed. The subject path comes from saliency on 64×64 grayscale frames sampled at 3 fps (edge energy + motion, center prior), smoothed both ways, dead-zoned and speed-limited (≤ 0.25 frame widths per second). We do not call the paid `lumina/face-detect` model per frame: the free tracker runs next to the render. Manual override per clip (`reframe`: auto / center / a fixed point).
+- **Smoother motion:** frame interpolation to 48 or 60 fps with ffmpeg `minterpolate` (motion-compensated, scene cuts not blended), labelled honestly (“adds in-between frames by estimating motion; fast moves can wobble; slower to export”), with a 4 s low-resolution preview at the playhead (not saved to Assets). Exports with it are capped at 3 minutes.
+- **Resize, not AI upscaling.** Neither the fixture nor the live Hyperouter listing (2026-11-27) has an upscale or super-resolution model, so “Resize to 1080p / 4K” is Lanczos scaling plus a mild unsharp in the container, and says so. Plan caps apply (D-006): 1080p video needs Plus, 4K needs Pro; images up to 1080p on every plan, 4K on Pro. The result is a new asset and, from a canvas node, its new version.
+- Container work (exports, previews, reframing, interpolation, resize) is free like exports.
+
+## D-033 — Auto captions with Workers AI Whisper (2026-11-27)
+
+- Model: `@cf/openai/whisper-large-v3-turbo` (the newest Whisper on Workers AI: word timings, language detection), through an `AI` binding in the staging and production Worker envs. The container renders the audio to transcribe (whole mix, the voice lane, or one clip) as mono 16 kHz MP3 chunks of 4 minutes; each chunk is one Whisper call in PostWorkflow.
+- Cues: cut at sentence ends, pauses over 0.7 s, two lines (Latin 42, CJK 16 characters per line; Bold social: one short line) and 6 s; at least 0.8 s on screen. They land on the caption track as ordinary, editable caption clips; the track keeps the detected language and the look.
+- Looks: **Clean** (soft box), **Bold social** (large, outlined, higher in the frame), **Minimal** (small, shadow). Fonts: the brand caption font, else Noto Sans; CJK text uses the regional Noto Sans CJK family (JP, KR, SC, TC). Fonts bundled in the container: Noto Sans (fonts-noto-core), Noto Sans CJK (fonts-noto-cjk), DejaVu Sans; all SIL OFL.
+- Burn-in on export with libass (`ass` filter), optional per export; SRT and WebVTT downloads are built from the caption track in the browser.
+- **Price: free.** Whisper costs $0.000513 per audio minute: a 15-minute cut is under one cent, below one credit even with the 3× markup, so a quote would only round up. Captions are free with caps instead (15 minutes per job, 240 minutes per workspace per day; `POST_PRODUCTION` in `packages/core/src/pricing/config.ts`). Members only (D-007).
+
 ## D-023 — UI localization: Simplified Chinese, Traditional Chinese, Japanese, Korean (2026-11-27)
 
 Owner: Asian markets matter. The UI ships in English (source), `zh-CN`, `zh-TW`, `ja` and `ko`. This supersedes the language list in `handoff.md` §6 (first wave ja, zh-TW, zh-HK, ko): `zh-HK` is no longer listed and reads as Traditional Chinese.

@@ -71,3 +71,22 @@ describe('timeline sync diff', () => {
     );
   });
 });
+
+describe('timelineDiff and post-production settings', () => {
+  it('sends the whole cut when a caption look or a reframing changes (no clip op covers them)', async () => {
+    const { timelineDiff } = await import('./realTimeline');
+    const shot = { id: 'v1', assetId: 'a', in: 0, out: 2, start: 0 };
+    const make = (style?: 'minimal', reframe?: boolean): Edl => ({
+      fps: 24,
+      width: 1080,
+      height: 1920,
+      tracks: [
+        { id: 'C1', kind: 'caption', clips: [], ...(style && { style }) },
+        { id: 'V1', kind: 'video', clips: [{ ...shot, ...(reframe && { reframe: { mode: 'center' as const } }) }] },
+      ],
+    });
+    expect(timelineDiff(make(), make('minimal'))).toBeNull();
+    expect(timelineDiff(make(), make(undefined, true))).toBeNull();
+    expect(timelineDiff(make(), make())).toEqual([]);
+  });
+});

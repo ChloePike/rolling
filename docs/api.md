@@ -631,6 +631,30 @@ Events on the project channel (every payload has `exportId`, `projectId`, `canva
 
 Rendering: ExportWorkflow signs every input (4 h), presigns a `PUT` for `ws/<ws>/exports/<id>/export.mp4` (R2 S3 API, `aws4fetch`; without S3 credentials the workflow pulls the file from the container instead) and calls the `FfmpegRenderer` container: `POST /render` (job: cropped EDL, output size and rate, inputs, `putUrl`) → `GET /render/:id` polled with backoff (2 s → 15 s) → `POST /thumb` for the poster → `DELETE /render/:id`. The container builds the filter graph (`containers/ffmpeg/src/graph.ts`: trims, `setpts`/`atempo` speed, reverse, scale/pad, transforms through `overlay`, fades, `xfade` dissolves, ASS captions, per-track `amix`, `sidechaincompress` ducking, keyframed gain) and writes H.264/AAC MP4 with `+faststart`. All renders run in one named container instance (`export`). Tests replace it with `setRendererForTests`; `MEDIA_CONTAINER=off` fails exports with `renderer_unavailable`. Local `wrangler dev`: the container must reach the signed media URLs, i.e. `PRIVATE_MEDIA_BASE_URL`/`PUBLIC_APP_URL` must be reachable from Docker.
 
+## Post-production (D-033 .. D-037)
+
+Editors of the project's workspace; members only where it generates (`402 NO_PLAN`). Captions, resize, previews and voiceover split are free (`POST_PRODUCTION` in pricing config); extend and lip-sync are runs (quote → hold → settle). Logic in `apps/api/src/post/*`, PostWorkflow and the FFmpeg container.
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/api/canvases/:id/export` | Also takes `presets?: ExportPreset[]` (batch: one export per preset with `preset`, same `batch_id`) and `options?: { burnCaptions?, interpolate?: 48 \| 60, brand?, preview? }` → `201 { export, exports }`. Presets: `mp4_1080p`, `mp4_720p`, `vertical_9x16`, `square_1x1`, `landscape_16x9`. `preview` renders ≤ 4 s at 540p and registers no asset. `422 data.reason: PREVIEW_TOO_LONG \| INTERPOLATE_TOO_LONG (> 180 s) \| PREVIEW_BATCH`. `ExportView` adds `options`, `batchId`, `preview` |
+| POST | `/api/canvases/:id/captions` | `{ source?: {kind:"timeline"} \| {kind:"voice"} \| {kind:"clip", clipId}, style?: "clean" \| "bold_social" \| "minimal", language?: "auto" \| code, replace?: true, transcriptOnly?: false }` → `202 { job: PostJobView }`. `422 data.reason: NO_AUDIO \| TOO_LONG` (15 min), `429 RATE_LIMITED data.reason: DAILY_LIMIT` (240 min / workspace / day). The cues land on the caption track as one timeline patch (`timeline.patched`), with `setCaptionTrack { style, lang }`; `transcriptOnly` stores the transcript on the voice asset (`meta.transcript`) |
+| GET | `/api/post-jobs/:id` | `{ job: PostJobView }` (`kind: captions \| transcript \| resize`, `status`, `progress`, `result`: captions `{ language, languageProbability, cues, audioSeconds, transcriptKey, text }`, resize `{ assetId, target, width, height, version }`, `error`) |
+| POST | `/api/canvases/:id/extend/quote` | `{ clipId, prompt, model?, seconds?, resolution? }` → the run quote (`QuoteResponse`) plus `placementId`, `frameAssetId`, `model`. Start it with `POST /api/runs { quoteId }` (placed when it lands) or `POST /api/canvases/:id/placed-runs { quoteId }` (a planned clip shows at once) |
+| POST | `/api/canvases/:id/lipsync/quote` | `{ shotClipId, voiceClipId, pictureAssetId?, prompt?, model? }` → quote + `placementId`, `photoAssetId`, `audioAssetId`. `422 data.reason: VOICE_RIGHTS_REQUIRED \| NOT_A_SHOT \| NOT_A_VOICE`. The result replaces the shot |
+| POST | `/api/canvases/:id/placed-runs` | `{ quoteId }` → `201 { runId, status, placedClipId }` |
+| POST | `/api/canvases/:id/voiceover/split` | `{ clipId, assign?: true, minSilence?, noiseDb? }` → `{ revision, parts, silences }` |
+| POST | `/api/assets/:id/resize` | `{ target: "1080p" \| "4K", projectId?, nodeId? }` → `202 { job }`; `402 NO_PLAN data.reason: resolution_locked, lowestPlan`; `422 data.reason: ALREADY_LARGE \| TOO_LONG \| NOT_RESIZABLE` |
+| POST | `/api/assets/:id/voice-rights` | the uploader confirms the rights to an audio asset's voice → `{ ok, voiceRights: { by, at } }`. Uploads take `voiceRights: true` too |
+| GET | `/api/brand-kit` | `{ brandKit }` (`BrandKit` from `@rolling/core/post` plus `fonts[].url`, `logoUrl`: signed, 1 h) |
+| PUT | `/api/brand-kit` | `BrandKitInput` (logo asset, colors `#RRGGBB` ≤ 6, heading/caption font ids, `intro`/`outro` cards, `watermark`, `tone`) → `{ brandKit }` |
+| POST | `/api/brand-kit/fonts` | raw font body, `content-type` font/woff2 \| font/ttf \| font/otf, `x-file-name`, `x-font-family?`, `x-license-confirmed: true` → `201 { brandKit }`; `415` wrong type or signature, `413` over 4 MB, `422` without the license confirmation or over 4 fonts |
+| DELETE | `/api/brand-kit/fonts/:fontId` | → `{ brandKit }` |
+
+New timeline ops: `setCaptionTrack { trackId, style?, lang? \| null }`, `setReframe { clipId, reframe: { mode: auto \| center \| manual, x?, y? } \| null }`, `setDuck { clipId, duckUnder: trackId[] }`. Caption tracks carry `style` and `lang`; media clips carry `reframe`.
+
+Container (`containers/ffmpeg`): `RenderJob` adds `encode`, `reframe`, `interpolateFps`, `captions` (resolved look; `null` = no burn-in), `fonts`, `brand`, `audioOnly` (MP3 chunks, `GET /render/:id/file?part=n`) and `voiceLufs`. New routes: `POST /last-frame { url, width?, put? }`, `POST /silences { url, start?, duration?, noiseDb?, minSilence? }`, `POST /audio-cut { url, start, duration, put? }`, `POST /jobs { id, kind: "resize", media, url, short: 1080 \| 2160, duration?, putUrl? }`, `GET /jobs/:id`, `GET /jobs/:id/file`, `DELETE /jobs/:id`.
+
 ## Sharing
 
 Share settings: `audience` (`link` = anyone with the link, default; `workspace` = signed-in members of the project's workspace), `allowDownload` (false), `showPrompt` (true; prompt fields — any `params` key containing "prompt" — are left out of the snapshot and the read when false), `showOnProfile` (false; "Publish to profile": the share's cover — first video, else first image — appears on the author's public profile when it is rated safe).

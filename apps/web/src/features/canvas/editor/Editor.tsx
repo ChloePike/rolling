@@ -6,6 +6,7 @@ import { useModels } from '@/lib/models';
 import { MenuPopover, type MenuEntry } from '../layers/Menu';
 import { catalogCredits, findModel } from '../pricing';
 import { ExportDialog } from './ExportDialog';
+import { usePostProduction } from './post/usePostProduction';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent } from 'react';
 import { useIntl } from 'react-intl';
@@ -505,6 +506,17 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
     },
   ];
 
+  // Post-production (D-033 .. D-037): captions, extend, lip-sync, reframe, voiceover; in the Effects menu.
+  const post = usePostProduction({
+    project,
+    edl: state.edl,
+    selected: selected ? { clip: selected.clip, track: selected.track } : null,
+    playheadTime: playhead.time,
+    commit: (ops, select) => dispatch({ type: 'commit', ops, animate: true, ...(select ? { select } : {}) }),
+    runFlow,
+    real,
+  });
+
   /** Bin Assets / Public: adds the item at the end of the matching track. */
   const insertFromBin = (item: BinInsert) => {
     const kind = item.kind === 'audio' ? 'voice' : 'video';
@@ -764,7 +776,7 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
         onGenerate={requestRun}
         generateCredits={shotCredits}
         onAddMarker={addMarker}
-        effects={effectEntries}
+        effects={[...effectEntries, ...post.entries]}
         effectsOpen={effectsOpen}
         onEffectsOpenChange={setEffectsOpen}
         onTextTool={() => setFocusCaption((n) => n + 1)}
@@ -777,8 +789,10 @@ function EditorLoaded({ project, initialAsk, onClose, onOpenOnCanvas, onRequestR
         projectId={project.id}
         edl={state.edl}
         marks={state.marks}
+        playheadTime={playhead.time}
         onDone={() => toast.show({ message: t('editor.export.toast') })}
       />
+      {post.element}
       {runFlow.element}
       {/* No plan (D-007): the shared upgrade modal; the kept ask continues once the plan is active. */}
       <UpgradeGate open={joinOpen} reason={{ kind: 'agent' }} onJoined={resumeAsk} onClose={() => setJoinOpen(false)} />

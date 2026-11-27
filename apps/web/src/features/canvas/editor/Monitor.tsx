@@ -5,6 +5,7 @@ import { Icon } from './icons';
 import type { EditorProject } from './mocks';
 import { gainAt, pictureAt } from './playback';
 import { usePlayhead, type PlayheadStore } from './playhead';
+import { captionPreviewStyle } from './post/usePostProduction';
 import { formatTimecode } from '@rolling/core/timeline';
 import { clipEnd, edlDuration, sourceTime, type Clip, type Edl, type MediaClip } from '@rolling/core/timeline';
 
@@ -38,6 +39,8 @@ export function Monitor({ project, edl, playhead, hiddenTracks, mutedTracks, onM
   const picture = pictureAt(edl, Math.min(playhead.time, edlDuration(edl) - 1e-6), hiddenTracks);
   const nodeOrder = Object.keys(project.shots);
   const t_ = (id: string) => intl.formatMessage({ id });
+  // A caption look chosen in post-production (D-033) previews here; the default keeps the approved design.
+  const captionStyle = edl.tracks.some((tr) => tr.kind === 'caption' && tr.style) ? captionPreviewStyle(edl) : undefined;
 
   return (
     <section aria-label={t_('editor.monitor.label')} className={styles.monitor}>
@@ -57,7 +60,7 @@ export function Monitor({ project, edl, playhead, hiddenTracks, mutedTracks, onM
             />
           ))}
           {picture.caption ? (
-            <span className={styles.monitorCaption} data-testid="monitor-caption">
+            <span className={styles.monitorCaption} data-testid="monitor-caption" style={captionStyle}>
               {picture.caption.text}
             </span>
           ) : null}

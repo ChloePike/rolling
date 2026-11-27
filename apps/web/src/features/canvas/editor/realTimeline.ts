@@ -49,6 +49,9 @@ const isMedia = (c: Clip): c is MediaClip => 'in' in c;
  * redo and reset, whose reducer steps carry no ops.
  */
 export function timelineDiff(from: Edl, to: Edl): TimelineOp[] | null {
+  // Track settings (caption look and language, D-033) have no clip op: send the whole cut.
+  const trackProps = (e: Edl) => JSON.stringify(e.tracks.map(({ clips: _c, ...rest }) => rest));
+  if (trackProps(from) !== trackProps(to)) return null;
   const a = clips(from);
   const b = clips(to);
   const ops: TimelineOp[] = [];

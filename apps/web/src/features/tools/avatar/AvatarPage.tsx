@@ -21,6 +21,7 @@ import layout from '../shared/ToolLayout.module.css';
 import { modelIdOf, segModels, useToolModels } from '../shared/useToolModels';
 import type { ComposerPill, FeedItem, ScriptDraft } from '../types';
 import styles from './Avatar.module.css';
+import { attestVoiceRights } from '@/features/canvas/editor/post/api';
 
 const EMOTIONS = ['calm', 'warm', 'upbeat', 'serious'];
 /** Presenting styles (prompt direction, `avatarHints`); names in messages. */
@@ -65,6 +66,11 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
   const [scene, setScene] = useState<LibraryPick | null>(null);
   /** The voice track: an audio asset from the user's Assets (uploaded from the picker if new). */
   const [track, setTrack] = useState<{ id: string; name: string; seconds: number | null } | null>(null);
+  /** D-037: the uploader confirms the rights to the voice before it drives a lip-sync. */
+  const [voiceRights, setVoiceRights] = useState(false);
+  useEffect(() => {
+    if (track && voiceRights) void attestVoiceRights(track.id).catch(() => {});
+  }, [track, voiceRights]);
   const [customOpen, setCustomOpen] = useState(false);
   const [customText, setCustomText] = useState('');
   const [customPersonas, setCustomPersonas] = useState<string[]>([]);
@@ -278,6 +284,9 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
                 toast.show({ message: t('tools.avatar.voice.added', { file: pick.name }) });
               }}
             />
+            <label className={styles.example} data-voice-rights="">
+              <input type="checkbox" checked={voiceRights} onChange={(e) => setVoiceRights(e.target.checked)} /> <FormattedMessage id="post.rights" />
+            </label>
           </>
         )}
       </AsideCard>
@@ -330,6 +339,7 @@ export function AvatarPage({ initialOverlay, models: modelsOverride, plan: planP
         const photoId = portrait?.assetId;
         if (!photoId) return t('tools.avatar.needPhoto');
         if (!track) return t('tools.avatar.needVoice');
+        if (!demo && !voiceRights) return t('post.rights.needed');
         const setting = adv && p.bg === 'reference' ? { keepPhoto: true as const } : scene ? { scene: scene.promptEn || scene.title } : { keepPhoto: true as const };
         return {
           kind: 'avatar',

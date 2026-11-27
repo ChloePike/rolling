@@ -3,6 +3,7 @@ import { mockData } from '@/lib/api/mode';
 import { assembleFromScript } from '@rolling/core/timeline';
 import { planCutTo } from '@rolling/core/timeline';
 import { edlDuration, type Edl, type TimelineOp } from '@rolling/core/timeline';
+import type { ExportOptions as RenderOptions, ExportPreset } from '@rolling/core/export';
 import type { GraphNode } from '@rolling/core/graph';
 import { apiFetch, assetMediaUrl, isApiError, isMockApi } from '@/features/overlays/backend';
 import { agentFailure, applyProposal, sendTurn, threadFor, type AgentFailure, type Proposal } from '@/features/overlays/agent';
@@ -213,10 +214,14 @@ export async function mockRun(run: RunRequest): Promise<RunOutcome> {
 /* ---------- Export (`POST /api/canvases/:id/export` → ExportWorkflow + FFmpeg; progress over the project socket) ---------- */
 
 export interface ExportOptions {
-  /** Whole cut, or the mark in → mark out range. */
-  range: 'all' | 'marks';
+  /** Whole cut, or the mark in → mark out range (or an explicit range: previews). */
+  range: 'all' | 'marks' | { start: number; end: number };
   marks: { in: number; out: number };
   resolution: '720p' | '1080p';
+  /** A social preset instead of the original aspect at `resolution` (D-034). */
+  preset?: ExportPreset;
+  /** Captions burn-in, Smoother motion, brand kit, preview (D-033 .. D-035). */
+  options?: RenderOptions;
 }
 
 export type ExportEvent =
@@ -292,7 +297,7 @@ function startExportReal(projectId: string, opts: ExportOptions, onEvent: (e: Ex
   };
   const session = openSession(projectId);
   const canvasId = session?.canvasId() ?? canvasIdFor(projectId);
-  const range = opts.range === 'marks' && opts.marks.out > opts.marks.in ? { start: opts.marks.in, end: opts.marks.out } : undefined;
+  const range = typeof opts.range === 'object' ? opts.range : opts.range === 'marks' && opts.marks.out > opts.marks.in ? { start: opts.marks.in, end: opts.marks.out } : undefined;
   // Events can arrive before the POST answers: keep them until the id is known.
   const early: { type: string; payload: Record<string, unknown> }[] = [];
   const onMessage = (msg: { type: string; payload: Record<string, unknown> }) => {
@@ -312,7 +317,7 @@ function startExportReal(projectId: string, opts: ExportOptions, onEvent: (e: Ex
   });
   apiFetch<{ export: ExportView }>(`/canvases/${encodeURIComponent(canvasId)}/export`, {
     method: 'POST',
-    body: { preset: opts.resolution === '720p' ? 'mp4_720p' : 'mp4_1080p', ...(range ? { range } : {}) },
+    body: { preset: opts.preset ?? (opts.resolution === '720p' ? 'mp4_720p' : 'mp4_1080p'), ...(range ? { range } : {}), ...(opts.options ? { options: opts.options } : {}) },
   }).then(
     ({ export: v }) => {
       if (stopped) return;
@@ -338,8 +343,8 @@ function startExportReal(projectId: string, opts: ExportOptions, onEvent: (e: Ex
 export function startExport(projectId: string, edl: Edl, opts: ExportOptions, onEvent: (e: ExportEvent) => void): () => void {
   if (!isMockApi()) return startExportReal(projectId, opts, onEvent);
   const fail = typeof location !== 'undefined' && new URLSearchParams(location.search).get('mock') === 'exportfail';
-  const from = opts.range === 'marks' ? opts.marks.in : 0;
-  const to = opts.range === 'marks' ? opts.marks.out : edlDuration(edl);
+  const from = typeof opts.range === 'object' ? opts.range.start : opts.range === 'marks' ? opts.marks.in : 0;
+  const to = typeof opts.range === 'object' ? opts.range.end : opts.range === 'marks' ? opts.marks.out : edlDuration(edl);
   let p = 0;
   const timer = setInterval(() => {
     p = Math.min(1, p + 0.1);
@@ -351,9 +356,9 @@ export function startExport(projectId: string, edl: Edl, opts: ExportOptions, on
     onEvent({ type: 'progress', progress: p });
     if (p >= 1) {
       clearInterval(timer);
-      const blob = new Blob([JSON.stringify({ projectId, range: [from, to], resolution: opts.resolution, edl }, null, 2)], { type: 'application/json' });
+      const blob = new Blob([JSON.stringify({ projectId, range: [from, to], resolution: opts.resolution, preset: opts.preset ?? null, options: opts.options ?? {}, edl }, null, 2)], { type: 'application/json' });
       const exportId = `exp_${Date.now().toString(36)}`;
-      onEvent({ type: 'done', exportId, url: URL.createObjectURL(blob), fileName: `${projectId}-${exportId}.edl.json`, seconds: Math.max(0, to - from) });
+      onEvent({ type: 'done', exportId, url: URL.createObjectURL(blob), fileName: `${projectId}-${exportId}${opts.preset ? `-${opts.preset}` : ''}.edl.json`, seconds: Math.max(0, to - from) });
     }
   }, MOCK_EXPORT_TICK);
   return () => clearInterval(timer);
