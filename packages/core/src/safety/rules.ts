@@ -103,6 +103,13 @@ const ANIMAL_EN =
 const ANIMAL_ZH = '(?:猫(?![耳娘女])|貓(?![耳娘女])|狗(?!仔)|犬|马(?![上桶路赛克甲尾])|馬(?![上桶路賽克甲尾])|猪|豬|驴|驢|山羊|绵羊|綿羊|母牛|公牛|猴子|动物|動物|畜生|牲口|牲畜)';
 const SEX_ACT_EN =
   '(?:sex|fuck\\p{L}*|intercourse|blowjobs?|masturbat\\p{L}*|jerk(?:s|ed|ing)? off|jack(?:s|ed|ing)? off|wank\\p{L}*|hump\\p{L}*|penetrat\\p{L}*|cum(?:s|ming)?|ejaculat\\p{L}*|rub(?:s|bing)? (?:his|her|their) (?:cock|dick|penis|pussy|clit)|grind\\p{L}*)';
+// "sexual act(s)/intercourse/activity …": "sexual" alone (tension, energy, chemistry) is not an act.
+// "sexually" counts only right before the partner ("sexually with a dog"), not across words ("sexually charged photo with a cat").
+const SEXUAL_ACT_EN =
+  '(?:sexual\\s+(?:acts?|intercourse|activit(?:y|ies)|contact|relations(?:hips?)?|encounters?|congress|favou?rs?|services?|play)(?:\\s+\\p{L}+){0,2}?|sexually)';
+const DET_EN = '(?:(?:a|an|the|his|her|their|my|your|some|two|three)\\s+)';
+// An animal that is only in the scene ("with a cat watching", "a dog asleep nearby") is not the partner.
+const BYSTANDER_EN = '(?!\\s+(?:watching|around|nearby|near ?by|close ?by|in the (?:room|background|corner|frame|distance)|sleeping|asleep|present|looking on|outside|barking))';
 const SEX_ACT_ZH_ALT = '打飞机|打飛機|撸管|擼管|撸|擼|自慰|手淫|做爱|做愛|性交|交配|口交|肛交|乳交|性行为|性行為|射精|插入|发泄性欲|發洩性慾';
 const SEX_ACT_ZH = `(?:${SEX_ACT_ZH_ALT})`;
 const ZH_GAP = '[^，。,.!?！？；;\\n]{0,8}?';
@@ -111,8 +118,12 @@ const ANIMAL_SEXUAL_PATTERNS: RegExp[] = [
   // "sex with a dog", "jerking off at/to/toward the cat", "fucking a horse"
   new RegExp(`(?<![\\p{L}])${SEX_ACT_EN}(?:\\s+\\p{L}+){0,2}?(?<!\\s(?:next|close|near|due|thanks|according|up))\\s+(?:with|on|at|to|towards?|into|over)\\s+(?:(?:a|an|the|his|her|their|my|your|some|two|three)\\s+)?(?:\\p{L}+\\s+)?${ANIMAL_EN}(?![\\p{L}])`, 'u'),
   new RegExp(`(?<![\\p{L}])(?:fuck(?:s|ed|ing)?|rap(?:e|es|ed|ing)|penetrat\\p{L}*|hump(?:s|ed|ing)?|blow(?:s|ing)?|suck(?:s|ed|ing)?)\\s+(?:(?:a|an|the|his|her|their|my|your)\\s+)?(?:(?!like\\s|as\\s)\\p{L}+\\s+)?${ANIMAL_EN}(?![\\p{L}])`, 'u'),
+  // "sexual act with a dog", "sexual intercourse with the horse", "interacting sexually with a dog"
+  new RegExp(`(?<![\\p{L}])${SEXUAL_ACT_EN}(?<!\\s(?:next|close|near|due|thanks|according|up))\\s+(?:with|on|to|towards?|involving)\\s+${DET_EN}?(?:\\p{L}+\\s+)?${ANIMAL_EN}(?![\\p{L}])${BYSTANDER_EN}`, 'u'),
+  // "sexual intercourse between a woman and a horse"
+  new RegExp(`(?<![\\p{L}])${SEXUAL_ACT_EN}\\s+between\\s+${DET_EN}?\\p{L}+(?:\\s+\\p{L}+)?\\s+and\\s+${DET_EN}?(?:\\p{L}+\\s+)?${ANIMAL_EN}(?![\\p{L}])${BYSTANDER_EN}`, 'u'),
   // "a dog fucking her", "the horse penetrates him"
-  new RegExp(`(?<![\\p{L}])${ANIMAL_EN}\\s+(?:fuck(?:s|ed|ing)?|rap(?:es|ed|ing)|penetrat\\p{L}*|hump(?:s|ed|ing)? (?:her|him|them|a (?:wom[ae]n|man|girl|guy))|has sex with|having sex with|licks? (?:her|his) (?:pussy|cock|dick|clit|genitals))(?![\\p{L}])`, 'u'),
+  new RegExp(`(?<![\\p{L}])${ANIMAL_EN}\\s+(?:fuck(?:s|ed|ing)?|rap(?:es|ed|ing)|penetrat\\p{L}*|hump(?:s|ed|ing)? (?:her|him|them|a (?:wom[ae]n|man|girl|guy))|has sex with|having sex with|(?:has|having|had|in) sexual (?:intercourse|relations|activity|contact) with|licks? (?:her|his) (?:pussy|cock|dick|clit|genitals))(?![\\p{L}])`, 'u'),
   // "对着猫儿打飞机", "和狗做爱", "跟马性交", "给狗口交", "被狗操"
   new RegExp(`(?:对着|對著|朝着|朝著|冲着|衝著|和|跟|与|與|同|给|給|让|讓|看着|看著)${ZH_GAP}${ANIMAL_ZH}${ZH_GAP_SHORT}${SEX_ACT_ZH}`, 'u'),
   new RegExp(`${ANIMAL_ZH}${ZH_GAP}(?:操|肏|干|幹|插|奸|姦)(?:她|他|我|你|女人|男人|女孩|男孩|人)`, 'u'),

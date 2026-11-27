@@ -128,6 +128,17 @@ const BLOCK_ANIMAL_SEXUAL: string[] = [
   'masturbating toward a horse',
   'a dog fucking her',
   'fucking a goat',
+  // "sexual …" forms (feature run: "sexual act with a dog" passed the quote).
+  'sexual act with a dog',
+  'sexual acts with the horse',
+  'a man having sexual intercourse with a goat',
+  'sexual activity with a dog',
+  'sexual contact with an animal',
+  'sexual relations with a pony',
+  'interacting sexually with a dog',
+  'sexual intercourse between a woman and a horse',
+  'a dog having sexual intercourse with her',
+  'sexual acts involving animals',
 ];
 
 const BENIGN_ANIMALS: string[] = [
@@ -149,6 +160,19 @@ const BENIGN_ANIMALS: string[] = [
   'the cat licks her hand',
   '猫咪舔她的手',
   'no bestiality, no animals',
+  // Near misses of the "sexual …" forms: the animal is in the scene, not the partner.
+  'sexual tension with a stray cat around',
+  'sexual tension between two adults, a dog sleeps by the fire',
+  'an adult couple, sexual activity implied, with their cat watching from the window',
+  'sexual intercourse between adults, the dog sleeping in the next room',
+  'sexual activity with her boyfriend, a cat asleep nearby',
+  'sexually charged photo with a cat on the sofa',
+  'a sexually confident woman with her dog',
+  'catgirl sexual activity with her boyfriend',
+  'doggy style sexual intercourse between adults',
+  'sexual activity with a woman wearing cat ears',
+  'a sexual health poster with a cat mascot',
+  'no sexual acts with animals',
 ];
 
 describe('deterministic rules: ANIMAL_SEXUAL', () => {
