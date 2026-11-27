@@ -302,9 +302,14 @@ test('agent plan: Build on canvas applies it (free) and opens the new project', 
   s.turns.push({ text: 'One option.', plan: true });
   await page.goto('/');
   await page.locator('#brief').fill('A 10s vertical ad for a desk lamp');
+  const turn = page.waitForRequest((r) => r.url().includes('/api/agent/threads/thr_stub/messages'));
   await page.getByRole('button', { name: 'Start' }).click();
+  // The pills go with the turn (they were dead controls): ratio, length and Auto video model.
+  expect(JSON.parse((await turn).postData() ?? '{}')).toMatchObject({ settings: { ratio: '9:16', seconds: 15, videoModel: null } });
   const plan = page.getByTestId('home-plan');
   await expect(plan).toBeVisible();
+  // UX audit: a plan that lands below the fold scrolls into view with its button.
+  await expect(plan.getByRole('button', { name: 'Build on canvas' })).toBeInViewport();
   const applied = page.waitForRequest((r) => r.url().includes('/api/agent/proposals/prop_stub1/apply'));
   await plan.getByRole('button', { name: 'Build on canvas' }).click();
   expect(JSON.parse((await applied).postData() ?? '{}')).toMatchObject({ optionIndex: 0, title: 'Desk at dusk' });

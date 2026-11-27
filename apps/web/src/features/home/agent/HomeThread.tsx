@@ -90,6 +90,25 @@ export function HomeThreadView(p: HomeThreadViewProps) {
     if (last?.role === 'agent' && last.status === 'streaming' && !last.text) stick.current = true;
   }, [last?.id, last?.role, last?.status, last?.text]);
 
+  // A plan that arrives below the fold scrolls into view (with its Build on canvas button); plans that were
+  // already there on load (a restored thread) don't move the page.
+  const panelRef = useRef<HTMLElement>(null);
+  const seenPlans = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const ids = p.messages.flatMap((m) => (m.proposal ? [m.proposal.id] : []));
+    if (seenPlans.current === null) {
+      seenPlans.current = new Set(ids);
+      return;
+    }
+    const fresh = ids.filter((id) => !seenPlans.current!.has(id));
+    for (const id of fresh) seenPlans.current.add(id);
+    if (!fresh.length) return;
+    const cards = panelRef.current?.querySelectorAll<HTMLElement>('[data-testid="home-plan"]');
+    const card = cards?.[cards.length - 1];
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    card?.scrollIntoView?.({ block: 'nearest', behavior: reduced ? 'auto' : 'smooth' });
+  }, [p.messages]);
+
   const submit = () => {
     const text = draft.trim();
     if (!text || p.busy) return;
@@ -112,7 +131,7 @@ export function HomeThreadView(p: HomeThreadViewProps) {
   }, [draft]);
 
   return (
-    <section className={cx(styles.panel, 'rl-pop')} data-state="open" aria-label={intl.formatMessage({ id: 'home.agent.label' })} data-testid="home-agent">
+    <section ref={panelRef} className={cx(styles.panel, 'rl-pop')} data-state="open" aria-label={intl.formatMessage({ id: 'home.agent.label' })} data-testid="home-agent">
       <header className={styles.head}>
         <span className={styles.title}>
           <FormattedMessage id="home.agent.title" />
