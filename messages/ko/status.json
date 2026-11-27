@@ -1,0 +1,20 @@
+{
+  "status.title": "상태",
+  "status.overall.operational": "모든 시스템이 정상 작동 중이에요.",
+  "status.overall.degraded": "일부 시스템이 느리거나 일부 기능을 사용할 수 없어요.",
+  "status.overall.outage": "일부 시스템이 중단되었어요. 복구 중이에요.",
+  "status.incident": "업데이트",
+  "status.updated": "{when} 업데이트됨",
+  "status.generationPaused": "모델 게이트웨이가 복구되는 동안 새 생성이 일시 중지돼요. 크레딧은 차감되지 않아요.",
+  "status.components": "구성 요소",
+  "status.component.api": "앱 및 API",
+  "status.component.gateway": "생성",
+  "status.component.media": "미디어",
+  "status.component.auth": "로그인",
+  "status.state.operational": "정상",
+  "status.state.degraded": "성능 저하",
+  "status.state.down": "중단",
+  "status.state.unknown": "데이터 없음",
+  "status.uptime": "최근 24시간 {pct}",
+  "status.checked": "{when}에 확인함"
+}
