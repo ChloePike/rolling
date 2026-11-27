@@ -352,12 +352,32 @@ describe("what a trial can do", () => {
     expect(await used.json()).toMatchObject({ error: { code: "NO_PLAN", data: { trial: "agent_used" } } });
   });
 
-  it("exports up to 720p; 1080p needs a plan", async () => {
+  it("exports up to 720p; 1080p needs a plan, on every preset of a batch", async () => {
     const { user, ws } = await trialUser("export");
     const p = await project(user, ws, [{ kind: "image", title: "Key", params: IMAGE }]);
     const hd = await api(user, `/api/canvases/${p.canvasId}/export`, { method: "POST", json: { preset: "mp4_1080p" } });
     expect(hd.status).toBe(402);
-    expect(await hd.json()).toMatchObject({ error: { code: "NO_PLAN", data: { trial: "active", feature: "export_1080p" } } });
+    expect(await hd.json()).toMatchObject({ error: { code: "NO_PLAN", data: { trial: "active", feature: "export_1080p", preset: "mp4_1080p" } } });
+    // Batch export (D-034): an allowed main preset does not let 1080 social presets through.
+    for (const presets of [["vertical_9x16"], ["mp4_720p", "landscape_16x9"], ["square_1x1"]]) {
+      const batch = await api(user, `/api/canvases/${p.canvasId}/export`, { method: "POST", json: { preset: "mp4_720p", presets } });
+      expect(batch.status, JSON.stringify(presets)).toBe(402);
+      expect(await batch.json()).toMatchObject({ error: { code: "NO_PLAN", data: { trial: "active", feature: "export_1080p" } } });
+    }
+    expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM exports WHERE workspace_id = ?").bind(ws).first<{ n: number }>()).toEqual({ n: 0 });
+  });
+
+  it("cannot resize to 1080p or 4K (post-production needs a plan)", async () => {
+    const { user, ws } = await trialUser("resize");
+    const id = `ast_${crypto.randomUUID().replace(/-/g, "").slice(0, 26)}`;
+    await env.DB.prepare("INSERT INTO assets (id, workspace_id, kind, source, name, r2_key, meta, created_by, created_at, status, mature) VALUES (?, ?, 'image', 'generated', 'k', ?, '{}', ?, ?, 'ready', 0)")
+      .bind(id, ws, `ws/${ws}/gen/${id}.png`, user, Date.now())
+      .run();
+    for (const target of ["1080p", "4K"]) {
+      const r = await api(user, `/api/assets/${id}/resize`, { method: "POST", json: { target } });
+      expect(r.status, target).toBe(402);
+      expect(await r.json()).toMatchObject({ error: { code: "NO_PLAN" } });
+    }
   });
 
   it("no top-ups and no team for trials", async () => {

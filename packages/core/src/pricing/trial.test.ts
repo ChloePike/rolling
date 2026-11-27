@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { fixtureCatalog, fixtureModel } from '../models/__fixtures__/catalog';
 import { creditsFor, MARKUP, PLANS, TRIAL, USD_PER_CREDIT, trialWorstCaseUsd } from './config';
-import { isTrialModel, trialGrant, trialProblem, trialStatus } from './trial';
+import { exportShortSide, EXPORT_PRESETS } from '../export';
+import { isTrialModel, trialExportProblem, trialGrant, trialProblem, trialStatus } from './trial';
 
 const DAY = 86_400_000;
 
@@ -86,6 +87,19 @@ describe('trial model and settings caps', () => {
 
   it('refuses unknown resolution labels', () => {
     expect(trialProblem(mini, { resolution: 'ultra', seconds: 5 })).toMatchObject({ code: 'resolution' });
+  });
+});
+
+describe('trial export cap', () => {
+  it('checks every preset of a batch: only 720p passes; social presets render at 1080', () => {
+    expect(trialExportProblem(['mp4_720p'], exportShortSide)).toBeNull();
+    expect(trialExportProblem(['mp4_720p', 'vertical_9x16'], exportShortSide)).toBe('vertical_9x16');
+    expect(trialExportProblem(['mp4_1080p'], exportShortSide)).toBe('mp4_1080p');
+    for (const p of EXPORT_PRESETS) expect(trialExportProblem([p], exportShortSide) === null, p).toBe(exportShortSide(p) <= 720);
+  });
+
+  it('allows previews (540p) whatever the preset', () => {
+    expect(trialExportProblem(['mp4_1080p', 'square_1x1'], exportShortSide, { preview: true })).toBeNull();
   });
 });
 

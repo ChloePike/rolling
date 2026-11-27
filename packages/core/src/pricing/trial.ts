@@ -64,6 +64,17 @@ export function trialProblem(model: Pick<ListingModel, 'id' | 'kind' | 'defaultR
   return null;
 }
 
+/**
+ * The first export preset a trial may not render (short side above
+ * `TRIAL.maxExportShortSide`, D-022), checked on every preset of a batch.
+ * A preview renders at 540p whatever the preset, so it is allowed.
+ * `shortSide` is `exportShortSide` from `core/export` (passed in to keep this module free of it).
+ */
+export function trialExportProblem<P extends string>(presets: readonly P[], shortSide: (p: P) => number, options: { preview?: boolean } = {}): P | null {
+  if (options.preview) return null;
+  return presets.find((p) => shortSide(p) > TRIAL.maxExportShortSide) ?? null;
+}
+
 /** Trial state of an account at `now`. */
 export type TrialStatus = 'none' | 'active' | 'used' | 'expired';
 
