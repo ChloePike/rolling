@@ -7,7 +7,8 @@
   /* Fill the viewport under the shared header; the route is full-bleed (no AppShell padding). */
   position:relative;
   height:calc(100dvh - var(--app-header-h,72px));
-  min-height:calc(860px - var(--app-header-h,72px));
+  /* Short windows (1280×720, 1024×768) keep the composer on screen; the panels scroll inside. */
+  min-height:480px;
   display:flex;
   overflow:hidden;
   font-size:16px;

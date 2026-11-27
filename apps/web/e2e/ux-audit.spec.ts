@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { openApp, settle } from './support/fidelity';
+import { asPlan } from './support/session';
 
 /**
  * UX audit fixes (docs/ux-audit.md) on the mocks. Real-mode checks live in
@@ -54,4 +55,31 @@ test('dialogs: closing the template preview with Escape puts focus back on the c
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('template-preview')).toHaveCount(0);
   expect(await card.evaluate((el) => el === document.activeElement)).toBe(true);
+});
+
+test('header: at 1280 wide the header stays one row (icons-only nav below 1360, a usability departure from the 1280 in handoff §1)', async ({ page }) => {
+  await asPlan(page, 'plus');
+  for (const width of [1280, 1359]) {
+    await page.setViewportSize({ width, height: 720 });
+    await page.goto('/activity');
+    const header = page.getByTestId('app-header').or(page.locator('header')).first();
+    await expect(page.getByRole('link', { name: 'Upgrade' }).or(page.getByRole('button', { name: 'Upgrade' })).first()).toBeVisible();
+    expect((await header.boundingBox())!.height, `header height at ${width}`).toBeLessThanOrEqual(76);
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/activity');
+  await expect(page.getByRole('navigation').getByText('Quick Create', { exact: true })).toBeVisible();
+});
+
+test('tools: the composer stays on screen in short windows (1280×720, 1024×768)', async ({ page }) => {
+  for (const [width, height] of [
+    [1280, 720],
+    [1024, 768],
+  ] as const) {
+    await page.setViewportSize({ width, height });
+    await page.goto('/create/quick');
+    const box = (await page.getByTestId('tool-composer').boundingBox())!;
+    expect(box.y + box.height, `composer bottom at ${width}×${height}`).toBeLessThanOrEqual(height);
+    expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight + 1)).toBe(true);
+  }
 });

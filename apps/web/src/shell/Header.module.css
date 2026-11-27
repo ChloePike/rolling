@@ -28,8 +28,10 @@
 .navItem[aria-current="page"]{color:var(--c-text-1)}
 .navItem svg{flex:none}
 
-/* Icons only below 1280px wide; the label stays for screen readers. */
-@media (max-width:1279.98px){
+/* Icons only below 1360px wide; the label stays for screen readers. Handoff says 1280, but with labels the
+   nav pill (826px) plus the right cluster (270px with Upgrade) no longer fit one row at 1280: the header wrapped
+   onto two rows on 1280-wide laptops (UX audit). */
+@media (max-width:1359.98px){
   .navItem{width:36px;padding:0;justify-content:center;gap:0}
   .navLabel{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
 }
