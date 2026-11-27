@@ -45,7 +45,8 @@ function publicRef(intl: IntlShape, item: PublicItem, index: number): RefItem {
     source: 'public',
     tone: PUB_TONES[index % PUB_TONES.length]!,
     glyph: { type: 'icon', icon: PUB_ICON[item.category] ?? 'img' },
-    thumbUrl: item.thumbUrl ?? undefined,
+    // Mature items (D-005, mature-allowed viewers only) show no picture in the @ list, like other mature references.
+    thumbUrl: item.mature ? undefined : (item.thumbUrl ?? undefined),
     license: item.license,
   };
 }

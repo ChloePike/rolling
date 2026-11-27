@@ -402,3 +402,58 @@ describe("mature text-to-video chain (D-005)", () => {
     expect(q.items[0]).toMatchObject({ action: "blocked", code: "MATURE_REQUIRED", matureAccess: "preference_off" });
   });
 });
+
+describe("mature public-library references (D-005)", () => {
+  /** Picture-to-video from a library item (no ratio: the picture sets it). */
+  const i2v = (asset: string) => ({ promptSpec: { kind: "video", model: "auto", prompt: "two dancers holding hands", seconds: 5, resolution: "480p", inputs: { firstFrameAssetId: asset } } });
+  /** A mature public-library picture (asset + item), its object in the private bucket only. */
+  async function matureLibraryPicture(tag: string): Promise<string> {
+    const id = `ast_mpl_${tag}_${++seq}`;
+    const key = `public/pose/pw_pose_${id}/front.png`;
+    await env.MEDIA.put(key, uniquePng(id), { httpMetadata: { contentType: "image/png" } });
+    await env.DB.prepare(
+      "INSERT INTO assets (id, workspace_id, kind, source, name, r2_key, meta, license, created_at, status, mature) VALUES (?, NULL, 'image', 'public', 'Couple pose', ?, '{}', 'first-party', ?, 'ready', 1)",
+    )
+      .bind(id, key, Date.now())
+      .run();
+    return id;
+  }
+
+  it("a mature-allowed caller's run with a mature library item is a mature run (moderation low) and gets the vision check", async () => {
+    const { user, ws } = await member("mpl", { mature: true });
+    const asset = await matureLibraryPicture("ok");
+    const q = await quote(user, i2v(asset));
+    expect(q.items, JSON.stringify(q.items)).toHaveLength(1);
+    expect(q.items[0], JSON.stringify(q.items)).toMatchObject({ action: "run" });
+    expect(q.items[0].model).toMatch(/spicy/);
+    const { run, runId } = await runAndWait(user, q.quoteId);
+    expect(run.status).toBe("succeeded");
+    expect(gateway.bodies[0]).toMatchObject({ moderation: "low" });
+    // The reference went to the vision check (hard limits) before the provider call.
+    expect(safety.calls).toContain("vision");
+    const [item] = await items(runId);
+    expect(JSON.parse(item.spec)).toMatchObject({ mature: true });
+    expect((await events(ws)).every((e) => e.verdict !== "block")).toBe(true);
+  });
+
+  it("hard limits on the reference block the run before the provider and refund it", async () => {
+    const { user, ws } = await member("mplh", { mature: true });
+    const asset = await matureLibraryPicture("hard");
+    const before = await balance(ws);
+    const q = await quote(user, i2v(asset));
+    safety.image = { rating: "explicit", confidence: 0.9, apparentMinor: true, minorSexualized: true };
+    const { run } = await runAndWait(user, q.quoteId);
+    expect(run.status).toBe("failed");
+    expect(gateway.creates).toBe(0);
+    expect(await balance(ws)).toEqual(before);
+  });
+
+  it("callers without mature access cannot use a mature library item (not available, nothing held)", async () => {
+    const off = await member("mplo");
+    const asset = await matureLibraryPicture("off");
+    const q = await quote(off.user, i2v(asset));
+    expect(q.quoteId).toBeNull();
+    expect(q.items[0]).toMatchObject({ action: "blocked", code: "missing_input" });
+    expect(gateway.creates).toBe(0);
+  });
+});

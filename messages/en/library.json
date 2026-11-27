@@ -49,6 +49,7 @@
   "library.public.surprise": "Surprise me",
   "library.public.subs": "Filter by sub-category",
   "library.public.count": "{n, plural, one {# item} other {# items}}",
+  "library.public.mature": "Mature",
   "library.public.error": "Couldn’t load the library.",
   "library.public.retry": "Try again",
   "library.public.loading": "Loading…",

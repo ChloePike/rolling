@@ -106,18 +106,20 @@ const LEDGER_BLOCK: Record<string, { code: string; reason: string }> = {
  * the length (the browser-reported one stands in until then, re-checked in
  * `prepare`). `uploading` / `failed` / removed assets block the item.
  */
-async function assetOrigins(env: Env, workspaceId: string, userId: string, spec: PromptSpec): Promise<Map<string, SpecAsset>> {
+async function assetOrigins(env: Env, workspaceId: string, userId: string, spec: PromptSpec, matureAllowed: boolean): Promise<Map<string, SpecAsset>> {
   const ids = specAssetIds(spec);
   const out = new Map<string, SpecAsset>();
   if (ids.length === 0) return out;
   const rows = await env.DB.prepare(
-    `SELECT id, kind, source, workspace_id, meta, status FROM assets WHERE id IN (${ids.map(() => "?").join(",")}) AND (workspace_id = ? OR workspace_id IS NULL)
+    `SELECT id, kind, source, workspace_id, meta, status, mature FROM assets WHERE id IN (${ids.map(() => "?").join(",")}) AND (workspace_id = ? OR workspace_id IS NULL)
        AND (status = 'ready' OR (status = 'processing' AND created_by = ? AND kind IN ('image','video','audio')))`,
   )
     .bind(...ids, workspaceId, userId)
-    .all<{ id: string; kind: string; source: string; workspace_id: string | null; meta: string | null; status: string }>();
+    .all<{ id: string; kind: string; source: string; workspace_id: string | null; meta: string | null; status: string; mature: number | null }>();
   for (const r of rows.results) {
     if (r.kind !== "image" && r.kind !== "video" && r.kind !== "audio") continue;
+    // D-005: a mature shared asset (e.g. a mature public-library item) is not available to callers who may not see it.
+    if (r.mature === 1 && r.workspace_id === null && !matureAllowed) continue;
     const origin: ImageSource = r.source === "generated" || r.source === "public" || r.source === "builtin" ? r.source : r.source === "team" ? "team" : "upload";
     const meta = parseJson<{ durationSec?: unknown; durationSource?: unknown; thumbKey?: unknown; sceneCuts?: unknown }>(r.meta, {});
     const cuts = Array.isArray(meta.sceneCuts) ? meta.sceneCuts.filter((c): c is number => typeof c === "number") : [];
@@ -129,6 +131,8 @@ async function assetOrigins(env: Env, workspaceId: string, userId: string, spec:
       ...(hasDuration && meta.durationSource === "declared" && { durationDeclared: true }),
       ...(r.kind === "video" && typeof meta.thumbKey === "string" && { poster: true }),
       ...(r.kind === "video" && cuts.length > 0 && { sceneCuts: cuts }),
+      // Mature shared assets (public library) make the item a mature run (D-005; only mature-allowed callers get here).
+      ...(r.mature === 1 && r.workspace_id === null && { mature: true }),
     });
   }
   // Saved Characters count as platform assets (D-005).
@@ -188,7 +192,7 @@ export async function quoteRun(env: Env, auth: AuthContext, req: QuoteRequest): 
       ...(req.priorAssets && Object.keys(req.priorAssets).length > 0 && { priorAssets: req.priorAssets }),
       ...(req.retryOf && { retryOf: req.retryOf }),
     };
-    const origins = await assetOrigins(env, auth.workspaceId, auth.userId, req.promptSpec);
+    const origins = await assetOrigins(env, auth.workspaceId, auth.userId, req.promptSpec, auth.matureAllowed);
     items = (
       await planPromptSpec({
         spec: req.promptSpec,

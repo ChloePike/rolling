@@ -15,7 +15,7 @@ import { outputType } from '../graph/ports';
 import { hash64, stableStringify } from '../project/digest';
 import type { PlanItem as StructuralItem } from '../project/plan';
 import { lowestPlanFor, planAllowsResolution, resolutionRank, type PlanId } from '../pricing/config';
-import { autoCandidates, chainVideoCandidates, chooseModel, fitRequest, matureCandidates, type Classify, familyFallbacks } from './auto';
+import { autoCandidates, chainVideoCandidates, chooseModel, fitRequest, matureCandidates, platformMatureCandidates, type Classify, familyFallbacks } from './auto';
 import { cleanPrompt, findModel, imageSizeFor, isAuto, modelRefOf, settingsOf, textOfNode, usesSize, type NodeSettings } from './spec';
 import type { BlockCode, ChainStep, GenInput, GenSpec, InputSource, PlanContext, PlanItem, RunPlan } from './types';
 import { explicitSignal } from '../safety/rules';
@@ -60,6 +60,12 @@ export interface BuildSpecInput {
    */
   chain?: ChainRefs;
   explicit?: ExplicitCheck | null;
+  /**
+   * D-005: an input is a mature asset (a mature public-library item, a mature output).
+   * For a mature-allowed caller the item runs as mature (routed like an explicit prompt);
+   * for anyone else it is blocked (`mature_not_allowed`).
+   */
+  matureInputs?: boolean;
 }
 
 export interface ChainRefs {
@@ -158,10 +164,20 @@ export function matureAccessOfPlan(ctx: PlanContext): MatureAccess {
   return ctx.matureAccess && ctx.matureAccess !== 'allowed' ? ctx.matureAccess : 'preference_off';
 }
 
+/** Identity-driven mature models only when the run has pictures, all platform assets (D-005). */
+function withPictures(models: CatalogModel[], imageOrigins: readonly ImageSource[]): CatalogModel[] {
+  if (imageOrigins.length === 0) return [];
+  return models.filter((m) => matureRunProblem(m, imageOrigins, imageOrigins.length) === null);
+}
+
 /** Models that take this mature spec (routing, identity rule, capability, plan cap), cheapest first; `preferred` first when it qualifies. */
 function matureCapable(catalog: Catalog, spec: GenSpec, ctx: PlanContext, imageOrigins: readonly ImageSource[], preferred?: CatalogModel): CatalogModel[] {
   const req = autoRequestOf(spec);
-  const pool = [...(preferred ? familyFallbacks(catalog, preferred, req, ctx.plan) : []), ...matureCandidates(catalog, req, ctx.plan)];
+  const pool = [
+    ...(preferred ? familyFallbacks(catalog, preferred, req, ctx.plan) : []),
+    ...matureCandidates(catalog, req, ctx.plan),
+    ...withPictures(platformMatureCandidates(catalog, req, ctx.plan), imageOrigins),
+  ];
   const seen = new Set<string>();
   return pool.filter((m) => {
     if (seen.has(m.id)) return false;
@@ -206,7 +222,7 @@ async function prepareSpec(input: BuildSpecInput): Promise<Prepared> {
   const prompt = cleanPrompt(input.prompt);
   // D-005: a mature-allowed caller's explicit prompt runs as a mature run without asking (Quick Create, Home, tools and
   // canvas nodes never send the toggle on their own). Callers without access keep the flag off: the quote asks them.
-  let matureAuto = !input.settings.mature && ctx.matureAllowed && explicitSignal(prompt).length > 0;
+  let matureAuto = !input.settings.mature && ctx.matureAllowed && (input.matureInputs === true || explicitSignal(prompt).length > 0);
   const baseOf = (mature: boolean): Prepared['base'] => {
     const settings = mature ? { ...input.settings, mature: true } : input.settings;
     return {
@@ -246,7 +262,7 @@ async function prepareSpec(input: BuildSpecInput): Promise<Prepared> {
 
 /** Builds and validates the spec for one item and resolves Auto (D-009); a mature text-only video no model takes becomes a chain (D-005). */
 export async function buildSpec(input: BuildSpecInput): Promise<BuiltSpec> {
-  if (input.settings.mature && !input.ctx.matureAllowed) {
+  if ((input.settings.mature || input.matureInputs) && !input.ctx.matureAllowed) {
     return { ok: false, code: 'mature_not_allowed', reason: 'Mature content is off for this workspace.' };
   }
   const prep = await prepareSpec(input);
@@ -273,8 +289,11 @@ async function buildDirect(input: BuildSpecInput, prep: Prepared): Promise<Direc
     let candidates = autoCandidates(input.catalog, req, ctx.plan).filter(
       (m) => !base.mature || matureRunProblem(m, input.imageOrigins, input.imageOrigins.length) === null,
     );
-    // No Auto-eligible model takes this mature run: any listed mature-capable one (D-005 routing).
-    if (candidates.length === 0 && base.mature) candidates = matureCandidates(input.catalog, req, ctx.plan);
+    // No Auto-eligible model takes this mature run: any listed mature-capable one (D-005 routing); with pictures that are
+    // all platform assets (e.g. a mature public-library item), the identity-driven mature models too.
+    if (candidates.length === 0 && base.mature) {
+      candidates = [...matureCandidates(input.catalog, req, ctx.plan), ...withPictures(platformMatureCandidates(input.catalog, req, ctx.plan), input.imageOrigins)];
+    }
     const chosen = await chooseModel({ request: req, candidates, classify: candidates.length > 0 ? (input.classify ?? null) : null });
     if (!chosen) {
       const reason = matureAuto ? NO_MATURE_MODEL_REASON : 'No model available on your plan fits these settings.';

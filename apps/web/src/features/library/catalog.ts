@@ -58,8 +58,7 @@ export interface CategoryGroupView {
 
 /**
  * Groups and categories in registry order. With server counts (`publicCategories`),
- * categories without items are hidden (hairstyles: CharaDB images are excluded
- * from R2, D-004); before the counts arrive every category is listed.
+ * categories without items are hidden; before the counts arrive every category is listed.
  */
 export function categoryGroups(counts: ReadonlyMap<string, number> | null): CategoryGroupView[] {
   return LIBRARY_GROUPS.map((g) => ({

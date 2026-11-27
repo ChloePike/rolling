@@ -110,30 +110,34 @@ Rights notes (status 2026-11-26):
 2. ~~CharaDB images (hairstyles, 440 anime outfits)~~ Resolved by owner decision (D-004, 2026-11-26):
    they are imported too, with license `cc0` and attribution CharaDB (`assets.meta.attribution`,
    GraphQL `PublicItem.attribution`, the details panel shows "CharaDB"). The 4 minor-coded items stay excluded.
-   **Not yet copied:** fetching them from charadb-2fi.pages.dev was not run (it needs an explicit go-ahead
-   for the bulk download), so staging and production still hold the set without CharaDB (see Live state).
+   Copied 2026-11-27 after the owner's go-ahead for the bulk download: 742 images (122 hairstyles, 306 images;
+   436 anime outfits, 41 of them mature) fetched once from charadb-2fi.pages.dev into `rolling-media-staging`
+   (4 at a time, retries with backoff), then copied bucket to bucket (see Live state).
 3. Portraits: CC0, but the author asks not to redistribute the images. Copying them to R2 and
    serving them publicly is legal under CC0 but goes against that request (owner accepted under D-004).
 4. pwimg.0vo.pro `robots.txt` sets `Content-Signal: search=yes, ai-train=no, use=reference`.
 
-## Live state (2026-11-26)
+## Live state (2026-11-27)
 
-Staging and production hold the same set: 5,141 items (all categories except hairstyle and the 436
-CharaDB anime outfits), 8,074 assets (2,575 mature), 5,141 search rows.
+Staging and production hold the same set, CharaDB included: 5,699 items (1,098 mature), 8,816 assets
+(2,616 mature), 5,699 search rows. Non-mature: 4,601 items, 6,200 images.
 
 | Bucket | Contents |
 |---|---|
-| `rolling-public-<env>` (media[-staging].rolling.actor) | 5,499 non-mature library images + 8 template covers |
-| `rolling-media-staging` | all 8,074 library images (the copy source) |
-| `rolling-media-production` | 2,575 mature library images (signed URLs only) |
+| `rolling-public-<env>` (media[-staging].rolling.actor) | 6,200 non-mature library images + template covers; no mature keys (audited 2026-11-27) |
+| `rolling-media-staging` | all 8,816 library images (the copy source) |
+| `rolling-media-production` | 2,616 mature library images (signed URLs only) |
+
+Mature items are listed only for mature-allowed callers (D-005, owner 2026-11-27): see `docs/api.md` (Public library).
 
 Refresh both environments (idempotent):
 
 ```sh
 T=packages/core/node_modules/.bin/tsx
-$T scripts/posewear/emit-sql.ts --include-mature                 # add --exclude-attribution charadb until CharaDB images are in R2
-# CharaDB backfill (source CDN -> staging private bucket), when approved:
+$T scripts/posewear/emit-sql.ts --include-mature                 # --category hairstyle,outfit_anime for the CharaDB rows only
+# CharaDB images (source CDN -> staging private bucket; done 2026-11-27, re-runs skip existing keys):
 $T scripts/posewear/copy-to-r2.ts --env staging --target private --include-mature --category hairstyle,outfit_anime
+# Small sets can skip the copy Worker: --from-bucket alone copies through the REST API (GET + PUT per object).
 # Public buckets and production private bucket, copied from staging through the copy Worker (copy-worker/):
 $T scripts/posewear/copy-to-r2.ts --env staging    --target public  --from-bucket rolling-media-staging --extra-prefix public/templates/ --via-worker $W
 $T scripts/posewear/copy-to-r2.ts --env production --target public  --from-bucket rolling-media-staging --extra-prefix public/templates/ --via-worker $W

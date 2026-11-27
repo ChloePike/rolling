@@ -56,8 +56,9 @@ function decodeCursor(cursor: string | null | undefined): [number, string] | nul
 /**
  * Catalog listing shared by REST and GraphQL. Scopes: `mine` (my uploads and
  * generations in the workspace), `team` (the whole workspace), `builtin`,
- * `public` (public library, never mature), `all` (workspace + builtin + public).
- * Mature assets are only listed for viewers allowed to see them (D-005).
+ * `public` (public library), `all` (workspace + builtin + public).
+ * Mature assets, public-library ones included, are only listed for viewers
+ * allowed to see them (D-005); their URLs are signed private media.
  */
 export async function listAssets(env: Env, auth: AuthContext, query: AssetQuery) {
   const where: string[] = ["a.status IN ('ready','processing')"];
@@ -83,10 +84,12 @@ export async function listAssets(env: Env, auth: AuthContext, query: AssetQuery)
       where.push(`(a.workspace_id = ${bind(auth.workspaceId)} OR a.source IN ('builtin','public'))`);
       break;
   }
-  // Public library items flagged mature never appear on public surfaces; private mature only for allowed viewers.
-  where.push("NOT (a.source = 'public' AND EXISTS (SELECT 1 FROM public_items p WHERE p.asset_id = a.id AND p.mature = 1))");
-  if (!auth.matureAllowed) where.push("a.mature = 0");
-  else where.push("(a.mature = 0 OR a.source <> 'public')");
+  // D-005: mature assets (and every angle of a mature public-library item) only for mature-allowed callers, whose
+  // URLs are then signed from the private bucket (lib/mediaUrls). Everyone else gets exactly the non-mature set.
+  if (!auth.matureAllowed) {
+    where.push("a.mature = 0");
+    where.push("NOT (a.source = 'public' AND EXISTS (SELECT 1 FROM public_items p WHERE p.asset_id = a.id AND p.mature = 1))");
+  }
   if (query.kind) where.push(`a.kind = ${bind(query.kind)}`);
   const fts = query.q ? ftsQuery(query.q) : null;
   if (query.q && !fts) return { items: [], hasNextPage: false, endCursor: null };

@@ -125,8 +125,11 @@ const api = new Hono<AppEnv>()
   .route("/hooks", hooks)
   .route("/", realtime)
   .on(["GET", "POST"], "/graphql", async (c) =>
-    // Public-library-only operations are the same for every caller: edge-cached (lib/publicGraphqlCache.ts).
-    withPublicGraphqlCache(c.req.raw, executionCtxOf(c), async () => yoga.fetch(c.req.raw, { env: c.env, user: c.get("user"), auth: c.get("auth") })),
+    // Public-library-only operations are the same for every caller who is not mature-allowed: edge-cached
+    // (lib/publicGraphqlCache.ts). Mature-allowed callers (D-005) bypass the cache entirely.
+    withPublicGraphqlCache(c.req.raw, executionCtxOf(c), async () => yoga.fetch(c.req.raw, { env: c.env, user: c.get("user"), auth: c.get("auth") }), {
+      matureAllowed: c.get("auth")?.matureAllowed === true,
+    }),
   );
 
 app.route("/api", api);

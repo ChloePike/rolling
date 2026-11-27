@@ -127,6 +127,17 @@ export function matureCandidates(catalog: Catalog | readonly CatalogModel[], req
 }
 
 /**
+ * D-005: identity-driven models of the mature family (`platform_assets_only`, e.g. the spicy
+ * image-to-video models) for a mature run whose every input picture is a platform asset
+ * (generated, a saved Character, a public-library item), cheapest first. Face/head swap
+ * never qualifies; the caller still checks `matureRunProblem` with the pictures' provenance.
+ */
+export function platformMatureCandidates(catalog: Catalog | readonly CatalogModel[], req: AutoRequest, plan: PlanId | null): CatalogModel[] {
+  const models = 'models' in catalog ? catalog.models : catalog;
+  return capableCandidates(models, { ...req, mature: false }, plan, (m) => !m.hidden && !isSwapModel(m) && m.matureRouting === 'platform_assets_only');
+}
+
+/**
  * Animation step of a D-005 mature text-to-video chain: listed video models of
  * the mature family that take the request (image-to-video), including the
  * identity-driven spicy ones (`platform_assets_only`: the keyframe is a

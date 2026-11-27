@@ -75,7 +75,8 @@ function AssetsTab({ onInsert }: { onInsert: BinProps['onInsert'] }) {
 function PublicTab({ onInsert }: { onInsert: BinProps['onInsert'] }) {
   const intl = useIntl();
   const q = usePublicItems(null);
-  const items = (q.data?.pages.flatMap((p) => p.items) ?? []).map((it, i) => ({
+  // Mature library items (D-005) stay out of the editor: its media ends up in exports and shared cuts.
+  const items = (q.data?.pages.flatMap((p) => p.items) ?? []).filter((it) => !it.mature).map((it, i) => ({
     id: it.id,
     name: it.title,
     meta: intl.formatMessage({ id: 'editor.bin.publicMeta' }, { category: it.category }),

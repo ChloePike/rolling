@@ -8,6 +8,7 @@ import { categoryGroups, findCategory, LICENSE_CHIP, type CategoryView } from '.
 import styles from './PublicLibrary.module.css';
 import { isMockApi } from '@/features/overlays/backend';
 import { useSendToCanvas } from '@/features/canvas/target';
+import { useMatureVisible } from '@/lib/media/RatedThumb';
 
 const cx = (...c: Array<string | false | undefined>) => c.filter(Boolean).join(' ');
 const TONES = ['var(--c-tone-plum)', 'var(--c-tone-teal)', 'var(--c-tone-indigo)', 'var(--c-tone-sand)', 'var(--c-tone-neutral)', 'var(--c-tone-moss)', 'var(--c-tone-clay)', 'var(--c-tone-slate)'];
@@ -221,6 +222,11 @@ function ItemCard({ item, cat, index, on, onPick }: { item: PublicItem; cat: Cat
       <span className={styles.thumb} style={{ aspectRatio: cat.ar, background: tone }}>
         <Thumb item={item} cat={cat} tone={tone} />
         <span className={styles.badge}>{shortId(item.id)}</span>
+        {item.mature ? (
+          <span className={styles.mature} data-mature="true">
+            <FormattedMessage id="library.public.mature" />
+          </span>
+        ) : null}
       </span>
       <span className={styles.name}>{item.title}</span>
       <span className={styles.meta}>
@@ -255,9 +261,13 @@ function Details({ cat, item, tone, onCopy }: { cat: CategoryView; item: PublicI
   const [board, setBoard] = useState<Record<string, boolean>>({});
   const ctaKey = cat.cta.split('.').pop() ?? 'canvas';
   const toCanvas = useSendToCanvas();
-  /** The item goes to the canvas the user picks, as an asset node (mature items never leave the public surface, D-005). */
+  const matureVisible = useMatureVisible();
+  /**
+   * The item goes to the canvas the user picks, as an asset node. Mature items (D-005) only reach viewers
+   * allowed to see them; should one show up for anyone else, it is not added.
+   */
   const sendToCanvas = (it: PublicItem) => {
-    if (it.mature) return void toast.show({ message: intl.formatMessage({ id: 'canvas.target.mature' }) });
+    if (it.mature && !matureVisible) return void toast.show({ message: intl.formatMessage({ id: 'canvas.target.mature' }) });
     toCanvas.send({ name: it.title, media: 'image', assetId: isMockApi() ? null : it.assetId, refId: it.id, source: 'public', label: intl.formatMessage({ id: cat.def.messageId }) });
   };
   const use = () => {
@@ -275,6 +285,11 @@ function Details({ cat, item, tone, onCopy }: { cat: CategoryView; item: PublicI
           <span className={styles.view}>
             <FormattedMessage id={cat.def.messageId} />
           </span>
+          {item?.mature ? (
+            <span className={styles.viewMature} data-mature="true">
+              <FormattedMessage id="library.public.mature" />
+            </span>
+          ) : null}
         </div>
         {item && (
           <>

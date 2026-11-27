@@ -1,9 +1,13 @@
 /**
  * Edge cache (Cache API, per colo) for GraphQL reads of the public library: operations whose root
- * fields are all in `PUBLIC_ROOT_FIELDS`. Their resolvers take no caller input (non-mature
- * `public_items` rows, public media URLs), so the response is the same for every caller and is
- * never per-user. Anything else — a mutation, another root field, a fragment at the root — runs
- * uncached. Only 200 responses without `errors` are stored.
+ * fields are all in `PUBLIC_ROOT_FIELDS`. Anything else — a mutation, another root field, a fragment
+ * at the root — runs uncached. Only 200 responses without `errors` are stored.
+ *
+ * Two audiences (D-005): for every caller who is not mature-allowed (signed out, no plan, preference
+ * or workspace flag off) these resolvers read only non-mature `public_items` rows with public media
+ * URLs, so the response is the same for all of them and is cached. Mature-allowed callers also get
+ * mature items (counts included) with signed private URLs: their requests never read or write the
+ * cache and are answered `Cache-Control: private, no-store`, so the two audiences can never mix.
  */
 import { Kind, parse, type DocumentNode } from "graphql";
 import { edgeCache, etagFor } from "./httpCache";
@@ -58,12 +62,27 @@ async function readRequest(req: Request): Promise<GraphqlRequest | null> {
   }
 }
 
-/** Runs `execute` for the request, through the edge cache when the operation is public-only. */
+/** A response that no cache (edge, shared proxy or browser) may store: mature-audience reads. */
+async function uncacheable(execute: () => Promise<Response>): Promise<Response> {
+  const res = await execute();
+  const out = new Response(res.body, res);
+  out.headers.set("cache-control", "private, no-store");
+  out.headers.set("x-edge-cache", "BYPASS");
+  return out;
+}
+
+/**
+ * Runs `execute` for the request, through the edge cache when the operation is public-only and
+ * the caller is not mature-allowed (`audience.matureAllowed`, D-005).
+ */
 export async function withPublicGraphqlCache(
   req: Request,
   ctx: Pick<ExecutionContext, "waitUntil"> | undefined,
   execute: () => Promise<Response>,
+  audience: { matureAllowed: boolean } = { matureAllowed: false },
 ): Promise<Response> {
+  // Mature-allowed callers see a different library (D-005): never served from or stored in the shared cache.
+  if (audience.matureAllowed) return uncacheable(execute);
   const cache = edgeCache();
   if (!cache) return execute();
   const gql = await readRequest(req);

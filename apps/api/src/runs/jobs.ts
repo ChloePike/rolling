@@ -96,7 +96,7 @@ async function modelFor(env: Env, modelId: string): Promise<CatalogModel> {
 const SIGNED_INPUT_TTL = 6 * 3600;
 
 /** A resolved input file; `face` is the face metadata stored at upload for exactly this picture (UP-4). */
-type InputFile = { url: string; origin: ImageSource; key: string; name: string; face?: FaceResult | null };
+type InputFile = { url: string; origin: ImageSource; key: string; name: string; face?: FaceResult | null; mature?: boolean };
 
 async function assetUrl(env: Env, ctx: JobContext, assetId: string): Promise<InputFile | null> {
   const row = await env.DB.prepare("SELECT r2_key, workspace_id, source, status, name, mature, kind, meta FROM assets WHERE id = ?").bind(assetId).first<{
@@ -118,7 +118,15 @@ async function assetUrl(env: Env, ctx: JobContext, assetId: string): Promise<Inp
   if (!keyBelongsTo(row.r2_key, ws)) return null;
   const url = await signMediaUrl(env, row.r2_key, { workspaceId: ws, expiresIn: SIGNED_INPUT_TTL, absolute: true });
   const face = row.kind === "image" ? faceResultFromMeta(parseJson(row.meta, {})) : null;
-  return { url: url.startsWith("http") ? url : new URL(url, env.PUBLIC_APP_URL).toString(), origin, key: row.r2_key, name: row.name, face };
+  return {
+    url: url.startsWith("http") ? url : new URL(url, env.PUBLIC_APP_URL).toString(),
+    origin,
+    key: row.r2_key,
+    name: row.name,
+    face,
+    // D-005: a mature shared asset (mature public-library item) makes the run mature.
+    ...(row.mature === 1 && row.workspace_id === null && { mature: true }),
+  };
 }
 
 /** The poster frame (thumbnail) of a video asset as a signed picture URL (Remix on models without reference-video input). */
@@ -246,6 +254,14 @@ export async function prepareJob(env: Env, ctx: JobContext, modelId: string): Pr
       if (!a && from.optional) continue;
     } else a = from?.poster ? await posterUrl(env, ctx, assetId!) : await assetUrl(env, ctx, assetId!);
     if (!a) fail("input_missing", "An input file is not available.");
+    if (a!.mature && !ctx.spec.mature) {
+      // D-005 backstop (canvas runs, quotes made before the asset was marked): a mature public-library reference
+      // makes the item a mature run for a mature-allowed caller, within the hold; anyone else cannot use it.
+      if (ctx.spec.matureAccess !== "allowed") fail("mature_not_allowed", "This reference is mature content, which is off for you. No credits were charged.");
+      const next = await replanAsMature(env, ctx, model);
+      const again = await prepareJob(env, { ...ctx, spec: next.spec }, next.model.id);
+      return { ...again, replanned: { spec: next.spec, modelId: next.model.id } };
+    }
     const origin: ImageSource = "node" in input.from || "item" in input.from ? "generated" : (input.from as { origin: ImageSource }).origin;
     resolved.push({ input, url: a.url, origin });
     const ref: SafetyReference = { kind: input.media, source: referenceSource(origin), caption: a.name };

@@ -9,6 +9,7 @@ import { LIBRARY_CATEGORIES, libraryItemAttribution } from "@rolling/core/librar
 import type { LibraryCategoryKey } from "@rolling/core/library/types";
 import { encodeCursor, listPublicCategoryCounts, listPublicItems, listPublicSubs } from "@rolling/db/queries/publicItems";
 import { publicMediaUrl } from "../routes/media";
+import { mediaUrlFor } from "../lib/mediaUrls";
 import type { SessionUser } from "../lib/session";
 import type { AuthContext } from "../auth/context";
 import { listPublicModels } from "../models/catalog";
@@ -27,10 +28,11 @@ export interface GraphQLContext {
 const typeDefs = /* GraphQL */ `
   type Query {
     health: Health!
+    "Public-library items. Mature items (D-005) only for mature-allowed callers, with signed private image URLs."
     publicItems(category: String, sub: String, q: String, first: Int = 24, after: String): PublicItemConnection!
-    "Sub-categories of a public-library category with item counts (non-mature)."
+    "Sub-categories of a public-library category with item counts (non-mature; mature included for mature-allowed callers)."
     publicSubCategories(category: String!): [PublicFacet!]!
-    "Public-library categories with item counts (non-mature)."
+    "Public-library categories with item counts (non-mature; mature included for mature-allowed callers)."
     publicCategories: [PublicFacet!]!
     "Synced model catalog (D-002). Mature-only models only for callers allowed to see them (D-005)."
     models(kind: ModelKind): [Model!]!
@@ -116,6 +118,8 @@ const typeDefs = /* GraphQL */ `
     "Depth map URL of the cover angle, for pose items."
     depthUrl: String
     angles: [PublicAngle!]!
+    "D-005: an 18+ item. Only ever returned to mature-allowed callers; its URLs are signed private media."
+    mature: Boolean!
   }
 
   type Attribution {
@@ -163,21 +167,21 @@ function parseTags(raw: string): string[] {
   }
 }
 
+interface RawAngle {
+  name: string;
+  r2Key: string;
+  depthR2Key: string | null;
+}
+
 /** `angles` JSON written by the PoseWear importer: [{ name, r2Key, depthR2Key? }]. */
-function parseAngles(raw: string | null, base?: string): { name: string; url: string; depthUrl: string | null }[] {
+function parseAngleKeys(raw: string | null): RawAngle[] {
   if (!raw) return [];
   try {
     const v: unknown = JSON.parse(raw);
     if (!Array.isArray(v)) return [];
     return v.flatMap((a: { name?: unknown; r2Key?: unknown; depthR2Key?: unknown }) =>
       typeof a?.name === "string" && typeof a?.r2Key === "string"
-        ? [
-            {
-              name: a.name,
-              url: publicMediaUrl(a.r2Key, base),
-              depthUrl: typeof a.depthR2Key === "string" ? publicMediaUrl(a.depthR2Key, base) : null,
-            },
-          ]
+        ? [{ name: a.name, r2Key: a.r2Key, depthR2Key: typeof a.depthR2Key === "string" ? a.depthR2Key : null }]
         : [],
     );
   } catch {
@@ -185,13 +189,38 @@ function parseAngles(raw: string | null, base?: string): { name: string; url: st
   }
 }
 
+/**
+ * URL of one library object for this item (D-008). Non-mature items: the public bucket's
+ * host. Mature items (only ever resolved for mature-allowed callers): a signed, hour-aligned
+ * URL on the private media host; they are never in the public bucket. A mature item that
+ * somehow reaches a caller who is not allowed resolves to no URL.
+ */
+async function itemMediaUrl(item: PublicItem, key: string, ctx: GraphQLContext): Promise<string | null> {
+  if (!item.mature) return publicMediaUrl(key, ctx.env.PUBLIC_MEDIA_BASE_URL);
+  return mediaUrlFor(ctx.env, { key, workspaceId: null, mature: true }, { mayViewMature: ctx.auth?.matureAllowed === true });
+}
+
+async function itemAngles(item: PublicItem, ctx: GraphQLContext): Promise<{ name: string; url: string; depthUrl: string | null }[]> {
+  const out = await Promise.all(
+    parseAngleKeys(item.angles).map(async (a) => {
+      const url = await itemMediaUrl(item, a.r2Key, ctx);
+      const depthUrl = a.depthR2Key ? await itemMediaUrl(item, a.depthR2Key, ctx) : null;
+      return url ? [{ name: a.name, url, depthUrl }] : [];
+    }),
+  );
+  return out.flat();
+}
+
+/** D-005: whether this GraphQL caller may see mature public-library items. */
+const includeMature = (ctx: GraphQLContext) => ctx.auth?.matureAllowed === true;
+
 const resolvers = {
   Query: {
     health: (_: unknown, __: unknown, ctx: GraphQLContext) => ({ ok: true, environment: ctx.env.ENVIRONMENT }),
     publicSubCategories: async (_: unknown, args: { category: string }, ctx: GraphQLContext) =>
-      (await listPublicSubs(ctx.env.DB, args.category)).map((r) => ({ key: r.sub, count: r.count })),
+      (await listPublicSubs(ctx.env.DB, args.category, { includeMature: includeMature(ctx) })).map((r) => ({ key: r.sub, count: r.count })),
     publicCategories: async (_: unknown, __: unknown, ctx: GraphQLContext) =>
-      (await listPublicCategoryCounts(ctx.env.DB)).map((r) => ({ key: r.category, count: r.count })),
+      (await listPublicCategoryCounts(ctx.env.DB, { includeMature: includeMature(ctx) })).map((r) => ({ key: r.category, count: r.count })),
     publicItems: async (
       _: unknown,
       args: { category?: string | null; sub?: string | null; q?: string | null; first?: number | null; after?: string | null },
@@ -199,7 +228,7 @@ const resolvers = {
     ) => {
       const first = args.first ?? 24;
       if (first < 1 || first > 100) throw new GraphQLError("first must be between 1 and 100");
-      const page = await listPublicItems(ctx.env.DB, { ...args, first });
+      const page = await listPublicItems(ctx.env.DB, { ...args, first, includeMature: includeMature(ctx) });
       return {
         edges: page.items.map((node) => ({ cursor: encodeCursor(node), node })),
         pageInfo: { hasNextPage: page.hasNextPage, endCursor: page.endCursor },
@@ -224,11 +253,13 @@ const resolvers = {
       const a = known ? libraryItemAttribution(item.category as LibraryCategoryKey, item.id) : { name: "PoseWear", url: undefined };
       return { name: a.name, url: a.url ?? null };
     },
-    angles: (item: PublicItem, _: unknown, ctx: GraphQLContext) => parseAngles(item.angles, ctx.env.PUBLIC_MEDIA_BASE_URL),
-    thumbUrl: (item: PublicItem, _: unknown, ctx: GraphQLContext) =>
-      parseAngles(item.angles, ctx.env.PUBLIC_MEDIA_BASE_URL)[0]?.url ?? null,
-    depthUrl: (item: PublicItem, _: unknown, ctx: GraphQLContext) =>
-      item.depthKey ? publicMediaUrl(item.depthKey, ctx.env.PUBLIC_MEDIA_BASE_URL) : null,
+    mature: (item: PublicItem) => item.mature === true,
+    angles: (item: PublicItem, _: unknown, ctx: GraphQLContext) => itemAngles(item, ctx),
+    thumbUrl: async (item: PublicItem, _: unknown, ctx: GraphQLContext) => {
+      const first = parseAngleKeys(item.angles)[0];
+      return first ? itemMediaUrl(item, first.r2Key, ctx) : null;
+    },
+    depthUrl: (item: PublicItem, _: unknown, ctx: GraphQLContext) => (item.depthKey ? itemMediaUrl(item, item.depthKey, ctx) : null),
   },
 };
 

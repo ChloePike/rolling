@@ -15,6 +15,17 @@ export interface PublicItemsQuery {
   q?: string | null;
   first: number;
   after?: string | null;
+  /**
+   * D-005: include mature items. Only for callers who are mature-allowed (active plan,
+   * preference on, workspace flag on); every other caller and every public surface
+   * leaves it off and gets exactly the non-mature set.
+   */
+  includeMature?: boolean;
+}
+
+/** Visibility filter: non-mature rows, or every row for a mature-allowed caller. */
+function audience(includeMature: boolean | undefined): SQL[] {
+  return includeMature ? [] : [eq(publicItems.mature, false)];
 }
 
 /** Opaque keyset cursor over (sort, id). */
@@ -32,10 +43,10 @@ export function decodeCursor(cursor: string): { sort: number; id: string } | nul
   return null;
 }
 
-/** Public library listing. Mature items are never returned (public surface, D-005). */
+/** Public library listing. Mature items only with `includeMature` (mature-allowed callers, D-005). */
 export async function listPublicItems(d1: AnyD1Database, query: PublicItemsQuery): Promise<PublicItemsPage> {
   const db = drizzle(d1);
-  const where: SQL[] = [eq(publicItems.mature, false)];
+  const where: SQL[] = audience(query.includeMature);
   if (query.category) where.push(eq(publicItems.category, query.category));
   if (query.sub) where.push(eq(publicItems.sub, query.sub));
   if (query.q) {
@@ -61,28 +72,32 @@ export async function listPublicItems(d1: AnyD1Database, query: PublicItemsQuery
   return { items, hasNextPage: rows.length > query.first, endCursor: last ? encodeCursor(last) : null };
 }
 
-/** Sub-categories with item counts for one category (non-mature items only). */
+/** Sub-categories with item counts for one category (non-mature items only, unless `includeMature`). */
 export async function listPublicSubs(
   d1: AnyD1Database,
   category: string,
+  opts: { includeMature?: boolean } = {},
 ): Promise<{ sub: string; count: number }[]> {
   const db = drizzle(d1);
   const rows = await db
     .select({ sub: publicItems.sub, count: count() })
     .from(publicItems)
-    .where(and(eq(publicItems.category, category), eq(publicItems.mature, false)))
+    .where(and(eq(publicItems.category, category), ...audience(opts.includeMature)))
     .groupBy(publicItems.sub)
     .orderBy(asc(publicItems.sub));
   return rows.filter((r): r is { sub: string; count: number } => typeof r.sub === "string");
 }
 
-/** Category item counts (non-mature items only). */
-export async function listPublicCategoryCounts(d1: AnyD1Database): Promise<{ category: string; count: number }[]> {
+/** Category item counts (non-mature items only, unless `includeMature`). */
+export async function listPublicCategoryCounts(
+  d1: AnyD1Database,
+  opts: { includeMature?: boolean } = {},
+): Promise<{ category: string; count: number }[]> {
   const db = drizzle(d1);
   return db
     .select({ category: publicItems.category, count: count() })
     .from(publicItems)
-    .where(eq(publicItems.mature, false))
+    .where(and(...audience(opts.includeMature)))
     .groupBy(publicItems.category)
     .orderBy(asc(publicItems.category));
 }

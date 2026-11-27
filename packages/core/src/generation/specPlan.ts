@@ -40,6 +40,8 @@ export interface SpecAsset {
   poster?: boolean;
   /** Video: scene cuts found when it was processed (seconds, ascending). */
   sceneCuts?: number[];
+  /** D-005: a mature asset (e.g. a mature public-library item). Only mature-allowed callers get one; the item runs as mature. */
+  mature?: boolean;
 }
 
 /** Where each Remix shot starts in the reference video and how long it runs there. */
@@ -170,6 +172,7 @@ async function planSteps(
     catalog: input.catalog,
     ctx: input.ctx,
     classify: input.classify ?? null,
+    ...(matureInputsOf(input, inputs) && { matureInputs: true }),
     ...(chain && { chain, explicit: input.explicit ?? null }),
   });
   if (!built.ok) {
@@ -216,6 +219,11 @@ async function planSteps(
 }
 
 const blockedItem = (base: Base, b: Blocked): PlanItem => ({ ...base, action: 'blocked', ...b });
+
+/** D-005: some input of the item is a mature asset (`SpecAsset.mature`). */
+function matureInputsOf(input: PlanSpecInput, inputs: readonly GenInput[]): boolean {
+  return inputs.some((i) => 'assetId' in i.from && input.assetOrigins.get(i.from.assetId)?.mature === true);
+}
 
 /** Looks up an input asset; returns a block when it is unknown or of the wrong media. */
 function asset(input: PlanSpecInput, id: string | undefined, want: SpecAsset['media'], missing: string): { a: SpecAsset; id: string } | Blocked {
