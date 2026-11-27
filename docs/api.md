@@ -567,7 +567,8 @@ Members only: every route that runs or applies agent work returns `402 NO_PLAN` 
 | POST | `/api/agent/threads` | `{ projectId?, surface: home\|canvas\|editor\|tool, skill?: tv-ad\|product-showcase\|storyboard\|ai-comic\|brand-kit, tool?: quick\|remix\|avatar\|character }` → `201 { thread: Thread }`. canvas/editor need `projectId`; tool needs `tool`. |
 | GET | `/api/agent/threads` | `?projectId=&first=` → `{ items: [{ id, projectId, surface, skill, title, updatedAt }] }` (recent first). GraphQL: `agentThreads(surface!, first = 10) { id projectId surface skill title updatedAt }`: only the caller's own threads on that surface with a first message (Home's Recent conversations, any device). |
 | GET | `/api/agent/threads/:id` | `{ thread: Thread }` |
-| POST | `/api/agent/threads/:id/messages` | `{ text, refs?: assetIds[], selection?: nodeIds[], llm?: publicLlmId }` → runs one turn and answers when it ends: `{ turnId, messageId, text, reason, proposal: Proposal \| null, error: { code, message } \| null, llm }`. Events stream over the sockets while it runs (below). `409 CONFLICT` while another turn runs in the thread. `llm` is a public id from `/api/models` chat list (D-009; default `deepseek-v4.1-flash`) and is remembered per thread. |
+| POST | `/api/agent/threads/:id/messages` | `{ text, refs?: assetIds[], selection?: nodeIds[], llm?: publicLlmId, mode?: read\|edit\|auto, autoBudget?: credits }` → runs one turn and answers when it ends: `{ turnId, messageId, text, reason, proposal: Proposal \| null, error: { code, message } \| null, llm, mode, auto: AutoTurn \| null }`. `mode` defaults to `edit` (D-021); `autoBudget` (Auto only, 0–10,000) defaults to `prefs.autoBudget`, else the confirm threshold. In Auto, `proposal` is the one left for the user, else the last one applied (`status: applied`). Events stream over the sockets while it runs (below). `409 CONFLICT` while another turn runs in the thread. `llm` is a public id from `/api/models` chat list (D-009; default `deepseek-v4.1-flash`) and is remembered per thread. |
+| POST | `/api/agent/threads/:id/auto/undo` | `{ changeId }` or `{ turnId }` (D-021) → `{ ok, undone: changeIds[], failed: [{ id, code, message }], auto: AutoTurn }`. Graph changes revert their revision (`ProjectRoom.revert`, a new revision; `CONFLICT` when a later edit touched the same nodes), timeline changes restore the EDL from before the change while the timeline is still at its revision. Free; editor role. |
 | POST | `/api/agent/threads/:id/cancel` | `{ turnId? }` → `{ ok, canceled }`. Partial text stays; no proposal is created. |
 | GET | `/api/agent/threads/:id/ws` | Thread socket: `hello { threadId, running }`, then this thread's events; client may send `cancel` and `ping`. |
 | POST | `/api/agent/proposals/:id/apply` | `{ optionIndex?, title? }` (plan only). Applies as the user (editor role). Returns `{ ok, proposalId, kind, projectId?, canvasId?, revision?, idMap?, fields? }`. `plan`: Home threads create a project (`title` or the option title) and the thread moves to it (surface `canvas`); canvas threads add the nodes to their project. `graphPatch`: exactly the stored ops go to `ProjectRoom.applyPatch` with `origin: "agent"`. `timelinePatch`: `ProjectRoom.patchTimeline`. `fields`: returns the fields to put in the form. `409 CONFLICT` with `data.status` when the proposal is not `proposed` or became `stale`. |
@@ -585,14 +586,23 @@ Members only: every route that runs or applies agent work returns `402 NO_PLAN` 
 | `proposal.updated` | `{ threadId, proposalId, status: applied\|discarded\|stale, reason? }` |
 | `agent.done` | `{ threadId, turnId, messageId, reason, proposalId }` |
 | `agent.error` | `{ threadId, turnId, code, message }` |
+| `agent.auto` | `{ threadId, turnId, auto: AutoTurn }` (D-021): the Auto turn's changes and runs so far, and again after an undo. |
 | `agent.allowance` | Same body as `GET /api/agent/allowance`. Sent on the **user socket** of the user who sent the turn, after the turn's cost is settled (no `threadId`). |
 
 ```ts
 interface Thread {
   id: string; workspaceId: string; projectId: string | null; canvasId: string | null;
   surface: 'home' | 'canvas' | 'editor' | 'tool'; skill: string | null; tool: string | null; llm: string | null;
+  mode: 'read' | 'edit' | 'auto' | null; autoBudget: number | null; // D-021, the thread's last turn
   messages: { id: string; role: 'user' | 'assistant'; content: string; createdAt: number; proposalId?: string }[];
   proposals: Proposal[];
+  auto: (AutoTurn & { messageId: string | null })[];
+}
+// D-021 Auto turn: changes applied (each undoable) and run.start calls, against the turn budget.
+interface AutoTurn {
+  turnId: string; budget: number; spent: number;
+  changes: { id; proposalId; kind: 'plan' | 'graphPatch' | 'timelinePatch'; summary; projectId; revision; ops: number; nodeIds: string[]; status: 'applied' | 'undone' }[];
+  runs: { id; nodeIds: string[]; credits: number; status: 'started' | 'needs_approval' | 'refused'; runId?; code? }[];
 }
 interface Proposal {
   id: string; kind: 'plan' | 'graphPatch' | 'timelinePatch' | 'fields'; status: 'proposed' | 'applied' | 'discarded' | 'stale';

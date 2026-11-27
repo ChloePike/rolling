@@ -159,8 +159,18 @@ Results, judging and the reasons: `docs/harness-live-eval.md`. Where this sectio
 - **Timeline.** `cutTo {seconds}` is planned by the server (`core/timeline` `planCutTo`) and stored as the trims and moves it makes.
 - **Eval tools.** `eval:live` takes `--budget`, `--debug` and `--rules-only` and uses the live safety classifier by default; `eval:read` writes readable transcripts of a results file.
 
+## 13. Modes: Read, Edit, Auto (D-021, 2026-11-27)
 
-## 13. Result review (D-024, 2026-11-27)
+Where this section disagrees with the sections above, this section is current. Decision: `docs/decisions.md` D-021.
+
+- **Tool sets** (`toolsFor(surface, mode)`, `MODE_TOOL_KINDS`): Read gets the read tools only; Edit read + propose (as before); Auto read + propose + `run.start` (Home and canvas). The loop runs only the tools it offered: a propose or run call in Read is answered "not available in read mode" and changes nothing. Auto without an `AutoPort` runs as Edit.
+- **Context.** A `# Mode` section after the system prompt says what this turn may do; in Auto it carries the remaining run budget and replaces "never apply / never run" for the turn. The narration and no-credit-numbers rules stay.
+- **Auto apply.** A valid graph patch, timeline patch or plan (first option) goes to `AutoPort.apply`, which AgentSession implements with the same stored-proposal apply as `POST /api/agent/proposals/:id/apply` (`ProjectRoom.applyPatch` / `patchTimeline` as the user, `origin: agent`, `source: agent:<threadId>:<turnId>`). The model gets `{ applied: true, revision, nodes }` and the turn continues (a follow-up change or `run.start`). At most `AUTO_LIMITS.maxAppliedPerTurn` (3) changes and `maxOpsPerTurn` (60) ops; a proposal beyond them, or one that no longer applies, ends the turn as an ordinary proposal. Changes are stored in the thread (`auto_changes`, agent DO v3) and undone with `POST /api/agent/threads/:id/auto/undo`.
+- **`run.start { nodeIds }`.** The loop owns the turn budget (`TurnBudget`): `AutoPort.quote` (`quoteRun` scope `selection`, the nodes plus the inputs they need, surface `agent`) → `decide` (start; over the remaining budget → `needs_approval`; over the balance or the member's limit → refused) → `AutoPort.start` (`startRun`: CreditAccount holds, member limits, plan gates, mature rules and hard limits apply). The model sees the status, the quoted credits, the run id and the budget left, never the holds. At most `maxRunsPerTurn` (4) calls.
+- **Events.** `agent.auto { auto: AutoTurnSummary }` after every change and run; the turn result carries `mode` and `auto`.
+- **Evals.** `evals/modes.ts`: eight mode cases with offline graders `mode_read_only` (no proposal, no change, every propose/run call refused), `mode_edit_proposes` (nothing applied or run) and `mode_auto_budget` (spend within the budget at every step, an over-budget run surfaced not started, limits kept). The scripted agent tries the forbidden thing; `runModeCase` takes any LlmProvider for live runs.
+
+## 14. Result review (D-024, 2026-11-27)
 
 The agent reviews what was generated, not only what it plans. Decision and numbers: `docs/decisions.md` D-024.
 
