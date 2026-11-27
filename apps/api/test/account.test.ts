@@ -47,6 +47,8 @@ describe("PATCH /api/me/prefs", () => {
       theme: "light",
       notifications: { product: true },
       enhancePrompt: false,
+      agentMode: "auto",
+      autoBudget: 500,
       reviewResults: false,
     });
     expect(res.status).toBe(200);
@@ -61,6 +63,8 @@ describe("PATCH /api/me/prefs", () => {
       theme: "light",
       matureContent: false,
       enhancePrompt: false,
+      agentMode: "auto",
+      autoBudget: 500,
       reviewResults: false,
     };
     expect(await res.json()).toEqual({ prefs: expected, matureAllowed: false });

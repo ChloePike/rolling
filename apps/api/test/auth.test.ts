@@ -45,6 +45,8 @@ describe("email code sign-up and sign-in", () => {
       matureContent: false,
       enhancePrompt: true,
       reviewResults: true,
+      agentMode: "edit",
+      autoBudget: null,
     });
     expect(body).toMatchObject({ plan: null, isMember: false, matureAllowed: false, monthlyCreditLimit: null });
     expect(body.balance).toEqual({ plan: expect.any(Number), purchased: expect.any(Number), held: expect.any(Number), planExpiresAt: null });

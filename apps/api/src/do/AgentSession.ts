@@ -24,10 +24,15 @@ import {
   type TimelinePatchBody,
   type TurnEndReason,
   type TurnSettings,
+  type AgentMode,
+  type AutoChange,
+  type AutoPort,
+  type AutoRun,
+  type AutoTurnSummary,
 } from "@rolling/agent";
 import { hyperouter, isUnmeteredAgentLlm, tokenPrice, type LlmProvider } from "@rolling/core";
 import type { AgentHoldResult, AgentPeriodInput, AgentReleaseResult, AgentSettleResult, LedgerOutcome } from "@rolling/core/credits";
-import type { ServerMessageType } from "@rolling/core/graph";
+import { runScopeNodes, type ServerMessageType } from "@rolling/core/graph";
 import { newId } from "@rolling/core/ids";
 import { agentMigrations } from "@rolling/db/do/agent";
 import { migrateDurableObject } from "@rolling/db/do/migrate";
@@ -35,6 +40,9 @@ import { allowanceView } from "../agent/allowance";
 import { creditAccount } from "../billing/credits";
 import { projectRoom } from "../lib/access";
 import { gatewayConfigured, hyperouterClient } from "../runs/provider";
+import { quoteRun, startRun } from "../runs/service";
+import { ApiError } from "../lib/errors";
+import type { AuthContext } from "../auth/context";
 import { agentPorts, roomCallerOf, type AgentCaller } from "./agentPorts";
 import { canvasIdFor } from "./ProjectRoom";
 import { postContext } from "../post/agentContext";
@@ -78,8 +86,17 @@ export interface ThreadView {
   skill: string | null;
   tool: string | null;
   llm: string | null;
+  /** D-021: the mode this thread (project) was last used in; null until the first turn. */
+  mode: AgentMode | null;
+  autoBudget: number | null;
   messages: ThreadMessage[];
   proposals: Proposal[];
+  /** Auto turns: what each one changed and ran, keyed by its assistant message. */
+  auto: AutoTurnView[];
+}
+
+export interface AutoTurnView extends AutoTurnSummary {
+  messageId: string | null;
 }
 
 export interface SendInput {
@@ -94,6 +111,11 @@ export interface SendInput {
   turnId: string;
   /** D-012: the workspace's allowance period; the turn holds its estimate against it before the first LLM call. */
   allowance?: AgentPeriodInput;
+  /** D-021 mode (default Edit) and, for Auto, the turn's credit budget (resolved by the route). */
+  mode?: AgentMode;
+  autoBudget?: number;
+  /** Auto: the caller's auth context, for quoting and starting runs exactly as `POST /api/runs` would. */
+  runAuth?: AuthContext;
 }
 
 export interface TurnSummary {
@@ -104,6 +126,9 @@ export interface TurnSummary {
   proposal: Proposal | null;
   error: { code: string; message: string } | null;
   llm: string;
+  mode: AgentMode;
+  /** Auto turns: changes applied and runs asked for, against the budget. */
+  auto: AutoTurnSummary | null;
 }
 
 export type AgentError = { ok: false; code: "NOT_FOUND" | "FORBIDDEN" | "CONFLICT" | "VALIDATION_FAILED" | "AGENT_ALLOWANCE_EXHAUSTED" | "RATE_LIMITED" | "UNAVAILABLE"; message: string; data?: Record<string, unknown> };
@@ -130,7 +155,8 @@ export interface ApplyResult {
 interface RoomApi {
   init(input: { projectId: string; workspaceId: string; title: string; createdBy: string; ops?: unknown[] }): Promise<{ revision: number }>;
   getGraph(caller: unknown): Promise<unknown>;
-  applyPatch(caller: unknown, patch: { baseRevision: number; ops: unknown[]; origin?: "user" | "agent" }): Promise<unknown>;
+  applyPatch(caller: unknown, patch: { baseRevision: number; ops: unknown[]; origin?: "user" | "agent"; source?: string }): Promise<unknown>;
+  revert(caller: unknown, revision: number): Promise<unknown>;
   getTimeline(caller: unknown, canvasId?: string): Promise<unknown>;
   patchTimeline(caller: unknown, patch: { canvasId?: string; baseRevision: number; ops: unknown }): Promise<unknown>;
   broadcast(type: ServerMessageType, payload: unknown): Promise<{ sent: number }>;
@@ -291,6 +317,11 @@ export class AgentSession extends DurableObject<Env> {
     Object.assign(thread, await postContext(this.env, { workspaceId: input.caller.workspaceId, userId: input.caller.userId, projectId: thread.projectId, canvasId: thread.canvasId }));
     const llm = llmOverride ?? new hyperouter.HyperouterLlmProvider(hyperouterClient(this.env));
     if (input.llm) this.setMeta("llm", input.llm);
+    const mode: AgentMode = input.mode ?? "edit";
+    this.setMeta("mode", mode);
+    if (input.autoBudget !== undefined) this.setMeta("auto_budget", String(input.autoBudget));
+    const saved = new Set<string>();
+    const auto = mode === "auto" && input.runAuth ? this.autoPort(input, input.runAuth, saved) : undefined;
     const sink = this.sink(thread);
     const telemetry = analyticsTelemetry((this.env as { AE?: AnalyticsEngineDataset }).AE);
     let result: Awaited<ReturnType<typeof runTurn>>;
@@ -307,6 +338,8 @@ export class AgentSession extends DurableObject<Env> {
       emit: sink.emit,
       telemetry,
       workspaceId: input.caller.workspaceId,
+      mode,
+      ...(auto ? { auto } : {}),
     });
     } catch (err) {
       // No usage to settle: release the hold, then fail as before.
@@ -335,10 +368,16 @@ export class AgentSession extends DurableObject<Env> {
         result.proposal?.id ?? null,
         input.turnId,
       );
-      if (result.proposal) this.saveProposal(result.proposal);
+      // Auto stored (and indexed) the proposals it applied as it went; the rest are stored here.
+      const open = [...result.proposals, ...(result.proposal ? [result.proposal] : [])].filter((p, i, all) => !saved.has(p.id) && all.findIndex((q) => q.id === p.id) === i);
+      for (const p of open) {
+        this.saveProposal(p);
+        saved.add(p.id);
+      }
+      if (result.auto) this.saveAutoTurn(result.auto);
       this.setMeta("turn_count", String(turnCount));
     });
-    await this.indexTurn(input.caller, result.proposal, input.text);
+    await this.indexTurn(input.caller, result.proposal && result.proposal.status === "proposed" ? result.proposal : null, input.text);
     if (result.proposal && (result.proposal.kind === "graphPatch" || result.proposal.kind === "timelinePatch")) await this.registerWithRoom(input.caller);
     const charge = { turnCost: result.usage.chargedUsd, tokensIn: result.usage.promptTokens, tokensOut: result.usage.completionTokens };
     const close =
@@ -361,7 +400,209 @@ export class AgentSession extends DurableObject<Env> {
       proposal: result.proposal,
       error: result.error,
       llm: result.llm.publicId,
+      mode: result.mode,
+      auto: result.auto,
     };
+  }
+
+  // ---------------------------------------------------------------- Auto mode (D-021)
+
+  /**
+   * What an Auto turn may do: apply a validated proposal as the user (same checks as
+   * Apply, a normal revision attributed to this turn), quote runs and start a quoted run
+   * exactly as `POST /api/runs/quote` + `POST /api/runs` would (CreditAccount quote → hold →
+   * settle, member limits, plan gates, mature rules, hard limits). The loop's turn budget
+   * decides which quotes start; the hold amounts never reach the model.
+   */
+  private autoPort(input: SendInput, auth: AuthContext, saved: Set<string>): AutoPort {
+    const caller = input.caller;
+    const rc = roomCallerOf(caller);
+    const source = `agent:${this.meta("thread_id")}:${input.turnId}`;
+    let n = 0;
+    return {
+      budget: input.autoBudget ?? caller.confirmThreshold,
+      apply: async (p) => {
+        if (!saved.has(p.id)) {
+          this.saveProposal(p);
+          saved.add(p.id);
+          await this.indexTurn(caller, p, input.text);
+        }
+        const applied = await this.applyStored(p, caller, { optionIndex: 0, source });
+        if (!applied.ok) return { ok: false, error: applied.message };
+        await this.decide(p, "applied", caller.workspaceId);
+        const ops = p.body.kind === "plan" ? (p.body.options[0]?.ops ?? []) : p.body.kind === "graphPatch" ? p.body.ops : [];
+        const created = (ops as Array<{ op: string; tempId?: string; title?: string; kind?: string }>)
+          .filter((o) => o.op === "addNode" && o.tempId)
+          .map((o) => ({ id: applied.out.idMap?.[o.tempId!] ?? o.tempId!, title: o.title ?? "", kind: o.kind ?? "" }));
+        const touched = p.body.kind === "graphPatch" ? [...p.body.touched.updated, ...p.body.touched.removed] : [];
+        const change: AutoChange = {
+          id: `${input.turnId}:chg:${++n}`,
+          proposalId: p.id,
+          kind: p.kind as AutoChange["kind"],
+          summary: p.summary,
+          projectId: applied.out.projectId ?? null,
+          revision: applied.out.revision ?? 0,
+          ops: p.body.kind === "timelinePatch" ? p.body.ops.length : ops.length,
+          nodeIds: [...created.map((c) => c.id), ...touched],
+          status: "applied",
+        };
+        this.ctx.storage.sql.exec(
+          "INSERT INTO auto_changes (id, turn_id, proposal_id, kind, summary, project_id, revision, ops, node_ids, undo, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'applied', ?)",
+          change.id,
+          input.turnId,
+          p.id,
+          change.kind,
+          change.summary,
+          change.projectId,
+          change.revision,
+          change.ops,
+          JSON.stringify(change.nodeIds),
+          applied.undo === undefined ? null : JSON.stringify(applied.undo),
+          Date.now(),
+        );
+        if (p.kind === "graphPatch" || p.kind === "timelinePatch" || p.kind === "plan") await this.registerWithRoom(caller);
+        return { ok: true, change, created };
+      },
+      quote: async (nodeIds) => {
+        const projectId = this.meta("project_id");
+        if (!projectId) return { ok: false, code: "NO_PROJECT", message: "Build the plan on a canvas first" };
+        if (caller.role === "viewer") return { ok: false, code: "FORBIDDEN", message: "Your role does not allow runs" };
+        const graph = await this.room(projectId).getGraph(rc);
+        if (isFailure(graph)) return { ok: false, code: graph.code, message: graph.message };
+        const state = (graph as { state: { nodes: { id: string }[]; edges: never[] } }).state;
+        const known = nodeIds.filter((id) => state.nodes.some((x) => x.id === id));
+        if (!known.length) return { ok: false, code: "NOT_FOUND", message: "None of these nodes are on the canvas" };
+        // The nodes and the inputs they need (inputs with a valid version are reused for free).
+        const expanded = [...new Set(known.flatMap((id) => runScopeNodes(state as never, id, "upTo")))];
+        try {
+          const q = await quoteRun(this.env, auth, { projectId, scope: "selection", nodeIds: expanded, surface: "agent", caller: rc, matureAllowed: caller.matureAllowed });
+          return {
+            ok: true,
+            quoteId: q.quoteId,
+            credits: q.total,
+            available: q.balance,
+            nodeIds: q.items.filter((i) => i.action === "run" && i.nodeId).map((i) => i.nodeId!),
+            blocked: q.items.filter((i) => i.action === "blocked").map((i) => i.code ?? "blocked"),
+          };
+        } catch (err) {
+          return failureOf(err);
+        }
+      },
+      start: async (quoteId, review) => {
+        try {
+          // D-024: Auto runs carry what is left of the turn's budget, so a bad result can be retried once per node.
+          const r = await startRun(this.env, auth, quoteId, {}, review ? { auto: review } : {});
+          return { ok: true, runId: r.runId };
+        } catch (err) {
+          return failureOf(err);
+        }
+      },
+    };
+  }
+
+  private saveAutoTurn(a: AutoTurnSummary): void {
+    const sql = this.ctx.storage.sql;
+    const now = Date.now();
+    sql.exec("INSERT OR REPLACE INTO auto_turns (turn_id, budget, spent, created_at) VALUES (?, ?, ?, ?)", a.turnId, a.budget, a.spent, now);
+    for (const r of a.runs) {
+      sql.exec(
+        "INSERT OR REPLACE INTO auto_runs (id, turn_id, node_ids, credits, status, run_id, code, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        r.id,
+        a.turnId,
+        JSON.stringify(r.nodeIds),
+        r.credits,
+        r.status,
+        r.runId ?? null,
+        r.code ?? null,
+        now,
+      );
+    }
+  }
+
+  private autoTurns(): AutoTurnView[] {
+    const sql = this.ctx.storage.sql;
+    const turns = sql.exec<{ turn_id: string; budget: number; spent: number }>("SELECT turn_id, budget, spent FROM auto_turns ORDER BY created_at DESC LIMIT 30").toArray().reverse();
+    return turns.map((t) => this.autoTurn(t.turn_id, t.budget, t.spent));
+  }
+
+  private autoTurn(turnId: string, budget?: number, spent?: number): AutoTurnView {
+    const sql = this.ctx.storage.sql;
+    const head = budget === undefined ? sql.exec<{ budget: number; spent: number }>("SELECT budget, spent FROM auto_turns WHERE turn_id = ?", turnId).toArray()[0] : { budget, spent: spent ?? 0 };
+    const changes = sql
+      .exec<{ id: string; proposal_id: string; kind: string; summary: string; project_id: string | null; revision: number; ops: number; node_ids: string; status: string }>(
+        "SELECT id, proposal_id, kind, summary, project_id, revision, ops, node_ids, status FROM auto_changes WHERE turn_id = ? ORDER BY created_at, rowid",
+        turnId,
+      )
+      .toArray()
+      .map(
+        (r): AutoChange => ({
+          id: r.id,
+          proposalId: r.proposal_id,
+          kind: r.kind as AutoChange["kind"],
+          summary: r.summary,
+          projectId: r.project_id,
+          revision: r.revision,
+          ops: r.ops,
+          nodeIds: JSON.parse(r.node_ids) as string[],
+          status: r.status === "undone" ? "undone" : "applied",
+        }),
+      );
+    const runs = sql
+      .exec<{ id: string; node_ids: string; credits: number; status: string; run_id: string | null; code: string | null }>("SELECT id, node_ids, credits, status, run_id, code FROM auto_runs WHERE turn_id = ? ORDER BY created_at, rowid", turnId)
+      .toArray()
+      .map((r): AutoRun => ({ id: r.id, nodeIds: JSON.parse(r.node_ids) as string[], credits: r.credits, status: r.status as AutoRun["status"], ...(r.run_id ? { runId: r.run_id } : {}), ...(r.code ? { code: r.code } : {}) }));
+    const msg = sql.exec<{ id: string }>("SELECT id FROM messages WHERE turn_id = ? AND role = 'assistant' LIMIT 1", turnId).toArray()[0];
+    return { turnId, budget: head?.budget ?? 0, spent: head?.spent ?? 0, changes, runs, messageId: msg?.id ?? null };
+  }
+
+  /**
+   * Undoes changes Auto mode applied (D-021): one change, or every change of a turn
+   * (newest first). Graph changes revert their revision in ProjectRoom (refused when a
+   * later edit touched the same nodes); timeline changes restore the EDL from before the
+   * change while the timeline is still at the change's revision.
+   */
+  async undoAuto(caller: AgentCaller, target: { changeId?: string; turnId?: string }): Promise<{ ok: true; undone: string[]; failed: { id: string; code: string; message: string }[]; auto: AutoTurnView | null } | AgentError> {
+    const denied = this.denied(caller.workspaceId);
+    if (denied) return denied;
+    if (caller.role === "viewer") return { ok: false, code: "FORBIDDEN", message: "Your role does not allow this" };
+    const sql = this.ctx.storage.sql;
+    const rows = target.changeId
+      ? sql.exec<{ id: string; turn_id: string; kind: string; project_id: string | null; revision: number; undo: string | null; status: string }>("SELECT id, turn_id, kind, project_id, revision, undo, status FROM auto_changes WHERE id = ?", target.changeId).toArray()
+      : sql
+          .exec<{ id: string; turn_id: string; kind: string; project_id: string | null; revision: number; undo: string | null; status: string }>(
+            "SELECT id, turn_id, kind, project_id, revision, undo, status FROM auto_changes WHERE turn_id = ? ORDER BY created_at DESC, rowid DESC",
+            target.turnId ?? "",
+          )
+          .toArray();
+    if (!rows.length) return { ok: false, code: "NOT_FOUND", message: "Change not found" };
+    const rc = roomCallerOf(caller);
+    const undone: string[] = [];
+    const failed: { id: string; code: string; message: string }[] = [];
+    for (const r of rows) {
+      if (r.status !== "applied" || !r.project_id) continue;
+      const room = this.room(r.project_id);
+      let res: unknown;
+      if (r.kind === "timelinePatch") {
+        const before = r.undo ? (JSON.parse(r.undo) as { canvasId: string; edl: unknown }) : null;
+        if (!before) {
+          failed.push({ id: r.id, code: "CONFLICT", message: "Nothing to restore" });
+          continue;
+        }
+        res = await room.patchTimeline(rc, { canvasId: before.canvasId, baseRevision: r.revision, ops: [{ op: "replaceEdl", edl: before.edl, baseRevision: r.revision }] });
+      } else {
+        res = await room.revert(rc, r.revision);
+      }
+      if (isFailure(res)) {
+        failed.push({ id: r.id, code: res.code, message: res.message });
+        continue;
+      }
+      sql.exec("UPDATE auto_changes SET status = 'undone' WHERE id = ?", r.id);
+      undone.push(r.id);
+    }
+    const turnId = rows[0]!.turn_id;
+    const view = this.autoTurn(turnId);
+    if (undone.length) await this.broadcastEvent({ type: "agent.auto", threadId: this.meta("thread_id")!, turnId, auto: view });
+    return { ok: true, undone, failed, auto: view };
   }
 
   /** Refreshes the thread summary; returns its LLM cost in USD (charged to the turn, D-012). */
@@ -469,12 +710,31 @@ export class AgentSession extends DurableObject<Env> {
   async apply(proposalId: string, caller: AgentCaller, opts: { optionIndex?: number; title?: string } = {}): Promise<ApplyResult | AgentError> {
     const denied = this.denied(caller.workspaceId);
     if (denied) return denied;
-    if (caller.role === "viewer") return { ok: false, code: "FORBIDDEN", message: "Your role does not allow this" };
     const p = this.loadProposal(proposalId);
     if (!p) return { ok: false, code: "NOT_FOUND", message: "Proposal not found" };
+    const applied = await this.applyStored(p, caller, opts);
+    if (!applied.ok) return applied;
+    await this.decide(p, "applied", caller.workspaceId);
+    return applied.out;
+  }
+
+  /**
+   * Runs a stored proposal's ops through ProjectRoom as the user (Apply, and Auto mode).
+   * `source` attributes the revision (Auto: the agent turn). `undo` is what undoing the
+   * change needs beyond the patch log (timeline patches: the EDL before).
+   */
+  private async applyStored(
+    p: Proposal,
+    caller: AgentCaller,
+    opts: { optionIndex?: number; title?: string; source?: string } = {},
+  ): Promise<{ ok: true; out: ApplyResult; undo?: unknown } | AgentError> {
+    const proposalId = p.id;
+    if (caller.role === "viewer") return { ok: false, code: "FORBIDDEN", message: "Your role does not allow this" };
     if (p.status !== "proposed") return { ok: false, code: "CONFLICT", message: `This proposal is ${p.status}`, data: { status: p.status } };
     const rc = roomCallerOf(caller);
+    const src = opts.source ? { source: opts.source } : {};
     let out: ApplyResult;
+    let undo: unknown;
     switch (p.body.kind) {
       case "fields":
         out = { ok: true, proposalId, kind: p.kind, fields: p.body.fields };
@@ -497,7 +757,7 @@ export class AgentSession extends DurableObject<Env> {
         const graph = await this.room(projectId).getGraph(rc);
         if (isFailure(graph)) return { ok: false, code: "NOT_FOUND", message: graph.message };
         const revision = (graph as { state: { revision: number } }).state.revision;
-        const res = await this.room(projectId).applyPatch(rc, { baseRevision: revision, ops: option.ops, origin: "agent" });
+        const res = await this.room(projectId).applyPatch(rc, { baseRevision: revision, ops: option.ops, origin: "agent", ...src });
         if (isFailure(res)) return this.applyFailure(p, res);
         const ok = res as { revision: number; idMap: Record<string, string> };
         out = { ok: true, proposalId, kind: p.kind, projectId, canvasId: canvasIdFor(projectId), revision: ok.revision, idMap: ok.idMap };
@@ -507,7 +767,7 @@ export class AgentSession extends DurableObject<Env> {
         const body = p.body as GraphPatchBody;
         const room = this.room(body.projectId);
         let base = p.baseRevision ?? 0;
-        let res = await room.applyPatch(rc, { baseRevision: base, ops: body.ops, origin: "agent" });
+        let res = await room.applyPatch(rc, { baseRevision: base, ops: body.ops, origin: "agent", ...src });
         if (isFailure(res) && res.code === "CONFLICT") {
           const graph = await room.getGraph(rc);
           if (isFailure(graph)) return { ok: false, code: "NOT_FOUND", message: graph.message };
@@ -515,7 +775,7 @@ export class AgentSession extends DurableObject<Env> {
           if (!rebased.ok) return this.markStale(p, rebased.reason);
           base = rebased.revision;
           this.ctx.storage.sql.exec("UPDATE proposals SET base_revision = ? WHERE id = ?", base, p.id);
-          res = await room.applyPatch(rc, { baseRevision: base, ops: body.ops, origin: "agent" });
+          res = await room.applyPatch(rc, { baseRevision: base, ops: body.ops, origin: "agent", ...src });
         }
         if (isFailure(res)) return this.applyFailure(p, res);
         const ok = res as { revision: number; idMap: Record<string, string> };
@@ -528,6 +788,10 @@ export class AgentSession extends DurableObject<Env> {
         if (!projectId) return { ok: false, code: "NOT_FOUND", message: "Thread has no project" };
         const room = this.room(projectId);
         let base = p.baseRevision ?? 0;
+        if (opts.source) {
+          const t = await room.getTimeline(rc, body.canvasId);
+          if (!isFailure(t)) undo = { canvasId: body.canvasId, edl: (t as { timeline: { edl: unknown } }).timeline.edl };
+        }
         let res = await room.patchTimeline(rc, { canvasId: body.canvasId, baseRevision: base, ops: body.ops });
         if (isFailure(res) && res.code === "CONFLICT") {
           const t = await room.getTimeline(rc, body.canvasId);
@@ -543,8 +807,7 @@ export class AgentSession extends DurableObject<Env> {
         break;
       }
     }
-    await this.decide(p, "applied", caller.workspaceId);
-    return out;
+    return { ok: true, out, ...(undo !== undefined ? { undo } : {}) };
   }
 
   async discard(proposalId: string, caller: AgentCaller): Promise<{ ok: true } | AgentError> {
@@ -867,8 +1130,16 @@ export class AgentSession extends DurableObject<Env> {
       skill: this.meta("skill"),
       tool: this.meta("tool"),
       llm: this.meta("llm"),
+      mode: (this.meta("mode") as AgentMode | null) ?? null,
+      autoBudget: this.meta("auto_budget") === null ? null : Number(this.meta("auto_budget")),
       messages: this.loadMessages(100),
       proposals: this.loadProposals(),
+      auto: this.autoTurns(),
     };
   }
+}
+
+function failureOf(err: unknown): { ok: false; code: string; message: string } {
+  if (err instanceof ApiError) return { ok: false, code: err.code, message: err.message };
+  return { ok: false, code: "INTERNAL", message: err instanceof Error ? err.message : String(err) };
 }

@@ -106,6 +106,7 @@ export type ProjectRoomApi = Pick<
   | "getSnapshot"
   | "getGraph"
   | "applyPatch"
+  | "revert"
   | "undo"
   | "redo"
   | "addVersion"

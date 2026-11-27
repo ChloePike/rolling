@@ -10,7 +10,7 @@ describe("Durable Object stubs", () => {
 
   it("AgentSession migrates and answers ping()", async () => {
     const stub = env.AGENT.get(env.AGENT.idFromName("thr_test"));
-    expect(await stub.ping()).toEqual({ ok: true, schemaVersion: 2 });
+    expect(await stub.ping()).toEqual({ ok: true, schemaVersion: 3 });
   });
 
   it("UserHub broadcast() reports zero sockets when nobody is connected", async () => {

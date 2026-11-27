@@ -8,7 +8,8 @@
  */
 import { Hono, type Context } from "hono";
 import { z } from "zod";
-import { FIELD_TOOLS, SKILL_IDS } from "@rolling/agent";
+import { AGENT_MODES, FIELD_TOOLS, SKILL_IDS } from "@rolling/agent";
+import { AUTO_BUDGET, autoBudgetCredits } from "@rolling/core/pricing/config";
 import { PUBLIC_CHAT_MODELS } from "@rolling/core";
 import { newId } from "@rolling/core/ids";
 import type { AgentCaller, AgentError, ApplyResult, ThreadView, TurnSummary } from "../do/AgentSession";
@@ -44,7 +45,13 @@ const SendMessage = z.object({
       resolution: z.string().max(12).optional(),
     })
     .optional(),
+  /** D-021: read | edit (default) | auto. */
+  mode: z.enum(AGENT_MODES).optional(),
+  /** Auto: credits this turn may start runs for; default the user's Auto budget, else the confirm threshold. */
+  autoBudget: z.number().int().min(0).max(AUTO_BUDGET.max).optional(),
 });
+
+const UndoAuto = z.union([z.object({ changeId: z.string().min(1).max(160) }), z.object({ turnId: z.string().min(1).max(80) })]);
 
 interface ThreadRow {
   id: string;
@@ -65,6 +72,7 @@ interface SessionApi {
   cancel(workspaceId: string, turnId?: string): Promise<{ ok: true; canceled: boolean } | AgentError>;
   apply(proposalId: string, caller: AgentCaller, opts: { optionIndex?: number; title?: string }): Promise<ApplyResult | AgentError>;
   discard(proposalId: string, caller: AgentCaller): Promise<{ ok: true } | AgentError>;
+  undoAuto(caller: AgentCaller, target: { changeId?: string; turnId?: string }): Promise<unknown>;
   fetch(req: Request): Promise<Response>;
 }
 
@@ -165,6 +173,9 @@ export const agent = new Hono<AppEnv>()
     if (row.project_id) await projectAccess(c, auth, row.project_id);
     const allowance = await allowancePeriod(c.env, auth.workspaceId, auth.plan);
     const turnId = newId("event");
+    // D-021: Auto's per-turn budget counts as the user's approval for runs within it (quote → hold → settle as always).
+    const mode = body.mode ?? "edit";
+    const autoBudget = mode === "auto" ? autoBudgetCredits(body.autoBudget ?? auth.prefs.autoBudget, auth.prefs.confirmThreshold) : undefined;
     const result = ok(
       await session(c.env, row.id).send({
         caller: callerOf(auth),
@@ -175,9 +186,19 @@ export const agent = new Hono<AppEnv>()
         ...(body.settings ? { settings: body.settings } : {}),
         turnId,
         allowance,
+        mode,
+        ...(autoBudget !== undefined ? { autoBudget, runAuth: auth } : {}),
       }),
     );
     return c.json(result);
+  })
+  .post("/threads/:id/auto/undo", validate("param", IdParam), validate("json", UndoAuto), async (c) => {
+    // Undo is free: any editor of the thread's workspace may undo what Auto applied.
+    const auth = requireUser(c);
+    const row = await threadRow(c, auth, c.req.valid("param").id);
+    if (row.project_id) await projectAccess(c, auth, row.project_id, "editor");
+    const body = c.req.valid("json");
+    return c.json(ok(await session(c.env, row.id).undoAuto(callerOf(auth), body)));
   })
   .post("/threads/:id/cancel", validate("param", IdParam), validate("json", z.object({ turnId: z.string().max(80).optional() })), async (c) => {
     const auth = requireUser(c);

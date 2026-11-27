@@ -20,6 +20,7 @@ import {
   computeInputDigests,
   derivedStatus,
   diffGraph,
+  opsTouch,
   parseOps,
   parseTimelineOps,
   planRun as planGraphRun,
@@ -406,13 +407,53 @@ export class ProjectRoom extends DurableObject<Env> {
   }
 
   /** `opts.except`: the gateway socket that sent the patch gets an `ack` instead of `graph.patched` (D-014). */
-  async applyPatch(caller: RoomCaller, patch: { baseRevision: number; ops: unknown[]; origin?: Origin }, opts: { except?: HubExcept } = {}): Promise<PatchOk | RoomError> {
+  /**
+   * `source` attributes a revision beyond its origin (D-021: `agent:<threadId>:<turnId>` for
+   * changes Auto mode applied); it is kept in the patch log and sent with `graph.patched`.
+   */
+  async applyPatch(caller: RoomCaller, patch: { baseRevision: number; ops: unknown[]; origin?: Origin; source?: string }, opts: { except?: HubExcept } = {}): Promise<PatchOk | RoomError> {
     const denied = this.check(caller, true);
     if (denied) return denied;
     const parsed = parseOps(patch.ops);
     if (!parsed.ok) return { ok: false, code: "REFUSED", message: parsed.refusal.message, refusal: parsed.refusal };
-    const result = this.commit({ userId: caller.userId, ops: parsed.ops, origin: patch.origin ?? "user", kind: "patch", base: patch.baseRevision });
-    if (result.ok) this.afterCommit(result, caller.userId, patch.origin ?? "user", opts.except ? { hub: opts.except } : null);
+    const source = patch.source?.slice(0, 200);
+    const result = this.commit({ userId: caller.userId, ops: parsed.ops, origin: patch.origin ?? "user", kind: "patch", base: patch.baseRevision, ...(source ? { source } : {}) });
+    if (result.ok) this.afterCommit(result, caller.userId, patch.origin ?? "user", opts.except ? { hub: opts.except } : null, "patch", source);
+    return result;
+  }
+
+  /**
+   * Reverts one revision (D-021: "Undo" on a change Auto mode applied): applies its stored
+   * inverse as a new revision, like undo, and marks it undone. Refused with CONFLICT when a
+   * later live revision touches the same nodes or edges (the revert would clobber that edit).
+   */
+  async revert(caller: RoomCaller, revision: number, opts: { except?: HubExcept } = {}): Promise<PatchOk | RoomError> {
+    const denied = this.check(caller, true);
+    if (denied) return denied;
+    const result = this.ctx.storage.transactionSync((): PatchOk | RoomError => {
+      const sql = this.ctx.storage.sql;
+      const row = sql
+        .exec<{ revision: number; ops: string; inverse: string; undone: number; kind: string }>("SELECT revision, ops, inverse, undone, kind FROM patch_log WHERE revision = ?", revision)
+        .toArray()[0];
+      if (!row || row.kind === "undo") return { ok: false, code: "NOT_FOUND", message: "Revision not found" };
+      if (row.undone) return { ok: false, code: "NOTHING_TO_UNDO", message: "This change was already undone" };
+      const touched = new Set([...opsTouch(JSON.parse(row.ops) as RoomOp[]), ...opsTouch(JSON.parse(row.inverse) as RoomOp[])]);
+      const later = sql
+        .exec<{ revision: number; ops: string; kind: string; target: number | null; undone: number }>("SELECT revision, ops, kind, target, undone FROM patch_log WHERE revision > ? ORDER BY revision", revision)
+        .toArray();
+      const undoneRevisions = new Set(later.filter((r) => r.undone).map((r) => r.revision));
+      for (const r of later) {
+        // A later edit that was undone again (both rows) left nothing behind.
+        if (r.undone || (r.kind === "undo" && r.target !== null && undoneRevisions.has(r.target))) continue;
+        for (const id of opsTouch(JSON.parse(r.ops) as RoomOp[])) {
+          if (touched.has(id)) return { ok: false, code: "CONFLICT", message: "The canvas changed there since; undo it from the canvas", snapshot: this.snapshot() };
+        }
+      }
+      const out = this.commit({ userId: caller.userId, ops: JSON.parse(row.inverse) as RoomOp[], origin: "user", kind: "undo", base: null, target: revision });
+      if (out.ok) sql.exec("UPDATE patch_log SET undone = 1 WHERE revision = ?", revision);
+      return out;
+    });
+    if (result.ok) this.afterCommit(result, caller.userId, "user", opts.except ? { hub: opts.except } : null, "undo");
     return result;
   }
 
@@ -1147,7 +1188,7 @@ export class ProjectRoom extends DurableObject<Env> {
   }
 
   /** Broadcast + index after a committed graph patch. `except` (the sender) gets an ack instead. */
-  private afterCommit(result: PatchOk, userId: string, origin: Origin, except: EmitExcept | null, kind: "patch" | "undo" | "redo" = "patch"): void {
+  private afterCommit(result: PatchOk, userId: string, origin: Origin, except: EmitExcept | null, kind: "patch" | "undo" | "redo" = "patch", source?: string): void {
     this.emit(
       "graph.patched",
       {
@@ -1155,6 +1196,7 @@ export class ProjectRoom extends DurableObject<Env> {
         ops: result.ops,
         actor: origin,
         userId,
+        ...(source ? { source } : {}),
         ...(kind !== "patch" ? { kind } : {}),
         ...(Object.keys(result.statuses).length ? { statuses: result.statuses } : {}),
       },
@@ -1175,6 +1217,8 @@ export class ProjectRoom extends DurableObject<Env> {
     kind: "patch" | "undo" | "redo";
     base: number | null;
     target?: number;
+    /** D-021 attribution (e.g. `agent:<threadId>:<turnId>`). */
+    source?: string;
   }): PatchOk | RoomError {
     try {
       return this.ctx.storage.transactionSync((): PatchOk | RoomError => {
@@ -1191,7 +1235,7 @@ export class ProjectRoom extends DurableObject<Env> {
         const statuses = this.recomputeStatuses(this.loadState());
         const revision = current + 1;
         this.ctx.storage.sql.exec(
-          "INSERT INTO patch_log (revision, actor, ops, created_at, kind, inverse, target, undone) VALUES (?, ?, ?, ?, ?, ?, ?, 0)",
+          "INSERT INTO patch_log (revision, actor, ops, created_at, kind, inverse, target, undone, origin, source) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)",
           revision,
           input.userId,
           JSON.stringify(applied.ops),
@@ -1199,6 +1243,8 @@ export class ProjectRoom extends DurableObject<Env> {
           input.kind,
           JSON.stringify(inverse),
           input.target ?? null,
+          input.origin,
+          input.source ?? null,
         );
         this.setMeta("revision", String(revision));
         this.touch(now);
