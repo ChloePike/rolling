@@ -31,6 +31,8 @@ export interface ResultViewerContentProps {
   /** Initial playhead in seconds (video). */
   positionSec?: number;
   prompt: string;
+  /** D-020: the prompt that rendered when the gateway rewrote it; a version's own value wins. */
+  expandedPrompt?: string;
   /** Parameter cards, 2 per row (Model, Mode, Aspect ratio, Duration, Resolution, Seed, Took, Cost). */
   params: ResultParam[];
   /** Assets used as references. */
@@ -110,6 +112,7 @@ export function ResultViewerContent({
   durationSec = 15,
   positionSec = 4,
   prompt,
+  expandedPrompt: expandedProp,
   params,
   assets,
   actions,
@@ -128,10 +131,12 @@ export function ResultViewerContent({
   const [muted, setMuted] = useState(false);
   const [pos, setPos] = useState(positionSec);
   const [copied, setCopied] = useState(false);
+  const [copiedEnhanced, setCopiedEnhanced] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const versionsId = useId();
   const version = versions.find((v) => v.id === versionId) ?? versions[0];
   const currentId = currentVersionId ?? versions[versions.length - 1]?.id;
+  const expandedPrompt = version?.expandedPrompt ?? expandedProp;
   const versionLabel = version ? (version.id === currentId ? t('current', { version: version.label }) : version.label) : '';
 
   useEffect(() => {
@@ -146,6 +151,17 @@ export function ResultViewerContent({
       await navigator.clipboard.writeText(prompt);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* Clipboard blocked; nothing to do. */
+    }
+  };
+
+  const copyEnhanced = async () => {
+    if (!expandedPrompt) return;
+    try {
+      await navigator.clipboard.writeText(expandedPrompt);
+      setCopiedEnhanced(true);
+      setTimeout(() => setCopiedEnhanced(false), 1500);
     } catch {
       /* Clipboard blocked; nothing to do. */
     }
@@ -269,6 +285,17 @@ export function ResultViewerContent({
             </div>
             <span className={styles.prompt}>{prompt}</span>
           </div>
+          {expandedPrompt ? (
+            <div className={styles.promptCard} data-testid="viewer-enhanced-prompt">
+              <div className={styles.promptHead}>
+                <span className={styles.promptLabel}>{intl.formatMessage({ id: 'prompt.enhanced.title' })}</span>
+                <button type="button" className={styles.copy} onClick={copyEnhanced} aria-label={intl.formatMessage({ id: 'prompt.enhanced.copy' })}>
+                  {t(copiedEnhanced ? 'copied' : 'copy')}
+                </button>
+              </div>
+              <span className={styles.prompt}>{expandedPrompt}</span>
+            </div>
+          ) : null}
           <div className={styles.params}>
             {params.map((p, i) => (
               <div key={p.label} className={cx('rl-stagger', styles.param)} style={staggerStyle(i)}>

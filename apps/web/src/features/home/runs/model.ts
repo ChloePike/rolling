@@ -45,6 +45,8 @@ export interface HomeRunCard {
    * shown when the animation failed.
    */
   chain?: { step: ChainStepName | null; keyframeAssetId: string | null };
+  /** D-020: the prompt that rendered when the gateway rewrote it ("Enhanced prompt"). */
+  expandedPrompt?: string;
 }
 
 /** Cards kept per user and workspace in this browser (newest first). */
@@ -82,6 +84,8 @@ export function applyRunView(card: HomeRunCard, view: RunView): HomeRunCard {
     .map((i) => i.assetId)
     .filter((id): id is string => !!id);
   const failedItem = view.items.find((i) => i.status === 'failed' && i.error);
+  // The result's own rewrite: the animation's for a chain, else the first item that has one.
+  const expandedPrompt = (view.items.find((i) => i.step !== 'keyframe' && i.expandedPrompt) ?? view.items.find((i) => i.expandedPrompt))?.expandedPrompt;
   const progress = status === 'running' ? (view.progress ?? card.progress) : status === 'done' ? 1 : null;
   return {
     ...card,
@@ -96,6 +100,7 @@ export function applyRunView(card: HomeRunCard, view: RunView): HomeRunCard {
     finishedAt: view.finishedAt ?? (isActive({ status }) ? null : (card.finishedAt ?? Date.now())),
     retryable: view.retryable ?? (status === 'failed' || status === 'canceled'),
     ...(chain && { chain: { step: chain.current, keyframeAssetId: chain.keyframeAssetId } }),
+    ...(expandedPrompt && { expandedPrompt }),
   };
 }
 

@@ -26,6 +26,10 @@ export interface RunItemView {
   errorCode: string | null;
   /** D-005 mature text-to-video chain step: `keyframe` (the first frame, a picture) or `animate` (the video). */
   step?: ChainStepName;
+  /** D-020: "Enhance prompt" was on for this item. */
+  promptExpand?: true;
+  /** D-020: the prompt that rendered when the gateway rewrote it ("Enhanced prompt"). */
+  expandedPrompt?: string;
 }
 
 /** Steps of a mature text-to-video chain (D-005): one generation made as "first frame → animating". */
@@ -175,6 +179,8 @@ export interface PromptSpec {
   seed?: number;
   mature?: boolean;
   refsMode?: boolean;
+  /** D-020 "Enhance prompt" for this run; absent = the user's preference. */
+  promptExpand?: boolean;
   shots?: Array<{ prompt?: string; seconds?: number; frameAssetId?: string; startSec?: number }>;
   name?: string;
   views?: Array<'body' | 'face'>;
@@ -208,6 +214,8 @@ export interface SpecQuote {
     autoVia?: 'classifier' | 'fallback' | 'single';
     /** D-005 mature text-to-video chain step; both steps are in `total`. */
     step?: ChainStepName;
+    /** D-020: the price includes prompt enhancement. */
+    promptExpand?: true;
   }>;
   total: number;
   balance: number;

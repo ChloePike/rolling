@@ -159,8 +159,10 @@ export function useRuns(seed: FeedItem[], events: RunEvents = {}) {
         return;
       }
       const assets = resultItems(r).map((i) => i.assetId).filter((x): x is string => !!x);
+      const expandedPrompt = resultItems(r).find((i) => i.expandedPrompt)?.expandedPrompt;
       const done: MediaRun = {
         ...cur,
+        ...(expandedPrompt && { expandedPrompt }),
         progress: undefined,
         steps: undefined,
         assetId: assets[0] ?? null,

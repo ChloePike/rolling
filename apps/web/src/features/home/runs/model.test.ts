@@ -56,6 +56,16 @@ describe('home run cards', () => {
     expect(isActive({ status: 'done' })).toBe(false);
   });
 
+  it('D-020: a finished run shows the prompt the gateway rendered ("Enhanced prompt")', () => {
+    const item = { ref: 'spec', nodeId: null, title: 'A lamp', kind: 'image', model: 'm', modelName: 'M', status: 'succeeded' as const, jobId: 'job_1', progress: 1, credits: 2, spent: 2, refunded: 0, assetId: 'ast_1', error: null, errorCode: null };
+    const done = applyRunView(card(), view({ status: 'done', items: [{ ...item, promptExpand: true, expandedPrompt: 'A brass desk lamp, warm light' }] }));
+    expect(done.expandedPrompt).toBe('A brass desk lamp, warm light');
+    expect(applyRunView(card(), view({ status: 'done', items: [item] }))).not.toHaveProperty('expandedPrompt');
+    // A chain: the animation's rewrite, not the first frame's.
+    const chain = applyRunView(card(), view({ status: 'done', items: [{ ...item, ref: 'kf', step: 'keyframe', expandedPrompt: 'first frame' }, { ...item, ref: 'spec', step: 'animate', kind: 'video', expandedPrompt: 'second by second' }] }));
+    expect(chain.expandedPrompt).toBe('second by second');
+  });
+
   it('applies a run view: progress while running, assets and charge when done', () => {
     const running = applyRunView(card(), view());
     expect(running).toMatchObject({ status: 'running', progress: 0.4, credits: 363 });

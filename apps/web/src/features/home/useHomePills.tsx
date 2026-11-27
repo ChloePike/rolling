@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useIntl } from 'react-intl';
 import type { PromptSpec } from '@/features/overlays/runs';
 import { isMockApi } from '@/features/overlays/backend';
-import { pickerModels, useModels, type CatalogModel } from '@/lib/models';
+import { enhanceStateOf, pickerModels, useEnhancePrompt, useModels, type CatalogModel } from '@/lib/models';
 import { usePref } from '@/lib/prefs';
 import { useSession } from '@/lib/session';
 import { useAgentAllowance } from '@/lib/session/agentAllowance';
@@ -123,6 +123,8 @@ export function useHomePills(
   const videoCaps = useMemo(() => (mockMode ? null : modelCaps(videoM, 'video')), [videoM, mockMode]);
   const agentCaps = useMemo(() => (mockMode ? null : modelCaps(agentM, 'video')), [agentM, mockMode]);
   const imageCaps = useMemo(() => (mockMode ? null : modelCaps(imageM, 'image')), [imageM, mockMode]);
+  // D-020 "Enhance prompt" for image and video runs: a pill when the model takes the gateway's prompt expansion.
+  const enhance = useEnhancePrompt(mockMode || (mode !== 'image' && mode !== 'video') ? null : enhanceStateOf([mode === 'image' ? imageM : videoM]));
   useEffect(() => setVideo((v) => fitVideo(v, videoCaps, videoM)), [videoCaps, videoM]);
   useEffect(() => setAgentVideo((v) => fitVideo(v, agentCaps, agentM)), [agentCaps, agentM]);
   useEffect(() => setImage((v) => fitImage(v, imageCaps, imageM)), [imageCaps, imageM]);
@@ -185,6 +187,15 @@ export function useHomePills(
       onPick={(id) => set(Number(id))}
     />
   );
+
+  const enhancePills = (): PillSpec[] => {
+    if (enhance.state === null) return [];
+    const unavailable = enhance.state === 'unavailable';
+    const label = unavailable ? t('prompt.enhance.pill.unavailable') : t('prompt.enhance.pill', { on: String(enhance.on) });
+    const pill: PromptPill = { id: 'enhance', kind: 'param', icon: 'spark', label, ariaLabel: `${label}. ${t(unavailable ? 'prompt.enhance.unavailable.hint' : 'prompt.enhance.hint')}` };
+    const options = unavailable ? [t('prompt.enhance.unavailable.hint')] : [t('prompt.enhance.option.on'), t('prompt.enhance.option.off')];
+    return [{ pill, render: list(pill, options, unavailable ? 0 : enhance.on ? 0 : 1, (i) => (unavailable ? undefined : enhance.set(i === 0))) }];
+  };
 
   const secs = (d: VideoParams['duration']) => formatSeconds(intl, parseInt(d, 10));
   const videoQuote = (m: CatalogModel | undefined, v: VideoParams, blockedNow: string | null) => {
@@ -263,7 +274,7 @@ export function useHomePills(
     );
     run = {
       kind: 'image',
-      spec: { kind: 'image', model: m?.id ?? 'auto', ratio: image.aspectRatio, resolution: image.size, n: Number(image.count) || 1 },
+      spec: { kind: 'image', model: m?.id ?? 'auto', ratio: image.aspectRatio, resolution: image.size, n: Number(image.count) || 1, ...enhance.spec },
       modelName: m?.name ?? '',
       meta: [m?.name, image.aspectRatio, size.label].filter(Boolean).join(' · '),
       aspect: cssRatio(image.aspectRatio),
@@ -278,6 +289,7 @@ export function useHomePills(
       { pill: modelPill('model', nameOf(images, imageModel), idOf(images, imageModel)), render: modelPicker('image', images, imageModel, setImageModel) },
       { pill: ratio, render: params },
       { pill: size, render: params },
+      ...enhancePills(),
     ];
   } else if (mode === 'video') {
     const m = videoM;
@@ -292,7 +304,7 @@ export function useHomePills(
     };
     run = {
       kind: 'video',
-      spec: { kind: 'video', model: m?.id ?? 'auto', ratio: video.aspectRatio, resolution: video.resolution, seconds: Number.parseInt(String(video.duration), 10) || 5, audio: video.audio },
+      spec: { kind: 'video', model: m?.id ?? 'auto', ratio: video.aspectRatio, resolution: video.resolution, seconds: Number.parseInt(String(video.duration), 10) || 5, audio: video.audio, ...enhance.spec },
       modelName: m?.name ?? '',
       meta: [m?.name, video.aspectRatio, video.resolution, secs(video.duration), t(`home.pill.${FRAME_MODES[frame]}`)].filter(Boolean).join(' · '),
       aspect: cssRatio(video.aspectRatio),
@@ -307,6 +319,7 @@ export function useHomePills(
       { pill: modelPill('model', nameOf(videos, videoModel), idOf(videos, videoModel)), render: modelPicker('video', videos, videoModel, setVideoModel) },
       { pill: frames, render: list(frames, FRAME_MODES.map((f) => t(`home.pill.${f}`)), frame, setFrame) },
       { pill: ratio, render: videoParams(video, setVideo, credits, videoCaps, m, blocked) },
+      ...enhancePills(),
     ];
   } else {
     const m = pick(lipSync, avatarModel);

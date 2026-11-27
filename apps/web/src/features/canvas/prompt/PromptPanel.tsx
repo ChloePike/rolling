@@ -1,7 +1,9 @@
 import type { PlanId } from '@rolling/core/pricing/config';
 import { cx, presenceProps, usePresence, type PresenceState } from '@rolling/ui';
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
-import { modeLabel, modelLabel, type CatalogModel } from '@/lib/models';
+import { enhanceStateOf, modeLabel, modelLabel, type CatalogModel } from '@/lib/models';
+import { usePref } from '@/lib/prefs';
+import { PromptIcon } from '@/features/prompt';
 import { ModelIcon, modelIcon } from '@/lib/modelIcons';
 import {
   defaultImageParams,
@@ -161,6 +163,11 @@ export function PromptPanel({ node, left, top, state, refs, pickerOpen, onOpenPi
   };
   const running = node.status === 'generating' || node.status === 'queued';
   const toggle = (k: PillKey) => setOpen((o) => (o === k ? null : k));
+  // D-020 "Enhance prompt" on the node: its own choice, else off for agent-planned nodes (their prompts are written out)
+  // and the Preferences default for the user's own nodes. Shown only when the node's model takes the gateway's expansion.
+  const enhancePref = usePref('enhancePrompt');
+  const enhanceState = isMockApi() ? null : enhanceStateOf([catalogModel]);
+  const enhanceOn = typeof node.params.promptExpand === 'boolean' ? node.params.promptExpand : node.createdBy === 'agent' ? false : enhancePref;
 
   const commitDraft = () => {
     setEditing(false);
@@ -351,6 +358,20 @@ export function PromptPanel({ node, left, top, state, refs, pickerOpen, onOpenPi
             </span>
           );
         })}
+        {enhanceState ? (
+          <button
+            type="button"
+            className={styles.param}
+            aria-pressed={enhanceState === 'available' && enhanceOn}
+            disabled={enhanceState === 'unavailable'}
+            title={intl.formatMessage({ id: enhanceState === 'unavailable' ? 'prompt.enhance.unavailable.hint' : 'prompt.enhance.hint' })}
+            data-testid="prompt-enhance"
+            onClick={() => onUpdate(node.id, { promptExpand: !enhanceOn })}
+          >
+            <PromptIcon name="spark" size={13} />
+            {enhanceState === 'unavailable' ? intl.formatMessage({ id: 'prompt.enhance.pill.unavailable' }) : intl.formatMessage({ id: 'prompt.enhance.pill' }, { on: String(enhanceOn) })}
+          </button>
+        ) : null}
         <span className={styles.spacer} />
         {costBlocked ? (
           <span className={styles.costBlocked} title={costBlocked} data-testid="prompt-cost-blocked">

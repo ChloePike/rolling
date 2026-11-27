@@ -519,6 +519,8 @@ export interface QuoteItem {
   /** `MATURE_REQUIRED`: why the caller has no mature access (D-005); picks the copy. */
   matureAccess?: 'no_plan' | 'preference_off' | 'workspace_off';
   dependsOn?: string[];
+  /** D-020: the price includes prompt enhancement. */
+  promptExpand?: true;
 }
 
 /** `node`, `upTo`, `from`, `all` (`@rolling/core/graph` RunScope) plus `selection` (the given nodes). */
@@ -737,6 +739,8 @@ export interface NodeVersionView {
   thumbUrl: string | null;
   model?: string | null;
   createdAt: number;
+  /** The job's output record; `expandedPrompt` (D-020) is the prompt that rendered when the gateway rewrote it. */
+  output?: { expandedPrompt?: string } | null;
 }
 
 /** `GET /api/nodes/:id/versions?projectId=` (newest first). Mock mode: none (the room only knows n/total). */

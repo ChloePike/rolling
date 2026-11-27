@@ -440,6 +440,7 @@ export function ActivityPage({ initialFilter = 'all' }: { initialFilter?: Activi
             onVersionChange={() => {}}
             src={viewing?.assetId ? assetMediaUrl(viewing.assetId) : undefined}
             prompt={viewing?.name ?? ''}
+            {...(viewing?.expandedPrompt && { expandedPrompt: viewing.expandedPrompt })}
             params={viewItem?.params ?? []}
             assets={[]}
             actions={[{ id: 'edit' }, ...(viewing?.assetId ? [{ id: 'sendToCanvas' as const }] : []), { id: 'download' }]}
@@ -459,7 +460,7 @@ export function ActivityPage({ initialFilter = 'all' }: { initialFilter?: Activi
             open={!!retryQuote}
             onOpenChange={(o) => !o && setRetryQuote(null)}
             variant="single"
-            rows={retryQuote ? retryQuote.quote.items.filter((i) => i.action === 'run').map((i) => ({ id: i.nodeId ?? i.ref, name: i.title || retryQuote.run.name, meta: i.modelName ?? i.model ?? '', kind: (i.kind === 'image' ? 'image' : 'video') as 'image' | 'video', state: 'run' as const, cost: i.credits })) : []}
+            rows={retryQuote ? retryQuote.quote.items.filter((i) => i.action === 'run').map((i) => ({ id: i.nodeId ?? i.ref, name: i.title || retryQuote.run.name, meta: [i.modelName ?? i.model ?? '', i.promptExpand ? intl.formatMessage({ id: 'prompt.enhance.quoteLine' }) : ''].filter(Boolean).join(' · '), kind: (i.kind === 'image' ? 'image' : 'video') as 'image' | 'video', state: 'run' as const, cost: i.credits })) : []}
             balance={retryQuote?.quote.balance ?? 0}
             actionLabel={intl.formatMessage({ id: 'activity.action.retry' })}
             eta={intl.formatMessage({ id: 'activity.retryEta' })}

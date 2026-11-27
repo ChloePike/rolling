@@ -2,7 +2,7 @@ import { cx } from '@rolling/ui';
 import { useEffect, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { assetMediaUrl, isMockApi, posterUrl } from '@/features/overlays/backend';
-import { PromptIcon } from '@/features/prompt';
+import { EnhancedPrompt, PromptIcon } from '@/features/prompt';
 import { clock, isActive, remainingSeconds, type HomeRunCard } from './model';
 import styles from './RunCard.module.css';
 
@@ -160,6 +160,7 @@ export function RunCard({ card, actions, index }: { card: HomeRunCard; actions: 
         </div>
         <p className={styles.prompt}>{card.prompt || card.title}</p>
         <p className={styles.meta}>{card.meta}</p>
+        {card.expandedPrompt && card.status === 'done' ? <EnhancedPrompt text={card.expandedPrompt} testId="home-run-enhanced" /> : null}
         {card.chain ? (
           <p className={styles.meta} data-testid="home-run-steps">
             <FormattedMessage id="home.run.steps" />

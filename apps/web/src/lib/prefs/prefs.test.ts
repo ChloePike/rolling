@@ -103,6 +103,19 @@ describe('lib/prefs server sync', () => {
     expect(p).toMatchObject({ language: 'ja', currency: 'JPY', defaultAspectRatio: '1:1', notifyCreditsLow: false, confirmThreshold: 0, theme: 'dark', matureContent: true });
   });
 
+  it('D-020: Enhance prompt defaults on, persists, and maps to and from the server', async () => {
+    stubBrowser();
+    const prefs = await import('./index');
+    expect(prefs.getPrefs().enhancePrompt).toBe(true);
+    prefs.setPrefs({ enhancePrompt: false });
+    vi.resetModules();
+    expect((await import('./index')).getPrefs().enhancePrompt).toBe(false);
+    expect(prefs.toServerPatch({ enhancePrompt: false })).toEqual({ enhancePrompt: false });
+    const base = { language: 'en', currency: 'USD', creationMode: 'simple' as const, defaultRatio: '9:16', defaultModel: 'auto', confirmThreshold: 300, notifications: { done: true, low: true, renewal: true, product: false }, theme: 'dark' as const, matureContent: false };
+    expect(prefs.fromServerPrefs(base).enhancePrompt).toBe(true);
+    expect(prefs.fromServerPrefs({ ...base, enhancePrompt: false }).enhancePrompt).toBe(false);
+  });
+
   it('writes optimistically, sends to the remote, and rolls back on a refusal', async () => {
     stubBrowser();
     const prefs = await import('./index');

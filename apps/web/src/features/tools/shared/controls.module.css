@@ -25,3 +25,4 @@
 .pickLabel{font-size:11px;color:var(--c-text-4)}
 .pickValue{font-size:13px;font-weight:600;line-height:1.3;overflow:hidden;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2}
 .chev{flex:none;color:var(--c-text-4)}
+.switch:disabled{cursor:not-allowed;opacity:.5}

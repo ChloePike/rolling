@@ -39,6 +39,8 @@ export interface MediaRun {
   /** Real mode: the API run and its first result asset. */
   runId?: string;
   assetId?: string | null;
+  /** D-020: the prompt that rendered when the gateway rewrote it ("Enhanced prompt"). */
+  expandedPrompt?: string;
 }
 
 export interface DraftLine {

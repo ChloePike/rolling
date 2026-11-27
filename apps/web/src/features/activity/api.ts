@@ -33,6 +33,7 @@ function rowFrom(r: RunView, now: number): RunRow {
     projectId: r.projectId,
     assetId: first?.assetId ?? null,
     mediaKind: first?.kind === 'image' ? 'image' : 'video',
+    ...((first?.expandedPrompt ?? results.find((i) => i.expandedPrompt)?.expandedPrompt) && { expandedPrompt: first?.expandedPrompt ?? results.find((i) => i.expandedPrompt)!.expandedPrompt! }),
     failedNodeIds: r.items.filter((i) => (i.status === 'failed' || i.status === 'canceled' || i.status === 'skipped') && i.nodeId).map((i) => i.nodeId!),
     ...(chain && { chain: { step: chain.current, failed: chain.failed } }),
   };

@@ -170,6 +170,8 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
   const quoteRef = useRef<SpecQuote | null>(null);
   const [quoteTotal, setQuoteTotal] = useState<number | null>(null);
   const [quoteBalance, setQuoteBalance] = useState<number | null>(null);
+  /** D-020: the quote includes prompt enhancement (said on the confirm row). */
+  const [quoteEnhanced, setQuoteEnhanced] = useState(false);
 
   const failed = (run: RunRequest, refunded: number) =>
     toast.show({
@@ -240,6 +242,7 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
           quoteRef.current = q;
           setQuoteTotal(q.total);
           setQuoteBalance(q.balance);
+          setQuoteEnhanced(q.items.some((i) => i.action === 'run' && i.promptExpand));
           const blocked = q.items.find((i) => i.action === 'blocked');
           if (!q.quoteId) {
             if (blocked?.code === 'NO_PLAN') return toPaywall(run, 'join');
@@ -357,7 +360,7 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
         open={step.kind === 'confirm'}
         onOpenChange={(o) => !o && close()}
         variant="single"
-        rows={run ? [{ id: 'run_this', name: t('overlays.run.row'), meta: run.meta, kind: run.kind, state: 'run', cost: shownCost }] : []}
+        rows={run ? [{ id: 'run_this', name: t('overlays.run.row'), meta: real && quoteEnhanced ? `${run.meta} · ${t('prompt.enhance.quoteLine')}` : run.meta, kind: run.kind, state: 'run', cost: shownCost }] : []}
         balance={shownBalance}
         eta={run?.eta ?? '~2 min'}
         subtitle={run?.subtitle}

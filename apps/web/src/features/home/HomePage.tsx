@@ -235,7 +235,7 @@ export function HomePage() {
       modelName: c.modelName,
       params: c.params,
       refs: [],
-      versions: [nextVersion([], id)],
+      versions: [{ ...nextVersion([], id), ...(c.expandedPrompt && !keyframe ? { expandedPrompt: c.expandedPrompt } : {}) }],
       versionId: id,
       createdAt: new Date(c.createdAt),
       cost: c.credits,

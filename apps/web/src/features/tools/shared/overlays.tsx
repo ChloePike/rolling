@@ -197,7 +197,7 @@ export function ToolRunConfirm({ open, cost, label, views, quote, meta, onClose,
           id: i.ref,
           // D-005 chain: one generation in two steps, both priced in the total.
           name: i.step ? intl.formatMessage({ id: `tools.confirm.step.${i.step}` }) : i.title,
-          meta: i.step === 'keyframe' ? (i.modelName ?? '') : [i.modelName, meta].filter(Boolean).join(' · '),
+          meta: [i.step === 'keyframe' ? i.modelName : [i.modelName, meta].filter(Boolean).join(' · '), i.promptExpand ? intl.formatMessage({ id: 'prompt.enhance.quoteLine' }) : null].filter(Boolean).join(' · '),
           kind: i.kind === 'image' ? 'image' : 'video',
           state: i.action === 'run' ? 'run' : i.action === 'reuse' ? 'reuse' : i.action === 'blocked' ? 'blocked' : 'free',
           cost: i.credits,
@@ -286,6 +286,7 @@ export function ToolResultViewer({ open, aspect, run, fallbackTitle, onClose, on
       src={tile?.src}
       durationSec={run?.durationSec}
       prompt={run?.prompt ?? ''}
+      {...(run?.expandedPrompt && { expandedPrompt: run.expandedPrompt })}
       params={params}
       assets={[]}
       actions={resultActions()}

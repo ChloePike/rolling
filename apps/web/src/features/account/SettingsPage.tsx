@@ -858,6 +858,13 @@ function PreferencesSection() {
           onChange={(v) => setPref('confirmThreshold', Number(v))}
         />
       </Row>
+      {/* D-020: the default of the per-run "Enhance prompt" toggle (Home, tools, Quick Create). */}
+      <SwitchRow
+        label={t('account.settings.prefs.enhance')}
+        hint={t('account.settings.prefs.enhance.hint')}
+        checked={prefs.enhancePrompt}
+        onChange={(v) => setPref('enhancePrompt', v)}
+      />
       {showMature && (
         <SwitchRow
           label={t('account.settings.prefs.mature')}

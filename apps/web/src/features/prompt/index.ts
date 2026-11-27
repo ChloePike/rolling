@@ -30,3 +30,4 @@ export type {
   PromptCommandGroup,
   PromptMode,
 } from './types';
+export { EnhancedPrompt } from './EnhancedPrompt';

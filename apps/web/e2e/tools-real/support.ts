@@ -95,9 +95,14 @@ const quote = (spec: Record<string, unknown>) => ({
 });
 
 /** Stubs every `/api` call the tool pages make; returns the recorded quote and library requests. */
-export async function stubApi(page: Page, context: BrowserContext, opts: { creationMode?: 'simple' | 'advanced' } = {}): Promise<Calls> {
+export async function stubApi(
+  page: Page,
+  context: BrowserContext,
+  opts: { creationMode?: 'simple' | 'advanced'; catalog?: Array<Record<string, unknown> & { kind: string }>; prefs?: Record<string, unknown> } = {},
+): Promise<Calls> {
   const calls: Calls = { quotes: [], runs: [], library: [] };
-  const me = { ...ME, prefs: { ...ME.prefs, creationMode: opts.creationMode ?? 'simple' } };
+  const catalog = opts.catalog ?? CATALOG;
+  const me = { ...ME, prefs: { ...ME.prefs, creationMode: opts.creationMode ?? 'simple', ...opts.prefs } };
   await page.addInitScript((mode) => {
     try {
       window.localStorage.setItem('rolling.creationMode', mode);
@@ -117,7 +122,7 @@ export async function stubApi(page: Page, context: BrowserContext, opts: { creat
     if (path === '/me') return route.fulfill({ json: me });
     if (path === '/models') {
       const kind = url.searchParams.get('kind');
-      return route.fulfill({ json: { models: kind ? CATALOG.filter((m) => m.kind === kind) : CATALOG } });
+      return route.fulfill({ json: { models: kind ? catalog.filter((m) => m.kind === kind) : catalog } });
     }
     if (path === '/graphql') {
       const body = req.postDataJSON() as { query: string; variables?: Record<string, unknown> };

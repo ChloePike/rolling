@@ -19,6 +19,8 @@ import { usePresence } from './usePresence';
 import { useRuns, type RunSpec } from './useRuns';
 import type { ToolCaps, ToolSettings } from './settings';
 import { useToolQuote } from './useToolQuote';
+import { EnhanceCard } from './EnhanceCard';
+import { enhanceStateOf, useEnhancePrompt } from '@/lib/models';
 import { assetMediaUrl, isApiError, isMockApi } from '@/features/overlays/backend';
 import { agentFailure, applyProposal, sendTurn, threadFor, type AgentTool } from '@/features/overlays/agent';
 import { downloadAsset } from '@/features/overlays/media';
@@ -120,8 +122,13 @@ export function ToolLayout(p: ToolLayoutProps) {
   const [viewing, setViewing] = useState<MediaRun | null>(null);
   /** References added with the composer's `+` (asset picker): badges in the composer, image assets in the run. */
   const [extraRefs, setExtraRefs] = useState<Array<ComposerRef & { assetId: string; image: boolean }>>([]);
+  // D-020 "Enhance prompt": shown when the run's model (Auto: any candidate) takes the gateway's prompt expansion.
+  const enhance = useEnhancePrompt(
+    enhanceStateOf((p.model === 'Auto' ? p.models : p.models.filter((m) => m.name === p.model || m.id === p.model)).map((m) => m.catalog)),
+  );
   const specOf = (prompt: string): PromptSpec | string | null | undefined => {
-    const raw = p.spec?.(prompt);
+    const base = p.spec?.(prompt);
+    const raw = base && typeof base === 'object' && base.kind !== 'avatar' ? { ...base, ...enhance.spec } : base;
     const extra = extraRefs.filter((r) => r.image).map((r) => r.assetId);
     if (!raw || typeof raw === 'string' || !extra.length) return raw;
     const ids = [...new Set([...(raw.inputs?.referenceAssetIds ?? []), ...extra])].slice(0, 9);
@@ -178,6 +185,7 @@ export function ToolLayout(p: ToolLayoutProps) {
               id: r.id,
               runId: r.id,
               assetId: asset,
+              ...(result?.expandedPrompt && { expandedPrompt: result.expandedPrompt }),
               aspect: p.run.aspect,
               tiles: [{ tone: 'var(--c-tone-blank)', ...(asset ? { src: assetMediaUrl(asset) } : {}) }],
               prompt: r.name,
@@ -411,6 +419,7 @@ export function ToolLayout(p: ToolLayoutProps) {
       {refPicker.element}
       <aside className={styles.aside} aria-label={t('tools.aside.label')}>
         {p.aside}
+        <EnhanceCard enhance={enhance} />
         {adv.mounted && (
           <>
             <div className={`${styles.advRule} ${adv.state === 'enter' ? styles.advEnter : styles.advExit}`}>

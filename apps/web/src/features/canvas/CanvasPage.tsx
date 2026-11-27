@@ -28,6 +28,7 @@ import {
   quoteRun,
   renameProject,
   setActiveVersion,
+  listVersions,
   startRun,
   stopSharing,
   topUp,
@@ -55,7 +56,7 @@ import { freePosition } from './target/resolve';
 import { DeleteProjectDialog } from './target/DeleteProjectDialog';
 import { assetMediaUrl, hasPendingAction, isMockApi, savePendingAction, takePendingAction } from '@/features/overlays/backend';
 import { saveSelectionAsTemplate } from '@/features/templates/api';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { downloadAsset } from '@/features/overlays/media';
 import canvas from './canvas.module.css';
 import type { LocalOp } from './graph/store';
@@ -256,6 +257,7 @@ function planMeta(intl: ReturnType<typeof useIntl>, n: GraphNode, item?: QuoteIt
   if (format) parts.push(format);
   if (n.status === 'done' && n.version) parts.push(intl.formatMessage({ id: 'canvas.plan.meta.current' }, { n: n.version.n }));
   if (n.status === 'outdated') parts.push(intl.formatMessage({ id: 'canvas.node.status.outdated' }));
+  if (item?.action === 'run' && item.promptExpand) parts.push(intl.formatMessage({ id: 'prompt.enhance.quoteLine' }));
   return parts.join(' · ');
 }
 
@@ -1397,6 +1399,14 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
   if (resultNode) lastResult.current = resultNode;
   const shownResult = resultNode ?? lastResult.current;
   const resultMedia = shownResult ? session.sync.getMedia(shownResult.id) : undefined;
+  // D-020: each version's "Enhanced prompt" (the rewrite the gateway rendered), from the node's version list.
+  const resultVersions = useQuery({
+    queryKey: ['nodeVersions', projectId, shownResult?.id ?? null, shownResult?.version?.total ?? 0],
+    queryFn: () => listVersions(projectId, shownResult!.id),
+    enabled: !!resultNode?.version && !isMockApi(),
+    staleTime: 30_000,
+  });
+  const expandedByN = new Map((resultVersions.data ?? []).flatMap((v) => (v.output?.expandedPrompt ? [[v.n, v.output.expandedPrompt] as const] : [])));
 
   const onResultAction = (id: ResultActionId) => {
     const n = shownResult;
@@ -1909,7 +1919,12 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
           createdAt={new Date()}
           aspectRatio={String(shownResult.params.ratio ?? '9:16').replace(':', '/')}
           mediaKind={shownResult.kind === 'video' ? 'video' : 'image'}
-          versions={Array.from({ length: shownResult.version.total }, (_, i) => ({ id: `v${i + 1}`, label: `v${i + 1}`, tone: typeof shownResult.params.tone === 'string' ? shownResult.params.tone : undefined }))}
+          versions={Array.from({ length: shownResult.version.total }, (_, i) => ({
+            id: `v${i + 1}`,
+            label: `v${i + 1}`,
+            tone: typeof shownResult.params.tone === 'string' ? shownResult.params.tone : undefined,
+            ...(expandedByN.get(i + 1) ? { expandedPrompt: expandedByN.get(i + 1)! } : {}),
+          }))}
           versionId={`v${shownResult.version.n}`}
           currentVersionId={`v${shownResult.version.n}`}
           onVersionChange={(id) => void setActiveVersion(projectId, shownResult.id, Number(id.slice(1)))}

@@ -97,6 +97,8 @@ export interface ResultVersion {
   /** Placeholder tile color when there is no thumbnail. */
   tone?: string;
   thumbnailUrl?: string;
+  /** D-020: the prompt this version rendered when the gateway rewrote it ("Enhanced prompt"). */
+  expandedPrompt?: string;
 }
 
 export interface ResultParam {

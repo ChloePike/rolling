@@ -480,5 +480,7 @@
   "account.upgradeModal.error.ownerOnly": "Only the workspace owner can change the plan.",
   "account.upgradeModal.error.canceled": "Checkout canceled. Nothing was charged.",
   "account.upgradeModal.error.expired": "That checkout expired. Nothing was charged.",
-  "account.upgradeModal.recommended": "Recommended"
+  "account.upgradeModal.recommended": "Recommended",
+  "account.settings.prefs.enhance": "Enhance prompt",
+  "account.settings.prefs.enhance.hint": "Rewrites short prompts with more detail before rendering. Applies to Home, tools and Quick Create; you can change it for each run."
 }

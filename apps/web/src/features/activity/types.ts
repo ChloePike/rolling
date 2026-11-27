@@ -25,6 +25,8 @@ export interface RunRow {
   projectId?: string | null;
   assetId?: string | null;
   mediaKind?: 'video' | 'image';
+  /** D-020: the prompt that rendered when the gateway rewrote it ("Enhanced prompt"). */
+  expandedPrompt?: string;
   failedNodeIds?: string[];
   /**
    * D-005 mature text-to-video chain: one generation in two steps (first frame

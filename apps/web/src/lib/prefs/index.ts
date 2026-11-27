@@ -86,6 +86,8 @@ export interface Prefs {
   confirmThreshold: number;
   /** D-005 visibility preference; only offered to members whose workspace allows it. */
   matureContent: boolean;
+  /** D-020 "Enhance prompt" default for Home, tools and Quick Create (each run can change it). */
+  enhancePrompt: boolean;
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -101,6 +103,7 @@ export const DEFAULT_PREFS: Prefs = {
   theme: 'system',
   confirmThreshold: DEFAULT_CONFIRM_THRESHOLD_CREDITS,
   matureContent: false,
+  enhancePrompt: true,
 };
 
 export const CREATION_MODE_KEY = 'rolling.creationMode';
@@ -151,6 +154,7 @@ function parse(creationRaw: string | null, languageRaw: string | null, rest: str
     theme: oneOf(THEME_OPTIONS, o.theme, DEFAULT_PREFS.theme),
     confirmThreshold: threshold,
     matureContent: o.matureContent === true,
+    enhancePrompt: typeof o.enhancePrompt === 'boolean' ? o.enhancePrompt : DEFAULT_PREFS.enhancePrompt,
   };
 }
 
@@ -258,6 +262,8 @@ export interface ServerPrefsShape {
   notifications: { done: boolean; low: boolean; renewal: boolean; product: boolean };
   theme: ThemePref;
   matureContent: boolean;
+  /** D-020; absent from servers before it (defaults on). */
+  enhancePrompt?: boolean;
 }
 
 export type ServerPrefsPatchShape = Partial<Omit<ServerPrefsShape, 'notifications'>> & { notifications?: Partial<ServerPrefsShape['notifications']> };
@@ -282,6 +288,7 @@ export function fromServerPrefs(p: ServerPrefsShape): Prefs {
     theme: oneOf(THEME_OPTIONS, p.theme, DEFAULT_PREFS.theme),
     confirmThreshold: typeof p.confirmThreshold === 'number' ? p.confirmThreshold : DEFAULT_PREFS.confirmThreshold,
     matureContent: p.matureContent === true,
+    enhancePrompt: typeof p.enhancePrompt === 'boolean' ? p.enhancePrompt : DEFAULT_PREFS.enhancePrompt,
   };
 }
 
@@ -297,6 +304,7 @@ export function toServerPatch(patch: Partial<Prefs>): ServerPrefsPatchShape {
   if (patch.confirmThreshold !== undefined) out.confirmThreshold = Math.max(0, Math.min(100_000, Math.round(patch.confirmThreshold)));
   if (patch.theme !== undefined) out.theme = patch.theme;
   if (patch.matureContent !== undefined) out.matureContent = patch.matureContent;
+  if (patch.enhancePrompt !== undefined) out.enhancePrompt = patch.enhancePrompt;
   if (patch.notifyWhenDone !== undefined) notifications.done = patch.notifyWhenDone;
   if (patch.notifyCreditsLow !== undefined) notifications.low = patch.notifyCreditsLow;
   if (patch.notifyPlanRenewal !== undefined) notifications.renewal = patch.notifyPlanRenewal;

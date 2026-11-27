@@ -43,6 +43,11 @@ export interface CatalogModel {
   audio: boolean;
   lipSync: boolean;
   credits: CreditPoint[];
+  /**
+   * D-020 "Enhance prompt": `available` when the model takes the gateway's prompt expansion,
+   * `unavailable` while the gateway refuses it here ("Not available yet"), null/absent when the model does not take it.
+   */
+  promptExpand?: 'available' | 'unavailable' | null;
   [extra: string]: unknown;
 }
 
@@ -153,3 +158,4 @@ export function modeLabel(mode: unknown): string {
   if (typeof mode !== 'string') return '';
   return MODE_LABELS[mode] ?? mode;
 }
+export * from './enhance';

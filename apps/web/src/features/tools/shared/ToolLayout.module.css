@@ -71,3 +71,7 @@
 .anchor{position:absolute;left:50%;bottom:150px;transform:translateX(-50%);z-index:8}
 .anchor:empty{display:none}
 .empty{grid-column:1 / -1;margin:24px 0;text-align:center;font-size:13px;color:var(--c-text-4)}
+/* D-020 Enhance prompt card. */
+.enhanceText{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.enhanceLabel{font-size:13px;font-weight:700;color:var(--c-text-2)}
+.enhanceHint{font-size:11px;color:var(--c-text-4);line-height:1.35}
