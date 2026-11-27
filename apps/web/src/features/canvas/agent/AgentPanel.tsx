@@ -399,7 +399,7 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
             id="canvas-ask"
             rows={2}
             className={styles.textarea}
-            placeholder={intl.formatMessage({ id: 'canvas.agent.placeholder' })}
+            placeholder={intl.formatMessage({ id: nodes && nodes.length === 0 ? 'canvas.agent.placeholder.empty' : 'canvas.agent.placeholder' })}
             value={draft}
             onChange={(e) => {
               const v = e.target.value;

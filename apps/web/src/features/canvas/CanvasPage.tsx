@@ -789,12 +789,16 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
         return [
           {
             id: n.id,
-            name: n.kind === 'script' ? `${intl.formatMessage({ id: 'canvas.node.kind.script' })} · ${String(n.params.versionLabel ?? '')}` : n.title,
+            name:
+              n.kind === 'script'
+                ? [intl.formatMessage({ id: 'canvas.node.kind.script' }), String(n.params.versionLabel ?? '').trim()].filter(Boolean).join(' · ')
+                : n.title,
             meta: planMeta(intl, n, it, models),
             kind: runKind(n.kind),
             state: it.action === 'none' || it.action === 'bypassed' ? 'free' : it.action === 'run' || (n.status === 'generating' && it.action !== 'blocked') ? 'run' : it.action,
             cost: real ? it.credits : it.action === 'run' || n.status === 'generating' ? runCost(n) ?? 0 : 0,
             tone: typeof n.params.tone === 'string' ? n.params.tone : undefined,
+            ...(!n.version?.total ? { fresh: true } : {}),
           } satisfies RunPlanRow,
         ];
       }),
@@ -1462,6 +1466,25 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
               <Skeleton width={240} height={193} radius={16} />
             </div>
           ) : null}
+          {!graphLoading && graph.nodes.length === 0 && !fileDrag ? (
+            // An empty canvas says what to do next instead of showing only dots.
+            <div className={canvas.emptyHint} data-testid="canvas-empty">
+              <span className={canvas.emptyTitle}>
+                <FormattedMessage id="canvas.empty.title" />
+              </span>
+              <span className={canvas.emptyText}>
+                <FormattedMessage id="canvas.empty.text" />
+              </span>
+              <span className={canvas.emptyActions}>
+                <button type="button" className={cx(canvas.emptyPrimary, canvas.press)} onClick={() => pickTool('add')}>
+                  <FormattedMessage id="canvas.empty.add" />
+                </button>
+                <button type="button" className={cx(canvas.emptySecondary, canvas.press)} onClick={() => pickTool('flow')}>
+                  <FormattedMessage id="canvas.empty.templates" />
+                </button>
+              </span>
+            </div>
+          ) : null}
           <ReactFlow<CardNode, WireEdge>
             nodes={rfNodes}
             edges={rfEdges}
@@ -1614,7 +1637,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
           className={cx(canvas.runAll, canvas.press)}
           aria-expanded={overlay === 'plan'}
           aria-haspopup="dialog"
-          aria-label={intl.formatMessage({ id: 'canvas.runAll.label' }, { n: runAllEstimate })}
+          aria-label={runAllEstimate > 0 ? intl.formatMessage({ id: 'canvas.runAll.label' }, { n: runAllEstimate }) : undefined}
           onClick={() => {
             setPlanScope({ scope: 'all' });
             setOverlay('plan');
@@ -1624,9 +1647,12 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
             <path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5z" />
           </svg>
           <FormattedMessage id="canvas.runAll" />
-          <span className={canvas.runAllBadge}>
-            <FormattedMessage id="canvas.runAll.estimate" values={{ n: runAllEstimate }} />
-          </span>
+          {/* The cost chip only when something will run (handoff 3); an up-to-date canvas shows just "Run all". */}
+          {runAllEstimate > 0 ? (
+            <span className={canvas.runAllBadge}>
+              <FormattedMessage id="canvas.runAll.estimate" values={{ n: runAllEstimate }} />
+            </span>
+          ) : null}
         </button>
         {!agentOpen ? (
           <button type="button" className={cx(canvas.agentBtn, 'rl-fade')} data-state="open" data-motion="" onClick={() => setAgentOpen(true)}>

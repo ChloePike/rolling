@@ -71,6 +71,8 @@ export interface RunPlanRow {
   state: RunRowState;
   /** Quoted credits for this row; only `run` rows are charged. */
   cost: number;
+  /** A `run` row for a node with no result yet: labelled “Generate” instead of “Regenerate”. */
+  fresh?: boolean;
   /** Tile color; defaults by kind. */
   tone?: string;
 }

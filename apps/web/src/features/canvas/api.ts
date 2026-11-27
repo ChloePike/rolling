@@ -56,7 +56,7 @@ declare global {
 function mockFlags() {
   const q = typeof location === 'undefined' ? new URLSearchParams() : new URLSearchParams(location.search);
   const mock = q.get('mock');
-  return { frozen: mock === 'frozen', fast: mock === 'fast', fail: mock === 'fail' };
+  return { frozen: mock === 'frozen', fast: mock === 'fast', fail: mock === 'fail', empty: mock === 'empty' };
 }
 
 function read<T>(key: string): T | null {
@@ -262,7 +262,8 @@ export function openProject(projectId: string, events: ProjectEvents): ProjectSe
   const c = credits.get();
   room = new (mockData().room.MockProjectRoom)({
     projectId,
-    initial: mockData().canvas.mockGraph(),
+    // `?mock=empty`: a canvas with no nodes yet (the empty state).
+    initial: flags.empty ? { revision: 1, nodes: [], edges: [], groups: [] } : mockData().canvas.mockGraph(),
     frozen: flags.frozen,
     failAll: flags.fail,
     latency: flags.fast ? 0 : 40,

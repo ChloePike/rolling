@@ -140,7 +140,7 @@ export function RunConfirmPanel({
               <span className={styles.rowMeta}>{r.meta}</span>
             </span>
             <span className={cx(styles.chip, styles[`chip_${r.state}`])}>
-              <FormattedMessage id={`overlays.runConfirm.state.${r.state}`} />
+              <FormattedMessage id={`overlays.runConfirm.state.${r.state === 'run' && r.fresh ? 'new' : r.state}`} />
             </span>
             <span className={cx(styles.rowCost, r.state !== 'run' && styles.rowCostOff)}>
               <FormattedNumber value={r.state === 'run' ? r.cost : 0} />

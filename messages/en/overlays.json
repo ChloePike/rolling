@@ -48,6 +48,7 @@
   "overlays.runConfirm.stat.blocked": "{count, number} blocked",
   "overlays.runConfirm.stat.noCharge": "No charge if it fails",
   "overlays.runConfirm.state.run": "Regenerate",
+  "overlays.runConfirm.state.new": "Generate",
   "overlays.runConfirm.state.reuse": "Reuse result",
   "overlays.runConfirm.state.blocked": "Blocked",
   "overlays.runConfirm.state.free": "Nothing to generate",
