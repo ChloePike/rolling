@@ -82,7 +82,9 @@ export function lintForProfile(prompt: string, profile: FamilyProfile, ctx: Lint
     if (MULTI_SHOT.test(unquoted)) add('multi_shot', 'more than one shot in one clip');
     const moves = new Set((unquoted.match(MOVE_VERBS) ?? []).map((m) => m.toLowerCase().replace(/\s+(slowly|quickly|then)\s+/, ' ')));
     if (moves.size > 2) add('many_camera_moves', `${moves.size} camera moves in one shot`);
-    if (/\b(?:says?|said|asks?|whispers?|shouts?|replies|line)\b[^"“]*:\s*[^"“\s]/i.test(text)) add('unquoted_speech', 'spoken words are not in double quotes');
+    // A speech label ("Maya says (calm):", "Maya's line:") must be followed by a quoted line. Other labels in the
+    // same sentence ("In the shot: Maya.", "Sound: rain.") and the noun "line" (a fishing line) are not speech.
+    if (/\b(?:says?|said|asks?|whispers?|shouts?|replies|[’']s line)(?:\s+\([^)]*\)|\s+in an? [^:."“]{1,40} tone)?\s*:\s*[^"“\s]/i.test(text)) add('unquoted_speech', 'spoken words are not in double quotes');
     if (!profile.speech && /\b(?:says?|whispers?|shouts?)\b[^.]*["“]/i.test(text)) add('speech_unsupported', 'this model does not voice speech');
   }
   if (ctx.strict) {

@@ -62,7 +62,7 @@ describe('shots in run planning', () => {
     expect(key.promptComposed).toBe(true);
     expect(key.prompt.startsWith('Image 1 is the character Maya: keep the face, hair and outfit identical.')).toBe(true);
     const vid = buildGenerateRequest(items.vid!.spec!, fixtureModel('bytedance/seedance-2.5'), [{ input: items.vid!.spec!.inputs[0]!, url: 'https://m.example/key.png', origin: 'generated' }]);
-    expect(vid.prompt).toBe('Keep the subject, outfit and setting of the first frame. Maya twists the cap off and smiles. In the shot: Maya. The camera slowly pushes in. No subtitles.');
+    expect(vid.prompt).toBe('Keep the subject, look and setting of the first frame. Maya twists the cap off and smiles. In the shot: Maya. The camera slowly pushes in. No subtitles.');
     expect(vid.firstFrameUrl).toBe('https://m.example/key.png');
   });
 

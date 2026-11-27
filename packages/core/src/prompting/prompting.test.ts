@@ -6,7 +6,7 @@ import { quickCheck } from '../safety/check';
 import { adaptPrompt, composePrompt, referenceSentences } from './compose';
 import { familyProfile, profileOf, promptFamilyOf } from './families';
 import { lintPrompt, wordCount } from './lint';
-import { canonicalPrompt, characterDescriptor, characterSheetShot, shotOfParams, ShotSpecSchema, type ShotSpec } from './shot';
+import { canonicalPrompt, characterDescriptor, characterSheetShot, characterSheetTitle, shotOfParams, ShotSpecSchema, type ShotSpec } from './shot';
 
 const MAYA = { name: 'Maya', look: 'woman in her thirties, short black hair', wardrobe: 'denim jacket over a white tee' };
 
@@ -238,5 +238,36 @@ describe('adaptPrompt and the provider request', () => {
     const req = buildGenerateRequest(s, fixtureModel('bytedance/seedream-5.0-lite'), [{ input: s.inputs[0]!, url: 'https://media.example/a.png', origin: 'generated' }]);
     expect(req.prompt.startsWith('Image 1 is the character Maya')).toBe(true);
     expect(req.inputImageUrls).toEqual(['https://media.example/a.png']);
+  });
+});
+
+describe('characters that are not people', () => {
+  const bottle = { name: 'Bottle', kind: 'object' as const, look: 'green glass bottle with a white label', wardrobe: 'cap on' };
+  const dog = { name: 'Biscuit', kind: 'animal' as const, look: 'golden retriever, floppy ears', wardrobe: 'wearing a red collar' };
+
+  it('describes a thing without outfit wording and draws its reference as a product picture', () => {
+    expect(characterDescriptor(bottle)).toBe('Bottle (green glass bottle with a white label; cap on)');
+    expect(characterDescriptor(dog)).toBe('Biscuit (golden retriever, floppy ears; a red collar)');
+    expect(characterDescriptor({ name: 'Maya', look: 'woman in her thirties', wardrobe: 'denim jacket' })).toBe('Maya (woman in her thirties; wearing denim jacket)');
+    expect(characterSheetShot(bottle).subject).toBe('Bottle (green glass bottle with a white label; cap on), the whole object alone in the frame');
+    expect(characterSheetShot(dog).action).toMatch(/seen from the side/);
+    expect(characterSheetTitle(bottle)).toBe('Product: Bottle');
+    expect(characterSheetTitle(dog)).toBe('Animal: Biscuit');
+    expect(characterSheetTitle({ name: 'Maya' })).toBe('Character: Maya');
+  });
+
+  it('binds each kind of reference picture to what must stay the same', () => {
+    expect(referenceSentences(['Product: Bottle', 'Animal: Biscuit', 'Character: Maya'])).toBe(
+      'Image 1 is Bottle: keep its shape, materials, colors and markings identical. Image 2 is Biscuit: keep the same animal, with identical coat, markings and build. Image 3 is the character Maya: keep the face, hair and outfit identical.',
+    );
+  });
+
+  it('lint: a speech label needs a quoted line; other labels and the noun "line" are not speech', () => {
+    const model = { id: 'bytedance/seedance-2.5', kind: 'video' as const };
+    const codes = (t: string) => lintPrompt(t, model, { purpose: 'animate' }).map((i) => i.code);
+    expect(codes('She says her line, then rests a hand on the frame. In the shot: Founder. Founder\'s line (calm): "We build bikes." Sound: a clink.')).not.toContain('unquoted_speech');
+    expect(codes('Grandson swings the rod and the line arcs out over the water. In the shot: Grandson.')).not.toContain('unquoted_speech');
+    expect(codes("Maya's line (calm): We build bikes.")).toContain('unquoted_speech');
+    expect(codes('Maya says: hello there.')).toContain('unquoted_speech');
   });
 });

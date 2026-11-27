@@ -103,8 +103,12 @@ export function referenceSentences(labels: readonly string[] | undefined): strin
   const out: string[] = [];
   labels.forEach((raw, i) => {
     const label = cleanLabel(raw);
-    const who = /^character(?: sheet)?:\s*(.+)$/i.exec(label)?.[1];
-    if (who) out.push(`Image ${i + 1} is the character ${who}: keep the face, hair and outfit identical.`);
+    const sheet = /^(character|animal|product)(?: sheet)?:\s*(.+)$/i.exec(label);
+    const who = sheet?.[2];
+    const kind = sheet?.[1]?.toLowerCase();
+    if (who && kind === 'product') out.push(`Image ${i + 1} is ${who}: keep its shape, materials, colors and markings identical.`);
+    else if (who && kind === 'animal') out.push(`Image ${i + 1} is ${who}: keep the same animal, with identical coat, markings and build.`);
+    else if (who) out.push(`Image ${i + 1} is the character ${who}: keep the face, hair and outfit identical.`);
     else if (label) out.push(`Image ${i + 1} is ${label}: keep it identical.`);
     else out.push(`Image ${i + 1} is a reference: keep its subject identical.`);
   });
@@ -114,7 +118,7 @@ export function referenceSentences(labels: readonly string[] | undefined): strin
 function frameSentence(ctx: Ctx): string {
   const i = ctx.opts.inputs;
   if (i?.firstFrame && i.lastFrame) return 'Move from the first frame to the last frame in one continuous shot.';
-  if (ctx.purpose === 'animate') return 'Keep the subject, outfit and setting of the first frame.';
+  if (ctx.purpose === 'animate') return 'Keep the subject, look and setting of the first frame.';
   return '';
 }
 

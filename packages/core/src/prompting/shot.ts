@@ -34,12 +34,18 @@ export const CAMERA_MOVES = [
 ] as const;
 export type CameraMove = (typeof CAMERA_MOVES)[number];
 
+export const CHARACTER_KINDS = ['person', 'animal', 'object'] as const;
+/** What a recurring "character" is: a person, an animal, or a thing (a product, a vehicle, a logo). */
+export type CharacterKind = (typeof CHARACTER_KINDS)[number];
+
 /** A recurring character: the same words in every shot it appears in. */
 export interface ShotCharacter {
   name: string;
-  /** Age band, build, face, hair: what stays the same in every shot. */
+  /** Absent means a person. Decides how it is described and how its reference picture is drawn. */
+  kind?: CharacterKind;
+  /** What stays the same in every shot. A person: age band, build, face, hair. A thing: shape, material, color, markings. */
   look: string;
-  /** Outfit and props worn in this video. */
+  /** A person's outfit and props in this video. For an animal or a thing: a fixed accessory or state (a collar, the cap on). */
   wardrobe?: string;
 }
 
@@ -86,6 +92,7 @@ const Short = (max: number) => z.string().trim().min(1).max(max);
 
 export const ShotCharacterSchema = z.object({
   name: Short(40),
+  kind: z.enum(CHARACTER_KINDS).optional(),
   look: Short(240),
   wardrobe: Short(200).optional(),
 });
@@ -198,8 +205,16 @@ export function framing(camera: ShotCamera | undefined): string {
  */
 export function characterDescriptor(c: ShotCharacter): string {
   const look = clause(c.look);
-  const wardrobe = clause(c.wardrobe);
-  return `${c.name} (${look}${wardrobe ? `; wearing ${wardrobe.replace(/^wearing\s+/i, '')}` : ''})`;
+  const wardrobe = clause(c.wardrobe).replace(/^wearing\s+/i, '');
+  // Only people wear things: a bottle "wearing condensation" reads as nonsense to an image model.
+  const worn = !wardrobe ? '' : (c.kind ?? 'person') === 'person' ? `; wearing ${wardrobe}` : `; ${wardrobe}`;
+  return `${c.name} (${look}${worn})`;
+}
+
+/** Title of the node that holds a character's reference picture; `referenceSentences` reads the prefix back. */
+export function characterSheetTitle(c: Pick<ShotCharacter, 'name' | 'kind'>): string {
+  const prefix = c.kind === 'object' ? 'Product' : c.kind === 'animal' ? 'Animal' : 'Character';
+  return `${prefix}: ${c.name}`.slice(0, 200);
 }
 
 /** "Characters: Maya (...), Leo (...)." or empty. */
@@ -259,17 +274,34 @@ export function shotOfParams(kind: 'image' | 'video', params: Record<string, unk
 }
 
 /**
- * Reference-sheet shot for a character: one neutral full-body picture every
- * keyframe of that character is drawn from (keyframes take it as a reference
- * image), so separate generations share a face and an outfit.
+ * Reference-sheet shot for a character: one neutral picture every keyframe of
+ * that character is drawn from (keyframes take it as a reference image), so
+ * separate generations share a face and an outfit, or a product its shape and
+ * label. A person is drawn head to toe, an animal standing side-on, a thing as
+ * a plain product picture.
  */
 export function characterSheetShot(c: ShotCharacter, style?: string): ShotSpec {
+  const base = { setting: 'Plain light grey studio background', lighting: 'Soft, even studio lighting', ...(style ? { style } : {}) };
+  if (c.kind === 'object') {
+    return {
+      subject: `${characterDescriptor(c)}, the whole object alone in the frame`,
+      action: 'Resting still, seen from the front at a slight three-quarter angle',
+      camera: { size: 'medium', angle: 'eye_level' },
+      ...base,
+    };
+  }
+  if (c.kind === 'animal') {
+    return {
+      subject: `${characterDescriptor(c)}, the whole animal from nose to tail`,
+      action: 'Standing still, seen from the side with the head turned to the camera',
+      camera: { size: 'full', angle: 'eye_level' },
+      ...base,
+    };
+  }
   return {
     subject: `${characterDescriptor(c)}, the whole figure from head to toe`,
     action: 'Standing in a relaxed neutral pose, facing the camera',
-    setting: 'Plain light grey studio background',
     camera: { size: 'full', angle: 'eye_level' },
-    lighting: 'Soft, even studio lighting',
-    ...(style ? { style } : {}),
+    ...base,
   };
 }
