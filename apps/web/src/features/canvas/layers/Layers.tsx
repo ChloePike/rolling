@@ -492,7 +492,7 @@ export function ShareDialog({ state, onClose, share, onCopy, onUpdate, onStop, o
 
 /* ---------- Run-all quote (CanvasPlan → RunConfirm variant graph) ---------- */
 
-export function PlanDialog({ state, onClose, rows, onConfirm, balance }: LayerProps & { rows: RunPlanRow[]; onConfirm: () => void; balance: number }) {
+export function PlanDialog({ state, onClose, rows, onConfirm, balance, loading }: LayerProps & { rows: RunPlanRow[]; onConfirm: () => void; balance: number; loading?: boolean }) {
   const ref = useLayer<HTMLDivElement>(state === 'open', onClose, { modal: true });
   const intl = useIntl();
   return (
@@ -508,7 +508,7 @@ export function PlanDialog({ state, onClose, rows, onConfirm, balance }: LayerPr
         {...presenceProps(state)}
         data-testid="plan-dialog"
       >
-        <RunConfirmPanel variant="graph" rows={rows} balance={balance} eta={intl.formatMessage({ id: 'canvas.plan.eta' })} onConfirm={onConfirm} onCancel={onClose} />
+        <RunConfirmPanel variant="graph" rows={rows} balance={balance} loading={loading} eta={intl.formatMessage({ id: 'canvas.plan.eta' })} onConfirm={onConfirm} onCancel={onClose} />
       </div>
     </div>
   );

@@ -153,6 +153,7 @@ export function useHomePills(
         placement={s.placement}
         anchorRef={s.anchorRef}
         models={(list ?? []).map(toModelOption)}
+        loading={list === undefined}
         value={value ?? defaultModel(list)?.id ?? AUTO_MODEL}
         onValueChange={(id) => {
           set(id);

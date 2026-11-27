@@ -1,5 +1,5 @@
 import { DEFAULT_CONFIRM_THRESHOLD_CREDITS } from '@rolling/core/pricing/config';
-import { cx, Dialog, staggerStyle } from '@rolling/ui';
+import { cx, Dialog, Skeleton, staggerStyle } from '@rolling/ui';
 import { useId } from 'react';
 import { setPref, usePref } from '@/lib/prefs';
 import { FormattedMessage, FormattedNumber, useIntl } from 'react-intl';
@@ -41,6 +41,11 @@ export interface RunConfirmPanelProps {
   onCancel: () => void;
   /** Disable the confirm button while the quote refreshes or the hold is placed. */
   busy?: boolean;
+  /**
+   * The quote has not arrived yet: stats, rows and totals are skeletons and the
+   * confirm button is disabled, so nothing reads "0 credits" before it is priced.
+   */
+  loading?: boolean;
   className?: string;
 }
 
@@ -90,6 +95,7 @@ export function RunConfirmPanel({
   onConfirm,
   onCancel,
   busy,
+  loading,
   className,
   titleId,
 }: RunConfirmPanelProps & { titleId?: string }) {
@@ -127,26 +133,40 @@ export function RunConfirmPanel({
         </button>
       </div>
 
-      <div className={styles.stats}>{stats.filter(Boolean).join(' · ')}</div>
+      <div className={styles.stats} data-testid="run-confirm-stats">
+        {loading ? <Skeleton width={180} height={13} /> : stats.filter(Boolean).join(' · ')}
+      </div>
 
-      <div className={styles.rows} role="list">
-        {rows.map((r, i) => (
-          <div key={r.id} role="listitem" className={cx('rl-stagger', styles.row)} style={staggerStyle(i)} data-state-kind={r.state}>
-            <span className={styles.tile} style={{ background: r.tone ?? KIND_TONE[r.kind] }}>
-              <Svg name={KIND_ICON[r.kind]} size={15} stroke="var(--c-text-2)" />
-            </span>
-            <span className={styles.rowText}>
-              <span className={styles.rowName}>{r.name}</span>
-              <span className={styles.rowMeta}>{r.meta}</span>
-            </span>
-            <span className={cx(styles.chip, styles[`chip_${r.state}`])}>
-              <FormattedMessage id={`overlays.runConfirm.state.${r.state === 'run' && r.fresh ? 'new' : r.state}`} />
-            </span>
-            <span className={cx(styles.rowCost, r.state !== 'run' && styles.rowCostOff)}>
-              <FormattedNumber value={r.state === 'run' ? r.cost : 0} />
-            </span>
-          </div>
-        ))}
+      <div className={styles.rows} role="list" aria-busy={loading || undefined}>
+        {loading
+          ? [0, 1].map((i) => (
+              <div key={i} role="listitem" className={styles.row} data-testid="run-confirm-row-skeleton">
+                <Skeleton width={30} height={30} radius={8} />
+                <span className={styles.rowText}>
+                  <Skeleton width={120} height={13} />
+                  <Skeleton width={160} height={11} />
+                </span>
+                <Skeleton width={64} height={20} round />
+                <Skeleton width={28} height={13} />
+              </div>
+            ))
+          : rows.map((r, i) => (
+              <div key={r.id} role="listitem" className={cx('rl-stagger', styles.row)} style={staggerStyle(i)} data-state-kind={r.state}>
+                <span className={styles.tile} style={{ background: r.tone ?? KIND_TONE[r.kind] }}>
+                  <Svg name={KIND_ICON[r.kind]} size={15} stroke="var(--c-text-2)" />
+                </span>
+                <span className={styles.rowText}>
+                  <span className={styles.rowName}>{r.name}</span>
+                  <span className={styles.rowMeta}>{r.meta}</span>
+                </span>
+                <span className={cx(styles.chip, styles[`chip_${r.state}`])}>
+                  <FormattedMessage id={`overlays.runConfirm.state.${r.state === 'run' && r.fresh ? 'new' : r.state}`} />
+                </span>
+                <span className={cx(styles.rowCost, r.state !== 'run' && styles.rowCostOff)}>
+                  <FormattedNumber value={r.state === 'run' ? r.cost : 0} />
+                </span>
+              </div>
+            ))}
       </div>
 
       {blockedNote ? (
@@ -161,20 +181,28 @@ export function RunConfirmPanel({
           <span>
             <FormattedMessage id="overlays.runConfirm.estimated" />
           </span>
-          <span className={styles.total}>
-            <FormattedNumber value={total} />{' '}
-            <span className={styles.totalUnit}>
-              <FormattedMessage id="overlays.runConfirm.credits" />
+          {loading ? (
+            <Skeleton width={72} height={16} />
+          ) : (
+            <span className={styles.total}>
+              <FormattedNumber value={total} />{' '}
+              <span className={styles.totalUnit}>
+                <FormattedMessage id="overlays.runConfirm.credits" />
+              </span>
             </span>
-          </span>
+          )}
         </div>
         <div className={styles.sumRow}>
           <span>
             <FormattedMessage id="overlays.runConfirm.balance" />
           </span>
-          <span>
-            <FormattedMessage id="overlays.runConfirm.balanceAfter" values={{ before: balance, after: balance - total }} />
-          </span>
+          {loading ? (
+            <Skeleton width={96} height={13} />
+          ) : (
+            <span>
+              <FormattedMessage id="overlays.runConfirm.balanceAfter" values={{ before: balance, after: balance - total }} />
+            </span>
+          )}
         </div>
         <div className={cx(styles.sumRow, styles.sumNote)}>
           <span>
@@ -200,8 +228,10 @@ export function RunConfirmPanel({
         <button type="button" className={styles.cancel} onClick={onCancel}>
           <FormattedMessage id="overlays.runConfirm.cancel" />
         </button>
-        <button type="button" className={cx('rl-press', styles.go)} onClick={onConfirm} disabled={busy || total <= 0}>
-          {graph ? (
+        <button type="button" className={cx('rl-press', styles.go)} onClick={onConfirm} disabled={loading || busy || total <= 0} aria-busy={loading || undefined}>
+          {loading ? (
+            <FormattedMessage id="overlays.runConfirm.go.loading" />
+          ) : graph ? (
             <FormattedMessage id="overlays.runConfirm.go.graph" values={{ cost: total }} />
           ) : (
             <FormattedMessage id="overlays.runConfirm.go.single" values={{ label: actionLabel ?? '', cost: total }} />

@@ -62,6 +62,7 @@
   "overlays.runConfirm.cancel": "Cancel",
   "overlays.runConfirm.go.single": "{label} · {cost, number} credits",
   "overlays.runConfirm.go.graph": "Run · {cost, number} credits",
+  "overlays.runConfirm.go.loading": "Getting price…",
   "overlays.paywall.join.title": "Pick a plan to generate",
   "overlays.paywall.join.sub": "Your brief and the agent’s plan are saved. Every plan includes monthly credits, and you can top up if you need more.",
   "overlays.paywall.join.group": "Plans",

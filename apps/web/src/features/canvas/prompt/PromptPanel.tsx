@@ -403,6 +403,7 @@ export function PromptPanel({ node, left, top, state, refs, pickerOpen, onOpenPi
         open={open === 'model'}
         value={currentModel?.id ?? ''}
         models={options}
+        loading={!isMockApi() && models === undefined}
         anchorRef={modelRef}
         placement="below"
         className={styles.layer}

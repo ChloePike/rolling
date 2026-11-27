@@ -1,4 +1,4 @@
-import { cx, presenceProps, staggerStyle, usePresence } from '@rolling/ui';
+import { cx, presenceProps, Skeleton, staggerStyle, usePresence } from '@rolling/ui';
 import { useId, useMemo, useRef, useState, type CSSProperties, type RefObject, useLayoutEffect } from 'react';
 import { Link } from '@tanstack/react-router';
 import { FormattedMessage, useIntl } from 'react-intl';
@@ -32,6 +32,11 @@ export interface ModelPickerProps {
    * to override it (tests, previews: `mockModels[kind]`).
    */
   models?: ModelOption[];
+  /**
+   * The list is still loading: skeleton rows instead of models and no "No models
+   * match" note. Defaults to the synced catalog's state when `models` is not passed.
+   */
+  loading?: boolean;
   /** Include `matureOnly` catalog models (members with the mature preference on). */
   showMature?: boolean;
   /** Where the panel sits relative to its trigger; sets the entry direction. Default `above` (prompt-box pills). */
@@ -66,6 +71,7 @@ export function ModelPicker({
   onClose,
   open = true,
   models,
+  loading: loadingProp,
   showMature = false,
   placement = 'above',
   anchorRef,
@@ -96,6 +102,7 @@ export function ModelPicker({
     [catalog.data, kind, showMature],
   );
   const list = models ?? fromCatalog;
+  const loading = (loadingProp ?? (models === undefined && catalog.data === undefined)) && list.length === 0;
   const [showMore, setShowMore] = useState(false);
   const moreCount = useMemo(() => list.filter((m) => m.more).length, [list]);
   const filtered = useMemo(() => {
@@ -159,7 +166,7 @@ export function ModelPicker({
         </button>
       </div>
 
-      <div className={styles.scroll} data-testid="model-picker-scroll">
+      <div className={styles.scroll} data-testid="model-picker-scroll" aria-busy={loading || undefined}>
       <button
         type="button"
         aria-pressed={autoOn}
@@ -186,6 +193,20 @@ export function ModelPicker({
       <div className={styles.group}>
         <FormattedMessage id={`overlays.modelPicker.group.${kind}`} />
       </div>
+      {loading
+        ? [0, 1, 2].map((i) => (
+            <div key={i} className={styles.model} data-testid="model-picker-skeleton" aria-hidden="true">
+              <Skeleton width={32} height={32} radius={8} />
+              <span className={styles.body}>
+                <Skeleton width={140} height={13} />
+                <Skeleton width={180} height={11} />
+              </span>
+              <span className={styles.priceCol}>
+                <Skeleton width={48} height={13} />
+              </span>
+            </div>
+          ))
+        : null}
       {filtered.map((m, i) => {
         const on = value === m.id;
         const lock = m.disabled ? null : lockOf(m);
@@ -241,7 +262,7 @@ export function ModelPicker({
           </button>
         );
       })}
-      {filtered.length === 0 ? (
+      {filtered.length === 0 && !loading ? (
         <div className={styles.empty}>
           <FormattedMessage id="overlays.modelPicker.empty" values={{ query: query.trim() }} />
         </div>

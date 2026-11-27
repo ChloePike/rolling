@@ -781,7 +781,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
     () => (planScope.scope === 'all' || !planScope.nodeId ? { scope: 'all' } : { scope: planScope.scope, nodeIds: [planScope.nodeId] }),
     [planScope],
   );
-  const planQuote = usePlanQuote(projectId, overlay === 'plan', planRequest, graph);
+  const { quote: planQuote, loading: planLoading } = usePlanQuote(projectId, overlay === 'plan', planRequest, graph);
   /** Real mode: the project's first snapshot hasn't arrived yet. */
   const graphLoading = !isMockApi() && syncStatus === 'connecting' && graph.nodes.length === 0;
   const runAllEstimate = graph.nodes.filter((n) => willRun(n) && !n.bypass).reduce((s, n) => s + (runCost(n) ?? 0), 0);
@@ -1851,6 +1851,7 @@ function CanvasInner({ projectId, initialOverlay = null, initialSelection = null
           onClose={close}
           rows={planRows}
           balance={planQuote && !isMockApi() ? planQuote.balance : credits.available}
+          loading={planLoading}
           onConfirm={() => {
             close();
             if (planQuote) executeRun(planQuote, planRequest);
@@ -1985,22 +1986,29 @@ const runRequestRef: { current: (request: QuoteRequest) => void } = { current: (
 /**
  * The plan dialog's quote: the local planner in mock mode (synchronous, for
  * the fidelity specs), `POST /api/runs/quote` in real mode — re-quoted when
- * the graph changes while the dialog is open.
+ * the graph changes while the dialog is open. `loading` until the quote for
+ * this request is back (a re-quote on a graph change keeps the last one), so
+ * the dialog never shows zeros before it is priced.
  */
-function usePlanQuote(projectId: string, open: boolean, request: QuoteRequest, graph: GraphState): Quote | null {
+function usePlanQuote(projectId: string, open: boolean, request: QuoteRequest, graph: GraphState): { quote: Quote | null; loading: boolean } {
   const mock = isMockApi();
   const local = useMemo(() => {
     if (!mock) return null;
     const q = request.scope === 'all' ? quoteRun(graph.nodes, graph.edges) : quoteRun(graph.nodes, graph.edges, request.nodeIds, request.scope);
     return { ...q, balance: q.balanceAfter + q.total, expiresAt: null, confirmThreshold: getPrefs().confirmThreshold, needsConfirm: true } satisfies Quote;
   }, [mock, graph.nodes, graph.edges, request]);
-  const [remote, setRemote] = useState<Quote | null>(null);
+  const [remote, setRemote] = useState<{ quote: Quote; request: QuoteRequest } | null>(null);
   const revision = graph.revision;
   useEffect(() => {
-    if (mock || !open) return;
+    if (mock) return;
+    // A closed dialog forgets its quote: the next open waits for a fresh one.
+    if (!open) {
+      setRemote(null);
+      return;
+    }
     const ctl = new AbortController();
     const t = window.setTimeout(() => {
-      requestQuote(projectId, request, graph, ctl.signal).then(setRemote, () => {});
+      requestQuote(projectId, request, graph, ctl.signal).then((quote) => setRemote({ quote, request }), () => {});
     }, 250);
     return () => {
       ctl.abort();
@@ -2009,7 +2017,9 @@ function usePlanQuote(projectId: string, open: boolean, request: QuoteRequest, g
     // Re-quote on a new revision or scope, not on every runtime tick.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mock, open, projectId, request, revision]);
-  return mock ? local : remote;
+  if (mock) return { quote: local, loading: false };
+  const current = remote && remote.request === request ? remote.quote : null;
+  return { quote: current, loading: open && current === null };
 }
 
 /** Why a quote has nothing to run for the node (quote codes, D-005 safety codes, plan caps). */
