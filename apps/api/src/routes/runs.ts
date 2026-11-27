@@ -12,6 +12,7 @@ import { ApiError } from "../lib/errors";
 import { validate } from "../lib/validate";
 import { cancelRun, quoteRun, retryRun, startRun } from "../runs/service";
 import { getRunView, listRuns, RunsFilter } from "../runs/activity";
+import { RunSurfaceSchema } from "../runs/surface";
 
 const Id = z.string().min(1).max(80);
 
@@ -20,8 +21,11 @@ const QuoteBody = z.union([
     projectId: Id,
     scope: z.enum(["node", "selection", "all", "upTo", "from"]),
     nodeIds: z.array(Id).max(500).optional(),
+    /** Who started it: `canvas` (default) or `agent`. */
+    surface: RunSurfaceSchema.optional(),
   }),
-  z.object({ promptSpec: PromptSpecSchema, projectId: Id.optional() }),
+  /** `surface`: `home` (Home prompt box) or `quick` (default); tool specs are always their tool. */
+  z.object({ promptSpec: PromptSpecSchema, projectId: Id.optional(), surface: RunSurfaceSchema.optional() }),
 ]);
 
 const StartBody = z.object({
@@ -39,7 +43,7 @@ export const runs = new Hono<AppEnv>()
     const body = c.req.valid("json");
     if ("promptSpec" in body) {
       if (body.projectId) await projectAccess(c, auth, body.projectId, "editor");
-      return c.json(await quoteRun(c.env, auth, { promptSpec: body.promptSpec, projectId: body.projectId ?? null }));
+      return c.json(await quoteRun(c.env, auth, { promptSpec: body.promptSpec, projectId: body.projectId ?? null, ...(body.surface && { surface: body.surface }) }));
     }
     if ((body.scope !== "all") && (!body.nodeIds || body.nodeIds.length === 0)) {
       throw new ApiError(400, "VALIDATION_FAILED", "nodeIds is required for this scope", { scope: body.scope });
@@ -53,6 +57,7 @@ export const runs = new Hono<AppEnv>()
         projectId: body.projectId,
         scope: body.scope,
         ...(body.nodeIds && { nodeIds: body.nodeIds }),
+        ...(body.surface && { surface: body.surface }),
         caller: roomCaller(auth, access),
         matureAllowed: access.matureAllowed,
       }),

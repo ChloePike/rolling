@@ -2,6 +2,7 @@
 import { z } from "zod";
 import { MODEL_OVERLAY } from "@rolling/core";
 import { itemSpec, paramsSummary, parseJson, type RunRow, type JobRow, type RunItemRow } from "./store";
+import { guessSurface, type RunSurface } from "./surface";
 
 export const RunsFilter = z.object({
   status: z.enum(["queued", "running", "done", "partial", "failed", "canceled"]).optional(),
@@ -48,7 +49,10 @@ export interface RunView {
   /** Short reference shown under the name, e.g. `T-90412`. */
   ref: string;
   name: string;
+  /** Legacy: `quickCreate` for spec runs, `canvas` otherwise. Prefer `surface`. */
   source: string;
+  /** Where the run was started: home, quick, remix, avatar, character, canvas or agent (a best guess before migration 0025). */
+  surface: RunSurface;
   projectId: string | null;
   projectTitle: string | null;
   /** e.g. `Seedance 2.5 · 720p · 9:16 · 5s` (first item; a chain's animation step). */
@@ -218,6 +222,7 @@ export function toRunView(r: RunRowWithProject, rows: RunItemRow[], jobs: Readon
     ref: `T-${r.id.slice(-5)}`,
     name: r.title ?? "Run",
     source: r.source,
+    surface: guessSurface(r),
     projectId: r.project_id,
     projectTitle: r.project_title,
     params: summary,

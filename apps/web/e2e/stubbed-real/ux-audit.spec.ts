@@ -102,6 +102,28 @@ test('Activity: result thumbnails, stat notes without “down 0%” or “0 min�
   await page.screenshot({ path: `${OUT}activity-real.png` });
 });
 
+test('Activity: the Source says where a run started (Home, Quick Create, Canvas), older runs fall back to the tool; names come from the prompt', async ({ page }) => {
+  const run = (id: string, name: string, over: Record<string, unknown>) => ({
+    id, ref: `T-${id.slice(-5)}`, name, source: 'quickCreate', projectId: null, projectTitle: null, params: 'Seedream 5.0 Flash · 2K', status: 'done', progress: null,
+    credits: 6, quoted: 6, spent: 6, refunded: 0, error: null, createdAt: Date.now() - 60_000, finishedAt: Date.now(), items: [], request: null, tool: 'quick',
+    retryOf: null, characterId: null, retryable: false, ...over,
+  });
+  const runs = [
+    run('run_home1', 'A lemon on a blue plate', { surface: 'home' }),
+    run('run_quick', 'A pear in the rain', { surface: 'quick' }),
+    run('run_canv1', 'Shot 1', { surface: 'canvas', source: 'canvas', tool: null, projectId: 'prj_1', projectTitle: 'Lamp ad' }),
+    run('run_older', 'Video', {}),
+  ];
+  await stub(page, (method, path) => (path === '/api/runs' && method === 'GET' ? { runs, stats: { usedThisMonth: 24, usedLastMonth: 0, running: 0, successRate: 1, runsLast7Days: 4, refundedThisMonth: 0 }, nextCursor: null } : undefined));
+  await page.goto('/activity');
+  const row = (name: string) => page.getByRole('row').filter({ hasText: name });
+  await expect(row('A lemon on a blue plate')).toContainText('Home');
+  await expect(row('A lemon on a blue plate')).not.toContainText('Quick Create');
+  await expect(row('A pear in the rain')).toContainText('Quick Create');
+  await expect(row('Shot 1')).toContainText('Canvas · Lamp ad');
+  await expect(row('Video')).toContainText('Quick Create');
+});
+
 test('Assets: the detail panel shows the media, the file type and the project by name (not “SHOT 1: …” and a prj_ id); an empty library offers Upload', async ({ page }) => {
   let assets: unknown[] = [];
   await stub(page, (method, path, body, route) => {

@@ -37,6 +37,8 @@ export interface RunRow {
   retry_of: string | null;
   tool: string | null;
   character_id: string | null;
+  /** 0025: where the run was started (`./surface`); null before 0025. */
+  surface?: string | null;
 }
 
 export type ItemStatus = "pending" | "running" | "succeeded" | "failed" | "skipped" | "canceled";

@@ -54,8 +54,10 @@ export const RANGES = ['last24', 'last7', 'last30', 'all'] as const;
 export type ActivityRange = (typeof RANGES)[number];
 const RANGE_MINUTES: Record<ActivityRange, number> = { last24: 24 * 60, last7: 7 * 24 * 60, last30: 30 * 24 * 60, all: Infinity };
 
-const SOURCE_ROUTE: Record<RunRow['source'], '/create/quick' | '/create/remix' | '/create/avatar' | '/create/character' | null> = {
+const SOURCE_ROUTE: Record<RunRow['source'], '/' | '/create/quick' | '/create/remix' | '/create/avatar' | '/create/character' | null> = {
+  home: '/',
   canvas: null,
+  agent: null,
   quickCreate: '/create/quick',
   remix: '/create/remix',
   avatar: '/create/avatar',
@@ -139,7 +141,7 @@ export function ActivityPage({ initialFilter = 'all' }: { initialFilter?: Activi
           else startRetry(run, q);
         },
         (e: unknown) => {
-          if (isApiError(e, 'CONFLICT') && run.source !== 'canvas') {
+          if (isApiError(e, 'CONFLICT') && SOURCE_ROUTE[run.source]) {
             // Runs from before stored requests: reopen the tool.
             const to = SOURCE_ROUTE[run.source];
             toast.show({ message: intl.formatMessage({ id: 'activity.toast.retryInTool' }) });

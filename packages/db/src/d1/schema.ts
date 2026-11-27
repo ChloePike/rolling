@@ -322,6 +322,8 @@ export const runs = sqliteTable(
     retryOf: text("retry_of"),
     tool: text("tool"),
     characterId: text("character_id"),
+    // 0025: where the run was started (home, quick, remix, avatar, character, canvas, agent).
+    surface: text("surface"),
   },
   (t) => [
     index("runs_ws").on(t.workspaceId, sql`${t.createdAt} DESC`),

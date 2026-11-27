@@ -9,7 +9,7 @@ import { openUpgrade } from '@/lib/upgrade/store';
 import { RunConfirm } from './RunConfirm';
 import type { RunRowKind } from './types';
 import { isApiError, isMockApi, userEvents } from './backend';
-import { findRun, quoteSpec, resultItems, isFailedRun, runFinished, startQuote, type PromptSpec, type RunView, type SpecQuote } from './runs';
+import { findRun, quoteSpec, resultItems, isFailedRun, runFinished, startQuote, type PromptSpec, type RunSurface, type RunView, type SpecQuote } from './runs';
 import { resolveAssetId } from '@/lib/transfers';
 
 /** What a finished run hands back: the mock run, or the real run with its first result asset. */
@@ -130,8 +130,9 @@ function waitForRun(runId: string, projectId?: string): Promise<RunView> {
  * says it was refunded and offers Retry).
  *
  * Render `element` once in the host; call `request(run)` from the send button.
+ * `surface` tells the API where spec runs start (Activity's Source; Home passes `home`).
  */
-export function useRunFlow(): { request: (run: RunRequest) => void; element: ReactNode; running: boolean } {
+export function useRunFlow({ surface }: { surface?: RunSurface } = {}): { request: (run: RunRequest) => void; element: ReactNode; running: boolean } {
   const intl = useIntl();
   const toast = useToast();
   const credits = useCredits();
@@ -230,7 +231,7 @@ export function useRunFlow(): { request: (run: RunRequest) => void; element: Rea
   const advanceReal = (run: RunRequest, attempt = 0) => {
     pending.current = run;
     const spec = run.spec;
-    const getQuote = run.quote ?? (spec ? () => resolveSpec(spec).then((s) => quoteSpec(s, run.projectId)) : null);
+    const getQuote = run.quote ?? (spec ? () => resolveSpec(spec).then((s) => quoteSpec(s, run.projectId, surface)) : null);
     if (!getQuote) {
       run.onAbort?.();
       toast.show({ message: t('overlays.run.unavailable') });

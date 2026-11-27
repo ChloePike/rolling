@@ -907,6 +907,26 @@ describe("runs: inputs right after upload", () => {
 });
 
 describe("runs: retry and single read", () => {
+  it("records where a run started (0025): Home vs Quick Create, a tool spec keeps its tool; spec runs are named by their prompt", async () => {
+    const { user } = await member("surface");
+    const spec = { kind: "image", model: "Seedream 5.0 Lite", prompt: "A lemon on a blue plate,\nhard light", resolution: "2K" };
+    const home = await quote(user, { promptSpec: spec, surface: "home" });
+    const fromHome = (await (await start(user, home.quoteId)).json()) as { runId: string };
+    const quick = await quote(user, { promptSpec: { ...spec, prompt: "A pear" } });
+    const fromQuick = (await (await start(user, quick.quoteId)).json()) as { runId: string };
+    expect(await runView(user, fromHome.runId)).toMatchObject({ surface: "home", tool: "quick", name: "A lemon on a blue plate," });
+    expect(await runView(user, fromQuick.runId)).toMatchObject({ surface: "quick", name: "A pear" });
+    // A tool spec can't claim another surface.
+    const char = await quote(user, { promptSpec: { kind: "character", name: "Ola", prompt: "A tall baker", resolution: "2K" }, surface: "home" });
+    const fromChar = (await (await start(user, char.quoteId)).json()) as { runId: string };
+    expect(await runView(user, fromChar.runId)).toMatchObject({ surface: "character", name: "Ola" });
+    // Runs before 0025 (no surface) fall back to a guess from the tool.
+    await env.DB.prepare("UPDATE runs SET surface = NULL WHERE id = ?").bind(fromHome.runId).run();
+    expect(await runView(user, fromHome.runId)).toMatchObject({ surface: "quick" });
+    expect((await api(user, "/api/runs/quote", { method: "POST", json: { promptSpec: spec, surface: "elsewhere" } })).status).toBe(400);
+    for (const id of [fromHome.runId, fromQuick.runId, fromChar.runId]) await finalRun(id);
+  });
+
   it("GET /api/runs/:id returns the run with its request; unknown and foreign runs are 404", async () => {
     const { user } = await member("one");
     const q = await quote(user, { promptSpec: { kind: "image", model: "Seedream 5.0 Lite", prompt: "A lemon", resolution: "2K" } });

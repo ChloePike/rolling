@@ -51,6 +51,8 @@ interface Stub {
   /** Agent turns: text (sent as deltas) and an optional plan. */
   turns: Array<{ text: string; plan?: boolean }>;
   messages: string[];
+  /** Bodies of `POST /api/runs/quote`. */
+  quotes: Array<{ surface?: string; promptSpec?: unknown }>;
 }
 
 const QUOTE = (total: number) => ({
@@ -118,7 +120,7 @@ const PLAN = {
 };
 
 async function setup(page: Page): Promise<Stub> {
-  const s: Stub = { run: runView({}), quoteTotal: 363, starts: 0, cancels: 0, ws: null, turns: [], messages: [] };
+  const s: Stub = { run: runView({}), quoteTotal: 363, starts: 0, cancels: 0, ws: null, turns: [], messages: [], quotes: [] };
   // Main-thread socket (no SharedWorker), so the page's WebSocket route sees it.
   await page.addInitScript(() => {
     delete (window as unknown as { SharedWorker?: unknown }).SharedWorker;
@@ -141,7 +143,10 @@ async function setup(page: Page): Promise<Stub> {
       return json(route, { models: kind === 'chat' ? [CHAT_MODEL] : kind === 'video' ? [VIDEO_MODEL] : kind ? [] : [VIDEO_MODEL, CHAT_MODEL] });
     }
     if (path === '/api/agent/allowance') return json(route, { plan: 'plus', allowanceUsd: 3.5, usedUsd: 0, resetsAt: Date.now() + 86_400_000, models: [{ id: CHAT_MODEL.id, name: CHAT_MODEL.name, unlimited: true }] });
-    if (path === '/api/runs/quote' && method === 'POST') return json(route, QUOTE(s.quoteTotal));
+    if (path === '/api/runs/quote' && method === 'POST') {
+      s.quotes.push(JSON.parse(req.postData() ?? '{}') as Stub['quotes'][number]);
+      return json(route, QUOTE(s.quoteTotal));
+    }
     if (path === '/api/runs' && method === 'POST') {
       s.starts += 1;
       return json(route, { runId: `run_stub${s.starts}`, status: 'queued' }, 201);
@@ -200,6 +205,8 @@ test('video run card: the cost line is the server quote, the card holds the same
   await expect(card).toHaveAttribute('data-status', 'queued');
   await expect(card.getByTestId('home-run-cost')).toHaveText('181 credits held · charged only if it succeeds');
   expect(s.starts).toBe(1);
+  // The run is quoted as a Home run (Activity's Source says Home, not Quick Create).
+  expect(s.quotes.at(-1)?.surface).toBe('home');
   // No "started · N credits held" toast any more.
   await expect(page.getByText(/credits held$/)).toHaveCount(0);
   await expect(page.locator('#brief')).toHaveValue('A lamp turning on');

@@ -48,6 +48,8 @@ export const runsTypeDefs = /* GraphQL */ `
     ref: String!
     name: String!
     source: String!
+    "Where the run was started: home, quick, remix, avatar, character, canvas or agent."
+    surface: String!
     projectId: ID
     projectTitle: String
     params: String!

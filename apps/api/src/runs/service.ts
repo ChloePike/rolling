@@ -20,6 +20,7 @@ import type { RoomCaller } from "../lib/access";
 import { loadCatalog } from "../models/catalog";
 import { gatewayFeatureEnabled } from "../models/features";
 import { autoClassifier, gatewayConfigured } from "./provider";
+import { guessSurface, runSurface, specRunTitle, type RunSurface } from "./surface";
 import { quoteExplicitCheck, quoteSafety } from "../safety/pipeline";
 import { ports, quietly } from "./ports";
 import {
@@ -73,8 +74,8 @@ export interface QuoteResponse {
 }
 
 export type QuoteRequest =
-  | { projectId: string; scope: RunScope; nodeIds?: string[]; caller: RoomCaller; matureAllowed: boolean; retryOf?: string }
-  | { promptSpec: PromptSpec; projectId?: string | null; onlyRefs?: string[]; priorAssets?: Record<string, string>; retryOf?: string };
+  | { projectId: string; scope: RunScope; nodeIds?: string[]; caller: RoomCaller; matureAllowed: boolean; retryOf?: string; surface?: RunSurface }
+  | { promptSpec: PromptSpec; projectId?: string | null; onlyRefs?: string[]; priorAssets?: Record<string, string>; retryOf?: string; surface?: RunSurface };
 
 function toResponseItem(i: StoredQuoteItem): QuoteResponseItem {
   return {
@@ -164,8 +165,8 @@ export function toolOf(spec: PromptSpec): "quick" | "remix" | "avatar" | "charac
 
 /** The normalized request a quote/run was made from (`quotes.request`, `runs.request`). */
 export type RunRequestRecord =
-  | { promptSpec: PromptSpec; onlyRefs?: string[]; priorAssets?: Record<string, string>; retryOf?: string }
-  | { scope: RunScope; nodeIds?: string[]; retryOf?: string };
+  | { promptSpec: PromptSpec; onlyRefs?: string[]; priorAssets?: Record<string, string>; retryOf?: string; surface?: RunSurface }
+  | { scope: RunScope; nodeIds?: string[]; retryOf?: string; surface?: RunSurface };
 
 /** D-005 access of the caller (member, preference, workspace flag); decides auto-mature routing and the MATURE_REQUIRED copy. */
 export function callerMatureAccess(auth: Pick<AuthContext, "isMember" | "prefs" | "workspace">, allowed?: boolean): MatureAccess {
@@ -197,6 +198,7 @@ export async function quoteRun(env: Env, auth: AuthContext, req: QuoteRequest): 
       ...(req.onlyRefs && { onlyRefs: req.onlyRefs }),
       ...(req.priorAssets && Object.keys(req.priorAssets).length > 0 && { priorAssets: req.priorAssets }),
       ...(req.retryOf && { retryOf: req.retryOf }),
+      surface: runSurface({ promptSpec: req.promptSpec }, req.surface),
     };
     const origins = await assetOrigins(env, auth.workspaceId, auth.userId, req.promptSpec, auth.matureAllowed);
     items = (
@@ -213,7 +215,7 @@ export async function quoteRun(env: Env, auth: AuthContext, req: QuoteRequest): 
     ).items;
   } else {
     scope = req.scope;
-    record = { scope: req.scope, ...(req.nodeIds && { nodeIds: req.nodeIds }), ...(req.retryOf && { retryOf: req.retryOf }) };
+    record = { scope: req.scope, ...(req.nodeIds && { nodeIds: req.nodeIds }), ...(req.retryOf && { retryOf: req.retryOf }), surface: runSurface({ scope: req.scope }, req.surface) };
     projectId = req.projectId;
     const room = ports(env).room(req.projectId);
     const [structural, graph] = await Promise.all([room.planRun(req.caller, { scope: req.scope, ...(req.nodeIds && { nodeIds: req.nodeIds }) }), room.getGraph(req.caller)]);
@@ -298,10 +300,13 @@ export async function startRun(env: Env, auth: AuthContext, quoteId: string, raw
   const first = items[0]!;
   const record = parseJson<RunRequestRecord | null>(quote.request, null);
   const spec = record && "promptSpec" in record ? record.promptSpec : null;
-  const title = spec && items.length > 1 ? specTitle(spec) : items.length === 1 ? first.title : `${first.title} +${items.length - 1}`;
+  const itemsTitle = spec && items.length > 1 ? specTitle(spec) : items.length === 1 ? first.title : `${first.title} +${items.length - 1}`;
+  // A plain image or video is named by its prompt (“Video” says nothing in Activity).
+  const title = spec ? specRunTitle(spec, itemsTitle) : itemsTitle;
+  const surface = record?.surface ?? (record ? runSurface(record) : quote.scope === "spec" ? "quick" : "canvas");
   const statements = [
     env.DB.prepare(
-      "INSERT INTO runs (id, workspace_id, project_id, quote_id, scope, status, created_by, created_at, title, source, credits_quoted, options, updated_at, request, retry_of, tool) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO runs (id, workspace_id, project_id, quote_id, scope, status, created_by, created_at, title, source, credits_quoted, options, updated_at, request, retry_of, tool, surface) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     ).bind(
       runId,
       auth.workspaceId,
@@ -318,6 +323,7 @@ export async function startRun(env: Env, auth: AuthContext, quoteId: string, raw
       quote.request,
       record?.retryOf ?? null,
       spec ? toolOf(spec) : null,
+      surface,
     ),
     ...items.map((i, ord) =>
       env.DB.prepare(
@@ -612,7 +618,7 @@ export async function retryRun(
     const jobs = (await env.DB.prepare("SELECT item_ref, asset_id FROM jobs WHERE run_id = ? AND status = 'succeeded' AND asset_id IS NOT NULL").bind(runId).all<{ item_ref: string; asset_id: string }>()).results;
     const priorAssets: Record<string, string> = { ...(record.priorAssets ?? {}) };
     for (const j of jobs) priorAssets[j.item_ref] = j.asset_id;
-    const q = await quoteRun(env, auth, { promptSpec: record.promptSpec, projectId: run.project_id, onlyRefs: again.map((i) => i.ref), priorAssets, retryOf: runId });
+    const q = await quoteRun(env, auth, { promptSpec: record.promptSpec, projectId: run.project_id, onlyRefs: again.map((i) => i.ref), priorAssets, retryOf: runId, surface: guessSurface(run) });
     return { ...q, retryOf: runId };
   }
   if (!run.project_id || run.source !== "canvas") throw new ApiError(409, "CONFLICT", "This run can't be retried", { runId, reason: "NOT_RETRYABLE" });
@@ -621,7 +627,7 @@ export async function retryRun(
   if (isRoomError(graph)) roomFailure(graph);
   const nodeIds = again.map((i) => i.node_id).filter((id): id is string => !!id && graph.state.nodes.some((n) => n.id === id));
   if (nodeIds.length === 0) throw new ApiError(409, "CONFLICT", "The nodes of this run were removed", { runId, reason: "NODES_REMOVED" });
-  const q = await quoteRun(env, auth, { projectId: run.project_id, scope: "selection", nodeIds, caller: access.caller, matureAllowed: access.matureAllowed, retryOf: runId });
+  const q = await quoteRun(env, auth, { projectId: run.project_id, scope: "selection", nodeIds, caller: access.caller, matureAllowed: access.matureAllowed, retryOf: runId, surface: guessSurface(run) });
   return { ...q, retryOf: runId };
 }
 

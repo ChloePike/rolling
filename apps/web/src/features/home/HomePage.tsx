@@ -112,7 +112,7 @@ export function HomePage() {
   // send resumes after checkout.
   const [paywall, setPaywall] = useState(false);
   // Image, video and avatar sends go through the shared run flow (paywalls, RunConfirm by threshold).
-  const flow = useRunFlow();
+  const flow = useRunFlow({ surface: 'home' });
   const runs = useHomeRuns();
   const [result, setResult] = useState<HomeResultState | null>(null);
   const [building, setBuilding] = useState<string | null>(null);

@@ -3,7 +3,23 @@ import { useEffect } from 'react';
 import { isMockApi, userEvents } from '@/features/overlays/backend';
 import { chainOf, listRuns, resultItems, type RunView } from '@/features/overlays/runs';
 import { mockData } from '@/lib/api/mode';
-import type { ActivityData, RunRow } from './types';
+import type { ActivityData, RunRow, RunSource } from './types';
+
+const SURFACE_SOURCE: Record<NonNullable<RunView['surface']>, RunSource> = {
+  home: 'home',
+  quick: 'quickCreate',
+  remix: 'remix',
+  avatar: 'avatar',
+  character: 'characters',
+  canvas: 'canvas',
+  agent: 'agent',
+};
+
+/** Activity's Source: where the run was started; servers before 0025 only tell the tool. */
+export function sourceOf(r: Pick<RunView, 'surface' | 'tool' | 'source'>): RunSource {
+  if (r.surface) return SURFACE_SOURCE[r.surface];
+  return r.tool === 'remix' ? 'remix' : r.tool === 'avatar' ? 'avatar' : r.tool === 'character' ? 'characters' : r.source;
+}
 
 /**
  * Activity list. Real mode: `GET /api/runs` (newest first, up to 100 in the
@@ -21,7 +37,7 @@ function rowFrom(r: RunView, now: number): RunRow {
     id: r.id,
     ref: r.ref,
     name: r.name,
-    source: r.tool === 'remix' ? 'remix' : r.tool === 'avatar' ? 'avatar' : r.tool === 'character' ? 'characters' : r.source,
+    source: sourceOf(r),
     ...(r.projectTitle ? { projectTitle: r.projectTitle } : {}),
     params: r.params,
     status: r.status,

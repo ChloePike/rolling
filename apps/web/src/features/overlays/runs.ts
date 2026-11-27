@@ -73,11 +73,16 @@ export function isFailedRun(view: Pick<RunView, 'status' | 'items'>): boolean {
   return view.status === 'failed' || view.status === 'canceled' || (view.status === 'partial' && !!chainOf(view)?.failed);
 }
 
+/** `POST /api/runs/quote` `surface`: who started the run (Activity's Source column). */
+export type RunSurface = 'home' | 'quick' | 'remix' | 'avatar' | 'character' | 'canvas' | 'agent';
+
 export interface RunView {
   id: string;
   ref: string;
   name: string;
   source: 'canvas' | 'quickCreate';
+  /** Where the run was started (migration 0025; a best guess for older runs). Absent from older servers. */
+  surface?: RunSurface;
   projectId: string | null;
   projectTitle: string | null;
   params: string;
@@ -225,8 +230,8 @@ export interface SpecQuote {
   needsConfirm: boolean;
 }
 
-export function quoteSpec(promptSpec: PromptSpec, projectId?: string): Promise<SpecQuote> {
-  return apiFetch<SpecQuote>('/runs/quote', { method: 'POST', body: projectId ? { promptSpec, projectId } : { promptSpec } });
+export function quoteSpec(promptSpec: PromptSpec, projectId?: string, surface?: RunSurface): Promise<SpecQuote> {
+  return apiFetch<SpecQuote>('/runs/quote', { method: 'POST', body: { promptSpec, ...(projectId && { projectId }), ...(surface && { surface }) } });
 }
 
 export function startQuote(quoteId: string, options?: { forceFailure?: true }): Promise<{ runId: string; status: string }> {

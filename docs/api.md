@@ -331,7 +331,7 @@ Auth: signed in (dev header in development), role editor+ in the workspace. Quot
 
 | Method | Path | Body → response |
 |---|---|---|
-| POST | `/api/runs/quote` | Canvas: `{ projectId, scope: 'node'\|'selection'\|'all'\|'upTo'\|'from', nodeIds? }` (`node`, `upTo`, `from` take exactly one id; `selection` one or more; `all` none). Tool page: `{ promptSpec, projectId? }`. → `QuoteResponse` |
+| POST | `/api/runs/quote` | Canvas: `{ projectId, scope: 'node'\|'selection'\|'all'\|'upTo'\|'from', nodeIds? }` (`node`, `upTo`, `from` take exactly one id; `selection` one or more; `all` none). Tool page: `{ promptSpec, projectId? }`. Either takes an optional `surface` (where the run starts, stored on the run, migration 0025): `home` or `quick` (default) for an image/video spec, a tool spec is always its tool; `canvas` (default) or `agent` for a scope. → `QuoteResponse` |
 | POST | `/api/runs` | `{ quoteId, options?: { forceFailure?: true \| itemRefs[] } }` → `201 { runId, status }`. Same quote again → the same run. Errors: `NO_PLAN` (402), `INSUFFICIENT_CREDITS` (402, `{ needed, balance }`), `QUOTE_EXPIRED` (409), `MEMBER_LIMIT_REACHED` (403, `{ limit, used, needed }`), `NOT_FOUND`, `CONFLICT` (nothing to run). |
 | POST | `/api/runs/:id/cancel` | → `{ runId, refunded, canceled }`: pending items stop, running jobs are terminated and their holds released (refund). |
 | GET | `/api/runs` | Activity. Query: `status=queued\|running\|done\|partial\|failed\|canceled`, `projectId`, `model`, `from`, `to` (epoch ms), `first` (≤100, default 30), `after` (cursor). → `{ stats, runs: RunView[], nextCursor }` |
@@ -396,7 +396,8 @@ type PromptSpec = {
 //   with `referenceAssetIds`. When the run ends with at least one picture, it is saved to Characters (`RunView.characterId`; a retry adds a version).
 
 type RunView = {
-  id; ref /* 'T-xxxxx' */; name; source: 'canvas' | 'quickCreate'; projectId; projectTitle
+  id; ref /* 'T-xxxxx' */; name /* the prompt's first line for an untitled image/video spec */; source: 'canvas' | 'quickCreate'; projectId; projectTitle
+  surface: 'home' | 'quick' | 'remix' | 'avatar' | 'character' | 'canvas' | 'agent' // where it started; a guess from tool/source for runs before 0025
   params /* 'Seedance 2.0 Mini · 480p · 9:16 · 5s' */
   status: 'queued' | 'running' | 'done' | 'partial' | 'failed' | 'canceled'
   progress: number | null         // 0..1 while queued/running

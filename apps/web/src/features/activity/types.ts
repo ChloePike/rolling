@@ -1,6 +1,6 @@
 /** Activity rows, shaped like `GET /api/runs` items (docs/api.md, Runs). */
 export type RunStatus = 'queued' | 'running' | 'done' | 'partial' | 'failed' | 'review' | 'canceled';
-export type RunSource = 'canvas' | 'quickCreate' | 'remix' | 'avatar' | 'characters';
+export type RunSource = 'home' | 'canvas' | 'agent' | 'quickCreate' | 'remix' | 'avatar' | 'characters';
 export type RunAction = 'view' | 'retry' | 'cancel' | 'locate';
 
 export interface RunRow {
