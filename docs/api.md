@@ -510,6 +510,21 @@ Uploads are only visible to their uploader. They expire 7 days after creation (R
 - `media.process`: images get a 512 px WebP thumbnail through Cloudflare Images (fallback: the original); video/audio are probed, thumbnailed and waveformed by the FFmpeg container from a signed URL; videos also get scene cuts (`/scenes`, `select='gt(scene,0.3)'` at 320 px). Without a container (`MEDIA_CONTAINER=off`, tests, local dev) the asset becomes `ready` with `meta.processing: pending`.
 - Signed URL token: `sig = base64url(HMAC-SHA256(MEDIA_SIGNING_KEY, "v1\n" + key + "\n" + exp + "\n" + ws))`, `exp` in epoch seconds (default lifetime 1 h, max 7 d). Workspace media lives under `ws/<workspaceId>/…` and is only valid with that `ws`; `ws=_` signs `builtin/` and `public/` keys. Code: `@rolling/core/media` (`signMediaKey`, `verifyMediaSignature`), `apps/api/src/lib/mediaUrls.ts` (`signMediaUrl(env, key, { workspaceId, expiresIn })`).
 
+### Characters (D-032)
+
+| Method | Path | Contract |
+|---|---|---|
+| GET | `/api/characters` | List rows add `kind`, `descriptor` (locked, or null for characters made before sheets), `descriptorVersion`, `sheet: [{ view, assetId, url, thumbUrl }]` (current version), `outfits: [{ id, name }]`, `realFace`, `drift` (DriftSummary of the current version, or null), `projects` (count of projects that used it) |
+| GET | `/api/characters/:id` | `{ character }`: the list row plus `versions: [{ n, descriptorVersion, descriptor, createdAt, current, views, drift }]` (newest first), `outfits: [{ id, name, outfit, createdAt, views }]`, `usedIn: [{ projectId, title, uses, lastUsedAt }]`, `checks: [{ id, version, assetId, projectId, score, verdict, faces, createdAt, thumbUrl }]` (latest 20), `training: { available, appliesLoras }` |
+| PATCH | `/api/characters/:id` | `{ name }` → `{ character }`. A `descriptor` in the body → `409 CONFLICT` with `data.reason = "DESCRIPTOR_LOCKED"` |
+| DELETE | `/api/characters/:id` | Also removes its sheet index, checks and uses; the pictures stay in Assets |
+
+Views: `full_body`, `front`, `three_quarter`, `profile`, `expression_smile | serious | surprised | sad | angry`. DriftSummary: `{ checks, scored, mean, min, drifted, verdict: consistent | minor | drift | no_face | null }` (scores 0 to 1; ≥ 0.75 consistent, < 0.55 drift).
+
+Sheet runs go through the run quote (`POST /api/runs/quote` with `promptSpec`): `{ kind: "character", name, model, resolution?, sheet: { mode?: "new" | "version" | "outfit", descriptor: { kind?, face, hair?, build?, outfit?, style? }, expressions?: (max 3), characterId? (version, outfit), outfit?: { name, outfit } (outfit) }, inputs?: { referenceAssetIds? (up to 3 used) } }`. Item refs are the view ids (outfit: `full_body`, `three_quarter`). For `version` and `outfit` the server fills the locked descriptor (outfit), the kind and the base picture from the saved character (`404` unknown character, `409 NO_SHEET` without a sheet). On success the run's `characterId` is set and the character, its version or its outfit variant is saved.
+
+Canvas: an asset node with `params: { assetId, media: "image", source: "character", characterId, view }` is a sheet picture; wired into a video node's `frame` port with `params.mode = "Reference to video"` it is a reference image, into an image node's `refs` port an edit input. After each job that drew from a sheet, the GenerateWorkflow's `consistency` step stores a `character_checks` row (no credits).
+
 ## Templates
 
 Built-in templates (D1 seed migration 0016, generated from `@rolling/core/templates` `BUILTIN_TEMPLATES` by `apps/api/scripts/seed-templates.ts`; every model id is a real catalog id and every setting fits Starter) and workspace-private templates saved from a canvas selection. A template is a canvas graph (`{ nodes, edges, groups }`) plus **slots**: every asset node (a picture, clip or voice track to supply, `param: 'assetId'`) and every text/script node (`param: 'text'`), keyed by node id. Implementation: `apps/api/src/routes/templates.ts`, `@rolling/core/templates`.
