@@ -30,7 +30,7 @@ import type { PlanContext } from '../generation/types';
 import type { ListingModel } from './types';
 
 const chat = fixtureCatalog.list({ kind: 'chat', includeHidden: true, includeMatureOnly: true });
-const ON: PlanContext = { plan: 'plus', matureAllowed: false, promptExpand: { default: true, available: true, locale: 'ja' } };
+const ON: PlanContext = { plan: 'plus', matureAllowed: false, promptExpand: { default: true, available: true } };
 const spec = (raw: unknown) => PromptSpecSchema.parse(raw);
 
 function withChat(id: string, prompt: number, completion: number): ListingModel {
@@ -145,12 +145,12 @@ describe('planning (Home, tools, Quick Create, canvas)', () => {
   it('Quick Create: on by the preference; quoted with its most; the request asks for it', async () => {
     const plan = await planPromptSpec({ spec: spec({ kind: 'image', model: 'bytedance/seedream-5.0-flash', prompt: 'a red bicycle' }), catalog: fixtureCatalog, ctx: ON, assetOrigins: new Map() });
     const item = plan.items[0]!;
-    expect(item.spec!.promptExpand).toEqual({ writer: 'deepseek/deepseek-v4.1-flash-us', maxUsd: promptExpansionMaxUsd(chat, 'deepseek/deepseek-v4.1-flash-us', { promptChars: 'a red bicycle'.length }), locale: 'ja' });
+    expect(item.spec!.promptExpand).toEqual({ writer: 'deepseek/deepseek-v4.1-flash-us', maxUsd: promptExpansionMaxUsd(chat, 'deepseek/deepseek-v4.1-flash-us', { promptChars: 'a red bicycle'.length }) });
     expect(item.priceRequest!.promptExpandUsd).toBe(item.spec!.promptExpand!.maxUsd);
     const model = m('bytedance/seedream-5.0-flash');
     const { promptExpandUsd: _drop, ...plain } = item.priceRequest!;
     expect(creditsFor(model, item.priceRequest)).toBeGreaterThanOrEqual(creditsFor(model, plain));
-    expect(buildGenerateRequest(item.spec!, model, []).promptExpand).toEqual({ model: 'deepseek/deepseek-v4.1-flash-us', locale: 'ja' });
+    expect(buildGenerateRequest(item.spec!, model, []).promptExpand).toEqual({ model: 'deepseek/deepseek-v4.1-flash-us' });
   });
 
   it('per-run off, preference off, feature unavailable, or no context: no expansion', async () => {
@@ -184,7 +184,7 @@ describe('planning (Home, tools, Quick Create, canvas)', () => {
     const item = plan.items[0]!;
     const r = replanMature({ spec: item.spec!, model: m(item.model!), catalog: fixtureCatalog, plan: 'plus', fits: () => true });
     if (!r.ok) throw new Error(r.reason);
-    expect(r.spec.promptExpand).toMatchObject({ writer: 'x-ai/grok-4.6', locale: 'ja' });
+    expect(r.spec.promptExpand).toMatchObject({ writer: 'x-ai/grok-4.6' });
     expect(r.spec.promptExpand!.maxUsd).toBeGreaterThan(item.spec!.promptExpand!.maxUsd);
   });
 
@@ -207,6 +207,6 @@ describe('planning (Home, tools, Quick Create, canvas)', () => {
     const media = new Catalog(fixtureCatalog.models.filter((x) => x.kind !== 'chat'));
     const plan = await planPromptSpec({ spec: spec({ kind: 'image', model: 'bytedance/seedream-5.0-flash', prompt: 'x' }), catalog: media, ctx: ON, assetOrigins: new Map() });
     expect(plan.items[0]!.spec!.promptExpand).toMatchObject({ writer: null });
-    expect(buildGenerateRequest(plan.items[0]!.spec!, m('bytedance/seedream-5.0-flash'), []).promptExpand).toEqual({ locale: 'ja' });
+    expect(buildGenerateRequest(plan.items[0]!.spec!, m('bytedance/seedream-5.0-flash'), []).promptExpand).toEqual({});
   });
 });

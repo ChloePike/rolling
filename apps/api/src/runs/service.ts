@@ -185,7 +185,7 @@ export async function quoteRun(env: Env, auth: AuthContext, req: QuoteRequest): 
   // model takes mature runs), so an explicit one is planned as keyframe → animation before anything is held.
   const explicit = gatewayConfigured(env) ? quoteExplicitCheck(env) : null;
   // D-020: "Enhance prompt" default and availability (off while the gateway refuses the feature here).
-  const promptExpand = { default: auth.prefs.enhancePrompt, available: await gatewayFeatureEnabled(env, "prompt_expand"), locale: auth.prefs.language };
+  const promptExpand = { default: auth.prefs.enhancePrompt, available: await gatewayFeatureEnabled(env, "prompt_expand") };
   let items: PlanItem[];
   let projectId: string | null = null;
   let scope: string;

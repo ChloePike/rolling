@@ -155,9 +155,11 @@ export function promptExpansionOf(
   if (!pe || !pe.available || !(wanted ?? pe.default)) return undefined;
   if (!PROMPT_EXPAND_MODES.has(spec.mode) || spec.prompt.trim() === '') return undefined;
   const chat = catalog.list({ kind: 'chat', includeHidden: true, includeMatureOnly: true });
+  // Spoken lines follow the prompt's language, never the UI language (owner decision, D-020).
+  const locale = promptLocale(spec.prompt);
   return planPromptExpansion(chat, {
     mature: spec.mature,
-    ...(pe.locale && { locale: pe.locale }),
+    ...(locale && { locale }),
     promptChars: spec.prompt.length,
     pictures: spec.inputs.filter((i) => i.media === 'image').length,
   });
@@ -166,8 +168,7 @@ export function promptExpansionOf(
 /** Same expansion for a spec whose mature routing or prompt changed (writer and bound recomputed). */
 function reExpand(catalog: Catalog, spec: Pick<GenSpec, 'mode' | 'prompt' | 'mature' | 'inputs' | 'promptExpand'>): PromptExpansion | undefined {
   if (!spec.promptExpand) return undefined;
-  const locale = spec.promptExpand.locale;
-  return promptExpansionOf(catalog, { promptExpand: { default: true, available: true, ...(locale && { locale }) } }, true, spec);
+  return promptExpansionOf(catalog, { promptExpand: { default: true, available: true } }, true, spec);
 }
 
 /** Why `model` cannot take this spec (capability, plan cap, mature routing), or null. */
@@ -696,4 +697,47 @@ export function replanMature(input: MatureReplanInput): MatureReplan {
   if (capable.length === 0) return { ok: false, code: 'no_capable_model', reason: `${NO_MATURE_MODEL_REASON} No credits were charged.` };
   const model = capable[0]!;
   return { ok: true, model, spec: { ...spec, modelId: model.id, fallbacks: capable.slice(1, 4).map((m) => m.id) } };
+}
+
+/**
+ * BCP 47 tag for the spoken lines: a language the prompt names, else the language it
+ * is written in (from its script), so spoken
+ * lines in the output follow the prompt and not the UI language (D-020). Latin-script
+ * prompts return undefined: the gateway's default (English) or the prompt's own
+ * wording decides. Kana means Japanese even with kanji; Han alone means Chinese.
+ */
+/** Languages a prompt can ask for by name ("in Japanese", "说英语", "日语对白"), checked before the script. */
+const NAMED_LANGUAGES: ReadonlyArray<[RegExp, string]> = [
+  [/\b(in|speaks?|speaking|spoken in|dialogue in|lines in|voice ?over in)\s+english\b|英语|英文/i, 'en-US'],
+  [/\b(in|speaks?|speaking|spoken in|dialogue in|lines in|voice ?over in)\s+(mandarin|chinese)\b|普通话|中文|汉语|国语/i, 'zh-CN'],
+  [/\b(in|speaks?|speaking|spoken in|dialogue in|lines in|voice ?over in)\s+cantonese\b|粤语|广东话/i, 'zh-HK'],
+  [/\b(in|speaks?|speaking|spoken in|dialogue in|lines in|voice ?over in)\s+japanese\b|日语|日文/i, 'ja-JP'],
+  [/\b(in|speaks?|speaking|spoken in|dialogue in|lines in|voice ?over in)\s+korean\b|韩语|韩文/i, 'ko-KR'],
+  [/\b(in|speaks?|speaking|spoken in|dialogue in|lines in|voice ?over in)\s+spanish\b|西班牙语/i, 'es-ES'],
+  [/\b(in|speaks?|speaking|spoken in|dialogue in|lines in|voice ?over in)\s+french\b|法语/i, 'fr-FR'],
+  [/\b(in|speaks?|speaking|spoken in|dialogue in|lines in|voice ?over in)\s+german\b|德语/i, 'de-DE'],
+  [/\b(in|speaks?|speaking|spoken in|dialogue in|lines in|voice ?over in)\s+portuguese\b|葡萄牙语/i, 'pt-BR'],
+  [/\b(in|speaks?|speaking|spoken in|dialogue in|lines in|voice ?over in)\s+russian\b|俄语/i, 'ru-RU'],
+];
+
+export function promptLocale(prompt: string): string | undefined {
+  // A language the prompt asks for by name wins; otherwise the prompt's own script decides.
+  for (const [re, tag] of NAMED_LANGUAGES) if (re.test(prompt)) return tag;
+  const counts = { han: 0, kana: 0, hangul: 0, cyrillic: 0, arabic: 0, thai: 0 };
+  for (const ch of prompt) {
+    const c = ch.codePointAt(0)!;
+    if ((c >= 0x3040 && c <= 0x30ff) || (c >= 0x31f0 && c <= 0x31ff)) counts.kana++;
+    else if ((c >= 0x4e00 && c <= 0x9fff) || (c >= 0x3400 && c <= 0x4dbf)) counts.han++;
+    else if ((c >= 0xac00 && c <= 0xd7af) || (c >= 0x1100 && c <= 0x11ff)) counts.hangul++;
+    else if (c >= 0x0400 && c <= 0x04ff) counts.cyrillic++;
+    else if (c >= 0x0600 && c <= 0x06ff) counts.arabic++;
+    else if (c >= 0x0e00 && c <= 0x0e7f) counts.thai++;
+  }
+  if (counts.kana > 0) return 'ja-JP';
+  if (counts.hangul > 0 && counts.hangul >= counts.han) return 'ko-KR';
+  if (counts.han > 0) return 'zh-CN';
+  if (counts.cyrillic > 0) return 'ru-RU';
+  if (counts.arabic > 0) return 'ar';
+  if (counts.thai > 0) return 'th-TH';
+  return undefined;
 }
