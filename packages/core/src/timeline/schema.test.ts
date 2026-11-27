@@ -42,6 +42,9 @@ function samples(base: Edl): Record<TimelineOp['op'], TimelineOp> {
     setFade: { op: 'setFade', clipId: 'v1', fadeIn: 0.25 },
     setTransition: { op: 'setTransition', clipId: 'v1', transition: null },
     insert: { op: 'insert', trackId: 'V1', clip: { id: 'v9', assetId: 'ast_c', in: 0, out: 2, start: 9 } },
+    setCaptionTrack: { op: 'setCaptionTrack', trackId: 'T1', style: 'bold_social', lang: 'ja' },
+    setReframe: { op: 'setReframe', clipId: 'v2', reframe: { mode: 'manual', x: 0.3, y: 0.5 } },
+    setDuck: { op: 'setDuck', clipId: 'm1', duckUnder: ['A1'] },
     setFormat: { op: 'setFormat', width: 1920, height: 1080, fps: 30 },
     replaceEdl: { op: 'replaceEdl', baseRevision: 3, edl: { ...base, fps: 25 } },
   };

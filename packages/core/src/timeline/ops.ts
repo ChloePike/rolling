@@ -103,6 +103,14 @@ function applyUnchecked(edl: Edl, op: TimelineOp, opts: ApplyOptions): ApplyResu
     if ((track.kind === 'caption') !== isCaptionClip(op.clip)) return { ok: false, error: `Clip ${op.clip.id} does not fit ${track.id}` };
     return { ok: true, edl: replaceClip(edl, trackIndex, (cs) => [...cs, op.clip]) };
   }
+  if (op.op === 'setCaptionTrack') {
+    const trackIndex = edl.tracks.findIndex((t) => t.id === op.trackId);
+    const track = edl.tracks[trackIndex];
+    if (!track || track.kind !== 'caption') return { ok: false, error: `Unknown caption track ${op.trackId}` };
+    const { lang: _lang, ...rest } = track;
+    const next = { ...(op.lang === null ? rest : track), ...(op.style && { style: op.style }), ...(op.lang && { lang: op.lang }) };
+    return { ok: true, edl: { ...edl, tracks: edl.tracks.map((t, i) => (i === trackIndex ? next : t)) } };
+  }
   const ref = findClip(edl, op.clipId);
   if (!ref) return { ok: false, error: `Unknown clip ${op.clipId}` };
   const { clip, trackIndex, track } = ref;
@@ -235,6 +243,20 @@ function applyUnchecked(edl: Edl, op: TimelineOp, opts: ApplyOptions): ApplyResu
       if (!media) return { ok: false, error: `Clip ${clip.id} has no media` };
       const fadeIn = round(clamp(op.fadeIn, 0, clipEnd(media) - media.start));
       return { ok: true, edl: replaceClip(edl, trackIndex, (cs) => cs.map((c) => (c.id === clip.id ? { ...media, fadeIn } : c))) };
+    }
+    case 'setReframe': {
+      if (track.kind !== 'video' || !media) return { ok: false, error: `Clip ${clip.id} has no picture` };
+      const { reframe: _old, ...rest } = media;
+      const next: MediaClip = op.reframe ? { ...rest, reframe: { ...op.reframe } } : rest;
+      return { ok: true, edl: replaceClip(edl, trackIndex, (cs) => cs.map((c) => (c.id === clip.id ? next : c))) };
+    }
+    case 'setDuck': {
+      if (!media) return { ok: false, error: `Clip ${clip.id} has no media` };
+      const ids = [...new Set(op.duckUnder)].filter((id) => id !== track.id);
+      for (const id of ids) if (!edl.tracks.some((t) => t.id === id && t.kind !== 'caption')) return { ok: false, error: `Unknown audio track ${id}` };
+      const { duckUnder: _old, ...rest } = media;
+      const next: MediaClip = ids.length ? { ...rest, duckUnder: ids } : rest;
+      return { ok: true, edl: replaceClip(edl, trackIndex, (cs) => cs.map((c) => (c.id === clip.id ? next : c))) };
     }
     case 'setTransition': {
       if (track.kind !== 'video' || !media) return { ok: false, error: `Clip ${clip.id} is not a shot` };

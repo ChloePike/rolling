@@ -5,7 +5,7 @@
  * `MAX_SPEED`, `FRAME_LIMITS`); overlap and length rules are `validateEdl`'s.
  */
 import { z } from 'zod';
-import { FRAME_LIMITS, MAX_SPEED, MIN_SPEED, TRANSFORM_LIMITS, type Edl, type TimelineOp } from './types';
+import { CAPTION_STYLE_IDS, FRAME_LIMITS, MAX_SPEED, MIN_SPEED, TRANSFORM_LIMITS, type Edl, type TimelineOp } from './types';
 
 /** Most ops one patch may carry. */
 export const MAX_PATCH_OPS = 500;
@@ -28,6 +28,15 @@ export const ClipTransformSchema = z.object({
   rotation: z.number().finite().min(L.rotation[0]).max(L.rotation[1]),
   opacity: z.number().finite().min(L.opacity[0]).max(L.opacity[1]),
 });
+
+export const ReframeSchema = z.object({
+  mode: z.enum(['auto', 'center', 'manual']),
+  x: z.number().finite().min(0).max(1).optional(),
+  y: z.number().finite().min(0).max(1).optional(),
+});
+
+const CaptionStyle = z.enum(CAPTION_STYLE_IDS);
+const Lang = z.string().regex(/^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/).max(35);
 
 export const GainKeyframeSchema = z.object({ t: Seconds, db: Db });
 
@@ -53,13 +62,20 @@ export const MediaClipSchema = z.object({
   transform: ClipTransformSchema.optional(),
   speed: z.number().finite().min(MIN_SPEED).max(MAX_SPEED).optional(),
   reverse: z.boolean().optional(),
+  reframe: ReframeSchema.optional(),
 });
 
 /** A clip of either kind (`insert`): a caption has `text`, media has `in`/`out`. */
 export const ClipSchema = z.union([CaptionClipSchema.strict(), MediaClipSchema.strict()]);
 
 export const TrackSchema = z.discriminatedUnion('kind', [
-  z.object({ id: TrackId, kind: z.literal('caption'), clips: z.array(CaptionClipSchema).max(EDL_LIMITS.clipsPerTrack) }),
+  z.object({
+    id: TrackId,
+    kind: z.literal('caption'),
+    clips: z.array(CaptionClipSchema).max(EDL_LIMITS.clipsPerTrack),
+    style: CaptionStyle.optional(),
+    lang: Lang.optional(),
+  }),
   z.object({ id: TrackId, kind: z.enum(['video', 'voice', 'music']), clips: z.array(MediaClipSchema).max(EDL_LIMITS.clipsPerTrack) }),
 ]);
 
@@ -83,6 +99,9 @@ export const TimelineOpSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('setFade'), clipId: ClipId, fadeIn: z.number().finite().min(0).max(600) }),
   z.object({ op: z.literal('setTransition'), clipId: ClipId, transition: TransitionSchema.nullable() }),
   z.object({ op: z.literal('insert'), trackId: TrackId, clip: ClipSchema }),
+  z.object({ op: z.literal('setCaptionTrack'), trackId: TrackId, style: CaptionStyle.optional(), lang: Lang.nullable().optional() }),
+  z.object({ op: z.literal('setReframe'), clipId: ClipId, reframe: ReframeSchema.nullable() }),
+  z.object({ op: z.literal('setDuck'), clipId: ClipId, duckUnder: z.array(TrackId).max(8) }),
   z.object({
     op: z.literal('setFormat'),
     width: z.number().int().min(FRAME_LIMITS.minSide).max(FRAME_LIMITS.maxSide),

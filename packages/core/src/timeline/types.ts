@@ -51,7 +51,24 @@ export interface MediaClip {
   speed?: number;
   /** Plays the source range backwards. */
   reverse?: boolean;
+  /** How the picture is cropped when an export changes the aspect ratio (video clips). Missing means auto. */
+  reframe?: Reframe;
 }
+
+/**
+ * Reframing for an export whose aspect differs from the clip's: `auto` follows
+ * the main subject, `center` crops the middle, `manual` keeps the point
+ * (`x`, `y`, 0..1 of the source frame) in view.
+ */
+export interface Reframe {
+  mode: 'auto' | 'center' | 'manual';
+  x?: number;
+  y?: number;
+}
+
+/** Caption looks (`docs/decisions.md` D-026). Missing means `clean`. */
+export const CAPTION_STYLE_IDS = ['clean', 'bold_social', 'minimal'] as const;
+export type CaptionStyleId = (typeof CAPTION_STYLE_IDS)[number];
 
 /** Picture transform of a video clip: scale 1 = 100%, position in output pixels, rotation in degrees, opacity 0..1. */
 export interface ClipTransform {
@@ -80,6 +97,10 @@ export interface CaptionTrack {
   id: string;
   kind: 'caption';
   clips: CaptionClip[];
+  /** Caption look for preview and burn-in. */
+  style?: CaptionStyleId;
+  /** Spoken language (BCP 47 / Whisper code) the captions are in; picks the CJK font variant. */
+  lang?: string;
 }
 
 export interface MediaTrack {
@@ -112,6 +133,12 @@ export type TimelineOp =
   | { op: 'setTransition'; clipId: string; transition: Transition | null }
   /** Adds a clip to a track; refused when it overlaps. */
   | { op: 'insert'; trackId: string; clip: Clip }
+  /** Caption look and language of a caption track (`lang: null` clears it). */
+  | { op: 'setCaptionTrack'; trackId: string; style?: CaptionStyleId; lang?: string | null }
+  /** Reframing of a video clip for other aspect ratios (`null` = auto). */
+  | { op: 'setReframe'; clipId: string; reframe: Reframe | null }
+  /** Tracks this clip ducks under (empty = no ducking). */
+  | { op: 'setDuck'; clipId: string; duckUnder: string[] }
   /** Output frame size and rate. */
   | { op: 'setFormat'; width: number; height: number; fps: number }
   /**
