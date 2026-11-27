@@ -7,18 +7,25 @@
  *     │                invalid → error back to the model (max 2 retries), then text only
  *     └─ text: streamed
  *   ends when the model stops calling tools, after a proposal, after 8 tool calls, or on cancel.
+ *
+ * Modes (D-021, `./modes.ts`): Read offers and accepts read tools only; Edit is the
+ * loop above; Auto applies valid graph/timeline patches and plans through `opts.auto`
+ * (up to `AUTO_LIMITS`) and keeps going, and `run.start` starts runs within the turn's
+ * budget (a run over it is surfaced for approval, not started).
  */
 import { AgentCostMeter, tokenPrice, type ChatMessage, type ChatUsage, type LlmProvider, type ToolCall } from '@rolling/core';
 import { SAFETY_BLOCKED_MESSAGE, type ReferenceSource, type SafetyReference } from '@rolling/core/safety';
 import { explicitSignal } from '@rolling/core/safety/rules';
 import { buildContext, type ThreadState, type TurnInput } from './context';
 import type { AccountSnapshot, AgentPorts } from './ports';
-import { isProposeTool, runPropose } from './proposals';
+import { AUTO_LIMITS, DEFAULT_AGENT_MODE, TurnBudget, type AgentMode } from './modes';
+import { decodeJsonStrings, isProposeTool, runPropose } from './proposals';
 import { resolveAgentLlm, supportsReasoningNone, temperatureFor } from './routing';
 import { noopTelemetry, type AgentTelemetry } from './telemetry';
 import { getTool, runReadTool, toolDefinition, toolsFor, type ToolContext } from './tools';
+import { issueText, RunStartInput } from './tools/schemas';
 import { truncateToTokens } from './tokens';
-import type { AgentEvent, Proposal, ThreadMessage, TurnEndReason } from './types';
+import type { AgentEvent, AutoChange, AutoRun, AutoTurnSummary, Proposal, ThreadMessage, TurnEndReason } from './types';
 
 export const MAX_TOOL_CALLS = 8;
 export const MAX_PROPOSAL_RETRIES = 2;
@@ -28,6 +35,39 @@ export const MAX_TOOL_RESULT_TOKENS = 3_000;
 export const MAX_OUTPUT_TOKENS = 8_000;
 /** Responses that came back cut off or empty and were asked for again, per turn. */
 export const MAX_RESPONSE_REPAIRS = 2;
+
+/**
+ * What Auto mode (D-021) may do, wired by AgentSession: apply a validated proposal
+ * through ProjectRoom as the user (agent attribution), quote runs and start a quoted
+ * run (CreditAccount holds). The loop owns the turn budget; the agent never sees holds.
+ */
+export interface AutoPort {
+  /** Credits this turn may start runs for (the user's Auto budget). */
+  budget: number;
+  apply(proposal: Proposal): Promise<{ ok: true; change: AutoChange; created?: { id: string; title: string; kind: string }[] } | { ok: false; error: string }>;
+  quote(nodeIds: string[]): Promise<
+    | { ok: true; quoteId: string | null; credits: number; available: number; nodeIds: string[]; blocked: string[] }
+    | { ok: false; code: string; message: string }
+  >;
+  /**
+   * `review` (D-024): the turn id, its budget and what is left after this run; the result review may retry a
+   * bad output once per node within what the turn has left (`startRun` server options).
+   */
+  start(quoteId: string, review?: { budgetLeft: number; turnId: string; turnBudget: number }): Promise<{ ok: true; runId: string } | { ok: false; code: string; message: string }>;
+}
+
+/** Graph/timeline ops a proposal applies (a plan: its first option, which Auto builds). */
+export function proposalOpCount(p: Proposal): number {
+  switch (p.body.kind) {
+    case 'graphPatch':
+    case 'timelinePatch':
+      return p.body.ops.length;
+    case 'plan':
+      return p.body.options[0]?.ops.length ?? 0;
+    default:
+      return 0;
+  }
+}
 
 export interface RunTurnOptions {
   llm: LlmProvider;
@@ -47,6 +87,9 @@ export interface RunTurnOptions {
   workspaceId?: string;
   maxToolCalls?: number;
   maxProposalRetries?: number;
+  /** D-021 mode; default Edit. Auto without `auto` runs as Edit. */
+  mode?: AgentMode;
+  auto?: AutoPort;
 }
 
 export interface ToolTraceEntry {
@@ -60,7 +103,14 @@ export interface ToolTraceEntry {
 export interface TurnResult {
   turnId: string;
   text: string;
+  /** The proposal left for the user, else (Auto) the last one applied. */
   proposal: Proposal | null;
+  /** Every valid proposal of the turn, in order (Auto may apply several). */
+  proposals: Proposal[];
+  /** The mode the turn ran in. */
+  mode: AgentMode;
+  /** Auto turns: changes applied and runs asked for, against the budget. */
+  auto: AutoTurnSummary | null;
   reason: TurnEndReason;
   error: { code: string; message: string } | null;
   /**
@@ -109,9 +159,14 @@ export async function runTurn(opts: RunTurnOptions): Promise<TurnResult> {
 
   const account = opts.account ?? (await opts.ports.account.get());
   const llm = resolveAgentLlm(opts.llmId, opts.ports.models.chatModels(), { mature: account.matureAllowed });
-  const tools = toolsFor(thread.surface);
+  const auto = (opts.mode ?? DEFAULT_AGENT_MODE) === 'auto' ? (opts.auto ?? null) : null;
+  const mode: AgentMode = opts.mode === 'auto' && !auto ? 'edit' : (opts.mode ?? DEFAULT_AGENT_MODE);
+  const budget = new TurnBudget(auto?.budget ?? 0);
+  const tools = toolsFor(thread.surface, mode);
+  // The tools offered this turn are the only ones that run: a Read turn refuses a propose call the model makes anyway.
+  const allowed = new Set<string>(tools.map((t) => t.name));
   const defs = tools.map(toolDefinition);
-  const ctx = await buildContext({ thread, input, account, ports: opts.ports, tools: defs });
+  const ctx = await buildContext({ thread, input, account, ports: opts.ports, tools: defs, mode, ...(auto ? { budget: { total: budget.total, remaining: budget.remaining } } : {}) });
   const toolCtx: ToolContext = { ports: opts.ports, account, thread: { projectId: thread.projectId, canvasId: thread.canvasId, surface: thread.surface } };
   const temperature = temperatureFor(thread.surface, input.text, thread.skill);
 
@@ -123,6 +178,54 @@ export async function runTurn(opts: RunTurnOptions): Promise<TurnResult> {
   const trace: ToolTraceEntry[] = [];
   let text = '';
   let proposal: Proposal | null = null;
+  const proposals: Proposal[] = [];
+  let lastApplied: Proposal | null = null;
+  let appliedCount = 0;
+  let appliedOps = 0;
+  let runCalls = 0;
+  const autoSummary: AutoTurnSummary | null = auto ? { turnId, budget: budget.total, spent: 0, changes: [], runs: [] } : null;
+  const emitAuto = () => {
+    if (!autoSummary) return;
+    autoSummary.spent = budget.spent;
+    emit({ type: 'agent.auto', ...base, auto: { ...autoSummary, changes: [...autoSummary.changes], runs: [...autoSummary.runs] } });
+  };
+  /** Auto `run.start`: quote, then start within the budget or surface it for approval (never sees the holds). */
+  const startRun = async (nodeIds: string[]): Promise<Record<string, unknown>> => {
+    if (!auto || !autoSummary) return { status: 'refused', code: 'NOT_AUTO' };
+    if (runCalls >= AUTO_LIMITS.maxRunsPerTurn) return { status: 'refused', code: 'RUN_LIMIT', note: `At most ${AUTO_LIMITS.maxRunsPerTurn} run.start calls per turn.` };
+    runCalls++;
+    const id = `${turnId}:run:${runCalls}`;
+    const record = (r: Omit<AutoRun, 'id'>) => {
+      autoSummary.runs.push({ id, ...r });
+      emitAuto();
+    };
+    const q = await auto.quote(nodeIds);
+    if (!q.ok) {
+      record({ nodeIds, credits: 0, status: 'refused', code: q.code });
+      return { status: 'refused', code: q.code, message: q.message };
+    }
+    if (q.blocked.length) {
+      record({ nodeIds: q.nodeIds, credits: q.credits, status: 'refused', code: 'blocked' });
+      return { status: 'refused', code: 'blocked', reasons: q.blocked, note: 'Some of these nodes cannot run; nothing was started.' };
+    }
+    const decision = q.quoteId ? budget.decide({ credits: q.credits, available: q.available }) : ({ action: 'refuse', code: 'NOTHING_TO_RUN' } as const);
+    if (decision.action === 'refuse') {
+      record({ nodeIds: q.nodeIds, credits: q.credits, status: 'refused', code: decision.code });
+      return { status: 'refused', code: decision.code };
+    }
+    if (decision.action === 'approve') {
+      record({ nodeIds: q.nodeIds, credits: q.credits, status: 'needs_approval' });
+      return { status: 'needs_approval', credits: q.credits, budgetLeft: budget.remaining, note: "Not started: over this turn's budget. The user can approve it in the panel." };
+    }
+    const started = await auto.start(q.quoteId!, { budgetLeft: Math.max(0, budget.remaining - q.credits), turnId, turnBudget: budget.total });
+    if (!started.ok) {
+      record({ nodeIds: q.nodeIds, credits: q.credits, status: 'refused', code: started.code });
+      return { status: 'refused', code: started.code, message: started.message };
+    }
+    budget.commit(q.credits);
+    record({ nodeIds: q.nodeIds, credits: q.credits, status: 'started', runId: started.runId });
+    return { status: 'started', runId: started.runId, credits: q.credits, budgetLeft: budget.remaining };
+  };
   let reason: TurnEndReason = 'completed';
   let error: TurnResult['error'] = null;
   let toolCalls = 0;
@@ -306,9 +409,10 @@ export async function runTurn(opts: RunTurnOptions): Promise<TurnResult> {
         }
         toolCalls++;
         const tool = getTool(tc.name);
-        if (!tool || !tool.surfaces.includes(thread.surface)) {
-          trace.push({ name: tc.name, ok: false, error: 'unknown tool' });
-          reply({ error: `tool ${tc.name} is not available here` });
+        if (!tool || !allowed.has(tool.name)) {
+          const known = !!tool && tool.surfaces.includes(thread.surface);
+          trace.push({ name: tc.name, ok: false, error: known ? `not available in ${mode} mode` : 'unknown tool' });
+          reply({ error: known ? `tool ${tc.name} is not available in ${mode} mode; nothing was changed` : `tool ${tc.name} is not available here` });
           continue;
         }
         emit({ type: 'agent.tool', ...base, name: tool.name, status: 'started' });
@@ -319,6 +423,22 @@ export async function runTurn(opts: RunTurnOptions): Promise<TurnResult> {
           if (tool.kind === 'propose') retries++;
           reply({ error: args.error });
           if (tool.kind === 'propose' && retries > maxRetries) textOnly = true;
+          continue;
+        }
+        if (tool.kind === 'run') {
+          const parsed = RunStartInput.safeParse(decodeJsonStrings(args.value ?? {}));
+          if (!parsed.success) {
+            const error = `invalid input: ${issueText(parsed.error)}`;
+            trace.push({ name: tool.name, ok: false, error });
+            emit({ type: 'agent.tool', ...base, name: tool.name, status: 'error', error });
+            reply({ error });
+            continue;
+          }
+          const result = await startRun(parsed.data.nodeIds);
+          const ok = result.status === 'started' || result.status === 'needs_approval';
+          trace.push({ name: tool.name, ok, ...(ok ? {} : { error: String(result.code) }) });
+          emit({ type: 'agent.tool', ...base, name: tool.name, status: ok ? 'ok' : 'error', ...(ok ? {} : { error: String(result.code) }) });
+          reply(result);
           continue;
         }
         if (tool.kind === 'read') {
@@ -341,12 +461,39 @@ export async function runTurn(opts: RunTurnOptions): Promise<TurnResult> {
           ...(input.settings ? { settings: input.settings } : {}),
         });
         if (result.ok) {
-          proposal = result.proposal;
+          const p = result.proposal;
+          proposals.push(p);
           reason = 'proposal';
           trace.push({ name: tool.name, ok: true });
           emit({ type: 'agent.tool', ...base, name: tool.name, status: 'ok' });
-          emit({ type: 'proposal.created', ...base, proposal });
-          reply({ ok: true, proposalId: proposal.id, estimate: proposal.estimate.credits });
+          emit({ type: 'proposal.created', ...base, proposal: p });
+          if (auto && autoSummary && p.kind !== 'fields') {
+            const ops = proposalOpCount(p);
+            const limit = appliedCount >= AUTO_LIMITS.maxAppliedPerTurn ? 'changes' : appliedOps + ops > AUTO_LIMITS.maxOpsPerTurn ? 'ops' : null;
+            if (!limit) {
+              const applied = await auto.apply(p);
+              if (applied.ok) {
+                appliedCount++;
+                appliedOps += ops;
+                p.status = 'applied';
+                lastApplied = p;
+                autoSummary.changes.push(applied.change);
+                emitAuto();
+                reply({ ok: true, applied: true, proposalId: p.id, revision: applied.change.revision, ...(applied.created?.length ? { nodes: applied.created } : {}), estimate: p.estimate.credits });
+                // Auto keeps the turn going (a follow-up change or run.start).
+                proposedThisResponse = false;
+                continue;
+              }
+              proposal = p;
+              reply({ ok: true, applied: false, proposalId: p.id, reason: applied.error, note: 'Not applied; it waits for the user to apply.' });
+              continue;
+            }
+            proposal = p;
+            reply({ ok: true, applied: false, proposalId: p.id, note: `Auto limit for this turn reached (${limit}); the user applies this one.` });
+            continue;
+          }
+          proposal = p;
+          reply({ ok: true, proposalId: p.id, estimate: p.estimate.credits });
           continue;
         }
         retries++;
@@ -370,6 +517,7 @@ export async function runTurn(opts: RunTurnOptions): Promise<TurnResult> {
   } catch (err) {
     if (err instanceof Canceled || opts.signal?.aborted) {
       reason = 'canceled';
+      // Changes Auto already applied stay (each can be undone); an unapplied proposal is dropped.
       proposal = null;
     } else {
       reason = 'error';
@@ -379,8 +527,9 @@ export async function runTurn(opts: RunTurnOptions): Promise<TurnResult> {
     }
   }
 
-  if (reason === 'proposal' && proposal && !text.trim()) {
-    text = proposal.summary;
+  const shown = proposal ?? lastApplied;
+  if (reason === 'proposal' && shown && !text.trim()) {
+    text = shown.summary;
     emit({ type: 'agent.delta', ...base, delta: text });
   }
 
@@ -391,13 +540,17 @@ export async function runTurn(opts: RunTurnOptions): Promise<TurnResult> {
     role: 'assistant',
     content: text,
     createdAt: finished,
-    ...(proposal ? { proposalId: proposal.id } : {}),
+    ...((proposal ?? lastApplied) ? { proposalId: (proposal ?? lastApplied)!.id } : {}),
   };
-  emit({ type: 'agent.done', ...base, messageId: assistantMessage.id, reason, proposalId: proposal?.id ?? null });
+  if (autoSummary) autoSummary.spent = budget.spent;
+  emit({ type: 'agent.done', ...base, messageId: assistantMessage.id, reason, proposalId: (proposal ?? lastApplied)?.id ?? null });
   const result: TurnResult = {
     turnId,
     text,
-    proposal,
+    proposal: proposal ?? lastApplied,
+    proposals: reason === 'canceled' ? proposals.filter((p) => p.status === 'applied') : proposals,
+    mode,
+    auto: autoSummary,
     reason,
     error,
     usage,
@@ -427,7 +580,7 @@ export async function runTurn(opts: RunTurnOptions): Promise<TurnResult> {
     retries,
     latencyMs: result.latencyMs,
     reason,
-    proposalKind: proposal?.kind ?? null,
+    proposalKind: (proposal ?? lastApplied)?.kind ?? null,
   });
   return result;
 }

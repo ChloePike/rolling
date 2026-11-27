@@ -148,6 +148,41 @@ export interface ThreadMessage {
   proposalId?: string;
 }
 
+/** One change Auto mode applied (D-021): a normal revision with agent attribution, undoable on its own. */
+export interface AutoChange {
+  id: string;
+  proposalId: string;
+  kind: 'plan' | 'graphPatch' | 'timelinePatch';
+  summary: string;
+  projectId: string | null;
+  /** Revision the change created (graph revision, or the timeline revision for timeline patches). */
+  revision: number;
+  ops: number;
+  /** Node ids the change added, updated or removed (for highlight and the summary line). */
+  nodeIds: string[];
+  status: 'applied' | 'undone';
+}
+
+/** One `run.start` of an Auto turn. `needs_approval`: over the remaining budget, shown as "Run · N credits". */
+export interface AutoRun {
+  id: string;
+  nodeIds: string[];
+  credits: number;
+  status: 'started' | 'needs_approval' | 'refused';
+  runId?: string;
+  /** Refusals: INSUFFICIENT_CREDITS, MEMBER_LIMIT_REACHED, NO_PLAN, MATURE_REQUIRED, blocked, … */
+  code?: string;
+}
+
+/** What an Auto turn did, against its budget. */
+export interface AutoTurnSummary {
+  turnId: string;
+  budget: number;
+  spent: number;
+  changes: AutoChange[];
+  runs: AutoRun[];
+}
+
 /** Events streamed while a turn runs (to the project socket, the user hub and the thread socket). */
 export type AgentEvent =
   | { type: 'agent.delta'; threadId: string; turnId: string; delta: string }
@@ -155,7 +190,9 @@ export type AgentEvent =
   | { type: 'proposal.created'; threadId: string; turnId: string; proposal: Proposal }
   | { type: 'proposal.updated'; threadId: string; proposalId: string; status: ProposalStatus; baseRevision?: number | null; reason?: string }
   | { type: 'agent.done'; threadId: string; turnId: string; messageId: string; reason: TurnEndReason; proposalId: string | null }
-  | { type: 'agent.error'; threadId: string; turnId: string; code: string; message: string };
+  | { type: 'agent.error'; threadId: string; turnId: string; code: string; message: string }
+  /** Auto mode (D-021): the turn's changes and runs so far. */
+  | { type: 'agent.auto'; threadId: string; turnId: string; auto: AutoTurnSummary };
 
 /** `safety_blocked`: the brief hit a D-005 hard limit; the turn answers with the neutral content-rules message. */
 export type TurnEndReason = 'completed' | 'proposal' | 'max_tool_calls' | 'canceled' | 'error' | 'invalid_proposal' | 'safety_blocked';

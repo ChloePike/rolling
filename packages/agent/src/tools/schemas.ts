@@ -47,6 +47,12 @@ export const TemplatesSearchInput = z.object({ query: z.string().max(200) });
 
 export const TimelineGetInput = z.object({ canvasId: Id });
 
+// ---------------------------------------------------------------- run tool (Auto mode only, D-021)
+
+export const RunStartInput = z.object({
+  nodeIds: z.array(Id).min(1).max(20).describe('Nodes to run; inputs they need that have no valid version run first'),
+});
+
 // ---------------------------------------------------------------- propose tools
 
 /** Marks a property the model is not shown (still accepted when sent). */

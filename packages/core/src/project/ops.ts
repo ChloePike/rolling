@@ -385,6 +385,43 @@ export function diffGraph(from: GraphState, to: GraphState): RoomOp[] {
   return ops;
 }
 
+/**
+ * Ids of the nodes, edges and groups a list of ops touches (final ids, as stored in the
+ * patch log). Reverting one revision (D-021 Auto undo) is refused when a later live
+ * revision touches any of them, so a revert never clobbers a newer edit.
+ */
+export function opsTouch(ops: readonly RoomOp[]): Set<string> {
+  const out = new Set<string>();
+  for (const o of ops) {
+    switch (o.op) {
+      case 'addNode':
+        out.add(o.tempId);
+        break;
+      case 'connect':
+        out.add(o.from.node);
+        out.add(o.to.node);
+        if (o.edgeId) out.add(o.edgeId);
+        break;
+      case 'disconnect':
+      case 'addReroute':
+      case 'removeReroute':
+      case 'moveReroute':
+        out.add(o.edgeId);
+        break;
+      case 'group':
+        for (const id of o.nodeIds) out.add(id);
+        if (o.groupId) out.add(o.groupId);
+        break;
+      case 'ungroup':
+        out.add(o.groupId);
+        break;
+      default:
+        out.add(o.nodeId);
+    }
+  }
+  return out;
+}
+
 /** Same graph content (ignores revision, statuses and runtime fields). */
 export function sameGraph(a: GraphState, b: GraphState): boolean {
   return diffGraph(a, b).length === 0;

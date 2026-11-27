@@ -333,6 +333,19 @@ export function quoteTopUp(amountCents: number, plan: PlanId): TopUpQuote {
 /** Runs at or above this many credits show the confirm dialog (PRD rule 5; 300 ≈ $3, the old “20 credits” rescaled to $0.01 credits, D-006). */
 export const DEFAULT_CONFIRM_THRESHOLD_CREDITS = 300;
 
+/**
+ * Agent Auto mode (D-021): the per-turn budget the agent may start runs within. It defaults to the
+ * user's confirm threshold; the user picks another value next to the mode switch (`prefs.autoBudget`).
+ * `choices` are the values the switch offers; `max` bounds what the API accepts.
+ */
+export const AUTO_BUDGET = { choices: [100, 300, 500, 1_000, 2_000], max: 10_000 } as const;
+
+/** The Auto mode budget for one turn: the user's choice, else the confirm threshold, clamped to `0..AUTO_BUDGET.max`. */
+export function autoBudgetCredits(choice: number | null | undefined, confirmThreshold: number): number {
+  const v = typeof choice === 'number' && Number.isFinite(choice) ? choice : confirmThreshold;
+  return Math.max(0, Math.min(AUTO_BUDGET.max, Math.floor(v)));
+}
+
 /** Optional auto top-up: below `belowCredits`, buy `buyCredits` (PRD rule 6). */
 export const AUTO_TOP_UP = { belowCredits: 200, amountUsd: TOP_UP.minUsd } as const;
 

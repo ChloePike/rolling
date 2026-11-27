@@ -1,13 +1,15 @@
 /**
  * Tool registry (docs/harness.md section 3). Read tools run here; propose
- * tools are validated in `../proposals.ts`. There is intentionally no run,
- * buy, delete-project or share tool.
+ * tools are validated in `../proposals.ts`. `run.start` exists only in Auto
+ * mode (D-021) and goes through the loop's turn budget; there is no buy,
+ * delete-project or share tool. Which tools a turn gets: `toolsFor(surface, mode)`.
  */
 import type { ToolDefinition } from '@rolling/core';
 import { planAllowsResolution, lowestPlanFor } from '@rolling/core/pricing/config';
 import type { z } from 'zod/v4';
 import type { AccountSnapshot, AgentPorts } from '../ports';
 import { decodeJsonStrings } from '../proposals';
+import { DEFAULT_AGENT_MODE, type AgentMode } from '../modes';
 import type { Surface } from '../types';
 import { canvasView, compactParams, timelineView } from './compact';
 import {
@@ -21,6 +23,7 @@ import {
   ProposeGraphPatchInput,
   ProposePlanInput,
   ProposeTimelinePatchInput,
+  RunStartInput,
   ScriptGetInput,
   TemplatesSearchInput,
   TimelineGetInput,
@@ -47,11 +50,15 @@ export type ToolName =
   | 'propose.plan'
   | 'propose.graphPatch'
   | 'propose.timelinePatch'
-  | 'propose.fields';
+  | 'propose.fields'
+  | 'run.start';
+
+/** `read` tools never mutate; `propose` tools create proposals; `run` starts generation runs (Auto only). */
+export type ToolKind = 'read' | 'propose' | 'run';
 
 export interface ToolSpec {
   name: ToolName;
-  kind: 'read' | 'propose';
+  kind: ToolKind;
   description: string;
   input: z.ZodType;
   surfaces: readonly Surface[];
@@ -267,6 +274,14 @@ export const TOOLS: readonly ToolSpec[] = [
     input: ProposeFieldsInput,
     surfaces: ['tool'],
   },
+  {
+    name: 'run.start',
+    kind: 'run',
+    description:
+      'Auto mode: start the runs of these nodes (inputs without a valid version run first). The server quotes them and starts them only within this turn\'s budget; returns the status, the credits quoted and the run id. A run over the budget is not started: the user is asked to approve it. Building and editing nodes never needs this.',
+    input: RunStartInput,
+    surfaces: ['home', 'canvas'],
+  },
 ];
 
 export function accountView(a: AccountSnapshot) {
@@ -301,8 +316,17 @@ export async function videoModelsSection(ctx: ToolContext): Promise<string> {
   return `# Video models\nid | whole seconds per shot | notes | cost\n${lines.join('\n')}`;
 }
 
-export function toolsFor(surface: Surface): ToolSpec[] {
-  return TOOLS.filter((t) => t.surfaces.includes(surface));
+/** Tool kinds each mode gets (D-021): Read has no propose or run tool by construction. */
+export const MODE_TOOL_KINDS: Record<AgentMode, readonly ToolKind[]> = {
+  read: ['read'],
+  edit: ['read', 'propose'],
+  auto: ['read', 'propose', 'run'],
+};
+
+export function toolsFor(surface: Surface, mode: AgentMode = DEFAULT_AGENT_MODE): ToolSpec[] {
+  const kinds = MODE_TOOL_KINDS[mode];
+  // A Home Auto turn that builds its plan continues on the new canvas: run.start stays available there.
+  return TOOLS.filter((t) => t.surfaces.includes(surface) && kinds.includes(t.kind));
 }
 
 export function getTool(name: string): ToolSpec | undefined {

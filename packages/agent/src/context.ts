@@ -5,6 +5,7 @@
 import type { ReviewSummary } from '@rolling/core/review';
 import type { ChatMessage, ToolDefinition } from '@rolling/core';
 import type { GraphState } from '@rolling/core/graph';
+import { DEFAULT_AGENT_MODE, modeSection, type AgentMode } from './modes';
 import { SKILL_PROMPTS, SYSTEM_PROMPT } from './prompts.generated';
 import type { AccountSnapshot, AgentPorts, AssetItem } from './ports';
 import { accountView, videoModelsSection } from './tools';
@@ -192,10 +193,14 @@ export async function buildContext(args: {
   account: AccountSnapshot;
   ports: AgentPorts;
   tools: ToolDefinition[];
-  budget?: number;
+  /** Token budget of the context (default `CONTEXT_BUDGET`). */
+  tokenBudget?: number;
+  /** D-021 mode of this turn (default Edit) and, in Auto, the turn's credit budget. */
+  mode?: AgentMode;
+  budget?: { total: number; remaining: number };
 }): Promise<BuiltContext> {
   const { thread, input, account, ports } = args;
-  const budget = (args.budget ?? CONTEXT_BUDGET) - TURN_HEADROOM - estimateValueTokens(args.tools);
+  const budget = (args.tokenBudget ?? CONTEXT_BUDGET) - TURN_HEADROOM - estimateValueTokens(args.tools);
 
   const [graph, timeline, refs] = await Promise.all([
     thread.projectId && thread.surface !== 'home' ? ports.canvas.getGraph(thread.projectId) : Promise.resolve(null),
@@ -207,7 +212,8 @@ export async function buildContext(args: {
   const accountText = `# Account\n${JSON.stringify(accountView(account))}\nReply language: ${languageName(account.language)}.`;
   // Home plans choose video models every time: listing them here saves the models.capabilities round trip.
   const modelsText = thread.surface === 'home' ? await videoModelsSection({ ports, account, thread: { projectId: thread.projectId, canvasId: thread.canvasId, surface: thread.surface } }) : '';
-  const fixed = [systemPromptFor(thread.surface), skill ? `# Active skill\n${skill}` : '', accountText, modelsText, settingsSection(input.settings) ?? ''].filter(Boolean).join('\n\n');
+  const mode = modeSection(args.mode ?? DEFAULT_AGENT_MODE, args.budget);
+  const fixed = [systemPromptFor(thread.surface), mode, skill ? `# Active skill\n${skill}` : '', accountText, modelsText, settingsSection(input.settings) ?? ''].filter(Boolean).join('\n\n');
   let used = estimateTokens(fixed);
 
   const userText = truncateToTokens(input.text, 4_000);

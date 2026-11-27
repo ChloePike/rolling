@@ -10,6 +10,9 @@ import type { GraphState } from '@rolling/core/graph';
 import type { PlanId } from '@rolling/core/pricing/config';
 import type { Edl } from '@rolling/core/timeline';
 import type { AccountSnapshot, AgentPorts, AssetItem, NamedItem, TemplateItem } from './ports';
+import type { AutoPort } from './loop';
+import type { Proposal } from './types';
+import { applyGraphOps } from '@rolling/core/project';
 
 export function account(overrides: Partial<AccountSnapshot> = {}): AccountSnapshot {
   return {
@@ -129,4 +132,59 @@ export class ScriptedLlm implements LlmProvider {
 export function testIds() {
   let n = 0;
   return (kind: 'proposal' | 'message') => `${kind === 'proposal' ? 'prop' : 'msg'}_test${++n}`;
+}
+
+// ---------------------------------------------------------------- Auto mode (D-021)
+
+export interface MemoryAuto extends AutoPort {
+  applied: Proposal[];
+  quotes: { nodeIds: string[]; credits: number }[];
+  started: string[];
+}
+
+/**
+ * An in-memory Auto port: graph patches and plans apply to `world.graphs` (plans to
+ * `projectId`), quotes price each node at `credits[nodeId]` (default 100), starts succeed
+ * unless `startError` says otherwise. Balance comes from `world.account`.
+ */
+export function memoryAuto(
+  world: MemoryWorld,
+  opts: { budget: number; projectId?: string; credits?: Record<string, number>; startError?: { code: string; message: string } },
+): MemoryAuto {
+  let n = 0;
+  const port: MemoryAuto = {
+    budget: opts.budget,
+    applied: [],
+    quotes: [],
+    started: [],
+    async apply(p) {
+      const projectId = p.body.kind === 'graphPatch' ? p.body.projectId : opts.projectId;
+      const ops = p.body.kind === 'graphPatch' ? p.body.ops : p.body.kind === 'plan' ? (p.body.options[0]?.ops ?? []) : null;
+      if (!projectId || !ops) return { ok: false, error: 'not applicable here' };
+      const g = world.graphs.get(projectId) ?? { state: { revision: 0, nodes: [], edges: [], groups: [] } as unknown as GraphState, assets: {} };
+      const r = applyGraphOps(g.state, ops, { actor: 'agent' });
+      if (!r.ok) return { ok: false, error: r.refusal.message };
+      const revision = g.state.revision + 1;
+      world.graphs.set(projectId, { state: { ...r.state, revision }, assets: g.assets });
+      port.applied.push(p);
+      const created = ops.flatMap((o) => (o.op === 'addNode' ? [{ id: r.idMap[o.tempId] ?? o.tempId, title: o.title, kind: o.kind }] : []));
+      return {
+        ok: true,
+        created,
+        change: { id: `chg_${++n}`, proposalId: p.id, kind: p.kind as 'plan' | 'graphPatch', summary: p.summary, projectId, revision, ops: ops.length, nodeIds: created.map((c) => c.id), status: 'applied' },
+      };
+    },
+    async quote(nodeIds) {
+      const credits = nodeIds.reduce((s, id) => s + (opts.credits?.[id] ?? 100), 0);
+      port.quotes.push({ nodeIds, credits });
+      const b = world.account.balance;
+      return { ok: true, quoteId: `qt_${port.quotes.length}`, credits, available: b.plan + b.purchased - b.held, nodeIds, blocked: [] };
+    },
+    async start(quoteId) {
+      if (opts.startError) return { ok: false, ...opts.startError };
+      port.started.push(quoteId);
+      return { ok: true, runId: `run_${port.started.length}` };
+    },
+  };
+  return port;
 }

@@ -107,6 +107,9 @@ export const patchLog = sqliteTable("patch_log", {
   inverse: text("inverse").notNull().default("[]"),
   target: integer("target"),
   undone: integer("undone", { mode: "boolean" }).notNull().default(false),
+  /** DO migration 7 (D-021): `user` or `agent`, and the agent turn that made it (`agent:<threadId>:<turnId>`). */
+  origin: text("origin", { enum: ["user", "agent"] }).notNull().default("user"),
+  source: text("source"),
 });
 
 /** D-014: UserHub gateways (one per user id) subscribed to this project's events (DO migration 6). */
@@ -195,6 +198,14 @@ UPDATE node_versions SET rating = json_extract(output, '$.rating') WHERE output 
 CREATE TABLE hub_subscribers (user_id TEXT PRIMARY KEY, subscribed_at INTEGER NOT NULL);
 CREATE TABLE event_ring (seq INTEGER PRIMARY KEY, revision INTEGER NOT NULL, type TEXT NOT NULL, payload TEXT NOT NULL, created_at INTEGER NOT NULL);
 CREATE TABLE agent_threads (thread_id TEXT PRIMARY KEY, caller TEXT NOT NULL, registered_at INTEGER NOT NULL);
+`,
+  },
+  {
+    version: 7,
+    name: "patch_attribution",
+    sql: `
+ALTER TABLE patch_log ADD COLUMN origin TEXT NOT NULL DEFAULT 'user';
+ALTER TABLE patch_log ADD COLUMN source TEXT;
 `,
   },
 ];

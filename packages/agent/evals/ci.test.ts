@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { runTurn } from '../src/loop';
 import { ScriptedLlm, testIds } from '../src/testkit';
-import { ALL_CASES, BRIEFS, BRIEFS_V2, CANVAS_CASES_V2, GRADER_IDS, NARRATION, oracleSteps, runCase, scorecard, sentRun, sharedPhrase, threadFor, TIMELINE_CASES, type EvalCase, type Grade } from './index';
+import { ALL_CASES, BRIEFS, MODE_CASES, gradeAutoBudget, gradeReadOnly, runModeCase, type ModeCase, BRIEFS_V2, CANVAS_CASES_V2, GRADER_IDS, NARRATION, oracleSteps, runCase, scorecard, sentRun, sharedPhrase, threadFor, TIMELINE_CASES, type EvalCase, type Grade } from './index';
 import type { PlanBody } from '../src/types';
 import { applyGraphOps } from '@rolling/core/project';
 import { evalPorts, evalWorld, PRODUCT_PHOTO } from './world';
@@ -265,5 +265,23 @@ describe('harness paths', () => {
     setTimeout(() => controller.abort(), 20);
     const r = await p;
     expect(r).toMatchObject({ reason: 'canceled', proposal: null });
+  });
+});
+
+describe('mode cases (D-021)', () => {
+  it.each(MODE_CASES.map((c) => [c.id, c] as const))('%s passes its mode grader', async (_id, c: ModeCase) => {
+    const run = await runModeCase(c, (rev) => new ScriptedLlm(c.script(rev)));
+    expect(run.grades.filter((g) => !g.pass).map((g) => `${g.grader}: ${g.failures.join(' | ')}`)).toEqual([]);
+    if (c.id === 'md-read-02-change') expect(run.result.trace.filter((t) => !t.ok).map((t) => t.name)).toEqual(['propose.graphPatch', 'run.start']);
+    if (c.id === 'md-edit-01-warmer') expect(run.result.proposal?.status).toBe('proposed');
+    if (c.id === 'md-auto-02-over-budget') expect(run.result.auto!.runs).toMatchObject([{ status: 'needs_approval', credits: 300 }]);
+    if (c.id === 'md-auto-03-several-runs') expect(run.result.auto!.runs.map((r) => r.status)).toEqual(['started', 'started', 'needs_approval']);
+    if (c.id === 'md-auto-04-home-build') expect(run.result.auto!.changes).toMatchObject([{ kind: 'plan', status: 'applied' }]);
+  });
+
+  it('the graders catch a harness that would let Read propose or Auto overspend', () => {
+    const fake = { proposal: null, proposals: [], auto: { turnId: 't', budget: 100, spent: 200, changes: [], runs: [{ id: 'r1', nodeIds: ['a'], credits: 200, status: 'started' as const }] }, trace: [{ name: 'propose.plan', ok: true }] };
+    expect(gradeReadOnly(fake as never).pass).toBe(false);
+    expect(gradeAutoBudget(fake as never, 100, null).failures).toEqual(expect.arrayContaining(['spent 200 over the budget 100']));
   });
 });

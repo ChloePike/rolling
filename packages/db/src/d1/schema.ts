@@ -82,6 +82,9 @@ export const userPrefs = sqliteTable(
     avatarAssetId: text("avatar_asset_id"),
     /** Migration 0024 (D-020): "Enhance prompt" default for Home, tools and Quick Create. */
     enhancePrompt: integer("enhance_prompt", { mode: "boolean" }).notNull().default(true),
+    /** Migration 0026 (D-021): agent mode default (read | edit | auto) and Auto's per-turn budget (null = confirm threshold). */
+    agentMode: text("agent_mode", { enum: ["read", "edit", "auto"] }).notNull().default("edit"),
+    autoBudget: integer("auto_budget"),
     /** Migration 0032 (D-024): "Review results" (a vision model reviews each output). */
     reviewResults: integer("review_results", { mode: "boolean" }).notNull().default(true),
   },

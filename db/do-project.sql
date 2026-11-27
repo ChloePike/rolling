@@ -15,3 +15,6 @@ CREATE TABLE comment_threads (id TEXT PRIMARY KEY, anchor_kind TEXT NOT NULL CHE
 CREATE TABLE comments (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, author_kind TEXT NOT NULL CHECK (author_kind IN ('member','reviewer')), author_id TEXT NOT NULL, author_name TEXT NOT NULL, body TEXT NOT NULL, mentions TEXT NOT NULL DEFAULT '[]', created_at INTEGER NOT NULL, edited_at INTEGER, deleted_at INTEGER);
 CREATE TABLE comment_reads (user_id TEXT NOT NULL, thread_id TEXT NOT NULL, read_at INTEGER NOT NULL, PRIMARY KEY (user_id, thread_id));  -- unread state
 CREATE TABLE activity (id TEXT PRIMARY KEY, kind TEXT NOT NULL, actor_kind TEXT NOT NULL, actor_id TEXT NOT NULL, actor_name TEXT, data TEXT NOT NULL DEFAULT '{}', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);  -- project activity feed (newest 2,000)
+-- DO migration 7 (D-021): who made each revision and, for Auto mode changes, the agent turn.
+ALTER TABLE patch_log ADD COLUMN origin TEXT NOT NULL DEFAULT 'user';
+ALTER TABLE patch_log ADD COLUMN source TEXT;

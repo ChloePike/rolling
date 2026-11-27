@@ -20,6 +20,7 @@ export * from './cases';
 export * from './graders';
 export * from './invariants';
 export * from './world';
+export * from './modes';
 
 export interface CaseRun {
   id: string;

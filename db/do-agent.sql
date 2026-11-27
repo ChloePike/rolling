@@ -8,3 +8,9 @@ ALTER TABLE messages ADD COLUMN turn_id TEXT;
 ALTER TABLE proposals ADD COLUMN created_at INTEGER;
 ALTER TABLE proposals ADD COLUMN stale_reason TEXT;
 CREATE INDEX messages_created ON messages (created_at);
+-- v3 (D-021): Auto mode changes (undoable one by one), runs and per-turn budgets
+CREATE TABLE auto_changes (id TEXT PRIMARY KEY, turn_id TEXT NOT NULL, proposal_id TEXT NOT NULL, kind TEXT NOT NULL, summary TEXT NOT NULL, project_id TEXT, revision INTEGER NOT NULL, ops INTEGER NOT NULL, node_ids TEXT NOT NULL, undo TEXT, status TEXT NOT NULL DEFAULT 'applied', created_at INTEGER NOT NULL);
+CREATE INDEX auto_changes_turn ON auto_changes (turn_id);
+CREATE TABLE auto_runs (id TEXT PRIMARY KEY, turn_id TEXT NOT NULL, node_ids TEXT NOT NULL, credits INTEGER NOT NULL, status TEXT NOT NULL, run_id TEXT, code TEXT, created_at INTEGER NOT NULL);
+CREATE INDEX auto_runs_turn ON auto_runs (turn_id);
+CREATE TABLE auto_turns (turn_id TEXT PRIMARY KEY, budget INTEGER NOT NULL, spent INTEGER NOT NULL, created_at INTEGER NOT NULL);

@@ -98,6 +98,8 @@ export const ServerMessageType = z.enum([
   'agent.tool',
   'agent.done',
   'agent.error',
+  /** D-021: an Auto turn's changes and runs so far. */
+  'agent.auto',
   'agent.allowance',
   'activity.updated',
   'notification',

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { DEFAULT_CONFIRM_THRESHOLD_CREDITS } from '../pricing/config';
+import { AUTO_BUDGET, DEFAULT_CONFIRM_THRESHOLD_CREDITS } from '../pricing/config';
 
 /**
  * User preferences (Settings → Preferences, header settings popover).
@@ -21,6 +21,9 @@ export const ASPECT_RATIOS = ['16:9', '9:16', '1:1', '4:5', '21:9'] as const;
 export const CREATION_MODES = ['simple', 'advanced'] as const;
 /** D-010. */
 export const THEMES = ['system', 'light', 'dark'] as const;
+/** D-021: what the agent may do. Read only reads; Edit proposes (the user applies); Auto applies its patches and starts runs within a per-turn budget. */
+export const AGENT_MODES = ['read', 'edit', 'auto'] as const;
+export type AgentMode = (typeof AGENT_MODES)[number];
 
 export const NotificationPrefs = z
   .object({
@@ -53,6 +56,10 @@ export interface Prefs {
   matureContent: boolean;
   /** D-020 "Enhance prompt" default for Home, tools and Quick Create (each run can change it). */
   enhancePrompt: boolean;
+  /** D-021: the agent mode a new project (and Home) starts in; each project remembers its own. */
+  agentMode: AgentMode;
+  /** D-021: Auto mode's per-turn budget in credits; null follows `confirmThreshold`. */
+  autoBudget: number | null;
   /** D-024 "Review results": a cheap vision model reviews each output (badge, issues, "Retry with fix"). */
   reviewResults: boolean;
 }
@@ -70,6 +77,8 @@ export const DEFAULT_PREFS: Prefs = {
   theme: 'system',
   matureContent: false,
   enhancePrompt: true,
+  agentMode: 'edit',
+  autoBudget: null,
   reviewResults: true,
 };
 
@@ -89,6 +98,8 @@ export const PrefsPatch = z
     theme: z.enum(THEMES),
     matureContent: z.boolean(),
     enhancePrompt: z.boolean(),
+    agentMode: z.enum(AGENT_MODES),
+    autoBudget: z.number().int().min(0).max(AUTO_BUDGET.max).nullable(),
     reviewResults: z.boolean(),
   })
   .partial()
@@ -208,6 +219,9 @@ export interface PrefsRow {
   mature_content: number | boolean;
   /** Migration 0024; absent on rows read before it. */
   enhance_prompt?: number | boolean | null;
+  /** Migration 0026 (D-021); absent on rows read before it. */
+  agent_mode?: string | null;
+  auto_budget?: number | null;
   /** Migration 0032 (D-024); absent on rows read before it. */
   review_results?: number | boolean | null;
 }
@@ -236,6 +250,8 @@ export function prefsFromRow(row: PrefsRow): Prefs {
     theme: oneOf(THEMES, row.theme, 'system'),
     matureContent: Boolean(row.mature_content),
     enhancePrompt: row.enhance_prompt === undefined || row.enhance_prompt === null ? DEFAULT_PREFS.enhancePrompt : Boolean(row.enhance_prompt),
+    agentMode: oneOf(AGENT_MODES, row.agent_mode ?? '', DEFAULT_PREFS.agentMode),
+    autoBudget: typeof row.auto_budget === 'number' ? row.auto_budget : null,
     reviewResults: row.review_results === undefined || row.review_results === null ? DEFAULT_PREFS.reviewResults : Boolean(row.review_results),
   };
 }

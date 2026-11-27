@@ -49,7 +49,47 @@ export const proposals = sqliteTable(
   ],
 );
 
-export const agentSchema = { meta, messages, proposals };
+/**
+ * v3 (D-021): changes Auto mode applied, one row each, undoable on their own.
+ * `undo` holds what undo needs: nothing for graph changes (ProjectRoom reverts the
+ * revision), the EDL before the change for timeline patches.
+ */
+export const autoChanges = sqliteTable("auto_changes", {
+  id: text("id").primaryKey(),
+  turnId: text("turn_id").notNull(),
+  proposalId: text("proposal_id").notNull(),
+  kind: text("kind").notNull(),
+  summary: text("summary").notNull(),
+  projectId: text("project_id"),
+  revision: integer("revision").notNull(),
+  ops: integer("ops").notNull(),
+  nodeIds: text("node_ids").notNull(),
+  undo: text("undo"),
+  status: text("status").notNull().default("applied"),
+  createdAt: integer("created_at").notNull(),
+});
+
+/** v3 (D-021): `run.start` calls of Auto turns (started, needs_approval, refused) and the turn budget. */
+export const autoRuns = sqliteTable("auto_runs", {
+  id: text("id").primaryKey(),
+  turnId: text("turn_id").notNull(),
+  nodeIds: text("node_ids").notNull(),
+  credits: integer("credits").notNull(),
+  status: text("status").notNull(),
+  runId: text("run_id"),
+  code: text("code"),
+  createdAt: integer("created_at").notNull(),
+});
+
+/** v3 (D-021): each Auto turn's budget and what it started. */
+export const autoTurns = sqliteTable("auto_turns", {
+  turnId: text("turn_id").primaryKey(),
+  budget: integer("budget").notNull(),
+  spent: integer("spent").notNull(),
+  createdAt: integer("created_at").notNull(),
+});
+
+export const agentSchema = { meta, messages, proposals, autoChanges, autoRuns, autoTurns };
 
 export const agentMigrations: readonly DoMigration[] = [
   {
@@ -70,6 +110,17 @@ ALTER TABLE messages ADD COLUMN turn_id TEXT;
 ALTER TABLE proposals ADD COLUMN created_at INTEGER;
 ALTER TABLE proposals ADD COLUMN stale_reason TEXT;
 CREATE INDEX messages_created ON messages (created_at);
+`,
+  },
+  {
+    version: 3,
+    name: "auto_mode",
+    sql: `
+CREATE TABLE auto_changes (id TEXT PRIMARY KEY, turn_id TEXT NOT NULL, proposal_id TEXT NOT NULL, kind TEXT NOT NULL, summary TEXT NOT NULL, project_id TEXT, revision INTEGER NOT NULL, ops INTEGER NOT NULL, node_ids TEXT NOT NULL, undo TEXT, status TEXT NOT NULL DEFAULT 'applied', created_at INTEGER NOT NULL);
+CREATE INDEX auto_changes_turn ON auto_changes (turn_id);
+CREATE TABLE auto_runs (id TEXT PRIMARY KEY, turn_id TEXT NOT NULL, node_ids TEXT NOT NULL, credits INTEGER NOT NULL, status TEXT NOT NULL, run_id TEXT, code TEXT, created_at INTEGER NOT NULL);
+CREATE INDEX auto_runs_turn ON auto_runs (turn_id);
+CREATE TABLE auto_turns (turn_id TEXT PRIMARY KEY, budget INTEGER NOT NULL, spent INTEGER NOT NULL, created_at INTEGER NOT NULL);
 `,
   },
 ];
