@@ -277,7 +277,8 @@ export async function prepareJob(env: Env, ctx: JobContext, modelId: string): Pr
   const request = buildGenerateRequest(ctx.spec, model, resolved);
   const problems = requestProblems(model, request);
   if (problems.length) fail("invalid_request", `The request does not fit ${model.displayName}: ${problems.join("; ")}.`);
-  const blocked = await jobPreCheck(env, safetyJob(ctx), model, request.prompt, ctx.spec.negativePrompt, references);
+  // The check reads what is sent: the prompt as composed for this model, and its negative prompt (the node's own when the model takes none).
+  const blocked = await jobPreCheck(env, safetyJob(ctx), model, request.prompt, request.negativePrompt ?? ctx.spec.negativePrompt, references);
   if (blocked === "needsMature") {
     // Mature runs re-resolve their references for the vision and face checks, then pre-check again as mature.
     const next = await replanAsMature(env, ctx, model);

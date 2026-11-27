@@ -13,6 +13,7 @@ import type { PriceRequest } from '../models/catalog';
 import type { GenerationMode, ImageSource } from '../models/types';
 import type { PlanId } from '../pricing/config';
 import type { MatureAccess } from '../safety/types';
+import type { ShotSpec } from '../prompting/shot';
 
 export type RunScope = 'node' | 'selection' | 'all' | 'upTo' | 'from';
 export type PlanAction = 'run' | 'reuse' | 'blocked' | 'none' | 'bypassed';
@@ -50,6 +51,8 @@ export interface GenInput {
   role: InputRole;
   media: 'text' | 'image' | 'video' | 'audio';
   from: InputSource;
+  /** What the input is, as the user sees it (the upstream node's title). Composed prompts bind references by it. */
+  label?: string;
 }
 
 /**
@@ -76,6 +79,14 @@ export interface GenSpec {
   /** Fallback models under the same hold, cheapest first: Auto's other candidates, or same-family siblings of an explicitly chosen model. */
   fallbacks: string[];
   prompt: string;
+  /**
+   * The structured shot `prompt` was composed from (agent-planned nodes whose
+   * prompt the user has not edited). The provider prompt is composed from it
+   * for the model that runs the job (`core/prompting`); `prompt` stays the
+   * neutral text the safety checks and the UI read. Absent = `prompt` is the
+   * user's own text and is sent as typed.
+   */
+  shot?: ShotSpec;
   negativePrompt?: string;
   seed?: number;
   seconds?: number;

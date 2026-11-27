@@ -19,6 +19,7 @@ import { autoCandidates, chainVideoCandidates, chooseModel, fitRequest, matureCa
 import { cleanPrompt, findModel, imageSizeFor, isAuto, modelRefOf, settingsOf, textOfNode, usesSize, type NodeSettings } from './spec';
 import type { BlockCode, ChainStep, GenInput, GenSpec, InputSource, PlanContext, PlanItem, RunPlan } from './types';
 import { explicitSignal } from '../safety/rules';
+import { canonicalPrompt, shotOfParams, type ShotSpec } from '../prompting/shot';
 import type { MatureAccess } from '../safety/types';
 
 const GENERATIVE = new Set<string>(['image', 'video']);
@@ -47,6 +48,8 @@ export interface BuildSpecInput {
   kind: 'image' | 'video';
   modelRef: string;
   prompt: string;
+  /** The shot `prompt` was composed from, when the prompt is still that text (see `shotOfParams`). */
+  shot?: ShotSpec;
   settings: NodeSettings;
   inputs: GenInput[];
   /** Provenance of every image input, in input order (D-005). */
@@ -229,6 +232,7 @@ async function prepareSpec(input: BuildSpecInput): Promise<Prepared> {
       kind,
       mode: modeOf(kind, settings, inputs),
       prompt,
+      ...(input.shot && { shot: input.shot }),
       ...(settings.negativePrompt !== undefined && { negativePrompt: settings.negativePrompt }),
       ...(settings.seed !== undefined && { seed: settings.seed }),
       ...(settings.seconds !== undefined && { seconds: settings.seconds }),
@@ -373,7 +377,9 @@ function planChain(input: BuildSpecInput, prep: Prepared): BuiltSpec {
     const kf: Omit<GenSpec, 'modelId' | 'auto' | 'fallbacks'> = {
       kind: 'image',
       mode: 't2i',
-      prompt: `${KEYFRAME_DIRECTION} ${prep.prompt}`,
+      // A shot is drawn as its own still (no motion, camera move or sound); typed text keeps the still direction.
+      prompt: base.shot ? canonicalPrompt(base.shot, 'still') : `${KEYFRAME_DIRECTION} ${prep.prompt}`,
+      ...(base.shot && { shot: base.shot }),
       ...(base.negativePrompt !== undefined && { negativePrompt: base.negativePrompt }),
       resolution: KEYFRAME_RESOLUTION,
       ratio,
@@ -502,6 +508,9 @@ export async function planRun(input: PlanGraphInput): Promise<RunPlan> {
     // Inputs: a dependency this layer blocked blocks this item too.
     const kind = s.kind as 'image' | 'video';
     const settings = settingsOf(kind, params);
+    // A node planned from a structured shot carries its own row of the script: the script node's text (every row)
+    // is not repeated in its prompt.
+    const nodeShot = shotOfParams(kind, params);
     const promptParts: string[] = [];
     const inputs: GenInput[] = [];
     let blocked: Blocked | null = null;
@@ -518,6 +527,7 @@ export async function planRun(input: PlanGraphInput): Promise<RunPlan> {
       }
       const type = outputType(up);
       if (up.kind === 'text' || up.kind === 'script' || type === 'text') {
+        if (up.kind === 'script' && nodeShot) continue;
         const text = up.kind === 'asset' ? '' : textOfNode(up.params);
         if (text) promptParts.push(text);
         continue;
@@ -536,7 +546,8 @@ export async function planRun(input: PlanGraphInput): Promise<RunPlan> {
       }
       const role: GenInput['role'] =
         type === 'audio' ? 'audio' : kind === 'image' ? 'edit' : settings.refsMode || inp.port !== 'frame' ? 'reference' : 'frame';
-      inputs.push({ role, media: type, from });
+      // Labels bind references in a composed prompt ("Image 1 is …"); a typed prompt never uses them.
+      inputs.push({ role, media: type, from, ...(nodeShot && type === 'image' && up.title.trim() && { label: up.title.trim().slice(0, 80) }) });
     }
     if (blocked) {
       block(blocked.code, blocked.reason);
@@ -553,6 +564,8 @@ export async function planRun(input: PlanGraphInput): Promise<RunPlan> {
       kind,
       modelRef,
       prompt,
+      // Other text wired into the node (a text node) is the user's own: the prompt then goes out as assembled.
+      ...(nodeShot && promptParts.length === 0 && { shot: nodeShot }),
       settings,
       inputs,
       imageOrigins: imageOriginsOf(inputs),

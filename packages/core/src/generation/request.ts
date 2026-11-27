@@ -5,6 +5,7 @@
 import { fitRequest } from './auto';
 import { imageSizeFor, usesSize } from './spec';
 import { validateRequest } from '../models/capabilities';
+import { adaptPrompt } from '../prompting/compose';
 import type { CatalogModel, GenerateRequest, ImageSource } from '../models/types';
 import type { GenInput, GenSpec } from './types';
 
@@ -34,11 +35,27 @@ export function buildGenerateRequest(spec: GenSpec, model: CatalogModel, resolve
   const edits = urls('edit', 'image');
 
   const size = usesSize(model) ? imageSizeFor(spec.resolution, spec.ratio) : null;
+  // A shot is written for the model that runs the job (a fallback model gets its own wording); a prompt the user
+  // typed goes out as typed.
+  const labels = (role: GenInput['role']) => resolved.filter((r) => r.input.role === role && r.input.media === 'image').map((r) => r.input.label ?? '');
+  const adapted = adaptPrompt({ prompt: spec.prompt, ...(spec.negativePrompt !== undefined && { negativePrompt: spec.negativePrompt }), ...(spec.shot && { shot: spec.shot }) }, model, {
+    mode: spec.mode,
+    ...(fitted.audio !== undefined && { audio: fitted.audio }),
+    ...(fitted.seconds !== undefined && { seconds: fitted.seconds }),
+    inputs: {
+      firstFrame: frames[0] !== undefined,
+      lastFrame: frames[1] !== undefined,
+      images: spec.kind === 'image' ? labels('edit') : labels('reference'),
+      videos: refVideos.length,
+      audios: audios.length,
+    },
+  });
   const req: GenerateRequest = {
     kind: spec.kind,
     mode: spec.mode,
-    prompt: spec.prompt,
-    ...(spec.negativePrompt !== undefined && model.params.negativePrompt && { negativePrompt: spec.negativePrompt }),
+    prompt: adapted.prompt,
+    ...(adapted.composed && { promptComposed: true }),
+    ...(adapted.negativePrompt !== undefined && model.params.negativePrompt && { negativePrompt: adapted.negativePrompt }),
     ...(spec.seed !== undefined && model.params.seed && { seed: spec.seed }),
     ...(fitted.seconds !== undefined && { seconds: fitted.seconds }),
     ...(fitted.resolution !== undefined && { resolution: fitted.resolution }),

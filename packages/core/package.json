@@ -13,6 +13,7 @@
     "./generation": "./src/generation/index.ts",
     "./safety": "./src/safety/index.ts",
     "./templates": "./src/templates/index.ts",
+    "./prompting": "./src/prompting/index.ts",
     "./*": "./src/*.ts"
   },
   "scripts": {

@@ -165,6 +165,13 @@ export interface GenerateRequest {
   kind: 'image' | 'video';
   mode: GenerationMode;
   prompt: string;
+  /**
+   * `prompt` was composed for this model from a structured shot
+   * (`core/prompting`). Provider-side prompt rewriting (`prompt_expand` /
+   * `prompt_extend`) must stay off for it: one rewrite, not two. When this is
+   * not set the prompt is the user's own text, sent as typed.
+   */
+  promptComposed?: boolean;
   negativePrompt?: string;
   seed?: number;
   /** Video length in whole seconds. */
