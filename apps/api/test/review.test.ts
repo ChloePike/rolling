@@ -151,7 +151,7 @@ const runEnded = (runId: string) =>
   });
 
 /** Quotes and starts a node run as the user; `auto` starts it the way Auto mode does (server options). */
-async function runNode(user: string, ws: string, projectId: string, nodeId: string, auto?: { budgetLeft: number }): Promise<string> {
+async function runNode(user: string, ws: string, projectId: string, nodeId: string, auto?: { budgetLeft: number; turnId?: string; turnBudget?: number }): Promise<string> {
   if (!auto) {
     const q = await api(user, "/api/runs/quote", { method: "POST", json: { projectId, scope: "node", nodeIds: [nodeId] } });
     expect(q.status, await q.clone().text()).toBe(200);
@@ -316,6 +316,18 @@ describe("Result review (D-024)", () => {
     expect(JSON.parse(job.review).action).toEqual({ kind: "offer", reason: "budget" });
     expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM runs WHERE retry_of = ?").bind(runId).first<{ n: number }>()).toEqual({ n: 0 });
     expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM review_retries WHERE budget_key = ?").bind(runId).first<{ n: number }>()).toEqual({ n: 0 });
+  }, 60_000);
+
+  it("Auto mode counts the turn's other runs against its budget", async () => {
+    const { user, ws } = await member("rvturn");
+    const { projectId, nodeId } = await canvas(user, ws, PARAMS);
+    // The snapshot says 300 left, but the turn's budget is 10 and this run already took 6: a 6-credit retry does not fit.
+    const turnId = `turn_${user}`;
+    const runId = await runNode(user, ws, projectId, nodeId, { budgetLeft: 300, turnId, turnBudget: 10 });
+    expect((await runEnded(runId)).status).toBe("succeeded");
+    const job = await env.DB.prepare("SELECT review FROM jobs WHERE run_id = ?").bind(runId).first<any>();
+    expect(JSON.parse(job.review).action).toEqual({ kind: "offer", reason: "budget" });
+    expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM runs WHERE retry_of = ?").bind(runId).first<{ n: number }>()).toEqual({ n: 0 });
   }, 60_000);
 
   it("ranks the takes of a multi-take run and preselects the best", async () => {

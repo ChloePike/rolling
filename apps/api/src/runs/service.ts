@@ -39,8 +39,12 @@ import {
 
 /** Run options only the server sets (stored in `runs.options` with the staging ones). */
 export interface ServerRunOptions {
-  /** D-021 Auto mode: credits the agent may still start in this turn after this run (review retries count against it). */
-  auto?: { budgetLeft: number; turnId?: string };
+  /**
+   * D-021 Auto mode: credits the agent may still start in this turn after this run. With `turnId` and
+   * `turnBudget`, what is left is recomputed when a review retry is considered: the turn's budget minus the
+   * runs started in the turn and the review retries already made (D-024).
+   */
+  auto?: { budgetLeft: number; turnId?: string; turnBudget?: number };
   /** D-024: this run is an Auto retry of `jobId` with its review fix. */
   reviewRetryOf?: { jobId: string; budgetKey: string };
 }

@@ -187,6 +187,19 @@ async function saveReview(env: Env, jobId: string, review: ResultReview, assetId
 
 export type ReviewRunOptions = RunOptions & ServerRunOptions;
 
+/**
+ * The credits an Auto retry may still hold now (before review retries): the turn's budget minus every run the
+ * agent started in that turn (their quoted credits), else the snapshot taken when this run started.
+ */
+async function autoCap(env: Env, options: ReviewRunOptions): Promise<number> {
+  const auto = options.auto!;
+  if (auto.turnId && typeof auto.turnBudget === "number") {
+    const row = await env.DB.prepare("SELECT COALESCE(SUM(credits_quoted), 0) AS spent FROM runs WHERE json_extract(options, '$.auto.turnId') = ?").bind(auto.turnId).first<{ spent: number }>();
+    return Math.max(0, auto.turnBudget - (row?.spent ?? 0));
+  }
+  return Math.max(0, auto.budgetLeft);
+}
+
 async function runOptions(env: Env, runId: string): Promise<ReviewRunOptions> {
   const run = await getRun(env.DB, runId);
   return parseJson<ReviewRunOptions>(run?.options, {});
@@ -204,7 +217,7 @@ export async function decideReview(env: Env, ctx: JobContext, review: ResultRevi
       .bind(ctx.nodeId, budgetKey)
       .first<{ used: number; mine: number | null }>();
     nodeRetried = (used?.mine ?? 0) > 0;
-    budgetLeft = Math.max(0, options.auto.budgetLeft - (used?.used ?? 0));
+    budgetLeft = Math.max(0, (await autoCap(env, options)) - (used?.used ?? 0));
   }
   const action = decideRetry(review, { mode, isRetry: !!options.reviewRetryOf, nodeRetried, retryCredits: ctx.credits, budgetLeft, hasNode: !!(ctx.projectId && ctx.nodeId) });
   const out: ResultReview = { ...review, action, ...(options.reviewRetryOf && { retryOf: { jobId: options.reviewRetryOf.jobId } }) };
@@ -227,6 +240,7 @@ export async function startReviewRetry(env: Env, ctx: JobContext, review: Result
   const options = await runOptions(env, ctx.runId);
   if (!options.auto) return null;
   const budgetKey = options.auto.turnId ?? ctx.runId;
+  const cap = await autoCap(env, options);
   const prior = await env.DB.prepare("SELECT job_id, retry_run_id FROM review_retries WHERE budget_key = ? AND node_id = ?").bind(budgetKey, ctx.nodeId).first<{ job_id: string; retry_run_id: string | null }>();
   if (prior) return prior.job_id === ctx.jobId ? prior.retry_run_id : null;
   const offer = async (): Promise<null> => {
@@ -260,7 +274,7 @@ export async function startReviewRetry(env: Env, ctx: JobContext, review: Result
      WHERE (SELECT COALESCE(SUM(credits), 0) FROM review_retries WHERE budget_key = ?1) + ?5 <= ?8
      ON CONFLICT (budget_key, node_id) DO NOTHING`,
   )
-    .bind(budgetKey, ctx.nodeId, ctx.jobId, ctx.runId, ctx.credits, JSON.stringify(previous), Date.now(), options.auto.budgetLeft)
+    .bind(budgetKey, ctx.nodeId, ctx.jobId, ctx.runId, ctx.credits, JSON.stringify(previous), Date.now(), cap)
     .run();
   if (!reserved.meta.changes) return offer();
 
@@ -277,7 +291,7 @@ export async function startReviewRetry(env: Env, ctx: JobContext, review: Result
       surface: "agent",
     });
     const used = await env.DB.prepare("SELECT COALESCE(SUM(credits), 0) AS used FROM review_retries WHERE budget_key = ? AND NOT (node_id = ? AND job_id = ?)").bind(budgetKey, ctx.nodeId, ctx.jobId).first<{ used: number }>();
-    if (!q.quoteId || q.total > options.auto.budgetLeft - (used?.used ?? 0)) {
+    if (!q.quoteId || q.total > cap - (used?.used ?? 0)) {
       await revertParams(env, ctx.projectId, ctx.nodeId, previous, caller);
       return offer();
     }
