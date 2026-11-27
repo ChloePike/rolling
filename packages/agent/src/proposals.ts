@@ -14,10 +14,11 @@ import { planAllowsResolution } from '@rolling/core/pricing/config';
 import { MATURE_REQUIRED_MESSAGE, SAFETY_BLOCKED_MESSAGE, type SafetyGate } from '@rolling/core/safety';
 import { explicitSignal } from '@rolling/core/safety/rules';
 import { CAMERA_ANGLES, CAMERA_MOVES, canonicalPrompt, characterSheetShot, characterSheetTitle, SHOT_SIZES, ShotSpecSchema, wordCount, type ShotCharacter, type ShotSpec } from '@rolling/core/prompting';
+import { bindCharacterReferences, matchOutfit, type BoundReference, type CastSheet, type SheetAssets } from '@rolling/core/characters';
 import type { TurnSettings } from './context';
 import { bestAllowedResolution, creditsForSpec, specFromParams, specProblems, type GenSpec } from './capabilities';
 import { layoutNewNodes } from './layout';
-import type { AccountSnapshot, AssetItem, ModelsPort } from './ports';
+import type { AccountSnapshot, AssetItem, CharacterItem, ModelsPort } from './ports';
 import type { ToolContext } from './tools';
 import {
   FIELD_SCHEMAS,
@@ -137,6 +138,70 @@ export function sheetCharacters(option: Pick<PlanOptionOut, 'characters' | 'shot
     .filter((c) => option.shots.filter((s) => s.mode === 'i2v' && s.shot?.characters?.some((x) => x.name === c.name)).length >= CHARACTER_SHEET_MIN_SHOTS);
 }
 
+/** Saved characters an option's characters link to (D-032), by lower-case option name. */
+export type LinkedCharacters = Map<string, CastSheet>;
+
+const norm = (s: string) => s.trim().toLowerCase();
+
+/**
+ * Links an option's characters to the workspace's saved characters (D-032):
+ * by name ("Maya", or the first word of "Maya Chen"), or by an `@` picture of
+ * the turn that is one of a saved character's sheet pictures. A linked
+ * character takes the saved, locked words (look, and the outfit variant its
+ * wardrobe names or the default outfit), so every shot repeats them, and its
+ * sheet pictures become the shots' references. Mutates `characters` in place.
+ */
+export function linkSavedCharacters(
+  characters: Array<{ name: string; kind?: 'person' | 'animal' | 'object' | undefined; look: string; wardrobe?: string | undefined }> | undefined,
+  saved: readonly CharacterItem[],
+  refs: readonly Pick<AssetItem, 'id'>[] = [],
+): LinkedCharacters {
+  const linked: LinkedCharacters = new Map();
+  if (!characters?.length || !saved.length) return linked;
+  const refIds = new Set(refs.map((r) => r.id));
+  const referenced = saved.filter((s) => Object.values(s.sheet ?? {}).some((id) => !!id && refIds.has(id)));
+  const used = new Set<string>();
+  for (const c of characters) {
+    const n = norm(c.name);
+    const hit =
+      saved.find((s) => !used.has(s.id) && norm(s.name) === n) ??
+      saved.find((s) => !used.has(s.id) && norm(s.name).split(/\s+/)[0] === n) ??
+      // One recurring person and one referenced saved person: they are the same.
+      (referenced.length === 1 && characters.filter((x) => (x.kind ?? 'person') === (referenced[0]!.kind ?? 'person')).length === 1 && (c.kind ?? 'person') === (referenced[0]!.kind ?? 'person') && !used.has(referenced[0]!.id) ? referenced[0] : undefined);
+    if (!hit) continue;
+    used.add(hit.id);
+    const variant = matchOutfit(hit.outfits ?? [], c.wardrobe);
+    if (hit.look) c.look = hit.look;
+    const wardrobe = variant?.outfit ?? hit.wardrobe;
+    if (wardrobe) c.wardrobe = wardrobe;
+    if (hit.kind && hit.kind !== 'person') c.kind = hit.kind;
+    const views = (hit.sheet ?? {}) as SheetAssets;
+    if (Object.values(views).some(Boolean)) {
+      linked.set(n, {
+        characterId: hit.id,
+        name: c.name,
+        kind: hit.kind ?? 'person',
+        views,
+        ...(variant && { outfitViews: variant.views as SheetAssets, outfitName: variant.name }),
+      });
+    }
+  }
+  return linked;
+}
+
+/** Recurring people of a plan that have no saved character (D-032): the agent suggests making their sheet first. */
+export function unsavedRecurringPeople(options: readonly Pick<PlanOptionOut, 'characters' | 'shots'>[], linkedNames: ReadonlySet<string>): string[] {
+  const out = new Set<string>();
+  for (const o of options) {
+    for (const c of o.characters ?? []) {
+      if ((c.kind ?? 'person') !== 'person' || linkedNames.has(norm(c.name))) continue;
+      const shots = o.shots.filter((s) => s.shot?.characters?.some((x) => x.name === c.name)).length;
+      if (shots >= CHARACTER_SHEET_MIN_SHOTS) out.add(c.name);
+    }
+  }
+  return [...out];
+}
+
 /** Reference pictures wired into a shot's keyframe, in order: character sheets first, then `@` pictures. */
 function keyframeRefs(shot: PlanShotOut, sheets: readonly ShotCharacter[], imageRefs: number, max: number): { sheets: number[]; assets: number[] } {
   const mine = sheets.map((c, i) => (shot.shot?.characters?.some((x) => x.name === c.name) ? i : -1)).filter((i) => i >= 0).slice(0, max);
@@ -153,7 +218,7 @@ function keyframeRefs(shot: PlanShotOut, sheets: readonly ShotCharacter[], image
  * next to its neutral prose (`params.prompt`); the run composes the prompt
  * for the model from the shot (`core/prompting`).
  */
-export function planOps(option: PlanOptionOut, refs: readonly AssetItem[], keyframe: KeyframeModels): LocalOp[] {
+export function planOps(option: PlanOptionOut, refs: readonly AssetItem[], keyframe: KeyframeModels, linkedNames: ReadonlySet<string> = new Set()): LocalOp[] {
   const ops: LocalOp[] = [];
   ops.push({
     op: 'addNode',
@@ -175,7 +240,17 @@ export function planOps(option: PlanOptionOut, refs: readonly AssetItem[], keyfr
   imageRefs.forEach((r, i) => {
     ops.push({ op: 'addNode', tempId: `ref${i + 1}`, kind: 'asset', title: r.name, params: { assetId: r.id, media: 'image', source: r.source } });
   });
-  const sheets = sheetCharacters(option, keyframe, imageRefs.length);
+  // Characters linked to a saved character use its sheet pictures (asset nodes) instead of a new sheet (D-032).
+  const sheets = sheetCharacters(option, keyframe, imageRefs.length).filter((c) => !linkedNames.has(c.name.toLowerCase()));
+  const savedNodes = new Map<string, string>();
+  for (const s of option.shots) {
+    for (const r of s.characterRefs?.refs ?? []) {
+      if (savedNodes.has(r.assetId)) continue;
+      const tempId = `saved${savedNodes.size + 1}`;
+      savedNodes.set(r.assetId, tempId);
+      ops.push({ op: 'addNode', tempId, kind: 'asset', title: r.label, params: { assetId: r.assetId, media: 'image', source: 'character', characterId: r.characterId, view: r.view } });
+    }
+  }
   sheets.forEach((c, i) => {
     const sheet = characterSheetShot(c, option.look);
     ops.push({
@@ -190,8 +265,11 @@ export function planOps(option: PlanOptionOut, refs: readonly AssetItem[], keyfr
     const k = `key${s.n}`;
     const v = `shot${s.n}`;
     const withKeyframe = s.mode === 'i2v';
-    const wired = withKeyframe ? keyframeRefs(s, sheets, imageRefs.length, keyframe.edit ? keyframe.maxRefs : 0) : { sheets: [], assets: [] };
-    const drawsFromRefs = wired.sheets.length + wired.assets.length > 0;
+    const saved = (s.characterRefs?.refs ?? []).map((r) => savedNodes.get(r.assetId)!);
+    const savedOnKeyframe = withKeyframe && s.characterRefs?.strategy === 'chain' ? saved : [];
+    const savedOnVideo = s.characterRefs?.strategy === 'refs' ? saved : [];
+    const wired = withKeyframe ? keyframeRefs(s, sheets, imageRefs.length, keyframe.edit ? Math.max(0, keyframe.maxRefs - savedOnKeyframe.length) : 0) : { sheets: [], assets: [] };
+    const drawsFromRefs = savedOnKeyframe.length + wired.sheets.length + wired.assets.length > 0;
     if (withKeyframe)
       ops.push({
         op: 'addNode',
@@ -216,7 +294,8 @@ export function planOps(option: PlanOptionOut, refs: readonly AssetItem[], keyfr
         prompt: s.visual,
         ...(s.shot ? { shot: s.shot } : {}),
         model: s.model,
-        mode: s.mode,
+        // Saved sheet pictures go straight to a model that takes reference images (D-032).
+        mode: savedOnVideo.length ? 'Reference to video' : s.mode,
         seconds: s.seconds,
         ...(s.resolution ? { resolution: s.resolution } : {}),
         ratio: option.ratio,
@@ -224,8 +303,10 @@ export function planOps(option: PlanOptionOut, refs: readonly AssetItem[], keyfr
         ...(s.line ? { line: s.line } : {}),
       },
     });
+    savedOnVideo.forEach((id) => ops.push({ op: 'connect', from: { node: id, port: 'out' }, to: { node: v, port: 'frame' } }));
     if (!withKeyframe) return;
     ops.push({ op: 'connect', from: { node: 'script', port: 'out' }, to: { node: k, port: 'prompt' } });
+    savedOnKeyframe.forEach((id) => ops.push({ op: 'connect', from: { node: id, port: 'out' }, to: { node: k, port: 'refs' } }));
     wired.sheets.forEach((i) => ops.push({ op: 'connect', from: { node: `char${i + 1}`, port: 'out' }, to: { node: k, port: 'refs' } }));
     wired.assets.forEach((i) => ops.push({ op: 'connect', from: { node: `ref${i + 1}`, port: 'out' }, to: { node: k, port: 'refs' } }));
     ops.push({ op: 'connect', from: { node: k, port: 'out' }, to: { node: v, port: 'frame' } });
@@ -566,7 +647,12 @@ async function proposePlan(args: z.infer<typeof ProposePlanInput>, ctx: ProposeC
   // the shots use: their lengths are checked against the models that take mature runs. The run itself is routed by
   // the pre-check (rules, then the classifier), which re-plans an explicit prompt as a mature run.
   const matureTurn = ctx.account.matureAllowed && explicitSignal(ctx.userText).length > 0;
+  // D-032: recurring characters link to the workspace's saved characters by name or by an `@` sheet picture.
+  const saved = args.options.some((o) => o.characters?.length) ? await ctx.ports.assets.characters().catch(() => [] as CharacterItem[]) : [];
+  const allLinked = new Set<string>();
   args.options.forEach((opt, oi) => {
+    const linked = linkSavedCharacters(opt.characters, saved, ctx.refs);
+    for (const k of linked.keys()) allLinked.add(k);
     const ratio = opt.ratio ?? DEFAULT_RATIO;
     // Shots shorter than the option's model takes: use a listed model that takes them, when the user picked none.
     const named = opt.model ? models.get(opt.model) : undefined;
@@ -616,10 +702,27 @@ async function proposePlan(args: z.infer<typeof ProposePlanInput>, ctx: ProposeC
           return;
         }
       }
-      const mode = model.operations.includes('i2v') ? 'i2v' : 't2v';
+      // D-032: saved characters in the shot: their best sheet views go to the model (reference images, at most two
+      // through the video node's frame port), or a keyframe drawn from them is animated when it takes none.
+      const cast = (built.shot?.characters ?? []).map((c) => linked.get(c.name.toLowerCase())).filter((c): c is CastSheet => !!c);
+      const binding =
+        cast.length && built.shot && !mature
+          ? bindCharacterReferences({ model, shot: { camera: built.shot.camera, action: built.shot.action, dialogue: built.shot.dialogue }, cast, keyframeModels: kfEdit ? [kfEdit] : [], maxSlots: 2 })
+          : null;
+      const characterRefs = binding && (binding.strategy === 'refs' || binding.strategy === 'chain') && binding.refs.length ? { strategy: binding.strategy, refs: binding.refs } : null;
+      const mode = characterRefs?.strategy === 'refs' ? 't2v' : characterRefs?.strategy === 'chain' ? 'i2v' : model.operations.includes('i2v') ? 'i2v' : 't2v';
       const resolution = opt.resolution ?? bestAllowedResolution(model, ctx.account.plan, 'video', ctx.settings?.resolution) ?? null;
       const audio = model.audio && !!built.shot && (!!built.shot.dialogue?.length || !!built.shot.sound);
-      const spec: GenSpec = { kind: 'video', model: model.id, mode, seconds: shot.seconds, ratio, ...(resolution ? { resolution } : {}), ...(audio ? { audio: true } : {}) };
+      const spec: GenSpec = {
+        kind: 'video',
+        model: model.id,
+        mode: characterRefs?.strategy === 'refs' ? 'refs' : mode,
+        seconds: shot.seconds,
+        ratio,
+        ...(resolution ? { resolution } : {}),
+        ...(audio ? { audio: true } : {}),
+        ...(characterRefs?.strategy === 'refs' && { inputImages: characterRefs.refs.length }),
+      };
       const p = specProblems(spec, models, ctx.account);
       if (p.length) {
         problems.push(`${where}: ${p.join('; ')}`);
@@ -641,6 +744,7 @@ async function proposePlan(args: z.infer<typeof ProposePlanInput>, ctx: ProposeC
         resolution,
         ...(audio ? { audio: true } : {}),
         ...(mature ? { mature: true } : {}),
+        ...(characterRefs && { characterRefs }),
         credits: credits ?? 0,
       });
     });
@@ -656,7 +760,7 @@ async function proposePlan(args: z.infer<typeof ProposePlanInput>, ctx: ProposeC
       estimate: makeEstimate([], ctx.account),
       ops: [],
     };
-    const ops = layoutNewNodes(base, planOps(option, refs, keyframe));
+    const ops = layoutNewNodes(base, planOps(option, refs, keyframe, new Set(linked.keys())));
     const applied = applyGraphOps(base, ops, { actor: 'agent' });
     if (!applied.ok) {
       problems.push(`options[${oi}]: the nodes would not connect (${applied.refusal.message})`);
@@ -717,9 +821,13 @@ async function proposePlan(args: z.infer<typeof ProposePlanInput>, ctx: ProposeC
   const body: PlanBody = { kind: 'plan', seconds: args.seconds, options, refs: refs.map((r) => r.id) };
   const cheapest = options.reduce((a, b) => (b.estimate.credits < a.estimate.credits ? b : a));
   const summary = args.summary?.trim() || `${options.length} options, ${options.map((o) => o.title).join(' / ')}`;
+  const risks: ProposalRisk[] = unpriced.length ? [{ code: 'unpriced', data: { refs: unpriced } }] : [];
+  // D-032: recurring people with no saved character: suggest making their sheet first (it keeps them the same in later videos too).
+  const unsaved = unsavedRecurringPeople(options, allLinked);
+  if (unsaved.length) risks.push({ code: 'character_sheet_suggested', data: { names: unsaved } });
   return {
     ok: true,
-    proposal: proposal(ctx, 'plan', ctx.thread.surface === 'canvas' ? base.revision : null, summary, cheapest.estimate, body, unpriced.length ? [{ code: 'unpriced', data: { refs: unpriced } }] : []),
+    proposal: proposal(ctx, 'plan', ctx.thread.surface === 'canvas' ? base.revision : null, summary, cheapest.estimate, body, risks),
   };
 }
 

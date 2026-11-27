@@ -27,6 +27,7 @@ const MODE_LABELS: Record<string, GenerationMode> = {
   'first + last frame': 'first_last_frame',
   references: 'refs',
   'reference media': 'refs',
+  'reference to video': 'refs',
   extend: 'extend',
   'text to image': 't2i',
   'image to image': 'edit',

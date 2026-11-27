@@ -166,10 +166,22 @@ export const TOOLS: readonly ToolSpec[] = [
   {
     name: 'characters.list',
     kind: 'read',
-    description: 'Saved characters of the workspace (id, name, description). Call it when the brief names a character or asks for "my character"; reuse the saved description word for word in characters.',
+    description: 'Saved characters of the workspace (id, name, kind, look, wardrobe, outfit variants, whether a sheet exists). Call it when the brief names a character, asks for "my character", or has a recurring person. Use the saved name in characters: the server links it, repeats its locked look and passes its sheet pictures to every shot. Name an outfit variant in wardrobe to dress the character in it.',
     input: EmptyInput,
     surfaces: ALL,
-    run: async (_input: unknown, ctx: ToolContext) => ({ items: await ctx.ports.assets.characters() }),
+    // Sheet picture ids stay server side: the plan wires them into the shots (D-032).
+    run: async (_input: unknown, ctx: ToolContext) => ({
+      items: (await ctx.ports.assets.characters()).map((c) => ({
+        id: c.id,
+        name: c.name,
+        ...(c.description && { description: c.description }),
+        ...(c.kind && { kind: c.kind }),
+        ...(c.look && { look: c.look }),
+        ...(c.wardrobe && { wardrobe: c.wardrobe }),
+        ...(c.sheet && { hasSheet: Object.keys(c.sheet).length > 0 }),
+        ...(c.outfits?.length && { outfits: c.outfits.map((o) => o.name) }),
+      })),
+    }),
   },
   {
     name: 'voices.list',

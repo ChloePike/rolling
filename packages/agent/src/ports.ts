@@ -36,11 +36,24 @@ export interface NamedItem {
   description?: string;
 }
 
+/** A saved character (D-032): its locked descriptor words and the sheet of its current version. */
+export interface CharacterItem extends NamedItem {
+  kind?: 'person' | 'animal' | 'object';
+  /** Locked look (face, hair, build), the words every shot repeats. */
+  look?: string;
+  /** Default outfit. */
+  wardrobe?: string;
+  /** Sheet pictures of the current version: view → asset id. */
+  sheet?: Partial<Record<string, string>>;
+  /** Outfit variants with their body views. */
+  outfits?: Array<{ name: string; outfit: string; views: Partial<Record<string, string>> }>;
+}
+
 export interface AssetsPort {
   search(query: { query: string; scope: AssetScope; kind?: AssetKind; limit: number }): Promise<AssetItem[]>;
   /** Resolves `@` references by id; unknown ids are left out. */
   resolve(ids: readonly string[]): Promise<AssetItem[]>;
-  characters(): Promise<NamedItem[]>;
+  characters(): Promise<CharacterItem[]>;
   voices(): Promise<NamedItem[]>;
 }
 

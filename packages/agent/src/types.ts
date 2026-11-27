@@ -3,6 +3,7 @@
  */
 import type { LocalOp } from '@rolling/core/graph';
 import type { TimelineOp } from '@rolling/core/timeline';
+import type { BoundReference } from '@rolling/core/characters';
 import type { ShotCharacter, ShotSpec } from '@rolling/core/prompting';
 import type { FieldTool } from './tools/schemas';
 
@@ -54,6 +55,11 @@ export interface PlanShotOut {
   audio?: boolean;
   /** D-005: planned as a mature clip (a mature-allowed member's explicit brief or shot): its length fits the models that take mature runs. */
   mature?: boolean;
+  /**
+   * D-032: sheet pictures of saved characters in the shot. `refs`: passed to the video model as reference images
+   * (no keyframe); `chain`: wired into the keyframe, which the video animates.
+   */
+  characterRefs?: { strategy: 'refs' | 'chain'; refs: BoundReference[] };
   credits: number;
 }
 
@@ -128,7 +134,9 @@ export type ProposalRisk =
   | { code: 'over_balance'; data: { credits: number; available: number } }
   | { code: 'needs_confirm'; data: { credits: number; threshold: number } }
   | { code: 'unpriced'; data: { refs: string[] } }
-  | { code: 'removes_user_nodes'; data: { nodeIds: string[] } };
+  | { code: 'removes_user_nodes'; data: { nodeIds: string[] } }
+  /** D-032: recurring people of the plan have no saved character; the UI offers to make their sheet first. */
+  | { code: 'character_sheet_suggested'; data: { names: string[] } };
 
 /** Message stored in the thread. Tool traces within a turn are not stored. */
 export interface ThreadMessage {
