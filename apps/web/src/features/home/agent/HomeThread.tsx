@@ -1,4 +1,5 @@
 import { cx } from '@rolling/ui';
+import { Link } from '@tanstack/react-router';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import type { PlanOption, Proposal, ThreadSummary } from '@/features/overlays/agent';
@@ -306,6 +307,8 @@ function PlanCard({
   if (!option) return null;
   const status = proposal.status === 'proposed' && !open ? 'replaced' : proposal.status;
   const risks = proposal.risks.map((r) => r.code).filter((c) => c === 'over_balance' || c === 'needs_confirm');
+  // D-032: recurring people without a saved character: offer to make their sheet first.
+  const sheetNames = (proposal.risks.find((r) => r.code === 'character_sheet_suggested')?.data.names as string[] | undefined) ?? [];
   const shown: ReactNode = (
     <ol className={styles.shots}>
       {option.shots.map((s) => (
@@ -372,6 +375,14 @@ function PlanCard({
           </>
         ) : null}
       </p>
+      {status === 'proposed' && sheetNames.length ? (
+        <p className={styles.estimate} data-testid="home-plan-sheet-suggested">
+          <FormattedMessage id="characters.agent.sheetSuggested" values={{ names: intl.formatList(sheetNames, { type: 'conjunction' }), count: sheetNames.length }} />{' '}
+          <Link to="/create/character">
+            <FormattedMessage id="characters.agent.makeSheet" />
+          </Link>
+        </p>
+      ) : null}
       {status === 'proposed' ? (
         <div className={styles.planActions}>
           <button type="button" className={cx(styles.primary, 'rl-press')} disabled={building} aria-busy={building || undefined} onClick={() => onBuild(Math.min(pick, options.length - 1))}>

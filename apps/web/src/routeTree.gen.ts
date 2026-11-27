@@ -50,6 +50,7 @@ import { Route as ShellUHandleRouteImport } from './routes/_shell/u/$handle'
 import { Route as AdminCasesIdRouteImport } from './routes/admin.cases.$id'
 import { Route as AdminUsersIdRouteImport } from './routes/admin.users.$id'
 import { Route as AdminWorkspacesIdRouteImport } from './routes/admin.workspaces.$id'
+import { Route as ShellAssetsCharactersIdRouteImport } from './routes/_shell/assets/characters.$id'
 
 const ShellRoute = ShellRouteImport.update({
   id: '/_shell',
@@ -255,6 +256,11 @@ const AdminWorkspacesIdRoute = AdminWorkspacesIdRouteImport.update({
   path: '/workspaces/$id',
   getParentRoute: () => AdminRoute,
 } as any)
+const ShellAssetsCharactersIdRoute = ShellAssetsCharactersIdRouteImport.update({
+  id: '/assets/characters/$id',
+  path: '/assets/characters/$id',
+  getParentRoute: () => ShellRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof ShellIndexRoute
@@ -297,6 +303,7 @@ export interface FileRoutesByFullPath {
   '/admin/workspaces/$id': typeof AdminWorkspacesIdRoute
   '/assets/': typeof ShellAssetsIndexRoute
   '/settings/': typeof ShellSettingsIndexRoute
+  '/assets/characters/$id': typeof ShellAssetsCharactersIdRoute
 }
 export interface FileRoutesByTo {
   '/acceptable-use': typeof AcceptableUseRoute
@@ -338,6 +345,7 @@ export interface FileRoutesByTo {
   '/admin/workspaces/$id': typeof AdminWorkspacesIdRoute
   '/assets': typeof ShellAssetsIndexRoute
   '/settings': typeof ShellSettingsIndexRoute
+  '/assets/characters/$id': typeof ShellAssetsCharactersIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -382,6 +390,7 @@ export interface FileRoutesById {
   '/admin/workspaces/$id': typeof AdminWorkspacesIdRoute
   '/_shell/assets/': typeof ShellAssetsIndexRoute
   '/_shell/settings/': typeof ShellSettingsIndexRoute
+  '/_shell/assets/characters/$id': typeof ShellAssetsCharactersIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -426,6 +435,7 @@ export interface FileRouteTypes {
     | '/admin/workspaces/$id'
     | '/assets/'
     | '/settings/'
+    | '/assets/characters/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/acceptable-use'
@@ -467,6 +477,7 @@ export interface FileRouteTypes {
     | '/admin/workspaces/$id'
     | '/assets'
     | '/settings'
+    | '/assets/characters/$id'
   id:
     | '__root__'
     | '/_shell'
@@ -510,6 +521,7 @@ export interface FileRouteTypes {
     | '/admin/workspaces/$id'
     | '/_shell/assets/'
     | '/_shell/settings/'
+    | '/_shell/assets/characters/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -824,6 +836,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminWorkspacesIdRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/_shell/assets/characters/$id': {
+      id: '/_shell/assets/characters/$id'
+      path: '/assets/characters/$id'
+      fullPath: '/assets/characters/$id'
+      preLoaderRoute: typeof ShellAssetsCharactersIdRouteImport
+      parentRoute: typeof ShellRoute
+    }
   }
 }
 
@@ -841,6 +860,7 @@ interface ShellRouteChildren {
   ShellUHandleRoute: typeof ShellUHandleRoute
   ShellAssetsIndexRoute: typeof ShellAssetsIndexRoute
   ShellSettingsIndexRoute: typeof ShellSettingsIndexRoute
+  ShellAssetsCharactersIdRoute: typeof ShellAssetsCharactersIdRoute
 }
 
 const ShellRouteChildren: ShellRouteChildren = {
@@ -857,6 +877,7 @@ const ShellRouteChildren: ShellRouteChildren = {
   ShellUHandleRoute: ShellUHandleRoute,
   ShellAssetsIndexRoute: ShellAssetsIndexRoute,
   ShellSettingsIndexRoute: ShellSettingsIndexRoute,
+  ShellAssetsCharactersIdRoute: ShellAssetsCharactersIdRoute,
 }
 
 const ShellRouteWithChildren = ShellRoute._addFileChildren(ShellRouteChildren)

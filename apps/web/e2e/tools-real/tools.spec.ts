@@ -170,7 +170,7 @@ test('Quick Create, Avatar and Characters: empty prompts, catalog pills, no demo
   await page.goto('/create/character');
   await expect(composer(page).getByRole('textbox')).toHaveValue('');
   await expect(page.getByLabel('Age')).toHaveValue('');
-  await expect(pill(page, 'views')).toHaveText('2 views');
+  await expect(pill(page, 'views')).toHaveText('6 views');
   await expect(pill(page, 'res')).toHaveText('2K');
   await pill(page, 'res').click();
   // Image runs: sizes from the model (4K locked on Starter), no ratio or count the tool doesn't send.
@@ -217,4 +217,23 @@ test('Avatar: the character photo and the voice track come from My assets by ass
   await expect(composer(page)).toContainText('137 credits');
   const spec = calls.quotes.at(-1)!.promptSpec as Record<string, any>;
   expect(spec.inputs).toMatchObject({ photoAssetId: 'ast_mine_1', audioAssetId: 'ast_mine_2' });
+});
+
+test('Characters (D-032): Generate makes the turnaround sheet; the run carries the locked description from the chips and the text', async ({ page, context }) => {
+  const calls = await stubApi(page, context);
+  await page.goto('/create/character');
+  await expect(pill(page, 'views')).toHaveText('6 views');
+  await page.getByLabel('Age').fill('28');
+  await page.locator('main aside').getByRole('button', { name: 'Side-part bob' }).click();
+  await composer(page).getByRole('textbox').fill('Oval face, small mole under the left eye');
+  await expect(composer(page)).toContainText('137 credits');
+  const before = calls.quotes.length;
+  await composer(page).getByRole('button', { name: 'Generate 6 views', exact: true }).click();
+  await expect.poll(() => calls.runs.length).toBe(1);
+  const spec = calls.quotes.slice(before).at(-1)!.promptSpec as Record<string, any>;
+  expect(spec.kind).toBe('character');
+  expect(spec.sheet.descriptor).toMatchObject({ kind: 'person', hair: 'Side-part bob', style: 'Photoreal' });
+  expect(spec.sheet.descriptor.face).toContain('small mole under the left eye');
+  expect(spec.sheet.descriptor.face).toContain('28 y/o');
+  await expectNoDemo(page);
 });

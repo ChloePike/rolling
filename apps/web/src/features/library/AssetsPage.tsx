@@ -577,7 +577,9 @@ function Characters({ query }: { query: string }) {
           </div>
           <div className={styles.charHead}>
             <span className={styles.charText}>
-              <span className={styles.charName}>@{c.name}</span>
+              <Link to="/assets/characters/$id" params={{ id: c.id }} className={styles.charName} data-character-link={c.id}>
+                @{c.name}
+              </Link>
               <span className={styles.charMeta}>
                 <FormattedMessage id="library.assets.character.meta" values={{ meta: c.meta, n: c.projects }} />
               </span>
@@ -592,7 +594,7 @@ function Characters({ query }: { query: string }) {
             >
               <FormattedMessage id="library.assets.character.create" />
             </button>
-            <Link to="/create/character" className={cx(styles.charEdit, motion.hover)} aria-label={intl.formatMessage({ id: 'library.assets.character.edit.label' }, { name: c.name })}>
+            <Link to="/assets/characters/$id" params={{ id: c.id }} className={cx(styles.charEdit, motion.hover)} aria-label={intl.formatMessage({ id: 'library.assets.character.edit.label' }, { name: c.name })}>
               <FormattedMessage id="library.assets.character.edit" />
             </Link>
           </div>

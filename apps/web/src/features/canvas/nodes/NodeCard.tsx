@@ -9,6 +9,7 @@ import type { GraphNode } from '@rolling/core/graph';
 import { CanvasIcon } from '../icons';
 import styles from './nodes.module.css';
 import { elapsedClock, knownProgress, useElapsed } from '@/lib/progress';
+import { characterIdOf, SheetStrip } from '@/features/characters/SheetStrip';
 
 export interface CardData extends Record<string, unknown> {
   node: GraphNode;
@@ -411,9 +412,10 @@ function CardContent({ node, selected, refused }: { node: GraphNode; selected: b
             <Label node={node} />
           </div>
           <ReplaceButton node={node} />
-          <div className={cx(styles.body, styles.assetBody)} style={{ height: 184, background: str(node.params.tone, 'var(--c-tone-teal)') }} data-body="">
+          <div className={cx(styles.body, styles.assetBody)} style={{ height: 184, background: str(node.params.tone, 'var(--c-tone-teal)'), ...(characterIdOf(node.params) && { position: 'relative' as const }) }} data-body="">
             <AssetMedia node={node} />
             {str(node.params.label)}
+            {characterIdOf(node.params) ? <SheetStrip characterId={characterIdOf(node.params)!} {...(typeof node.params.view === 'string' && { activeView: node.params.view })} /> : null}
           </div>
           <Port type="out" node={node} active={false} top={top.out} />
         </>

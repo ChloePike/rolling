@@ -191,6 +191,14 @@ export interface PromptSpec {
   shots?: Array<{ prompt?: string; seconds?: number; frameAssetId?: string; startSec?: number }>;
   name?: string;
   views?: Array<'body' | 'face'>;
+  /** D-032 character sheet: the turnaround in one run with a locked descriptor (`mode` version/outfit name a saved character). */
+  sheet?: {
+    mode?: 'new' | 'version' | 'outfit';
+    descriptor: { kind?: 'person' | 'animal' | 'object'; face: string; hair?: string; build?: string; outfit?: string; style?: string };
+    expressions?: Array<'smile' | 'serious' | 'surprised' | 'sad' | 'angry'>;
+    characterId?: string;
+    outfit?: { name: string; outfit: string };
+  };
   inputs?: {
     firstFrameAssetId?: string;
     lastFrameAssetId?: string;

@@ -89,7 +89,8 @@ export function CharacterPage({ initialOverlay, models: modelsOverride, plan: pl
     { kind: 'text', id: 'neg', title: t('tools.adv.neg'), icon: 'neg', value: p.neg, placeholder: t('tools.character.neg.placeholder'), onChange: (v) => set('neg', v) },
   ];
 
-  const views = t(caps.design ? 'tools.character.pill.views' : 'tools.character.pill.viewsOnly');
+  // Real runs make the turnaround sheet: four angles and two expressions (D-032).
+  const views = caps.design ? t('tools.character.pill.views') : t('characters.tool.views', { n: 6 });
   const pills: ComposerPill[] = [
     { id: 'model', label: model === 'Auto' ? t('tools.model.auto') : model, icon: 'cube' },
     { id: 'style', label: styleLabel, icon: 'style' },
@@ -98,7 +99,7 @@ export function CharacterPage({ initialOverlay, models: modelsOverride, plan: pl
     ...((adv || !caps.design) && caps.resolutions.length && s.resolution ? [{ id: 'res', label: s.resolution, icon: 'res' } as ComposerPill] : []),
     ...(adv && caps.design ? [{ id: 'consistency', label: t('tools.character.pill.consistency', { pct: p.idw / 100 }), icon: 'person' } as ComposerPill] : []),
   ];
-  const go = t('tools.character.go');
+  const go = caps.design ? t('tools.character.go') : t('characters.tool.go', { n: 6 });
 
   const toast = useToast();
   const [refs, setRefs] = useState<Record<'face' | 'outfit', string | null>>({ face: null, outfit: null });
@@ -262,10 +263,24 @@ export function CharacterPage({ initialOverlay, models: modelsOverride, plan: pl
         const traits = [...summary, adv && p.hairCustom.trim() ? p.hairCustom.trim() : '', adv && p.bodyCustom.trim() ? p.bodyCustom.trim() : ''].filter(Boolean);
         const referenceAssetIds = [refIds.face, refIds.outfit, libLook.hair?.assetId, libLook.wear?.assetId].filter((x): x is string => !!x);
         const looks = [libLook.hair, libLook.wear].flatMap((x) => (x?.promptEn ? [x.promptEn] : []));
+        // D-032: one run makes the turnaround sheet (full body, front, 3/4, profile, two expressions) and saves the
+        // character with these words as its locked description.
+        const hairWords = [libLook.hair?.promptEn ?? (pick.hair !== 'fromDescription' ? t(`tools.character.hair.${pick.hair}`) : ''), adv ? p.hairCustom.trim() : ''].filter(Boolean).join(', ');
+        const buildWords = [pick.body ? t(`tools.character.body.${pick.body}`) : '', height ? t('tools.character.height.value', { n: height }) : '', adv ? p.bodyCustom.trim() : ''].filter(Boolean).join(', ');
+        const outfitWords = libLook.wear?.promptEn ?? (pick.wear ? t(`tools.character.wear.${pick.wear}`) : '');
+        const descriptor = {
+          kind: 'person' as const,
+          face: [prompt.trim(), age ? t('tools.character.age.value', { n: age }) : ''].filter(Boolean).join(', ').slice(0, 300),
+          ...(hairWords && { hair: hairWords.slice(0, 160) }),
+          ...(buildWords && { build: buildWords.slice(0, 160) }),
+          ...(outfitWords && { outfit: outfitWords.slice(0, 240) }),
+          style: styleLabel.slice(0, 200),
+        };
         return {
           kind: 'character',
           name: summary.slice(0, 3).join(', ') || t('tools.character.title'),
           model: modelIdOf(models, model),
+          sheet: { descriptor },
           prompt: [prompt.trim(), traits.join(', '), ...looks].filter(Boolean).join('. '),
           title: t('tools.character.title'),
           ...(s.resolution ? { resolution: s.resolution } : {}),
