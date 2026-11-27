@@ -148,6 +148,8 @@ How to read these numbers: the scripted column proves what the harness guarantee
 
 ### What needs a live run
 
+Items 1 to 3 were run on 2026-11-27: `docs/harness-live-eval.md` has the scores, the judging and what changed (0.854 on the first live run, 0.997 after the fixes; a turn costs what it did on the old harness). Items 4 and 5 need generations and are still open.
+
 1. `pnpm --filter @rolling/agent eval:live`, then `eval:score -- --replay` on the result: does DeepSeek V4.1 Flash fill shot fields well (subject and action quality, cast discipline, one move per shot), how many retries the new checks cost, and tokens per turn with the longer prompt and schema.
 2. `continuity`, clarify and small-talk cases: only a real model can fail them in interesting ways.
 3. The mature classifier path: offline runs use the deterministic rules with a classifier that rates everything safe.

@@ -145,3 +145,17 @@ Research, gap analysis and scores: `docs/harness-research.md`. Where this sectio
 - **Graph patches.** `params.shot` on `addNode` / `updateNode` is validated, merged over the node's current shot and written back with its canonical `prompt`.
 - **Narration.** Text an LLM response writes next to a read tool call is never shown, stored or kept in the turn's history. Reply text is held until the response shows which tool it calls (a propose tool or the end of the response releases it; a stopped turn keeps it).
 - **Evals.** 88 cases and ten graders (`evals/graders.ts`); `pnpm --filter @rolling/agent eval:score` prints scorecards for the scripted LLM or for recorded results (`-- --replay <file>`). CI requires every grader to pass on every case.
+
+## 12. After the live evaluation (2026-11-27)
+
+Results, judging and the reasons: `docs/harness-live-eval.md`. Where this section disagrees with the sections above, this section is current.
+
+- **Characters have a kind.** `characters[].kind` is `person` (default), `animal` or `object` (a product, vehicle, logo or prop). Only people "wear" things; the reference picture is drawn per kind and its node is titled "Character: …", "Animal: …" or "Product: …"; with `@` pictures in the turn an object gets no reference picture (the user's photo is the reference).
+- **The server fills in what it can instead of refusing.** `model` is set once per option; a character named in a shot is listed in its cast; ambience on a silent model is dropped (speech on one is still refused); shot lengths are moved by up to 2 s each to hit the total; shots shorter than the option's model takes move the option to a listed model that takes them, unless the user picked the model; camera words outside the lists are mapped or left out; clauses that only say what is absent ("no props") are left out of descriptions.
+- **New plan checks.** A silent shot over 8 s in a cut of several shots (unless the brief sets the cut); a credit budget the brief names; descriptive fields in English; for an explicit brief from a mature-allowed member, every shot's length against the mature models.
+- **Context.** The Home context lists the video models (one line each), so a plan needs no `models.capabilities` call. The system prompt is sent per surface: sections for tools a surface does not have are left out (`systemPromptFor`). The account line carries `matureContent: on | off`.
+- **Loop.** 8,000 output tokens. A response cut off at the limit, or an empty one, is asked for again (twice at most; after an empty response in a turn that already read, the next call must call a tool). Adult content asked for with mature content off runs without tools and answers in one sentence.
+- **Graph patches.** An update that would not change what a node generates is left out; a patch that changes nothing is refused.
+- **Timeline.** `cutTo {seconds}` is planned by the server (`core/timeline` `planCutTo`) and stored as the trims and moves it makes.
+- **Eval tools.** `eval:live` takes `--budget`, `--debug` and `--rules-only` and uses the live safety classifier by default; `eval:read` writes readable transcripts of a results file.
+
