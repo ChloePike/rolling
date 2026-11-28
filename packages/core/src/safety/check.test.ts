@@ -355,6 +355,20 @@ describe('quickCheck and SafetyGate', () => {
   });
 });
 
+describe('mature-allowed callers: a child in a scene is not a mature run', () => {
+  it('allows a family scene with a child and still blocks a child with sexual content', async () => {
+    const family = 'Medium shot of Grandma and her 6-year-old granddaughter at a flour-dusted table, rolling dumpling wrappers';
+    const ok = await createSafetyGate(deps(fakeLlm({ text: text({ apparentMinor: true }) }).llm)).checkProposal({ mature: true, prompts: [{ prompt: family }] });
+    expect(ok.verdict).toBe('allow');
+    const brief = await createSafetyGate(deps(fakeLlm({ text: text({ apparentMinor: true }) }).llm)).checkBrief({ text: '我想和孙女一起包饺子的视频', mature: true });
+    expect(brief.verdict).toBe('allow');
+    const suggestive = await createSafetyGate(deps(fakeLlm({ text: text({ apparentMinor: true, sexualLevel: 'suggestive' }) }).llm)).checkProposal({ mature: true, prompts: [{ prompt: family }] });
+    expect(suggestive.reasons.map((r) => r.code)).toContain('MINOR_SEXUAL');
+    const explicitChild = await createSafetyGate(deps(fakeLlm({ text: text({}) }).llm)).checkProposal({ mature: true, prompts: [{ prompt: 'an nsfw scene with a schoolgirl' }] });
+    expect(explicitChild.reasons.map((r) => r.code)).toContain('MINOR_SEXUAL');
+  });
+});
+
 describe('face metadata (upload processing, UP-4)', () => {
   const upload = { kind: 'image' as const, source: 'upload' as const, url: 'data:image/png;base64,AAAA', hash: 'hface' };
 
