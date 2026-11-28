@@ -99,7 +99,7 @@ const ANIMAL_SEXUAL_TERMS = terms([
 
 // Animal words for the "sexual act directed at an animal" patterns.
 const ANIMAL_EN =
-  '(?:dogs?|pupp(?:y|ies)|cats?(?! ?(?:ears?|girls?|boys?|suits?|wom[ae]n|costumes?|tails?|eyes?))|kittens?|horses?|ponies|pony|mares?|stallions?|pigs?|goats?|sheep|cows?|donkeys?|monkeys?|apes?|animals?|beasts?)(?!\\s+(?:farms?|ranch\\p{L}*|beds?|houses?|parks?|shows?|prints?|costumes?|masks?|ears?|tails?|food|collars?|leash\\p{L}*|style|stables?|pens?|patterns?|onesies?|pajamas?|hair|fur|whistles?|toys?|treats?|bowls?|breeds?|trainers?|walkers?|sitters?|groomers?|owners?|lovers?|videos?|rid(?:es|ing)|races?|racing|trailers?|carts?|drawn|sleds?|sledding|whisperers?)(?![\\p{L}]))';
+  '(?:dogs?|pupp(?:y|ies)|cats?(?! ?(?:ears?|girls?|boys?|suits?|wom[ae]n|costumes?|tails?|eyes?))|kittens?|horses?|ponies|pony|mares?|stallions?|pigs?|goats?|sheep|cows?|donkeys?|monkeys?|apes?|animals?|beasts?)(?!\\s+(?:farms?|ranch\\p{L}*|beds?|houses?|parks?|shows?|prints?|costumes?|masks?|ears?|tails?|food|collars?|leash\\p{L}*|style|stables?|pens?|patterns?|onesies?|pajamas?|hair|fur|whistles?|toys?|treats?|bowls?|breeds?|trainers?|walkers?|sitters?|groomers?|owners?|lovers?|rid(?:es|ing)|races?|racing|trailers?|carts?|drawn|sleds?|sledding|whisperers?)(?![\\p{L}]))';
 const ANIMAL_ZH = '(?:猫(?![耳娘女])|貓(?![耳娘女])|狗(?!仔)|犬|马(?![上桶路赛克甲尾])|馬(?![上桶路賽克甲尾])|猪|豬|驴|驢|山羊|绵羊|綿羊|母牛|公牛|猴子|动物|動物|畜生|牲口|牲畜)';
 const SEX_ACT_EN =
   '(?:sex|fuck\\p{L}*|intercourse|blowjobs?|masturbat\\p{L}*|jerk(?:s|ed|ing)? off|jack(?:s|ed|ing)? off|wank\\p{L}*|hump\\p{L}*|penetrat\\p{L}*|cum(?:s|ming)?|ejaculat\\p{L}*|rub(?:s|bing)? (?:his|her|their) (?:cock|dick|penis|pussy|clit)|grind\\p{L}*(?!\\s+(?:(?:his|her|their|my|your|its|the)\\s+)?(?:teeth|jaws?|gears?|coffee|beans?|pepper|spices?|meat|axes?|knives|knife|blades?|rails?|ledges?)(?![\\p{L}])))';
@@ -120,11 +120,12 @@ const ZH_GAP = '[^，。,.!?！？；;\\n]{0,8}?';
 const ZH_GAP_SHORT = '[^，。,.!?！？；;\\n]{0,4}?';
 // "fucking a goat", "blows the horse": not after a weapon, a nursing young animal or a machine as the subject
 // ("the lance penetrates the beast", "a calf sucks the cow", "a vacuum sucks up dog hair"), and "fucking" right after
-// a determiner or "stupid", with no determiner after it, is an intensifier ("this fucking cat", not "her fucking a dog").
+// a determiner or "stupid" and right before the animal word is an intensifier ("this fucking cat"; not "her fucking a dog",
+// "her fucking dogs" or "the fucking stray dog": a possessive or a word in between keeps it a sex act).
 const NON_SEXUAL_SUBJECT_EN =
-  '(?:calf|calves|lambs?|foals?|piglets?|kittens?|pupp(?:y|ies)|cubs?|joeys?|vacuums?|hoovers?|machines?|arrows?|spears?|lances?|bullets?|swords?|blades?|harpoons?|bolts?|knife|knives|claws?|fangs?|teeth|horns?|tusks?|rounds?|winds?|storms?|fans?|whistles?|bees?|mosquito(?:e?s)?|leech(?:es)?|ticks?)';
-const INTENSIFIER_BEFORE_EN = '(?:this|that|these|those|the|a|an|my|your|his|her|our|their|stupid|damn|goddamn|little|big|same|whole|every)';
-const VERB_AT_ANIMAL_EN = `(?<!${NON_SEXUAL_SUBJECT_EN}\\s)(?:fuck(?:s|ed|ing)?(?=\\s+(?:a|an|the|his|her|their|my|your)\\s)|(?<!${INTENSIFIER_BEFORE_EN}\\s)fuck(?:s|ed|ing)?|rap(?:e|es|ed|ing)|penetrat\\p{L}*|hump(?:s|ed|ing)?|blow(?:s|ing)?|suck(?:s|ed|ing)?)`;
+  '(?:calf|calves|lambs?|foals?|piglets?|kittens?|pupp(?:y|ies)|cubs?|joeys?|vacuums?|hoovers?|machines?|arrows?|spears?|lances?|bullets?|swords?|blades?|harpoons?|bolts?|knife|knives|claws?|fangs?|teeth|horns?|tusks?|winds?|storms?|whistles?|bees?|mosquito(?:e?s)?|leech(?:es)?|ticks?)';
+const INTENSIFIER_BEFORE_EN = '(?:this|that|these|those|the|a|an|my|your|our|stupid|damn|goddamn|little|big|same|whole|every)';
+const VERB_AT_ANIMAL_EN = `(?<!${NON_SEXUAL_SUBJECT_EN}\\s)(?:(?<!${INTENSIFIER_BEFORE_EN}\\s)fuck(?:s|ed|ing)?|fuck(?:s|ed|ing)?(?!\\s+${ANIMAL_EN}(?![\\p{L}]))|rap(?:e|es|ed|ing)|penetrat\\p{L}*|hump(?:s|ed|ing)?|blow(?:s|ing)?|suck(?:s|ed|ing)?)`;
 // "the horse penetrates her", not "the beast penetrates her shield with its claws".
 const PENETRATES_EN =
   'penetrat\\p{L}*(?!\\s+(?:(?:her|his|their|its|the|my|your)\\s+)?(?:shields?|armou?r|chest|skin|flesh|heart|side|neck|legs?|arms?|shoulders?|back|hides?|defen[cs]es?|lines?|walls?)(?![\\p{L}]))';
@@ -159,14 +160,15 @@ export function animalSexualSignal(text: string): string[] {
 
 const NEGATION_BEFORE = /(?<![\p{L}])(?:no|not|non|without|never|avoid|zero|nothing|nor|sin|sans|ohne|keine?n?|без|не|nicht|senza|sem)[\s,-]+(?:[\p{L}]+[\s,-]+)?$/u;
 // "不色情", "无任何色情内容", "没有裸露", "不含色情" (checked on the few characters before a CJK term).
-const NEGATION_CJK_BEFORE = /(?:[不无無非没沒禁]|没有|沒有|不含|不要|禁止|杜绝|杜絕|拒绝|拒絕)(?:任何|一切|含|带|帶|涉及|包含|出现|出現)?$/u;
+// Not the question 要不要 ("do you want to") and not a double negative (不要拒绝, "don't refuse").
+const NEGATION_CJK_BEFORE = /(?:(?<![要])[不无無非没沒禁]|没有|沒有|不含|(?<!要)不要|禁止|杜绝|杜絕|(?<![不别別要])拒绝|(?<![不别別要])拒絕)(?:任何|一切|含|带|帶|涉及|包含|出现|出現)?$/u;
 // "ヌードなし", "性的な表現なし", "성적인 내용 없음": only these grammatical fillers may sit between the term and the negation.
 const NEGATION_CJK_AFTER =
   /^(?:な|的な|인|적인|的)?\s?(?:表現|描写|要素|内容|シーン|コンテンツ|내용|표현|묘사|요소|장면|콘텐츠)?(?:は|も|은|는|이|가|도)?\s?(?:一切|全く|전혀)?\s?(?:なし|無し|禁止|しない|ではない|없는|없이|없음|없다|금지|제외)/u;
 // Minor-coded terms are negated only by an explicit absence ("no kids", "without minors", "没有未成年人", "未成年者なし"),
-// never by "not" ("not a child, a teen" still counts).
-const MINOR_NEGATION_BEFORE = /(?<![\p{L}])(?:no|without|zero|nor)[\s,-]+(?:(?:other|young|real|actual|underage|little|small)[\s,-]+)?$/u;
-const MINOR_NEGATION_CJK_BEFORE = /(?:没有|沒有|无|無|不含|禁止|不要|杜绝|杜絕)(?:任何)?$/u;
+// never by "not" or "nor" ("not a child, a teen", "neither adult nor child" still count).
+const MINOR_NEGATION_BEFORE = /(?<![\p{L}])(?:no|without|zero)[\s,-]+(?:(?:other|young|real|actual|underage|little|small)[\s,-]+)?$/u;
+const MINOR_NEGATION_CJK_BEFORE = /(?:没有|沒有|无|無|不含|禁止|(?<!要)不要|杜绝|杜絕)(?:任何)?$/u;
 const MINOR_NEGATION_CJK_AFTER = /^(?:者|人|자)?(?:は|는|은)?\s?(?:一切|전혀)?\s?(?:なし|無し|禁止|不可|없음|없이|없는|금지|제외|출입 ?금지)/u;
 
 interface Negation {
@@ -184,14 +186,16 @@ const MINOR_NEGATION: Negation = { before: MINOR_NEGATION_BEFORE, cjkBefore: MIN
  * scanned. Keep each phrase narrow: it must never cover a sexual meaning.
  */
 const SEXUAL_MASKS: RegExp[] = [
-  /(?<![\p{L}])naked[- ](?:eyes?|flames?|truth|ambition|aggression|greed|lights?|bulbs?|wires?|steel|blades?|trees?|branches|mole[- ]rats?|singularit(?:y|ies)|short(?:s|ing|ed)?|calls?|puts?)(?![\p{L}])/gu,
+  /(?<![\p{L}])naked[- ](?:eyes?|flames?|truth|ambition|aggression|greed|lights?|bulbs?|wires?|steel|blades?|trees?|branches|mole[- ]rats?|singularit(?:y|ies)|shorting|short[- ]sell\p{L}*|calls?|puts?)(?![\p{L}-])/gu,
   /(?<![\p{L}])(?:summa |magna )?cum laude(?![\p{L}])/gu,
   /(?<![\p{L}])horny (?:toads?|lizards?)(?![\p{L}])/gu,
   /(?<![\p{L}])thongs? (?:sandals?|flip[- ]flops?|slippers?)(?![\p{L}])/gu,
   /(?<![\p{L}])(?:super ?bowl|wrestlemania|olympiad|chapter|part|volume|vol\.?|book|act|canto|psalm|article|section|track) xxx(?![\p{L}])/gu,
   /(?<![\p{L}])xxx (?:olympiad|olympics|summer olympics|winter olympics)(?![\p{L}])/gu,
+  /(?<![\p{L}])sexual (?:reproduction|health|selection|dimorphism)(?![\p{L}])/gu,
   /(?<![\p{L}])sex[- ](?:education|ed|reveal|determination|chromosomes?|ratios?|differences?|linked|hormones?|cells?)(?![\p{L}])/gu,
-  /(?<![\p{L}])(?:baby|babies|fetus|fetal|foetal|unborn|chicks?|chickens?|pupp(?:y|ies)|kittens?|foals?|calf|calves)(?:['’]s?)? sex(?![\p{L}])/gu,
+  // "the baby's sex" needs the possessive: bare "baby sex" is not masked.
+  /(?<![\p{L}])(?:(?:baby|fetus|foetus)['’]s|babies['’]|fetal|foetal|(?:chicks?|chickens?|pupp(?:y|ies)|kittens?|foals?|calf|calves)(?:['’]s?)?) sex(?![\p{L}])/gu,
   /(?<![\p{L}])stripping (?:(?:old|the|off|away|down|back|out)\s+)*(?:paint|wallpaper|varnish|wires?|bark|floors?|furniture|beds?|sheets|tape|insulation|screws?|threads?|rust|finish|engines?|cars?|bikes?|lacquer|stain)(?![\p{L}])/gu,
   /(?<![\p{L}])paint[- ]stripping(?![\p{L}])/gu,
   /(?<![\p{L}])(?:aroused|arousing|arouses?) (?:(?:the|their|his|her|our|my|your|great|much|some|public)\s+)?(?:curiosity|interest|suspicions?|attention|anger|fear|sympathy|wonder)(?![\p{L}])/gu,
@@ -199,11 +203,12 @@ const SEXUAL_MASKS: RegExp[] = [
   /(?<![\p{L}])provocative(?:ly)? (?:questions?|topics?|ideas?|debates?|essays?|arguments?|headlines?|titles?|thesis|statements?|opinions?|claims?|comments?|remarks?|books?|novels?|documentar(?:y|ies)|speech(?:es)?|theor(?:y|ies)|hypothes[ie]s|prompts?)(?![\p{L}])/gu,
   /(?<![\p{L}])(?:(?:baby|feeding)[- ])?bottle nipples?(?![\p{L}])/gu,
   /(?<![\p{L}])nipples? (?:shields?|confusion|cream|pain|care|soreness)(?![\p{L}])/gu,
-  /(?<![\p{L}])latch(?:es|ed|ing)? (?:on(?:to)? |onto )?(?:the |her |a )?(?:(?:mom|mother)['’]s )?(?:breast|nipple)s?(?![\p{L}])/gu,
+  // Breastfeeding: only with a nursing subject right before "latch" (the subject itself stays visible to the minor scan).
+  /(?<=(?<![\p{L}])(?:infants?|bab(?:y|ies)|newborns?) )latch(?:es|ed|ing)? (?:on(?:to)? |onto )?(?:the |a )?(?:(?:mom|mother)['’]s )?(?:breast|nipple)s?(?![\p{L}])/gu,
   // Chinese / Japanese / Korean.
   /裸露(?:的|在外的?)?(?:岩石|礁石|岩层|岩層|土地|土壤|地面|地表|电线|電線|管道|钢筋|鋼筋|砖|磚|山体|山體|树根|樹根|河床|海床|沙滩|沙灘|礁|岩|石头|石頭)/gu,
   /淫雨/gu,
-  /性感染/gu,
+  /性感染(?:症|病|者|率|风险|風險)/gu,
   /裸の(?:王様|大将)/gu,
   /누드 ?(?:김밥|빼빼로|톤|컬러|립)/gu,
   /성적표|성적순|(?:학업|시험|학교|수학|영어|국어|기말|중간) ?성적|(?:좋은|나쁜|우수한|높은|낮은) 성적|성적 ?(?:향상|우수|장학|상승|하락|관리|확인|발표|공개|올리기)|성적(?:이|을|은) ?(?:오르|올라|좋|나쁘|떨어|올리|받|확인)/gu,
@@ -225,9 +230,12 @@ const KANA = /[\p{Script=Hiragana}\p{Script=Katakana}]/u;
 const MINOR_MASKS: RegExp[] = [
   /(?<![\p{L}])minor[- ](?:chords?|keys?|scales?|leagues?|leaguers?|injur\p{L}*|details?|changes?|roles?|characters?|edits?|adjustments?|issues?|surgery|surgeries|offen[cs]es?|planets?|axis|modes?|thirds?|fix\p{L}*|updates?|bugs?|tweaks?|problems?|damage|cuts?|scratch\p{L}*|bruis\p{L}*|flaws?|differences?|deit(?:y|ies)|arcana|prophets?|parts?|points?|repairs?|setbacks?|errors?|mistakes?|celebrit(?:y|ies)|works?)(?![\p{L}])/gu,
   /(?<![\p{L}])kid[- ](?:gloves?|leather|mohair|skin)(?![\p{L}])/gu,
-  /(?<![\p{L}])(?:child|kid|children|kids)[- ]?(?:free|proof)(?![\p{L}])/gu,
-  /(?<![\p{L}])high[- ]school (?:reunions?|sweethearts?|alumn\p{L}*)(?![\p{L}])/gu,
-  /(?<![\p{N}.,])(?:[1-9]|1[0-7])[- ]?(?:year|yr)s?[- ]old (?:single[- ]malts?|scotch|whisk(?:e)?ys?|bourbons?|rums?|cognacs?|brand(?:y|ies)|ports?|wines?|tawny|malts?|tequilas?|balsamic|vinegars?|cheddars?|cheeses?|cars?|trucks?|houses?|buildings?|trees?|oaks?|vines?|compan(?:y|ies)|brands?|laptops?|phones?|recipes?|traditions?|business(?:es)?|restaurants?|shops?|bottles?|casks?)(?![\p{L}])/gu,
+  // Only the compound ("child-free", "childproof"): "kids free to roam" keeps its minor term.
+  /(?<![\p{L}])(?:child|kid)-?(?:free|proof)(?![\p{L}])/gu,
+  /(?<![\p{L}])high[- ]school (?:reunions?|alumn\p{L}*)(?![\p{L}])/gu,
+  // Only nouns that are neither verbs ("a 15-year-old shops") nor the head of a person compound ("brand ambassador"),
+  // and never when a person noun follows ("a 12-year-old scotch drinker").
+  /(?<![\p{N}.,])(?:[1-9]|1[0-7])[- ]?(?:year|yr)s?[- ]old (?:single[- ]malts?|scotch|whisk(?:e)?ys?|bourbons?|rums?|cognacs?|brand(?:y|ies)|tawny(?: ports?)?|wines?|malts?|tequilas?|balsamic|vinegars?|cheddars?|cheeses?|oaks?|casks?)(?![\p{L}])(?!\s+(?:drinkers?|lovers?|fans?|enthusiasts?|collectors?|owners?|ambassadors?|assistants?|girls?|boys?|models?|kids?|students?|hostess(?:es)?|hosts?|workers?|interns?|sons?|daughters?)(?![\p{L}]))/gu,
   /(?<![\p{L}])aged (?:[1-9]|1[0-7]) (?:years?|yrs?) in (?:oak|barrels?|casks?|sherry|bourbon)(?![\p{L}])/gu,
   /カロリ|ロリポップ|フロリダ|칼로리|플로리다/gu,
 ];
@@ -238,9 +246,15 @@ function mask(text: string, masks: readonly RegExp[]): string {
   return out;
 }
 
+/** True when the text before a "-性的" ends a CJK minor term, alone or plus one character (少女性的, 未成年人性的). */
+function afterMinorTerm(before: string): boolean {
+  return MINOR_TERMS.substrings.some((s) => before.endsWith(s) || before.slice(0, -1).endsWith(s));
+}
+
 function maskSexual(text: string): string {
   const t = mask(text, SEXUAL_MASKS);
-  return KANA.test(t) ? t : t.replace(ZH_XING_DE, '  ');
+  if (KANA.test(t)) return t;
+  return t.replace(ZH_XING_DE, (m, offset: number) => (afterMinorTerm(t.slice(0, offset)) ? m : '  '));
 }
 
 const LEET: Record<string, string> = { '0': 'o', '1': 'i', '3': 'e', '4': 'a', '5': 's', '7': 't', '8': 'b', '@': 'a', $: 's' };

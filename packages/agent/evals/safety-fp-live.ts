@@ -6,8 +6,10 @@
  *
  *   HYPEROUTER_API_KEY=... pnpm --filter @rolling/agent eval:safety-fp [--budget 1] [--concurrency 6] [--only b-zh,t-] [--out file.json]
  *
- * The key may also be in HYPEROUTER_KEY. `--budget` (USD, default 1) stops
- * starting new calls once the reported gateway cost reaches it.
+ * The key may also be in HYPEROUTER_KEY. `--budget` (USD, default 1, a
+ * positive number) stops starting new calls once the reported gateway cost
+ * reaches it; a call the gateway reports no cost for also stops new calls,
+ * since the budget can no longer be enforced.
  *
  * Per case and caller it reports two outcomes:
  * - classifier: the text classifier's own verdict (textReasons), even where
@@ -18,8 +20,9 @@
  * caller is a re-plan, not a block.
  *
  * Writes evals/results/safety-fp-<timestamp>.json (or --out) and prints false
- * positives, misses and spend. Exit code 1 when any true positive is missed or
- * any benign case blocks with a hard limit.
+ * positives, misses and spend. Exit code 1 when any true positive is missed,
+ * any benign case blocks with a hard limit or asks for mature content it was
+ * not expected to, any call errors, or any case was not run (budget).
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { hyperouter } from '@rolling/core';
@@ -41,6 +44,14 @@ if (!apiKey) {
 }
 const budget = Number(flag('budget') ?? 1);
 const concurrency = Number(flag('concurrency') ?? 6);
+if (!Number.isFinite(budget) || budget <= 0) {
+  console.error('--budget must be a positive number of USD');
+  process.exit(2);
+}
+if (!Number.isInteger(concurrency) || concurrency < 1) {
+  console.error('--concurrency must be a positive integer');
+  process.exit(2);
+}
 const only = flag('only')?.split(',');
 const cases = FP_CASES.filter((c) => !only || only.some((o) => c.id.startsWith(o)));
 const llm = new HyperouterLlmProvider({ apiKey, ...(process.env.HYPEROUTER_BASE_URL ? { baseUrl: process.env.HYPEROUTER_BASE_URL.replace(/\/v1$/, '') } : {}) });
@@ -68,6 +79,8 @@ function callerOutcome(reasons: SafetyReason[], caller: CallerKind): FpOutcome {
 }
 
 let spent = 0;
+/** Calls the gateway reported no cost for: the budget cannot be enforced after one. */
+let unknownCost = 0;
 let keyN = 0;
 const runId = Date.now();
 
@@ -77,7 +90,8 @@ async function runOne(c: FpCase, caller: CallerKind): Promise<Row> {
   const base = { id: c.id, caller, truePositive: isTruePositive(c), expected: c.expect[caller], mature };
   try {
     const res = await classifyText(llm, model, { prompt: c.text, captions: [], mature }, `fp_eval_${runId}_${++keyN}`);
-    spent += res.costUsd ?? 0;
+    if (typeof res.costUsd === 'number' && Number.isFinite(res.costUsd)) spent += res.costUsd;
+    else if (unknownCost++ === 0) console.warn('the gateway reported no cost for a call: stopping new calls, the budget cannot be enforced');
     const reasons = textReasons(res.value, mature);
     const classifier = callerOutcome(reasons, caller);
     const pipeline = rules.verdict === 'block' ? outcomeOf(rules) : classifier;
@@ -93,7 +107,7 @@ let stopped = 0;
 await Promise.all(
   Array.from({ length: concurrency }, async () => {
     for (let job = queue.shift(); job; job = queue.shift()) {
-      if (spent >= budget) {
+      if (spent >= budget || unknownCost > 0) {
         stopped++;
         continue;
       }
@@ -116,6 +130,7 @@ const summary = {
   model,
   calls: rows.length,
   skippedForBudget: stopped,
+  callsWithoutCost: unknownCost,
   spentUsd: +spent.toFixed(6),
   benignRows: benign.length,
   truePositiveRows: tps.length,
@@ -132,4 +147,6 @@ const out = flag('out') ?? (() => {
 writeFileSync(out, JSON.stringify({ summary, rows }, null, 2));
 console.log(JSON.stringify(summary, null, 2));
 console.log(`wrote ${out}`);
-process.exit(fp('pipeline').length || misses('pipeline').length ? 1 : 0);
+const failed = fp('pipeline').length > 0 || misses('pipeline').length > 0 || unexpectedMature.length > 0 || errors.length > 0 || stopped > 0;
+if (stopped > 0) console.error(`${stopped} case/caller pair(s) were not run: the eval is incomplete`);
+process.exit(failed ? 1 : 0);
