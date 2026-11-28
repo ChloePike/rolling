@@ -2,6 +2,13 @@
 
 Decisions made after the original spec. Where this file disagrees with `PRD.md`, `architecture.md`, `api.md` or `harness.md`, this file wins. Newest first.
 
+## D-038 — Silent app updates; no update prompt (2026-11-28)
+
+Owner decision: the PWA no longer shows "A new version is ready · Reload" (replaces handoff 8 and PWA.dc.html on updates). A new service worker installs and waits; `apps/web/src/lib/pwa/register.ts` activates it (`SKIP_WAITING`) at the next safe moment and loads the new version:
+- on the next in-app page change (path change): the target URL loads in full on the new version;
+- after the tab has been hidden for 60 s, except on a canvas or the editor (`/p/*`), where unsynced offline edits may be in memory.
+Never while a transfer is in flight (`addBusyCheck`; the transfer manager registers one). Closing every tab also activates it. Update checks stay hourly and on tab focus.
+
 ## D-021 — Agent modes: Read, Edit, Auto; Auto's per-turn budget counts as approval (2026-11-27)
 
 Owner decision. Refines CLAUDE.md's approval rule and D-006's confirm threshold; harness: `docs/harness.md` section 13.

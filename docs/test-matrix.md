@@ -258,7 +258,7 @@ Sources: **PRD** = `docs/PRD.md`, **M*n*** = `docs/milestones.md`, **CF*n*** = `
 | Manifest | standalone, `#0B0B0C`, `start_url /`, icons 192/512 maskable, all load | HO PWA, M8 | PWA-1 |
 | Service worker | Registers at scope `/` and controls the page after reload | M8 | PWA-2 |
 | Offline page | Offline navigation shows the offline page; back online the app recovers | M8 | PWA-3 |
-| Update prompt | A waiting worker shows “A new version is ready · Reload”, never an auto-reload | HO PWA | PWA-4 |
+| Silent update | A waiting worker shows nothing; it switches in on the next page change (full load of the target), not during a transfer | D-038 | PWA-4 |
 
 ## Legal and SEO
 

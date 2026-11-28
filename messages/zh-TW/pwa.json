@@ -1,6 +1,4 @@
 {
-  "pwa.update.message": "有新版本可用",
-  "pwa.update.reload": "重新載入",
   "pwa.offline.title": "你目前離線",
   "pwa.offline.body": "你仍可調整畫布與編輯時間軸。生成與匯出需要網路連線。",
   "pwa.offline.retry": "再試一次",

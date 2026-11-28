@@ -10,13 +10,6 @@
 .offlineTitle{margin:0;font-size:var(--fs-prompt);font-weight:700;color:var(--c-text-1)}
 .offlineBody{margin:0;max-width:320px;font-size:var(--fs-control);line-height:1.5;color:var(--c-text-3)}
 
-.update{
-  position:fixed;left:50%;bottom:24px;z-index:79;translate:-50% 0;
-  display:flex;align-items:center;gap:12px;height:40px;padding:0 6px 0 14px;border-radius:var(--r-button);
-  background:var(--c-surface-float);color:var(--c-text-1);box-shadow:var(--shadow-toast);font-size:var(--fs-control);
-  animation:rise var(--m-base) var(--m-ease-standard);
-}
-.update .reload{height:28px}
 
 .install{
   position:fixed;left:24px;bottom:24px;z-index:46;width:min(480px,calc(100vw - 48px));box-sizing:border-box;

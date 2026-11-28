@@ -51,31 +51,18 @@ test('PWA-3 offline: the app shell loads from the cache and shows the offline pa
   await expect(page.getByTestId('app-header')).toBeVisible({ timeout: 30_000 });
 });
 
-test('PWA-4 update prompt: a waiting service worker shows “A new version is ready · Reload” (never auto-reloads)', async ({ page, context, baseURL }, testInfo) => {
+test('PWA-4 silent update (D-038): a waiting service worker shows no prompt and never reloads the open page', async ({ page, context, baseURL }, testInfo) => {
   await account(context, baseURL, 'update');
   await page.goto('/');
   await page.evaluate(() => navigator.serviceWorker.ready);
-  // Simulate the update flow: the app listens for a waiting worker via workbox-window. Trigger an update check;
-  // a deploy between page load and now produces a real waiting worker. Without one, fall back to the event the app handles.
-  const shown = await page.evaluate(async () => {
+  const waiting = await page.evaluate(async () => {
     const reg = await navigator.serviceWorker.getRegistration();
     await reg?.update().catch(() => undefined);
     return !!reg?.waiting;
   });
-  if (!shown) {
-    testInfo.annotations.push({ type: 'note', description: 'No new deploy waiting; checked that a URL change does not reload the page and that the prompt component exists in the bundle.' });
-    const before = await page.evaluate(() => performance.timeOrigin);
-    await page.waitForTimeout(2000);
-    expect(await page.evaluate(() => performance.timeOrigin)).toBe(before);
-    const src = await page.evaluate(async () => {
-      const scripts = [...document.querySelectorAll('script[src]')].map((s) => (s as HTMLScriptElement).src);
-      let text = '';
-      for (const s of scripts) text += await (await fetch(s)).text();
-      return text.includes('update-prompt') || text.includes('A new version is ready');
-    });
-    expect(src, 'update prompt shipped in the bundle').toBe(true);
-    return;
-  }
-  await expect(page.getByTestId('update-prompt')).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByTestId('update-prompt')).toContainText('A new version is ready');
+  if (!waiting) testInfo.annotations.push({ type: 'note', description: 'No new deploy waiting; checked that the open page does not reload and shows no prompt.' });
+  const before = await page.evaluate(() => performance.timeOrigin);
+  await page.waitForTimeout(2000);
+  expect(await page.evaluate(() => performance.timeOrigin)).toBe(before);
+  await expect(page.getByText('A new version is ready')).toHaveCount(0);
 });

@@ -5,7 +5,7 @@ import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 /**
  * PWA (handoff 8, PWA.dc.html) against the built preview: manifest, service
  * worker registration and installability, offline navigation, `/api` never
- * served from the cache, and the update prompt when a new worker waits.
+ * served from the cache, and the silent update when a new worker waits (D-038).
  *
  * Mock builds keep the service worker off; these tests opt in with
  * localStorage `rolling.sw = "on"` (lib/pwa/register.ts).
@@ -173,10 +173,9 @@ function nextBuild(script: string): string {
   return next;
 }
 
-test('update prompt: a new worker waits until the user presses Reload', async ({ page, context }) => {
+test('silent update (D-038): no prompt; the waiting worker switches in on the next page change', async ({ page, context }) => {
   await optIn(context);
   await controlled(page);
-  await expect(page.getByTestId('update-prompt')).toHaveCount(0);
 
   const original = readFileSync(SW_FILE, 'utf8');
   try {
@@ -186,21 +185,24 @@ test('update prompt: a new worker waits until the user presses Reload', async ({
       const reg = await navigator.serviceWorker.getRegistration();
       await reg?.update();
     });
+    await page.waitForFunction(async () => !!(await navigator.serviceWorker.getRegistration())?.waiting);
 
-    const prompt = page.getByTestId('update-prompt');
-    await expect(prompt).toContainText('A new version is ready');
-    // Never activated on its own: the new worker keeps waiting while the prompt shows.
+    // Nothing is shown and nothing reloads while the user stays on the page.
+    const loadedAt = await page.evaluate(() => performance.timeOrigin);
     await page.waitForTimeout(500);
+    await expect(page.getByText('A new version is ready')).toHaveCount(0);
+    expect(await page.evaluate(() => performance.timeOrigin)).toBe(loadedAt);
     expect(await page.evaluate(async () => !!(await navigator.serviceWorker.getRegistration())?.waiting)).toBe(true);
 
-    await Promise.all([page.waitForEvent('load'), prompt.getByRole('button', { name: 'Reload' }).click()]);
+    // The next in-app navigation loads the target in full on the new version.
+    await Promise.all([page.waitForEvent('load'), page.getByTestId('main-nav').locator('[data-nav]').nth(1).click()]);
     await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+    expect(await page.evaluate(() => performance.timeOrigin)).not.toBe(loadedAt);
     const after = await page.evaluate(async () => {
       const reg = await navigator.serviceWorker.getRegistration();
       return { waiting: !!reg?.waiting, active: !!reg?.active };
     });
     expect(after).toEqual({ waiting: false, active: true });
-    await expect(page.getByTestId('update-prompt')).toHaveCount(0);
   } finally {
     writeFileSync(SW_FILE, original);
   }

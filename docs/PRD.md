@@ -47,7 +47,7 @@ Full feature table (128 rows with status, priority, competitor reference, in Chi
 - Public library browsing with license labels.
 - Templates authoring (save selection as template).
 - Read-only share links.
-- PWA install, offline page, update prompt.
+- PWA install, offline page, silent updates (D-038).
 - Locales: ja, zh-TW, zh-HK, ko.
 - Motion spec applied across the app.
 - Auto top-up.

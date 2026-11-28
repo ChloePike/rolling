@@ -1,6 +1,4 @@
 {
-  "pwa.update.message": "A new version is ready",
-  "pwa.update.reload": "Reload",
   "pwa.offline.title": "You’re offline",
   "pwa.offline.body": "You can keep arranging the canvas and editing the timeline. Generating and exporting need a connection.",
   "pwa.offline.retry": "Try again",

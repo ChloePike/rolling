@@ -9,7 +9,7 @@ import { routeTree } from '@/routeTree.gen';
 import { queryClient } from '@/lib/api/queryClient';
 import { loadMockData } from '@/lib/api/mode';
 import { startInstallWatch } from '@/lib/pwa/install';
-import { registerServiceWorker } from '@/lib/pwa/register';
+import { registerServiceWorker, updateOnNavigation } from '@/lib/pwa/register';
 import { handlePopupReturn } from '@/lib/upgrade/popup';
 import '@/styles/app.css';
 
@@ -21,6 +21,14 @@ const router = createRouter({
   context: { queryClient },
   defaultPreload: 'intent',
   scrollRestoration: true,
+});
+
+// Silent updates (D-038): with a new version waiting, the next page change is held and becomes a full
+// load of the target on the new version (lib/pwa/register.ts). Same-page changes (search, hash) pass.
+router.history.block({
+  enableBeforeUnload: false,
+  blockerFn: ({ currentLocation, nextLocation }) =>
+    nextLocation.pathname !== currentLocation.pathname && updateOnNavigation(new URL(nextLocation.href, window.location.origin).href),
 });
 
 declare module '@tanstack/react-router' {

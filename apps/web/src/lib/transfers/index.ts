@@ -9,8 +9,13 @@
 import { useSyncExternalStore } from 'react';
 import { TransfersClient } from './client';
 import type { QueueSnapshot } from './types';
+import { addBusyCheck } from '@/lib/pwa/register';
 
 export const transfers = new TransfersClient();
+
+// Silent app updates wait while an upload or download is in flight (a reload would cut it).
+const ACTIVE: ReadonlySet<string> = new Set(['queued', 'preparing', 'running', 'retrying', 'completing']);
+addBusyCheck(() => transfers.getSnapshot().items.some((i) => ACTIVE.has(i.status)));
 
 export const uploadFiles = transfers.uploadFiles.bind(transfers);
 export const download = transfers.download.bind(transfers);

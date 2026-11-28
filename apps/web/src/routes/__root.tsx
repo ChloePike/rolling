@@ -1,7 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { createRootRouteWithContext, Outlet } from '@tanstack/react-router';
 import { useEffect } from 'react';
-import { InstallCard, OfflinePage, UpdatePrompt, useOfflineGate } from '@/features/pwa';
+import { InstallCard, OfflinePage, useOfflineGate } from '@/features/pwa';
 import { TrustBanner } from '@/features/trust/TrustBanner';
 import { loadEnglishRest } from '@/i18n/messages';
 import { guardRoute } from '@/lib/session/guard';
@@ -26,7 +26,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 
 /**
  * Every route: the page plus the transfers dock (shared upload/download queue,
- * D-011) and the PWA layer (offline page, update prompt, install card).
+ * D-011) and the PWA layer (offline page, silent updates, install card).
  */
 function Root() {
   const { offline, retry } = useOfflineGate();
@@ -40,7 +40,6 @@ function Root() {
       <SessionRuntime />
       <LazyUpgradeHost />
       <LazyTransfersDock />
-      <UpdatePrompt />
       <InstallCard />
     </>
   );

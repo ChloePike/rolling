@@ -1,6 +1,4 @@
 {
-  "pwa.update.message": "새 버전이 준비됐어요",
-  "pwa.update.reload": "새로고침",
   "pwa.offline.title": "오프라인 상태예요",
   "pwa.offline.body": "캔버스 정리와 타임라인 편집은 계속할 수 있어요. 생성과 내보내기는 연결이 필요해요.",
   "pwa.offline.retry": "다시 시도",

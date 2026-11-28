@@ -8,8 +8,8 @@
  * here, so the browser handles them as if there were no worker.
  *
  * Updates: a new worker installs and waits. It activates only when the page
- * posts `SKIP_WAITING` (the user pressed Reload in the update prompt), never
- * on its own mid-session.
+ * posts `SKIP_WAITING` at a safe moment (lib/pwa/register.ts: the next page
+ * change, or a hidden tab; never mid-upload), and the page then loads the new version.
  */
 import { clientsClaim } from 'workbox-core';
 import { ExpirationPlugin } from 'workbox-expiration';

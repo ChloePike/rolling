@@ -1,6 +1,4 @@
 {
-  "pwa.update.message": "新版本已就绪",
-  "pwa.update.reload": "重新加载",
   "pwa.offline.title": "当前离线",
   "pwa.offline.body": "你仍可以整理画布、编辑时间线。生成和导出需要联网。",
   "pwa.offline.retry": "重试",
