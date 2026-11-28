@@ -36,7 +36,7 @@ test.beforeEach(async ({ page, baseURL }) => {
   }
 });
 
-test('1–2: Home agent brief with the TV ad skill and an @ product photo → plan options → Build on canvas opens the project', async ({ page }) => {
+test('1–2: Home agent brief with the TV ad skill and an @ product photo → its own canvas → plan options in the agent panel → Build on canvas builds into it', async ({ page }) => {
   await page.goto('/');
   const brief = page.locator('#brief');
   await expect(brief).toBeVisible();
@@ -51,14 +51,16 @@ test('1–2: Home agent brief with the TV ad skill and an @ product photo → pl
   }
   await brief.fill(BRIEF);
   await brief.press('Enter');
-  const plan = page.getByTestId('home-plan');
-  await expect(plan, 'the agent answers with a plan proposal (2–3 options)').toBeVisible({ timeout: 180_000 });
-  const options = page.locator('[data-testid^="home-plan-option-"]');
-  expect(await options.count()).toBeGreaterThanOrEqual(1);
-  if ((await options.count()) > 1) await options.nth(1).click();
-  await plan.getByRole('button', { name: 'Build on canvas' }).click();
+  // D-038: the brief opens its own canvas; the conversation and the plan card are in the agent panel.
   await page.waitForURL(/\/p\/prj_/, { timeout: 60_000 });
   projectId = /\/p\/(prj_[A-Za-z0-9]+)/.exec(page.url())![1]!;
+  const plan = page.locator('aside[aria-label="Agent"]').getByTestId('plan-card');
+  await expect(plan, 'the agent answers with a plan proposal (2–3 options)').toBeVisible({ timeout: 180_000 });
+  const shuffle = plan.getByRole('button', { name: /Shuffle/ });
+  if (await shuffle.isVisible().catch(() => false)) await shuffle.click();
+  await plan.getByRole('button', { name: 'Build on canvas' }).click();
+  await expect(plan.getByRole('status')).toContainText('Nothing was charged', { timeout: 60_000 });
+  expect(page.url()).toContain(`/p/${projectId}`);
 });
 
 test('3: the canvas shows script, keyframe and video nodes left to right, connected; survives a reload and shows in a second tab', async ({ page, context }) => {

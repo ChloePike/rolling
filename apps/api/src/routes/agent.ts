@@ -15,7 +15,7 @@ import { newId } from "@rolling/core/ids";
 import type { AgentCaller, AgentError, ApplyResult, ThreadView, TurnSummary } from "../do/AgentSession";
 import { allowancePeriod, allowanceView } from "../agent/allowance";
 import type { AppEnv } from "../env";
-import { requireUser, type AuthContext } from "../auth/context";
+import { requireRole, requireUser, type AuthContext } from "../auth/context";
 import { requireGenerator, trialAgentTurn, trialAllowanceView } from "../auth/trial";
 import { projectAccess } from "../lib/access";
 import { ApiError } from "../lib/errors";
@@ -52,6 +52,9 @@ const SendMessage = z.object({
   autoBudget: z.number().int().min(0).max(AUTO_BUDGET.max).optional(),
 });
 
+/** D-038: move a Home conversation onto a canvas (an existing project, or a new one). */
+const AttachThread = z.object({ projectId: Id.optional(), title: z.string().trim().min(1).max(120).optional() });
+
 const UndoAuto = z.union([z.object({ changeId: z.string().min(1).max(160) }), z.object({ turnId: z.string().min(1).max(80) })]);
 
 interface ThreadRow {
@@ -74,6 +77,7 @@ interface SessionApi {
   apply(proposalId: string, caller: AgentCaller, opts: { optionIndex?: number; title?: string }): Promise<ApplyResult | AgentError>;
   discard(proposalId: string, caller: AgentCaller): Promise<{ ok: true } | AgentError>;
   undoAuto(caller: AgentCaller, target: { changeId?: string; turnId?: string }): Promise<unknown>;
+  attach(caller: AgentCaller, opts: { projectId?: string; title?: string }): Promise<{ ok: true; projectId: string; thread: ThreadView } | AgentError>;
   fetch(req: Request): Promise<Response>;
 }
 
@@ -197,7 +201,19 @@ export const agent = new Hono<AppEnv>()
     );
     return c.json(result);
   })
-  .post("/threads/:id/auto/undo", validate("param", IdParam), validate("json", UndoAuto), async (c) => {
+  .post("/threads/:id/attach", validate("param", IdParam), validate("json", AttachThread), async (c) => {
+    // D-038: a Home conversation without a project continues on a canvas. Moving it is free (no turn runs).
+    const auth = requireRole(c, "editor");
+    const row = await threadRow(c, auth, c.req.valid("param").id);
+    const body = c.req.valid("json");
+    if (body.projectId) {
+      const access = await projectAccess(c, auth, body.projectId, "editor");
+      if (access.project.workspace_id !== row.workspace_id) throw new ApiError(404, "NOT_FOUND", "Project not found", { projectId: body.projectId });
+    }
+    const res = ok(await session(c.env, row.id).attach(callerOf(auth), { ...(body.projectId ? { projectId: body.projectId } : {}), ...(body.title ? { title: body.title } : {}) }));
+    return c.json({ projectId: res.projectId, thread: res.thread });
+  })
+  .post("/threads/:id/auto/undo",validate("param", IdParam), validate("json", UndoAuto), async (c) => {
     // Undo is free: any editor of the thread's workspace may undo what Auto applied.
     const auth = requireUser(c);
     const row = await threadRow(c, auth, c.req.valid("param").id);

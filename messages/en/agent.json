@@ -32,7 +32,6 @@
   "agent.auto.run.refused.SAFETY_BLOCKED": "Not started: this can’t be made here",
   "agent.auto.run.refused.blocked": "Not started: some nodes can’t run",
   "agent.auto.run.refused.other": "Not started",
-  "agent.auto.homeBuilt": "Built on a new canvas",
   "agent.prefs.mode": "Agent mode",
   "agent.prefs.mode.hint": "The mode Home and new projects start in. Each project remembers its own.",
   "agent.prefs.budget": "Auto run budget",

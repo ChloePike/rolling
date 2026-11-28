@@ -1,6 +1,6 @@
 import { cx, Skeleton, staggerStyle, useIndicator, useToast } from '@rolling/ui';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { Suspense, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import {
   COMMAND,
@@ -16,16 +16,17 @@ import {
 } from '@/features/prompt';
 import { useRunFlow, type RunRequest } from '@/features/overlays';
 import { UpgradeGate } from '@/lib/upgrade/store';
+import type { UpgradeReason } from '@/lib/upgrade/reasons';
 import { uploadReferences } from '@/features/prompt';
 import { useTemplates } from '@/features/templates/api';
 import { useCheckoutResume, useSession } from '@/lib/session';
-import { useQueryClient } from '@tanstack/react-query';
-import { agentFailure, type AgentFailure } from '@/features/overlays/agent';
 import { isMockApi, savePendingAction, takePendingAction } from '@/features/overlays/backend';
 import { retryRun, type PromptSpec } from '@/features/overlays/runs';
 import { downloadAsset } from '@/features/overlays/media';
 import { noteFinishedVideo } from '@/lib/pwa/install';
 import { useSendToCanvas } from '@/features/canvas/target';
+import { saveHandoff, type AgentHandoff } from '@/features/canvas/agent/handoff';
+import { writeScopeMode } from '@/features/agent-mode/useAgentMode';
 import { useToolQuote } from '@/features/tools/shared/useToolQuote';
 import { useAgentAllowance } from '@/lib/session/agentAllowance';
 import type { TemplateSummary } from '@/features/templates/types';
@@ -45,11 +46,8 @@ import { LoadError } from '@/lib/loading';
 import { HomeRunList } from './runs/HomeRunList';
 import { isActive, type CardStatus, type HomeRunCard } from './runs/model';
 import { useHomeRuns } from './runs/useHomeRuns';
-import { useHomeThread, type SendInput } from './agent/useHomeThread';
-import { lazyComponent, lazyLayer, preloadWhenIdle } from '@/lib/lazy';
-
-/** The agent conversation loads on demand (bundle splitting): at once in agent mode, else when idle. */
-const HomeThreadView = lazyComponent(() => import('./agent/HomeThread'), (m) => m.HomeThreadView);
+import { agentGate } from './agentGate';
+import { lazyLayer } from '@/lib/lazy';
 
 /** Loaded on demand (bundle splitting): opens on a template click. */
 const TemplatePreview = lazyLayer(
@@ -79,6 +77,9 @@ interface PendingHomeRun {
   spec?: PromptSpec;
 }
 
+/** D-038: an agent brief from Home, kept by the paywall (D-007) and handed to its new canvas. */
+type AgentBrief = Omit<AgentHandoff, 'projectId' | 'at'>;
+
 const FEED_CATS = ['forYou', 'product', 'talking', 'drama', 'holiday'] as const;
 type FeedCat = (typeof FEED_CATS)[number];
 
@@ -90,7 +91,10 @@ const FEED_TONES = ['var(--c-tone-plum)', 'var(--c-tone-teal)', 'var(--c-tone-in
 let cardSeq = 0;
 const cardKey = () => `hr_${Date.now().toString(36)}${(cardSeq++).toString(36)}`;
 
-/** Home (Main.dc.html): prompt box with modes, quick entries, run cards or the agent conversation, recent projects and the Inspiration feed. */
+/**
+ * Home (Main.dc.html): prompt box with modes, quick entries, run cards, recent projects and the Inspiration feed.
+ * An Agent-mode brief opens its own canvas, where the agent panel holds the conversation (D-038).
+ */
 export function HomePage() {
   const intl = useIntl();
   const navigate = useNavigate();
@@ -113,20 +117,18 @@ export function HomePage() {
   const commandGroups = allGroups.map((g) =>
     g.id === 'settings' ? { ...g, items: g.items.filter((c) => c.id === COMMAND.clear || c.pillId) } : g,
   );
-  const { isMember } = useSession();
+  const { canGenerate } = useSession();
   const toast = useToast();
   const createProject = useCreateProject();
   const toCanvas = useSendToCanvas();
-  // D-007: sending to the agent (or generating) needs a plan. Non-members get
-  // the join paywall; the brief, refs and skill stay in the prompt box and the
-  // send resumes after checkout.
+  // D-007: sending to the agent (or generating) needs a plan (or the D-022 trial). Others get
+  // the join paywall before anything is made; the brief, refs and skill stay in the prompt box
+  // and the send resumes after checkout.
   const [paywall, setPaywall] = useState(false);
   // Image, video and avatar sends go through the shared run flow (paywalls, RunConfirm by threshold).
   const flow = useRunFlow({ surface: 'home' });
   const runs = useHomeRuns();
   const [result, setResult] = useState<HomeResultState | null>(null);
-  const [building, setBuilding] = useState<string | null>(null);
-  const qc = useQueryClient();
   const t = (id: string, v?: Record<string, string | number>) => intl.formatMessage({ id }, v);
   const mock = isMockApi();
 
@@ -309,70 +311,60 @@ export function HomePage() {
     startRun({ mode, brief, title: runTitle, cost: shownCredits ?? credits ?? 0, actionLabel: t(`home.send.${mode}`), run: { kind, meta, modelName, aspect, params }, refs, ...(spec ? { spec } : {}) });
   };
 
-  /* ---------- Agent: a conversation under the prompt box ---------- */
+  /* ---------- Agent (D-038): a brief opens its own canvas, where the agent panel continues ---------- */
 
-  const failureText = (f: AgentFailure, input: SendInput): { text: string; retryable: boolean } | null => {
-    switch (f.kind) {
-      case 'join':
-        // D-007: keep the brief; it is sent again after checkout.
-        savePendingAction('home.agent', { brief: input.text, skill: input.skill ?? null });
-        setText(input.text);
-        setPaywall(true);
-        return null;
-      case 'allowance':
-        return { text: t('home.agent.allowanceUsedUp', { date: f.resetsAt ? intl.formatDate(f.resetsAt, { month: 'short', day: 'numeric' }) : '' }), retryable: false };
-      case 'rateLimited':
-        return { text: t('home.agent.rateLimited', { seconds: f.retryAfter ?? 0 }), retryable: true };
-      case 'busy':
-        return { text: t('home.agent.busy'), retryable: true };
-      case 'offline':
-        return { text: t('home.agent.offline'), retryable: true };
-      case 'stale':
-        return { text: t('home.agent.stale'), retryable: false };
-      default:
-        return { text: f.message === 'safety_blocked' ? t('home.agent.safety') : t('home.agent.error'), retryable: f.message !== 'safety_blocked' };
-    }
+  const [opening, setOpening] = useState(false);
+  const [paywallReason, setPaywallReason] = useState<UpgradeReason>({ kind: 'agent' });
+  const keepBrief = (b: AgentBrief, reason: UpgradeReason) => {
+    // D-007: the brief stays in the prompt box and goes out after checkout.
+    savePendingAction('home.agent', b);
+    setPaywallReason(reason);
+    setPaywall(true);
   };
-  // D-021 Auto: "Build on canvas" happens without a click; open the canvas it built (runs start there within the budget).
-  const autoBuilt = (b: { projectId: string | null; proposalId: string; title: string }) => {
-    toast.show({ message: t('agent.auto.homeBuilt') });
-    if (b.projectId) {
-      void qc.invalidateQueries({ queryKey: ['projects'] });
-      void navigate({ to: '/p/$projectId', params: { projectId: b.projectId } });
-    } else build(b.proposalId, 0, b.title);
-  };
-  const thread = useHomeThread(failureText, (b) => autoBuiltRef.current(b));
-  const autoBuiltRef = useRef(autoBuilt);
-  autoBuiltRef.current = autoBuilt;
-  const [newCanvas, newCanvasBusy] = useNewCanvas();
-  const askAgent = (brief: string, refIds: string[], skillName: string | null) =>
-    void thread.send({ text: brief, refs: refIds, skill: skillName, llm: llm.id, settings: agentSettings, mode: agentMode.mode, ...(agentMode.mode === 'auto' ? { autoBudget: agentMode.budget } : {}) });
 
-  const build = (proposalId: string, optionIndex: number, optionTitle?: string) => {
-    setBuilding(proposalId);
-    if (mock) {
-      // Mock: the plan becomes a project (no spend) and its canvas opens.
-      void thread.build(proposalId, optionIndex).then(() =>
-        createProject({ title: optionTitle ?? title(), kind: 'canvas' }).then(({ id }) => {
-          setBuilding(null);
-          void navigate({ to: '/p/$projectId', params: { projectId: id } });
-        }),
-      );
-      return;
+  /** The current prompt box as an agent brief: text (or the skill's name), `@` refs and attachments, pills, mode and budget. */
+  const agentBrief = (): AgentBrief => ({
+    text: text.trim() || skill?.name || '',
+    refs: refs.map((r) => r.id),
+    refNames: refs.map((r) => r.name),
+    skill: skill ? `/${skill.name}` : null,
+    llm: llm.id,
+    settings: agentSettings,
+    mode: agentMode.mode,
+    ...(agentMode.mode === 'auto' ? { autoBudget: agentMode.budget } : {}),
+  });
+
+  /**
+   * Makes a project titled after the brief, hands the brief over and opens its canvas with the agent panel
+   * (CanvasPage opens it), where it is sent as the thread's first message. A workspace that cannot use the
+   * agent gets the upgrade modal here first, before anything is made (D-007, D-022 trial limits).
+   */
+  const openAgent = async (b: AgentBrief, opts: { joined?: boolean } = {}) => {
+    if (opening) return;
+    // Right after checkout the session may not show the plan yet: the server check below decides.
+    if (!canGenerate && !opts.joined) return keepBrief(b, { kind: 'agent' });
+    setOpening(true);
+    try {
+      if (!mock) {
+        const gate = await agentGate(b.llm);
+        if (gate !== 'ok') {
+          setOpening(false);
+          return keepBrief(b, gate === 'trial-agent' ? { kind: 'trial-agent' } : { kind: 'agent' });
+        }
+      }
+      const runTitle = b.text.split('\n')[0]!.slice(0, 80) || t('home.project.untitled');
+      const { id } = await createProject({ title: runTitle, kind: 'canvas' });
+      writeScopeMode(`canvas:${id}`, b.mode);
+      saveHandoff({ ...b, projectId: id });
+      setText('');
+      setRefs([]);
+      setSkill(null);
+      await navigate({ to: '/p/$projectId', params: { projectId: id } });
+    } catch {
+      toast.show({ message: t('home.project.createFailed') });
+    } finally {
+      setOpening(false);
     }
-    thread.build(proposalId, optionIndex, optionTitle).then(
-      (r) => {
-        setBuilding(null);
-        void qc.invalidateQueries({ queryKey: ['projects'] });
-        if (r.projectId) void navigate({ to: '/p/$projectId', params: { projectId: r.projectId } });
-      },
-      (e: unknown) => {
-        setBuilding(null);
-        const f = agentFailure(e);
-        if (f.kind === 'join') return setPaywall(true);
-        toast.show({ message: t(f.kind === 'stale' ? 'home.agent.stale' : 'home.agent.error') });
-      },
-    );
   };
 
   // A result viewer action (Regenerate, …) interrupted by a paywall, replayed once the viewer is open again.
@@ -381,11 +373,8 @@ export function HomePage() {
   // What a paywall interrupted continues once the plan is active (also after the checkout redirect):
   // a brief for the agent, a generation, or a result viewer action.
   useCheckoutResume(() => {
-    const pending = takePendingAction<{ brief: string; skill: string | null }>('home.agent');
-    if (pending) {
-      setText('');
-      askAgent(pending.brief, [], pending.skill);
-    }
+    const pending = takePendingAction<AgentBrief>('home.agent');
+    if (pending?.text) void openAgent(pending, { joined: true });
     const gen = takePendingAction<PendingHomeRun>('home.run');
     if (gen) {
       setMode(gen.mode);
@@ -407,15 +396,7 @@ export function HomePage() {
       return;
     }
     if (mode !== 'agent') return generate();
-    if (thread.busy) return void toast.show({ message: t('home.agent.busy') });
-    // Mock non-members: the join paywall first (real mode: the API answers NO_PLAN).
-    if (mock && !isMember) return setPaywall(true);
-    const brief = text.trim() || skill?.name || '';
-    // The message moves into the conversation; the prompt box is free for the next one.
-    setText('');
-    const refIds = refs.map((r) => r.id);
-    setRefs([]);
-    askAgent(brief, refIds, skill?.name ?? null);
+    void openAgent(agentBrief());
   };
 
   const onCommand = (c: PromptCommand) => {
@@ -429,15 +410,8 @@ export function HomePage() {
     }
   };
 
-  const llmAllowance = (() => {
-    if (!llm.id) return null;
-    if (allowance.isUnlimited(llm.id)) return t('home.agent.unlimited');
-    const left = allowance.turnsLeftFor(llm.id);
-    return left === null ? null : t('home.agent.turnsLeft', { count: left });
-  })();
   const allowanceNotice = allowance.exhausted ? t('home.agent.allowanceUsedUp', { date: intl.formatDate(allowance.resetsAt, { month: 'short', day: 'numeric' }) }) : null;
-  const showThread = mode === 'agent' && thread.messages.length > 0;
-  useEffect(() => (mode === 'agent' ? void HomeThreadView.preload() : preloadWhenIdle(HomeThreadView)), [mode]);
+  const [newCanvas, newCanvasBusy] = useNewCanvas();
 
   return (
     <>
@@ -485,7 +459,8 @@ export function HomePage() {
           onUploaded={(items) => toast.show({ message: t('home.upload.added', { n: items.length }) })}
           cost={
             mode === 'agent' ? (
-              <CostLine label={intl.formatMessage({ id: 'home.cost.planningFree' })} />
+              // While the canvas opens (D-038): a short status, never a number.
+              <CostLine label={intl.formatMessage({ id: opening ? 'home.agent.opening' : 'home.cost.planningFree' })} />
             ) : blocked ? (
               // Never a number when the quote is blocked: the reason instead (PROMPT-2).
               <CostLine label={blocked} />
@@ -495,39 +470,16 @@ export function HomePage() {
               <CostLine label={intl.formatMessage({ id: 'home.cost.quoting' })} />
             ) : null
           }
+          submitDisabled={mode === 'agent' && opening}
           onSubmit={submit}
         />
-        {mode === 'agent' && allowance.exhausted && !showThread ? (
+        {mode === 'agent' && allowance.exhausted ? (
           <p role="status" className={styles.allowanceNotice}>
             {allowanceNotice}
           </p>
         ) : null}
-        {showThread ? (
-          <Suspense fallback={null}>
-            <HomeThreadView
-              messages={thread.messages}
-              busy={thread.busy}
-              llm={{ id: llm.id, name: llm.name, allowance: llmAllowance }}
-              notice={allowanceNotice}
-              building={building}
-              onSend={(reply) => {
-                if (mock && !isMember) {
-                  setText(reply);
-                  return setPaywall(true);
-                }
-                askAgent(reply, [], null);
-              }}
-              onStop={thread.stop}
-              onRetry={thread.retry}
-              onBuild={(p, i) => build(p.id, i, p.body.kind === 'plan' ? p.body.options[i]?.title : undefined)}
-              onDiscard={(p) => void thread.discard(p.id)}
-              onNew={thread.reset}
-              recent={{ items: thread.recent, currentId: thread.id, onOpen: thread.loadRecent, onPick: (id) => void thread.open(id).catch(() => toast.show({ message: intl.formatMessage({ id: 'home.agent.recentFailed' }) })) }}
-            />
-          </Suspense>
-        ) : null}
-        {mode !== 'agent' || !showThread ? <HomeRunList cards={runs.cards} actions={cardActions} onClearFinished={() => runs.cards.filter((c) => !isActive(c)).forEach((c) => runs.remove(c.key))} /> : null}
-        <nav className={cx(styles.entries, (showThread || (mode !== 'agent' && runs.cards.length > 0)) && styles.entriesAfter)} aria-label={intl.formatMessage({ id: 'home.start.label' })}>
+        <HomeRunList cards={runs.cards} actions={cardActions} onClearFinished={() => runs.cards.filter((c) => !isActive(c)).forEach((c) => runs.remove(c.key))} />
+        <nav className={cx(styles.entries, mode !== 'agent' && runs.cards.length > 0 && styles.entriesAfter)} aria-label={intl.formatMessage({ id: 'home.start.label' })}>
           {ENTRIES.map((e) => (
             <Link key={e.key} to={e.to} className={styles.entry} onClick={e.key === 'blank' ? newCanvas : undefined} aria-busy={e.key === 'blank' && newCanvasBusy ? true : undefined}>
               <span className={styles.entryIcon}>
@@ -546,17 +498,15 @@ export function HomePage() {
           requestAnimationFrame(() => document.getElementById('brief')?.focus());
         }}
       />
-      {/* No plan (D-007): the shared upgrade modal; the kept brief goes to the agent once the plan is active. */}
+      {/* No plan (D-007), or the trial's agent limits (D-022): the shared upgrade modal; the kept brief opens its canvas once the plan is active. */}
       <UpgradeGate
         open={paywall}
-        reason={{ kind: 'agent' }}
+        reason={paywallReason}
         onClose={() => setPaywall(false)}
         onJoined={() => {
-          takePendingAction('home.agent');
-          const brief = text.trim();
-          if (!brief) return;
-          setText('');
-          askAgent(brief, refs.map((r) => r.id), skill?.name ?? null);
+          const kept = takePendingAction<AgentBrief>('home.agent');
+          const brief = kept?.text ? kept : text.trim() ? agentBrief() : null;
+          if (brief) void openAgent(brief, { joined: true });
         }}
       />
       {flow.element}

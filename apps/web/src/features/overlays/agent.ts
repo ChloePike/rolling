@@ -256,6 +256,21 @@ export async function recentThreads(surface: AgentSurface, first = 8): Promise<T
   return Array.isArray(r?.agentThreads) ? r.agentThreads : [];
 }
 
+/** The workspace's canvas conversations on one project, newest first (`GET /api/agent/threads?projectId=`; editor threads left out). */
+export async function projectThreads(projectId: string, first = 20): Promise<Array<{ id: string; title: string | null; updatedAt: number }>> {
+  const r = await apiFetch<{ items: Array<{ id: string; surface: string; title: string | null; updatedAt: number }> }>(`/agent/threads?projectId=${encodeURIComponent(projectId)}&first=${first}`);
+  return Array.isArray(r?.items) ? r.items.filter((t) => t.surface === 'canvas') : [];
+}
+
+/**
+ * D-038: moves a Home conversation that has no project onto a canvas
+ * (`POST /api/agent/threads/:id/attach`); it then continues in that project's agent panel.
+ */
+export async function attachThread(threadId: string, projectId: string): Promise<Thread> {
+  const r = await apiFetch<{ projectId: string; thread: Thread }>(`/agent/threads/${encodeURIComponent(threadId)}/attach`, { method: 'POST', body: { projectId } });
+  return r.thread;
+}
+
 export function forgetThread(key: string) {
   try {
     localStorage.removeItem(threadKey(key));

@@ -32,7 +32,6 @@
   "agent.auto.run.refused.SAFETY_BLOCKED": "시작하지 않았어요: 여기서는 만들 수 없는 콘텐츠예요",
   "agent.auto.run.refused.blocked": "시작하지 않았어요: 실행할 수 없는 노드가 있어요",
   "agent.auto.run.refused.other": "시작하지 않았어요",
-  "agent.auto.homeBuilt": "새 캔버스에 만들었어요",
   "agent.prefs.mode": "에이전트 모드",
   "agent.prefs.mode.hint": "홈과 새 프로젝트가 시작하는 모드예요. 각 프로젝트는 자신의 모드를 기억해요.",
   "agent.prefs.budget": "자동 실행 예산",

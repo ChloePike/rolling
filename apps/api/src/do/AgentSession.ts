@@ -746,12 +746,7 @@ export class AgentSession extends DurableObject<Env> {
         if (!option) return { ok: false, code: "VALIDATION_FAILED", message: "No such option", data: { optionIndex: index, options: body.options.length } };
         let projectId = this.meta("project_id");
         if (!projectId) {
-          projectId = newId("project");
-          const title = (opts.title ?? option.title).slice(0, 120) || "Untitled project";
-          await this.env.DB.prepare("INSERT INTO projects (id, workspace_id, title, kind, node_count, created_by, updated_at) VALUES (?, ?, ?, 'canvas', 0, ?, ?)")
-            .bind(projectId, caller.workspaceId, title, caller.userId, Date.now())
-            .run();
-          await this.room(projectId).init({ projectId, workspaceId: caller.workspaceId, title, createdBy: caller.userId });
+          projectId = await this.newProject(caller, opts.title ?? option.title);
           this.attachProject(projectId);
         }
         const graph = await this.room(projectId).getGraph(rc);
@@ -1029,6 +1024,41 @@ export class AgentSession extends DurableObject<Env> {
   private room(projectId: string): RoomApi {
     // The typed stub (M3); RoomApi is the subset the agent uses, kept loose on results.
     return projectRoom(this.env, projectId) as unknown as RoomApi;
+  }
+
+  /** A new canvas project in the caller's workspace (a Home plan built, or a Home conversation moved onto a canvas). */
+  private async newProject(caller: AgentCaller, title: string): Promise<string> {
+    const projectId = newId("project");
+    const name = title.trim().slice(0, 120) || "Untitled project";
+    await this.env.DB.prepare("INSERT INTO projects (id, workspace_id, title, kind, node_count, created_by, updated_at) VALUES (?, ?, ?, 'canvas', 0, ?, ?)")
+      .bind(projectId, caller.workspaceId, name, caller.userId, Date.now())
+      .run();
+    await this.room(projectId).init({ projectId, workspaceId: caller.workspaceId, title: name, createdBy: caller.userId });
+    return projectId;
+  }
+
+  /**
+   * D-038: moves a Home conversation that has no project onto a canvas, where it continues in
+   * that project's agent panel (an open plan then builds into that project). The route checks
+   * editor access to `projectId`; without one a new canvas project is made, titled `title` or
+   * after the first message.
+   */
+  async attach(caller: AgentCaller, opts: { projectId?: string; title?: string } = {}): Promise<{ ok: true; projectId: string; thread: ThreadView } | AgentError> {
+    const denied = this.denied(caller.workspaceId);
+    if (denied) return denied;
+    if (caller.role === "viewer") return { ok: false, code: "FORBIDDEN", message: "Your role does not allow this" };
+    const current = this.meta("project_id");
+    if (current) return { ok: false, code: "CONFLICT", message: "This conversation already belongs to a project", data: { projectId: current } };
+    if (this.meta("surface") !== "home") return { ok: false, code: "VALIDATION_FAILED", message: "Only Home conversations can move to a canvas" };
+    if (this.running) return { ok: false, code: "CONFLICT", message: "A turn is already running in this thread", data: { turnId: this.running.turnId } };
+    const firstUser = this.loadMessages(100).find((m) => m.role === "user")?.content ?? "";
+    const projectId = opts.projectId ?? (await this.newProject(caller, opts.title ?? firstUser.split("\n")[0]!.slice(0, 80)));
+    this.setMeta("project_id", projectId);
+    this.setMeta("canvas_id", canvasIdFor(projectId));
+    this.setMeta("surface", "canvas");
+    // Awaited (unlike a plan build): the thread lists under its project as soon as this returns.
+    await this.env.DB.prepare("UPDATE agent_threads SET project_id = ?, surface = 'canvas', updated_at = ? WHERE id = ?").bind(projectId, Date.now(), this.meta("thread_id")).run();
+    return { ok: true, projectId, thread: this.view() };
   }
 
   private attachProject(projectId: string): void {

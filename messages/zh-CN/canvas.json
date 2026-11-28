@@ -372,5 +372,13 @@
   "canvas.toast.assetReplaced": "已替换为 {name}。",
   "canvas.drop.hint": "松开即可上传到我的素材并添加到画布",
   "canvas.drop.uploading": "{n, plural, one {正在上传 # 个文件到我的素材。} other {正在上传 # 个文件到我的素材。}}",
-  "canvas.drop.refused": "{n, plural, one {# 个文件无法放到画布上。} other {# 个文件无法放到画布上。}}"
+  "canvas.drop.refused": "{n, plural, one {# 个文件无法放到画布上。} other {# 个文件无法放到画布上。}}",
+  "canvas.agent.refs": "附带 {names}",
+  "canvas.agent.history.label": "对话",
+  "canvas.agent.history.loading": "正在加载…",
+  "canvas.agent.history.empty": "还没有其他对话",
+  "canvas.agent.history.untitled": "未命名对话",
+  "canvas.agent.history.fromHome": "来自首页 · {date}",
+  "canvas.agent.history.moveHint": "在此画布上继续",
+  "canvas.agent.history.failed": "无法打开该对话，请重试。"
 }

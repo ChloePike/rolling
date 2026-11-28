@@ -32,7 +32,6 @@
   "agent.auto.run.refused.SAFETY_BLOCKED": "開始できませんでした: ここでは作成できません",
   "agent.auto.run.refused.blocked": "開始できませんでした: 実行できないノードがあります",
   "agent.auto.run.refused.other": "開始できませんでした",
-  "agent.auto.homeBuilt": "新しいキャンバスに作成しました",
   "agent.prefs.mode": "エージェントモード",
   "agent.prefs.mode.hint": "ホームと新規プロジェクトで最初に使うモードです。プロジェクトごとに設定は保持されます。",
   "agent.prefs.budget": "自動実行の予算",

@@ -372,5 +372,13 @@
   "canvas.toast.assetReplaced": "{name}に差し替えました。",
   "canvas.drop.hint": "ドロップしてマイ素材にアップロードし、キャンバスに追加",
   "canvas.drop.uploading": "{n, plural, one {#件のファイルをマイ素材にアップロードしています。} other {#件のファイルをマイ素材にアップロードしています。}}",
-  "canvas.drop.refused": "{n, plural, one {#件のファイルはキャンバスに追加できません。} other {#件のファイルはキャンバスに追加できません。}}"
+  "canvas.drop.refused": "{n, plural, one {#件のファイルはキャンバスに追加できません。} other {#件のファイルはキャンバスに追加できません。}}",
+  "canvas.agent.refs": "添付: {names}",
+  "canvas.agent.history.label": "会話",
+  "canvas.agent.history.loading": "読み込み中…",
+  "canvas.agent.history.empty": "ほかの会話はまだありません",
+  "canvas.agent.history.untitled": "無題の会話",
+  "canvas.agent.history.fromHome": "ホームから · {date}",
+  "canvas.agent.history.moveHint": "このキャンバスで続けます",
+  "canvas.agent.history.failed": "この会話を開けませんでした。もう一度お試しください。"
 }
