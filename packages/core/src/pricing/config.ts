@@ -476,9 +476,26 @@ export const QUALITY_REVIEW = {
 } as const;
 
 /** Worst-case gateway cost of reviewing `takes` outputs at a chat model's token prices (USD per token). */
-export function reviewMaxUsd(takes: number, picturesPerTake: number, references: number, price: { prompt: number; completion: number }): number {
+export function reviewMaxUsd(
+  takes: number,
+  picturesPerTake: number,
+  references: number,
+  price: { prompt: number; completion: number },
+  /** Tokens a take's fix may spend repeating the user's prompt (`reviewFixPromptTokens`). */
+  fixPromptTokens = 0,
+): number {
   const t = Math.max(1, Math.min(QUALITY_REVIEW.maxTakes, takes));
   const pictures = t * Math.min(QUALITY_REVIEW.maxPicturesPerTake, picturesPerTake) + Math.min(QUALITY_REVIEW.maxReferences, references);
-  const prompt = QUALITY_REVIEW.promptTokens + pictures * QUALITY_REVIEW.tokensPerPicture;
-  return prompt * price.prompt + t * QUALITY_REVIEW.outputTokensPerTake * price.completion;
+  const prompt = QUALITY_REVIEW.promptTokens + fixPromptTokens + pictures * QUALITY_REVIEW.tokensPerPicture;
+  return prompt * price.prompt + t * (QUALITY_REVIEW.outputTokensPerTake + fixPromptTokens) * price.completion;
+}
+
+/**
+ * Upper estimate of the tokens a fix spends repeating the prompt (it is "the whole revised prompt"):
+ * about one per CJK/kana/hangul character, one per 3 characters of other text; the brief caps the prompt at 2,500 characters.
+ */
+export function reviewFixPromptTokens(prompt: string): number {
+  const text = prompt.slice(0, 2500);
+  const wide = (text.match(/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff]/g) ?? []).length;
+  return Math.ceil(wide * 1.1 + (text.length - wide) / 3);
 }

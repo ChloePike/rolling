@@ -278,6 +278,14 @@ describe("what a trial can do", () => {
     expect(q).toMatchObject({ total: row("Key").credits + row("Shot").credits, balance: TRIAL.credits });
   });
 
+  it("answers a quote whose rows are all over the trial caps with no quote id (nothing to confirm)", async () => {
+    const { user, ws } = await trialUser("allblocked");
+    const { id } = await project(user, ws, [{ kind: "video", title: "HD", params: { ...SHOT, resolution: "720p" } }]);
+    const q = await quote(user, { projectId: id, scope: "all" });
+    expect(q.items[0]).toMatchObject({ action: "blocked", code: "trial_locked" });
+    expect(q).toMatchObject({ quoteId: null, expiresAt: null, total: 0 });
+  });
+
   it("runs on trial credits and refuses with NO_PLAN (trial used) when they do not cover the run", async () => {
     const { user, ws } = await trialUser("run");
     const { id, ids } = await project(user, ws, [{ kind: "image", title: "Key", params: IMAGE }]);

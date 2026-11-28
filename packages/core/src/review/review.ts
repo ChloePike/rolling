@@ -7,7 +7,7 @@
 import { collect, SafetyLlmError, visionModelsFor, type ChatCatalog } from '../safety/llm';
 import { tokenPrice } from '../models/chat';
 import type { ChatContentPart, LlmProvider } from '../models/types';
-import { QUALITY_REVIEW, reviewMaxUsd } from '../pricing/config';
+import { QUALITY_REVIEW, reviewFixPromptTokens, reviewMaxUsd } from '../pricing/config';
 import { buildReview, overallScore, ratioIssue, takeVerdict, withRatioCheck } from './decide';
 import { promptLocale } from '../generation/plan';
 import { parseReviewAnswer, REVIEW_DIMENSIONS, type ResultReview, type ReviewFix } from './types';
@@ -125,7 +125,7 @@ export class ReviewError extends Error {
  * The review models available, cheapest first, with the first one's worst-case
  * cost for this input; refuses (`too_costly`) above `QUALITY_REVIEW.maxUsdPerOutput` per take.
  */
-export function reviewPlan(available: ChatCatalog, input: Pick<ReviewInput, 'takes' | 'references'>): { models: string[]; maxUsd: number } {
+export function reviewPlan(available: ChatCatalog, input: Pick<ReviewInput, 'takes' | 'references'> & { prompt?: string }): { models: string[]; maxUsd: number } {
   let models: string[];
   try {
     models = visionModelsFor(available);
@@ -137,7 +137,7 @@ export function reviewPlan(available: ChatCatalog, input: Pick<ReviewInput, 'tak
   if (!price) throw new ReviewError('unavailable', `no token price for ${models[0]}`);
   const takes = Math.min(QUALITY_REVIEW.maxTakes, input.takes.length);
   const perTake = Math.max(1, ...input.takes.map((t) => t.pictures.length));
-  const maxUsd = reviewMaxUsd(takes, perTake, input.references.length, price);
+  const maxUsd = reviewMaxUsd(takes, perTake, input.references.length, price, reviewFixPromptTokens(input.prompt ?? ''));
   if (maxUsd > QUALITY_REVIEW.maxUsdPerOutput * takes) throw new ReviewError('too_costly', `review would cost up to $${maxUsd.toFixed(4)}`);
   return { models, maxUsd };
 }
@@ -165,7 +165,8 @@ export async function reviewOutputs(
           { role: 'system', content: system },
           { role: 'user', content: parts },
         ],
-        maxTokens: 200 + QUALITY_REVIEW.outputTokensPerTake * takes.length,
+        // Each take's fix may repeat the whole prompt: a long prompt gets the room, or the JSON is cut off.
+        maxTokens: 200 + (QUALITY_REVIEW.outputTokensPerTake + reviewFixPromptTokens(input.prompt)) * takes.length,
         idempotencyKey,
         json: true,
       },

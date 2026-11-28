@@ -278,6 +278,11 @@ export async function quoteRun(env: Env, auth: AuthContext, req: QuoteRequest): 
         blocked.add(item.ref);
       } else item.credits = p?.credits ?? 0;
     }
+    // Every priced row blocked (plan or trial caps): nothing to confirm, so no quote (api.md: quoteId null).
+    if (!stored.some((i) => i.action === "run")) {
+      quoteId = null;
+      expiresAt = null;
+    }
   } else {
     const b = await credits.balance();
     balance = b.plan + b.purchased + (b.trial ?? 0);

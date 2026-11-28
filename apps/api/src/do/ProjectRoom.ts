@@ -1015,13 +1015,15 @@ export class ProjectRoom extends DurableObject<Env> {
         const actor: ActivityActor = p.actor === "agent" ? { kind: "agent", id: userId, name: null } : { kind: "member", id: userId, name: null };
         this.pushActivity(this.collab.record("edit", actor, { count: 1, ...(type === "timeline.patched" ? { timeline: true } : {}) }));
       } else if ((type === "job.queued" || type === "job.progress") && typeof p.jobId === "string" && typeof p.nodeId === "string") {
+        // The run service marks nodes before their jobs exist (empty jobId); the real job's event records the start.
+        if (!p.jobId) return;
         if (this.startedJobs.has(p.jobId)) return;
         if (this.startedJobs.size > 1000) this.startedJobs.clear();
         this.startedJobs.add(p.jobId);
         if (this.collab.hasRunStarted(p.jobId)) return;
         this.recordRun("run.started", p.nodeId, { jobId: p.jobId });
       } else if (type === "job.failed" && typeof p.nodeId === "string") {
-        this.recordRun("run.failed", p.nodeId, { jobId: p.jobId ?? null, refunded: p.refunded ?? 0, reason: p.reason ?? null });
+        this.recordRun("run.failed", p.nodeId, { jobId: p.jobId || null, refunded: p.refunded ?? 0, reason: p.reason ?? null });
       }
     } catch (err) {
       console.warn(JSON.stringify({ msg: "project: activity not recorded", type, error: String(err) }));

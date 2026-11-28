@@ -267,6 +267,19 @@ describe("comments", () => {
     expect(edit.actor).toMatchObject({ kind: "member", id: owner.id, name: "Olive Owner" });
   });
 
+  it("records one run start per job: the pre-job mark with an empty job id adds none", async () => {
+    const owner = await person("cr", "Rae Runner");
+    const { projectId, nodeId } = await seedProject(owner.id);
+    const room = projectRoom(env, projectId);
+    await room.markRunning({ nodeId, jobId: "", progress: 0, status: "queued" });
+    await room.markRunning({ nodeId, jobId: "job_activity1", progress: 0, status: "queued" });
+    await room.markRunning({ nodeId, jobId: "job_activity1", progress: 0.5, status: "generating" });
+    const feed = await body(await api(owner.id, `/api/projects/${projectId}/activity`), 200);
+    const started = feed.entries.filter((e: any) => e.kind === "run.started");
+    expect(started).toHaveLength(1);
+    expect(started[0].data).toMatchObject({ jobId: "job_activity1" });
+  });
+
   it("broadcasts threads to subscribers and coalesces edits in the feed", async () => {
     const owner = await person("cb", "Bea");
     const { projectId, revision: start } = await seedProject(owner.id);

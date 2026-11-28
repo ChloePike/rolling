@@ -227,7 +227,7 @@ CreditAccount RPC (Durable Object per workspace, `billing/credits.ts` helpers `c
 
 | Method | Result / errors |
 |---|---|
-| `quote(items: { ref, modelId, request? }[], catalog: ListingModel[])` | `{ quoteId, items: [{ ref, modelId, credits, blocked?: unknown_model\|unpriced\|resolution_locked, lowestPlan? }], total, balance, balanceAfter, expiresAt }`; valid 10 min |
+| `quote(items: { ref, modelId, request? }[], catalog: ListingModel[])` | `{ quoteId, items: [{ ref, modelId, credits, blocked?: unknown_model\|unpriced\|resolution_locked\|trial_locked, lowestPlan?, trialLock? }], total, balance, balanceAfter, expiresAt }`; valid 10 min |
 | `hold({ quoteId, runId, userId, idemKey, refs?, memberMonthlyLimit? })` | `{ quoteId, runId, jobs: [{ jobId, ref, modelId, credits }], total, balance }` · `NO_PLAN`, `INSUFFICIENT_CREDITS { needed, balance }`, `MEMBER_LIMIT_REACHED { limit, used, needed }`, `CONCURRENCY_LIMIT { limit, active, requested }`, `QUOTE_EXPIRED`, `NOT_FOUND`. Plan credits first, then purchased. `refs` holds part of a quote; the rest can be held by the same run within 24 h |
 | `settle(jobId, actual, idemKey)` | `{ jobId, spent, returned, clamped, balance }`; spends `min(actual, hold)` · `JOB_CLOSED`, `NOT_FOUND` |
 | `release(jobId, reason, idemKey)` | `{ jobId, refunded, balance }` · `JOB_CLOSED`, `NOT_FOUND` |

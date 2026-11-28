@@ -254,6 +254,19 @@ describe('review call', () => {
     expect(reviewMessages(INPUT).system).toContain('never from "rendered_prompt"');
   });
 
+  it('leaves each take room to repeat a long prompt in its fix, so the JSON is not cut off', async () => {
+    const answer = JSON.stringify({ takes: [{ scores: { anatomy: 5, text: 5, adherence: 5, continuity: 5, framing: 5, artifacts: 5 }, issues: [], fix: null }, { scores: { anatomy: 5, text: 5, adherence: 5, continuity: 5, framing: 5, artifacts: 5 }, issues: [], fix: null }] });
+    const short = fakeLlm(answer);
+    await reviewOutputs(short.llm, chatModels, INPUT, 'k');
+    const long = fakeLlm(answer);
+    await reviewOutputs(long.llm, chatModels, { ...INPUT, prompt: 'A slow dolly in on a rainy street at night, '.repeat(50) }, 'k');
+    const cjk = fakeLlm(answer);
+    await reviewOutputs(cjk.llm, chatModels, { ...INPUT, prompt: '雨夜的街道，镜头缓慢推进。'.repeat(150) }, 'k');
+    expect(long.calls[0]!.maxTokens! - short.calls[0]!.maxTokens!).toBeGreaterThanOrEqual(2 * 700);
+    expect(cjk.calls[0]!.maxTokens!).toBeGreaterThanOrEqual(200 + 2 * (QUALITY_REVIEW.outputTokensPerTake + 1800));
+    expect(reviewPlan(chatModels, { ...INPUT, prompt: '雨'.repeat(2500) }).maxUsd / INPUT.takes.length).toBeLessThanOrEqual(QUALITY_REVIEW.maxUsdPerOutput);
+  });
+
   it('caps pictures per take and the number of takes', () => {
     const many = { ...INPUT, takes: Array.from({ length: 6 }, () => ({ pictures: ['a', 'b', 'c'] })) };
     const { parts } = reviewMessages(many);
