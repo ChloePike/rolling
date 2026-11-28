@@ -769,6 +769,14 @@ export function latinPromptLocale(prompt: string): string {
 export function promptLocale(prompt: string): string | undefined {
   // A language the prompt asks for by name wins; otherwise the prompt's own script decides.
   for (const [re, tag] of NAMED_LANGUAGES) if (re.test(prompt)) return tag;
+  return textLocale(prompt);
+}
+
+/**
+ * The language a text is written in (script, then a stopword check for Latin script), ignoring any
+ * language it names: "做一个英文广告" is Chinese. The agent replies in it (D-023: never the UI language).
+ */
+export function textLocale(prompt: string): string | undefined {
   const counts = { han: 0, kana: 0, hangul: 0, cyrillic: 0, arabic: 0, thai: 0 };
   for (const ch of prompt) {
     const c = ch.codePointAt(0)!;

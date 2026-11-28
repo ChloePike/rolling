@@ -5,6 +5,7 @@
 import type { ReviewSummary } from '@rolling/core/review';
 import type { ChatMessage, ToolDefinition } from '@rolling/core';
 import type { GraphState } from '@rolling/core/graph';
+import { textLocale } from '@rolling/core/generation';
 import { DEFAULT_AGENT_MODE, modeSection, type AgentMode } from './modes';
 import { SKILL_PROMPTS, SYSTEM_PROMPT } from './prompts.generated';
 import type { AccountSnapshot, AgentPorts, AssetItem } from './ports';
@@ -119,6 +120,34 @@ function languageName(tag: string): string {
   }
 }
 
+/**
+ * The language the agent writes in: the language of the user's message, never the UI language
+ * (owner decision, D-023). The UI language only covers a message with no words (a number, a link).
+ */
+export function replyLanguage(text: string, earlierUserTexts: string[], uiLanguage: string): string {
+  // A short Latin-script reply ("ok", "go with 2") or one with no words keeps the thread's language.
+  const decisive = (t: string) => {
+    const tag = textLocale(t);
+    if (!tag) return undefined;
+    const latin = !/[^\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]/u.test(t);
+    return latin && t.trim().split(/\s+/).length < 4 ? undefined : tag;
+  };
+  for (const t of [text, ...earlierUserTexts]) {
+    const tag = decisive(t);
+    if (tag) return tag;
+  }
+  return textLocale(text) ?? uiLanguage;
+}
+
+/** The thread's user messages, newest first (their text only). */
+function earlierUserTexts(messages: readonly { role: string; content: unknown }[]): string[] {
+  return messages
+    .filter((m) => m.role === 'user' && typeof m.content === 'string')
+    .map((m) => m.content as string)
+    .reverse()
+    .slice(0, 6);
+}
+
 function proposalNote(p: Proposal): string {
   const cost = p.estimate.credits ? `, runs would cost ${p.estimate.credits} credits` : ', free';
   return `[proposal ${p.id} (${p.kind}), ${p.status}${cost}: ${p.summary}]`;
@@ -209,7 +238,7 @@ export async function buildContext(args: {
   ]);
 
   const skill = thread.skill ? SKILL_PROMPTS[thread.skill] : undefined;
-  const accountText = `# Account\n${JSON.stringify(accountView(account))}\nReply language: ${languageName(account.language)}.`;
+  const accountText = `# Account\n${JSON.stringify(accountView(account))}\nReply language: ${languageName(replyLanguage(input.text, earlierUserTexts(thread.messages), account.language))}.`;
   // Home plans choose video models every time: listing them here saves the models.capabilities round trip.
   const modelsText = thread.surface === 'home' ? await videoModelsSection({ ports, account, thread: { projectId: thread.projectId, canvasId: thread.canvasId, surface: thread.surface } }) : '';
   const mode = modeSection(args.mode ?? DEFAULT_AGENT_MODE, args.budget);
