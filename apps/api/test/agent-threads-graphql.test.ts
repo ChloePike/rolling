@@ -49,6 +49,11 @@ describe("GraphQL agentThreads", () => {
     expect(r.data.agentThreads.map((x: { id: string }) => x.id)).toEqual([`thr_b_${me}`, `thr_a_${me}`]);
     expect(r.data.agentThreads[0]).toMatchObject({ surface: "home", title: "Sneaker drop teaser", projectId: null });
     expect((await gql(me, Q, { surface: "home", first: 1 })).data.agentThreads).toHaveLength(1);
+    // projectless (D-038): a built Home thread (it has a project) never crowds out an older unbuilt one.
+    await insert(`thr_g_${me}`, ws, me, "home", "Built from Home", t + 1000, "prj_y");
+    const QP = `query ($surface: String!, $first: Int, $projectless: Boolean) { agentThreads(surface: $surface, first: $first, projectless: $projectless) { id } }`;
+    expect((await gql(me, QP, { surface: "home", first: 1 })).data.agentThreads.map((x: { id: string }) => x.id)).toEqual([`thr_g_${me}`]);
+    expect((await gql(me, QP, { surface: "home", first: 1, projectless: true })).data.agentThreads.map((x: { id: string }) => x.id)).toEqual([`thr_b_${me}`]);
     expect((await gql(me, Q, { surface: "elsewhere" })).errors?.[0]?.extensions?.code).toBe("VALIDATION_FAILED");
     expect((await gql(null, Q, { surface: "home" })).errors?.[0]?.extensions?.code).toBe("UNAUTHENTICATED");
   });

@@ -154,18 +154,24 @@ export const agent = new Hono<AppEnv>()
     );
     return c.json({ thread }, 201);
   })
-  .get("/threads", validate("query", z.object({ projectId: Id.optional(), first: z.coerce.number().int().min(1).max(50).default(20) })), async (c) => {
+  .get(
+    "/threads",
+    validate("query", z.object({ projectId: Id.optional(), first: z.coerce.number().int().min(1).max(50).default(20), mine: z.enum(["1", "true", "0", "false"]).optional() })),
+    async (c) => {
     const auth = requireUser(c);
-    const { projectId, first } = c.req.valid("query");
+    const { projectId, first, mine } = c.req.valid("query");
+    // `mine`: only the caller's own threads (the canvas panel restores one of these, never a teammate's).
+    const own = mine === "1" || mine === "true" ? auth.userId : null;
     const rows = await c.env.DB.prepare(
-      "SELECT * FROM agent_threads WHERE workspace_id = ? AND (? IS NULL OR project_id = ?) ORDER BY updated_at DESC LIMIT ?",
+      "SELECT * FROM agent_threads WHERE workspace_id = ? AND (? IS NULL OR project_id = ?) AND (? IS NULL OR created_by = ?) ORDER BY updated_at DESC LIMIT ?",
     )
-      .bind(auth.workspaceId, projectId ?? null, projectId ?? null, first)
+      .bind(auth.workspaceId, projectId ?? null, projectId ?? null, own, own, first)
       .all<ThreadRow>();
     return c.json({
       items: rows.results.map((r) => ({ id: r.id, projectId: r.project_id, surface: r.surface, skill: r.skill, title: r.title, updatedAt: r.updated_at })),
     });
-  })
+    },
+  )
   .get("/threads/:id", validate("param", IdParam), async (c) => {
     const auth = requireUser(c);
     const row = await threadRow(c, auth, c.req.valid("param").id);

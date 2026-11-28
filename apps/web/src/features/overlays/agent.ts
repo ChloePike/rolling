@@ -216,28 +216,6 @@ export async function existingThread(key: string): Promise<Thread | null> {
   }
 }
 
-/**
- * Whether this browser keeps a record for a surface key: a thread id, or `''` once the user started a
- * fresh conversation (New conversation, or a plan built on a canvas). Without one, Home falls back to
- * the user's latest thread on the server (another device).
- */
-export function hasThreadRecord(key: string): boolean {
-  try {
-    return localStorage.getItem(threadKey(key)) !== null;
-  } catch {
-    return false;
-  }
-}
-
-/** The user started over on this surface: no thread is restored here until the next one starts. */
-export function startFresh(key: string) {
-  try {
-    localStorage.setItem(threadKey(key), '');
-  } catch {
-    /* Storage unavailable. */
-  }
-}
-
 export interface ThreadSummary {
   id: string;
   projectId: string | null;
@@ -248,17 +226,22 @@ export interface ThreadSummary {
 }
 
 /** The signed-in user's recent conversations on a surface, newest first (GraphQL `agentThreads`). */
-export async function recentThreads(surface: AgentSurface, first = 8): Promise<ThreadSummary[]> {
+export async function recentThreads(surface: AgentSurface, first = 8, opts: { projectless?: boolean } = {}): Promise<ThreadSummary[]> {
   const r = await gql<{ agentThreads: ThreadSummary[] }>(
-    'query ($surface: String!, $first: Int) { agentThreads(surface: $surface, first: $first) { id projectId surface title updatedAt } }',
-    { surface, first },
+    'query ($surface: String!, $first: Int, $projectless: Boolean) { agentThreads(surface: $surface, first: $first, projectless: $projectless) { id projectId surface title updatedAt } }',
+    { surface, first, projectless: !!opts.projectless },
   );
   return Array.isArray(r?.agentThreads) ? r.agentThreads : [];
 }
 
-/** The workspace's canvas conversations on one project, newest first (`GET /api/agent/threads?projectId=`; editor threads left out). */
-export async function projectThreads(projectId: string, first = 20): Promise<Array<{ id: string; title: string | null; updatedAt: number }>> {
-  const r = await apiFetch<{ items: Array<{ id: string; surface: string; title: string | null; updatedAt: number }> }>(`/agent/threads?projectId=${encodeURIComponent(projectId)}&first=${first}`);
+/**
+ * The workspace's canvas conversations on one project, newest first (`GET /api/agent/threads?projectId=`; editor threads
+ * left out). `mine`: only the caller's own.
+ */
+export async function projectThreads(projectId: string, first = 20, opts: { mine?: boolean } = {}): Promise<Array<{ id: string; title: string | null; updatedAt: number }>> {
+  const r = await apiFetch<{ items: Array<{ id: string; surface: string; title: string | null; updatedAt: number }> }>(
+    `/agent/threads?projectId=${encodeURIComponent(projectId)}&first=${first}${opts.mine ? '&mine=1' : ''}`,
+  );
   return Array.isArray(r?.items) ? r.items.filter((t) => t.surface === 'canvas') : [];
 }
 
@@ -328,10 +311,6 @@ export async function sendTurn(
   } finally {
     off();
   }
-}
-
-export async function cancelTurn(threadId: string, turnId?: string): Promise<void> {
-  await apiFetch(`/agent/threads/${encodeURIComponent(threadId)}/cancel`, { method: 'POST', body: turnId ? { turnId } : {} });
 }
 
 export async function applyProposal(proposalId: string, body: { optionIndex?: number; title?: string } = {}): Promise<ApplyResult> {

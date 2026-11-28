@@ -20,7 +20,7 @@ import type { UpgradeReason } from '@/lib/upgrade/reasons';
 import { uploadReferences } from '@/features/prompt';
 import { useTemplates } from '@/features/templates/api';
 import { useCheckoutResume, useSession } from '@/lib/session';
-import { isMockApi, savePendingAction, takePendingAction } from '@/features/overlays/backend';
+import { hasPendingAction, isMockApi, savePendingAction, takePendingAction } from '@/features/overlays/backend';
 import { retryRun, type PromptSpec } from '@/features/overlays/runs';
 import { downloadAsset } from '@/features/overlays/media';
 import { noteFinishedVideo } from '@/lib/pwa/install';
@@ -314,6 +314,8 @@ export function HomePage() {
   /* ---------- Agent (D-038): a brief opens its own canvas, where the agent panel continues ---------- */
 
   const [opening, setOpening] = useState(false);
+  // The re-entrancy guard is a ref: two calls in one tick (the modal's onJoined, then the checkout resume) see it.
+  const openingRef = useRef(false);
   const [paywallReason, setPaywallReason] = useState<UpgradeReason>({ kind: 'agent' });
   const keepBrief = (b: AgentBrief, reason: UpgradeReason) => {
     // D-007: the brief stays in the prompt box and goes out after checkout.
@@ -340,14 +342,16 @@ export function HomePage() {
    * agent gets the upgrade modal here first, before anything is made (D-007, D-022 trial limits).
    */
   const openAgent = async (b: AgentBrief, opts: { joined?: boolean } = {}) => {
-    if (opening) return;
+    if (openingRef.current) return;
     // Right after checkout the session may not show the plan yet: the server check below decides.
     if (!canGenerate && !opts.joined) return keepBrief(b, { kind: 'agent' });
+    openingRef.current = true;
     setOpening(true);
     try {
       if (!mock) {
         const gate = await agentGate(b.llm);
         if (gate !== 'ok') {
+          openingRef.current = false;
           setOpening(false);
           return keepBrief(b, gate === 'trial-agent' ? { kind: 'trial-agent' } : { kind: 'agent' });
         }
@@ -363,6 +367,7 @@ export function HomePage() {
     } catch {
       toast.show({ message: t('home.project.createFailed') });
     } finally {
+      openingRef.current = false;
       setOpening(false);
     }
   };
@@ -505,6 +510,8 @@ export function HomePage() {
         onClose={() => setPaywall(false)}
         onJoined={() => {
           const kept = takePendingAction<AgentBrief>('home.agent');
+          // A brief bound to a checkout that is about to resume is replayed by useCheckoutResume, not here.
+          if (!kept && hasPendingAction('home.agent', undefined, { anySlot: true })) return;
           const brief = kept?.text ? kept : text.trim() ? agentBrief() : null;
           if (brief) void openAgent(brief, { joined: true });
         }}

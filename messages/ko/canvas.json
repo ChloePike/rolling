@@ -376,9 +376,9 @@
   "canvas.agent.refs": "첨부: {names}",
   "canvas.agent.history.label": "대화",
   "canvas.agent.history.loading": "불러오는 중…",
-  "canvas.agent.history.empty": "아직 다른 대화가 없습니다",
+  "canvas.agent.history.empty": "아직 다른 대화가 없어요",
   "canvas.agent.history.untitled": "제목 없는 대화",
   "canvas.agent.history.fromHome": "홈에서 · {date}",
-  "canvas.agent.history.moveHint": "이 캔버스에서 이어갑니다",
-  "canvas.agent.history.failed": "대화를 열 수 없습니다. 다시 시도해 주세요."
+  "canvas.agent.history.moveHint": "이 캔버스에서 이어가요",
+  "canvas.agent.history.failed": "대화를 열 수 없어요. 다시 시도하세요."
 }

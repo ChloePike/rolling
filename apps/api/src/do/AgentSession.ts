@@ -188,6 +188,8 @@ const LOAD_MESSAGES = 40;
 export class AgentSession extends DurableObject<Env> {
   private schemaVersion = 0;
   private running: { turnId: string; controller: AbortController } | null = null;
+  /** True while attach() moves this thread onto a canvas: a second attach or a new turn waits for it to finish. */
+  private attaching = false;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -256,6 +258,7 @@ export class AgentSession extends DurableObject<Env> {
     const denied = this.denied(input.caller.workspaceId);
     if (denied) return denied;
     if (this.running) return { ok: false, code: "CONFLICT", message: "A turn is already running in this thread", data: { turnId: this.running.turnId } };
+    if (this.attaching) return { ok: false, code: "CONFLICT", message: "This conversation is moving to a canvas" };
     const controller = new AbortController();
     this.running = { turnId: input.turnId, controller };
     try {
@@ -1051,14 +1054,22 @@ export class AgentSession extends DurableObject<Env> {
     if (current) return { ok: false, code: "CONFLICT", message: "This conversation already belongs to a project", data: { projectId: current } };
     if (this.meta("surface") !== "home") return { ok: false, code: "VALIDATION_FAILED", message: "Only Home conversations can move to a canvas" };
     if (this.running) return { ok: false, code: "CONFLICT", message: "A turn is already running in this thread", data: { turnId: this.running.turnId } };
-    const firstUser = this.loadMessages(100).find((m) => m.role === "user")?.content ?? "";
-    const projectId = opts.projectId ?? (await this.newProject(caller, opts.title ?? firstUser.split("\n")[0]!.slice(0, 80)));
-    this.setMeta("project_id", projectId);
-    this.setMeta("canvas_id", canvasIdFor(projectId));
-    this.setMeta("surface", "canvas");
-    // Awaited (unlike a plan build): the thread lists under its project as soon as this returns.
-    await this.env.DB.prepare("UPDATE agent_threads SET project_id = ?, surface = 'canvas', updated_at = ? WHERE id = ?").bind(projectId, Date.now(), this.meta("thread_id")).run();
-    return { ok: true, projectId, thread: this.view() };
+    // Reserved before the first await (outgoing I/O does not hold the input gate): a concurrent attach
+    // (double click, two tabs) is refused instead of making a second project, and no turn starts meanwhile.
+    if (this.attaching) return { ok: false, code: "CONFLICT", message: "This conversation is moving to a canvas" };
+    this.attaching = true;
+    try {
+      const firstUser = this.loadMessages(100).find((m) => m.role === "user")?.content ?? "";
+      const projectId = opts.projectId ?? (await this.newProject(caller, opts.title ?? firstUser.split("\n")[0]!.slice(0, 80)));
+      this.setMeta("project_id", projectId);
+      this.setMeta("canvas_id", canvasIdFor(projectId));
+      this.setMeta("surface", "canvas");
+      // Awaited (unlike a plan build): the thread lists under its project as soon as this returns.
+      await this.env.DB.prepare("UPDATE agent_threads SET project_id = ?, surface = 'canvas', updated_at = ? WHERE id = ?").bind(projectId, Date.now(), this.meta("thread_id")).run();
+      return { ok: true, projectId, thread: this.view() };
+    } finally {
+      this.attaching = false;
+    }
   }
 
   private attachProject(projectId: string): void {

@@ -6,6 +6,7 @@ import { useSkills, type RefItem } from '@/features/prompt';
 import { useAssetPicker } from '@/features/picker';
 import { UpgradeGate } from '@/lib/upgrade/store';
 import { useAgentAllowance } from '@/lib/session/agentAllowance';
+import { useCheckoutResume } from '@/lib/session';
 import { pickerModels, useModels } from '@/lib/models';
 import { ModelIcon, modelIcon } from '@/lib/modelIcons';
 import { FormattedMessage, useIntl } from 'react-intl';
@@ -75,6 +76,13 @@ interface AgentPanelProps {
 }
 
 /** What a turn carries beyond the text: a brief from Home sets them all (D-038); the composer uses the panel's own. */
+/** A canvas agent turn kept across checkout (`canvas.agent` pending action). */
+interface PendingCanvasAgent {
+  projectId: string | undefined;
+  text: string;
+  extra?: DeliverExtra;
+}
+
 interface DeliverExtra {
   refs?: string[];
   refNames?: string[];
@@ -198,6 +206,24 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
     setBuilt(null);
   };
 
+  // The popup checkout's onJoined already sent the turn: its bound copy, takeable once the checkout resumes, is dropped
+  // so it never replays later (a redirect never runs onJoined; the mount restore above replays it then).
+  const sentOnJoin = useRef(false);
+  useCheckoutResume(() => {
+    if (!sentOnJoin.current) return;
+    sentOnJoin.current = false;
+    takePendingAction<PendingCanvasAgent>('canvas.agent', (d) => d.projectId === projectId);
+  });
+
+  /** A turn the join paywall interrupted (D-007), sent again with the choices it had. */
+  const resumeTurn = (p: PendingCanvasAgent) => {
+    const extra = p.extra ?? {};
+    if (extra.mode) agentMode.setMode(extra.mode);
+    if (extra.llm) setLlm(extra.llm);
+    if (extra.settings) turnSettings.current = extra.settings;
+    deliverRef.current(p.text, extra);
+  };
+
   /** D-038: the brief Home handed over goes out as this thread's first message, with the prompt box's choices. */
   const sendHandoff = (h: AgentHandoff) => {
     agentMode.setMode(h.mode);
@@ -211,11 +237,12 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
     if (!real) return;
     let live = true;
     // Only an existing thread is read here; a new one is created on the first send (members only, D-007).
-    // A browser that never opened this project's thread (another device) gets its latest one from the server.
+    // A browser that never opened this project's thread (another device) gets the caller's own latest one from the
+    // server; a teammate's thread is never adopted (it stays reachable in the Conversations menu).
     const restore = async (): Promise<Thread | null> => {
       const t = await existingThread(`canvas:${projectId}`);
       if (t || peekHandoff(projectId)) return t;
-      const [latest] = await projectThreads(projectId!, 10).catch(() => []);
+      const [latest] = await projectThreads(projectId!, 10, { mine: true }).catch(() => []);
       if (!latest) return null;
       const found = await getThread(latest.id).catch(() => null);
       if (found) rememberThread(`canvas:${projectId}`, found.id);
@@ -229,8 +256,8 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
         const handoff = takeHandoff(projectId);
         if (handoff) return sendHandoff(handoff);
         // A brief interrupted by the join paywall resumes after checkout (D-007).
-        const pendingText = takePendingAction<{ projectId: string; text: string }>('canvas.agent');
-        if (pendingText?.projectId === projectId && pendingText.text) deliverRef.current(pendingText.text);
+        const pendingTurn = takePendingAction<PendingCanvasAgent>('canvas.agent', (d) => d.projectId === projectId);
+        if (pendingTurn?.text) resumeTurn(pendingTurn);
       },
       () => live && setRestoring(false),
     );
@@ -279,7 +306,8 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
     const f = agentFailure(e);
     switch (f.kind) {
       case 'join':
-        savePendingAction('canvas.agent', { projectId, text: lastSent.current });
+        // The whole turn is kept (refs, skill, settings, mode, budget), not just the text: a Home hand-off is gone by now.
+        savePendingAction('canvas.agent', { projectId, text: lastSent.current, extra: lastExtra.current } satisfies PendingCanvasAgent);
         setDraft(lastSent.current);
         setMessages((m) => m.slice(0, -1));
         setPaywall(true);
@@ -297,8 +325,10 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
     }
   };
   const lastSent = useRef('');
+  const lastExtra = useRef<DeliverExtra>({});
   const deliver = (text: string, extra: DeliverExtra = {}) => {
     lastSent.current = text;
+    lastExtra.current = extra;
     setMessages((m) => [...m, { role: 'user', text, fresh: true, ...(extra.refNames?.length ? { refNames: extra.refNames } : {}) }]);
     setDraft('');
     setPending(true);
@@ -500,7 +530,8 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
   const [history, setHistory] = useState<{ project: Array<{ id: string; title: string | null; updatedAt: number }>; home: Array<{ id: string; title: string; updatedAt: number }> } | null>(null);
   const loadHistory = () => {
     if (!real || !projectId) return;
-    void Promise.all([projectThreads(projectId).catch(() => []), recentThreads('home', 20).catch(() => [])]).then(([project, home]) =>
+    void Promise.all([projectThreads(projectId).catch(() => []), recentThreads('home', 20, { projectless: true }).catch(() => [])]).then(([project, home]) =>
+      // Filtered on the server: built Home threads never crowd out the older unbuilt ones.
       setHistory({ project, home: home.filter((t) => !t.projectId) }),
     );
   };
@@ -795,9 +826,13 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
         reason={{ kind: 'agent' }}
         onClose={() => setPaywall(false)}
         onJoined={() => {
-          takePendingAction('canvas.agent');
+          const kept = takePendingAction<PendingCanvasAgent>('canvas.agent', (d) => d.projectId === projectId);
+          if (kept?.text) return resumeTurn(kept);
+          // A popup checkout: the kept turn is still bound to it; the draft goes out with the choices it was sent with.
           const text = draft.trim();
-          if (text) deliver(text);
+          if (!text) return;
+          sentOnJoin.current = true;
+          deliver(text, text === lastSent.current ? lastExtra.current : {});
         }}
       />
     </aside>

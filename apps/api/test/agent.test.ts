@@ -184,6 +184,15 @@ describe("D-038: a Home brief starts on its own canvas", () => {
     expect(project.project.title).toBe("Sneaker drop teaser");
     const listed = await body(await api(user, `/api/agent/threads?projectId=${moved.projectId}`), 200);
     expect(listed.items.map((t: any) => t.id)).toEqual([id]);
+    // A teammate's canvas thread on the project lists for everyone, but `mine` leaves it out (the panel never adopts it).
+    await env.DB.prepare("INSERT INTO agent_threads (id, workspace_id, project_id, surface, skill, title, updated_at, created_by) VALUES (?, ?, ?, 'canvas', NULL, 'Theirs', ?, ?)")
+      .bind(`thr_mate_${id}`, ws, moved.projectId, Date.now() + 1000, "usr_teammate")
+      .run();
+    const all = await body(await api(user, `/api/agent/threads?projectId=${moved.projectId}`), 200);
+    expect(all.items.map((t: any) => t.id)).toEqual([`thr_mate_${id}`, id]);
+    const mineOnly = await body(await api(user, `/api/agent/threads?projectId=${moved.projectId}&mine=1`), 200);
+    expect(mineOnly.items.map((t: any) => t.id)).toEqual([id]);
+    await env.DB.prepare("DELETE FROM agent_threads WHERE id = ?").bind(`thr_mate_${id}`).run();
     // Its open plan now builds into that project; moving it again is refused.
     const applied = await body(await api(user, `/api/agent/proposals/${turn.proposal.id}/apply`, { json: { optionIndex: 0 } }), 200);
     expect(applied.projectId).toBe(moved.projectId);
@@ -195,6 +204,12 @@ describe("D-038: a Home brief starts on its own canvas", () => {
     const mine = await body(await api(user, "/api/projects", { json: { title: "Mine" } }), 201);
     const moved2 = await body(await api(user, `/api/agent/threads/${id2}/attach`, { json: { projectId: mine.project.id } }), 200);
     expect(moved2.projectId).toBe(mine.project.id);
+    // Two concurrent moves (double click, two tabs): one project, the other request is refused.
+    const id3 = await thread(user, { surface: "home" });
+    const before = (await env.DB.prepare("SELECT COUNT(*) AS c FROM projects WHERE workspace_id = ?").bind(ws).first<{ c: number }>())!.c;
+    const both = await Promise.all([api(user, `/api/agent/threads/${id3}/attach`, { json: {} }), api(user, `/api/agent/threads/${id3}/attach`, { json: {} })]);
+    expect(both.map((r) => r.status).sort()).toEqual([200, 409]);
+    expect((await env.DB.prepare("SELECT COUNT(*) AS c FROM projects WHERE workspace_id = ?").bind(ws).first<{ c: number }>())!.c).toBe(before + 1);
     // A canvas thread cannot be moved.
     const canvasThread = await thread(user, { surface: "canvas", projectId: mine.project.id });
     expect((await api(user, `/api/agent/threads/${canvasThread}/attach`, { json: {} })).status).toBe(409);
