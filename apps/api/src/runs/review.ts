@@ -105,9 +105,13 @@ async function takeOf(env: Env, ctx: JobContext, row: AssetRow, index: number): 
   return pictures.length ? { pictures } : null;
 }
 
-/** Image inputs the run declared as references or first frames (characters, products), as inline pictures. */
+/**
+ * Image inputs the run declared as references or first frames (characters, products), as inline pictures.
+ * Edit inputs count only when they are character sheet pictures (D-032: an image shot wires the sheet's
+ * views into its `refs` port); other edit inputs are the picture being changed, not a look to keep.
+ */
 async function referencesOf(env: Env, ctx: JobContext): Promise<{ label: string; url: string }[]> {
-  const inputs = (ctx.spec.inputs as GenInput[]).filter((i) => i.media === "image" && (i.role === "reference" || i.role === "frame"));
+  const inputs = (ctx.spec.inputs as GenInput[]).filter((i) => i.media === "image" && (i.role === "reference" || i.role === "frame" || i.role === "edit"));
   if (inputs.length === 0) return [];
   let graphAssets: Record<string, string> = {};
   if (inputs.some((i) => "node" in i.from) && ctx.projectId) {
@@ -115,11 +119,13 @@ async function referencesOf(env: Env, ctx: JobContext): Promise<{ label: string;
     if (!isRoomError(g)) graphAssets = g.assets;
   }
   const out: { label: string; url: string }[] = [];
-  for (const input of inputs.slice(0, 2)) {
+  for (const input of inputs) {
+    if (out.length >= 2) break;
     const assetId = "node" in input.from ? graphAssets[input.from.node] : "assetId" in input.from ? input.from.assetId : undefined;
     if (!assetId) continue;
-    const row = await env.DB.prepare("SELECT r2_key, workspace_id, kind FROM assets WHERE id = ?").bind(assetId).first<{ r2_key: string; workspace_id: string | null; kind: string }>();
+    const row = await env.DB.prepare("SELECT r2_key, workspace_id, kind, meta FROM assets WHERE id = ?").bind(assetId).first<{ r2_key: string; workspace_id: string | null; kind: string; meta: string | null }>();
     if (!row || row.kind !== "image" || (row.workspace_id !== null && row.workspace_id !== ctx.workspaceId)) continue;
+    if (input.role === "edit" && !parseJson<{ characterSheet?: unknown }>(row.meta ?? "{}", {}).characterSheet) continue;
     const pic = await r2Picture(env, row.r2_key);
     if (pic) out.push({ label: input.label ?? (input.role === "frame" ? "First frame" : "Reference"), url: pic.url });
   }

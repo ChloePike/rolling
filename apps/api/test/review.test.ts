@@ -346,4 +346,43 @@ describe("Result review (D-024)", () => {
     expect(v.versions[0]!.assetId).toBe(out.assetIds[2]);
     expect(job.asset_id).toBe(out.assetIds[2]);
   }, 60_000);
+
+  it("sends an image shot's character sheet pictures as references for continuity, not its other edit inputs (D-032)", async () => {
+    const { user, ws } = await member("rvchar");
+    const picture = async (meta: Record<string, unknown>, tag: string) => {
+      const id = `ast_${crypto.randomUUID().replace(/-/g, "").slice(0, 26)}`;
+      const key = `ws/${ws}/generated/${id}.png`;
+      await env.MEDIA.put(key, new Uint8Array([...PNG, ...new TextEncoder().encode(tag)]), { httpMetadata: { contentType: "image/png" } });
+      await env.DB.prepare("INSERT INTO assets (id, workspace_id, kind, source, name, r2_key, meta, created_by, created_at, status, mature) VALUES (?, ?, 'image', 'generated', ?, ?, ?, ?, ?, 'ready', 0)")
+        .bind(id, ws, tag, key, JSON.stringify(meta), user, Date.now())
+        .run();
+      return id;
+    };
+    const sheet = await picture({ characterSheet: { characterId: "chr_test", version: 1, view: "front", realFace: false } }, "sheet");
+    const plain = await picture({}, "plain");
+    const res = await api(user, "/api/projects", { method: "POST", json: { title: "Character review" } });
+    const projectId = ((await res.json()) as { project: { id: string } }).project.id;
+    const r = (await projectRoom(env, projectId).applyPatch(
+      { userId: user, workspaceId: ws, canEdit: true },
+      {
+        baseRevision: 0,
+        ops: [
+          { op: "addNode", tempId: "node_plain", kind: "asset", title: "Cafe photo", params: { assetId: plain, media: "image" } },
+          { op: "addNode", tempId: "node_sheet", kind: "asset", title: "Maya (front)", params: { assetId: sheet, media: "image", source: "character", characterId: "chr_test", view: "front" } },
+          { op: "addNode", tempId: "node_shot", kind: "image", title: "Cafe shot", params: { ...PARAMS, mode: "edit" } },
+          { op: "connect", from: { node: "node_plain", port: "out" }, to: { node: "node_shot", port: "refs" } },
+          { op: "connect", from: { node: "node_sheet", port: "out" }, to: { node: "node_shot", port: "refs" } },
+        ],
+      },
+    )) as any;
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+    const runId = await runNode(user, ws, projectId, "node_shot");
+    expect((await runEnded(runId)).status).toBe("succeeded");
+    expect(reviewer.calls).toHaveLength(1);
+    const parts = reviewer.calls[0]!.messages[1]!.content as { type: string; text?: string }[];
+    const refs = parts.filter((p) => p.type === "text" && p.text!.startsWith("Reference picture"));
+    expect(refs).toHaveLength(1);
+    // One reference picture before the take's own picture.
+    expect(parts.filter((p) => p.type === "image_url")).toHaveLength(2);
+  }, 60_000);
 });

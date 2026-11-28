@@ -16,7 +16,7 @@ import {
   takeVerdict,
   type RetryContext,
 } from './decide';
-import { ReviewError, reviewMessages, reviewOutputs, reviewPlan, type ReviewInput } from './review';
+import { fixForPrompt, ReviewError, reviewMessages, reviewOutputs, reviewPlan, type ReviewInput } from './review';
 import { parseReviewAnswer, type ReviewScores, type TakeVerdict } from './types';
 
 const chatModels = fixtureCatalog.list({ kind: 'chat', includeMatureOnly: true });
@@ -230,6 +230,28 @@ describe('review call', () => {
     await expect(reviewOutputs(fakeLlm(new Error('upstream_error')).llm, chatModels, INPUT, 'k')).rejects.toBeInstanceOf(ReviewError);
     await expect(reviewOutputs(fakeLlm('{}').llm, chatModels, { ...INPUT, takes: [{ pictures: [] }] }, 'k')).rejects.toMatchObject({ code: 'no_pictures' });
     await expect(reviewOutputs(fakeLlm('{}').llm, [], INPUT, 'k')).rejects.toMatchObject({ code: 'unavailable' });
+  });
+
+  it('keeps a fix prompt in the user prompt\'s language and never the rendered rewrite (D-020)', async () => {
+    const zh = '特写镜头，两只手在撒了面粉的木桌上揉面团，背景里有一块写着 FRESH BREAD 的手写牌子';
+    const user = 'Close-up of two hands kneading bread dough, a hand-written sign reading "FRESH BREAD" in the background';
+    // A rewrite in another script is dropped; the negative terms stay.
+    expect(fixForPrompt({ prompt: zh, negativePrompt: 'fused fingers', newSeed: true, note: 'Separates fingers' }, user, zh)).toEqual({ negativePrompt: 'fused fingers', newSeed: true, note: 'Separates fingers' });
+    // Nothing else left: a fresh seed stands in.
+    expect(fixForPrompt({ prompt: zh, note: 'Separates fingers' }, user)).toEqual({ newSeed: true, note: 'Separates fingers' });
+    // A fix that repeats the rendered rewrite is dropped even in the same script.
+    const rendered = 'Close-up, an adult woman\'s two hands and forearms only, cropped above the wrists, a cream linen shirt';
+    expect(fixForPrompt({ prompt: `${rendered}, five fingers on each hand`, note: 'n' }, user, rendered)).toEqual({ newSeed: true, note: 'n' });
+    // The user's prompt revised, in its language, is kept; so is a Chinese fix for a Chinese prompt.
+    const kept = { prompt: `${user}, five clearly separate fingers on each hand`, note: 'n' };
+    expect(fixForPrompt(kept, user, zh)).toBe(kept);
+    expect(fixForPrompt({ prompt: `${zh}，每只手五根手指`, note: 'n' }, zh, null)).toEqual({ prompt: `${zh}，每只手五根手指`, note: 'n' });
+    expect(fixForPrompt(null, user)).toBeNull();
+
+    const answer = JSON.stringify({ takes: [{ scores: { anatomy: 2, text: 5, adherence: 4, continuity: null, framing: 4, artifacts: 3 }, issues: [{ dimension: 'anatomy', severity: 'major', note: 'Fingers merge into dough' }], fix: { prompt: zh, negativePrompt: 'fused fingers', note: 'Separates fingers' } }] });
+    const r = await reviewOutputs(fakeLlm(answer).llm, chatModels, { ...INPUT, kind: 'image', prompt: user, expandedPrompt: zh, count: 1, characters: [], references: [], takes: [{ pictures: ['data:x'] }] }, 'k');
+    expect(r.fix).toEqual({ negativePrompt: 'fused fingers', note: 'Separates fingers' });
+    expect(reviewMessages(INPUT).system).toContain('never from "rendered_prompt"');
   });
 
   it('caps pictures per take and the number of takes', () => {

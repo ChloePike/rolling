@@ -9,7 +9,8 @@ import { tokenPrice } from '../models/chat';
 import type { ChatContentPart, LlmProvider } from '../models/types';
 import { QUALITY_REVIEW, reviewMaxUsd } from '../pricing/config';
 import { buildReview, overallScore, ratioIssue, takeVerdict, withRatioCheck } from './decide';
-import { parseReviewAnswer, REVIEW_DIMENSIONS, type ResultReview } from './types';
+import { promptLocale } from '../generation/plan';
+import { parseReviewAnswer, REVIEW_DIMENSIONS, type ResultReview, type ReviewFix } from './types';
 
 export const REVIEW_TIMEOUT_MS = 30_000;
 
@@ -56,7 +57,7 @@ const SYSTEM = [
   '- framing: the shot size and composition fit the prompt; nothing important is cut off; the frame is not letterboxed or padded.',
   '- artifacts: melting or smeared areas, duplicated objects or body parts, warped backgrounds; for a clip, frames that disagree (an object that appears, vanishes or changes shape between frames hints at flicker).',
   'List each problem as an issue: {"dimension","severity":"minor|major","note"}. A note is at most 12 words, concrete and visual ("left hand has six fingers"), sentence case, no hype.',
-  'When a take has a problem worth another try, give a fix: {"prompt": the whole revised prompt, keeping the user\'s words and adding only what fixes the problem, "negativePrompt": comma-separated terms to avoid, "newSeed": true when only luck is at fault, "note": what the fix changes in at most 10 words}. Use null when the take is fine.',
+  'When a take has a problem worth another try, give a fix: {"prompt": the whole revised prompt, starting from the brief\'s "prompt" (never from "rendered_prompt"), in the same language as it, keeping the user\'s words and adding only what fixes the problem, "negativePrompt": comma-separated terms to avoid, "newSeed": true when only luck is at fault, "note": what the fix changes in at most 10 words}. Use null when the take is fine.',
   'Judge only what you see. Do not describe the picture. Do not rate content safety.',
   'Answer with one JSON object and nothing else: {"takes":[{"scores":{"anatomy":n|null,"text":n|null,"adherence":n|null,"continuity":n|null,"framing":n|null,"artifacts":n|null},"issues":[...],"fix":{...}|null}, ...one per take, in order]}',
 ].join('\n');
@@ -86,6 +87,28 @@ export function reviewMessages(input: ReviewInput): { system: string; parts: Cha
     for (const p of pics) parts.push({ type: 'image_url', imageUrl: p });
   });
   return { system: SYSTEM, parts };
+}
+
+/** Script family of a prompt (Latin languages count as one): what a revised prompt must keep. */
+function scriptOf(text: string): string | undefined {
+  const tag = promptLocale(text);
+  if (!tag) return undefined;
+  return ['ja', 'ko', 'zh', 'ru', 'ar', 'th'].find((p) => tag.startsWith(p)) ?? 'latin';
+}
+
+/**
+ * A revised prompt replaces the user's prompt on the node ("Retry with fix"), so it must be
+ * the user's prompt revised, not the gateway's rewrite (D-020) in another language: a fix
+ * prompt in another script than the user's prompt, or one that repeats the rendered rewrite,
+ * is dropped; the negative terms stay, and a fresh seed stands in when nothing else is left.
+ */
+export function fixForPrompt(fix: ReviewFix | null, prompt: string, expandedPrompt?: string | null): ReviewFix | null {
+  if (!fix?.prompt) return fix;
+  const sameScript = scriptOf(fix.prompt) === scriptOf(prompt);
+  const rendered = expandedPrompt?.trim() ? fix.prompt.includes(expandedPrompt.trim().slice(0, 80)) : false;
+  if (sameScript && !rendered) return fix;
+  const { prompt: _dropped, ...rest } = fix;
+  return rest.negativePrompt || rest.newSeed ? rest : { ...rest, newSeed: true };
 }
 
 export class ReviewError extends Error {
@@ -159,7 +182,7 @@ export async function reviewOutputs(
     throw new ReviewError('invalid', err instanceof Error ? err.message : String(err));
   }
   const verdicts = parsed.map((t, i) => {
-    const v = takeVerdict({ scores: t.scores, issues: t.issues, fix: t.fix });
+    const v = takeVerdict({ scores: t.scores, issues: t.issues, fix: fixForPrompt(t.fix, input.prompt, input.expandedPrompt) });
     // Continuity without a declared character or reference is not judged.
     if (input.characters.length === 0 && input.references.length === 0) v.scores.continuity = null;
     const fixed = takeVerdict({ scores: v.scores, issues: v.issues.filter((x) => REVIEW_DIMENSIONS.includes(x.dimension) && (x.dimension !== 'continuity' || v.scores.continuity !== null)), fix: v.fix });
