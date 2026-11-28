@@ -41,14 +41,31 @@ function markReturnFromUrl(): void {
 }
 markReturnFromUrl();
 
-/** True when an action of `kind` is waiting (without taking it). */
-export function hasPendingAction<T>(kind: string, accept: (data: T) => boolean = () => true): boolean {
+/**
+ * True when an action of `kind` is waiting (without taking it). With `anySlot`, an action bound to a
+ * checkout that has not completed yet counts too (its checkout resume will replay it).
+ */
+export function hasPendingAction<T>(kind: string, accept: (data: T) => boolean = () => true, opts: { anySlot?: boolean } = {}): boolean {
   const s = storage();
   if (!s) return false;
-  return [KEY, ...[...resumed].map((id) => `${KEY}:${id}`)].some((key) => {
+  return slotKeys(s, !!opts.anySlot).some((key) => {
     const p = read(s, key);
     return !!p && p.kind === kind && Date.now() - p.at <= MAX_AGE_MS && accept(p.data as T);
   });
+}
+
+function slotKeys(s: Storage, anySlot: boolean): string[] {
+  if (!anySlot) return [KEY, ...[...resumed].map((id) => `${KEY}:${id}`)];
+  const keys: string[] = [];
+  try {
+    for (let i = 0; i < s.length; i++) {
+      const k = s.key(i);
+      if (k === KEY || k?.startsWith(`${KEY}:`)) keys.push(k);
+    }
+  } catch {
+    /* Storage unavailable. */
+  }
+  return keys;
 }
 
 function storage(): Storage | null {

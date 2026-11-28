@@ -156,19 +156,28 @@ test('canvas agent: the turn carries the mode; Read proposes nothing; Auto shows
   await expect.poll(() => s.starts).toBe(1);
 });
 
-test('Home agent in Auto: the turn carries the mode and budget, and the plan the server built opens on its canvas', async ({ page }) => {
+test('Home agent in Auto (D-039): the brief opens its own canvas; its first turn carries the mode and budget, and the plan the server built shows there', async ({ page }) => {
   const sends: Array<Record<string, unknown>> = [];
   await page.addInitScript(() => {
     delete (window as unknown as { SharedWorker?: unknown }).SharedWorker;
   });
   await stubApi(page, { delayMs: 30 });
-  await page.routeWebSocket(/\/api\/ws/, (ws) => ws.onMessage(() => {}));
+  await page.routeWebSocket(/\/api\/ws/, (ws) =>
+    ws.onMessage((raw) => {
+      const msg = JSON.parse(String(raw)) as { type: string; id: string; payload?: { projectId?: string } };
+      if (msg.type === 'subscribe' && msg.payload?.projectId === PROJECT) {
+        ws.send(JSON.stringify({ type: 'subscribed', id: msg.id, channel: 'project', projectId: PROJECT, payload: { projectId: PROJECT, revision: 0, seq: 0, canEdit: true, snapshot: { ...SNAPSHOT, revision: 0, nodes: [] } } }));
+      }
+    }),
+  );
   const json = (route: Route, body: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
   await page.route(/\/api\//, async (route) => {
     const req = route.request();
     const path = new URL(req.url()).pathname;
     if (path === '/api/me') return json(route, { ...ME, prefs: { ...ME.prefs, agentMode: 'auto', autoBudget: 500 } });
-    if (path === '/api/agent/threads' && req.method() === 'POST') return json(route, { thread: { ...THREAD, id: 'thr_home', projectId: null, canvasId: null, surface: 'home' } }, 201);
+    if (path === '/api/projects' && req.method() === 'POST') return json(route, { project: { id: PROJECT, title: 'A lamp ad for my desk brand', kind: 'canvas' } }, 201);
+    if (path === `/api/projects/${PROJECT}` && req.method() === 'GET') return json(route, { project: { id: PROJECT, title: 'A lamp ad for my desk brand', workspaceId: 'ws_stub' }, role: 'owner', canEdit: true, snapshot: { ...SNAPSHOT, nodes: [] } });
+    if (path === '/api/agent/threads' && req.method() === 'POST') return json(route, { thread: { ...THREAD, id: 'thr_home' } }, 201);
     if (path === '/api/agent/threads/thr_home/messages') {
       sends.push(JSON.parse(req.postData() ?? '{}') as Record<string, unknown>);
       const plan = { id: 'turn_h:chg:1', proposalId: 'prop_h', kind: 'plan', summary: 'Desk at dusk', projectId: PROJECT, revision: 1, ops: 6, nodeIds: [], status: 'applied' };
@@ -184,5 +193,8 @@ test('Home agent in Auto: the turn carries the mode and budget, and the plan the
   await page.locator('#brief').fill('A lamp ad for my desk brand');
   await page.getByRole('button', { name: 'Start' }).click();
   await expect(page).toHaveURL(new RegExp(`/p/${PROJECT}`));
+  await expect(panel(page).getByRole('button', { name: 'Agent mode: Auto' })).toBeVisible();
+  await expect.poll(() => sends.length).toBe(1);
   expect(sends[0]).toMatchObject({ text: 'A lamp ad for my desk brand', mode: 'auto', autoBudget: 500 });
+  await expect(panel(page).getByTestId('auto-summary')).toContainText('Agent changed 1 thing');
 });

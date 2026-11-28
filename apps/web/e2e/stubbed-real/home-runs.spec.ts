@@ -53,7 +53,34 @@ interface Stub {
   messages: string[];
   /** Bodies of `POST /api/runs/quote`. */
   quotes: Array<{ surface?: string; promptSpec?: unknown }>;
+  /** D-039: bodies of `POST /api/projects`, `POST /api/agent/threads` and `…/attach`; agent turns sent. */
+  created: Array<Record<string, unknown>>;
+  threads: Array<Record<string, unknown>>;
+  attached: Array<Record<string, unknown>>;
+  sends: number;
+  /** `GET /api/agent/allowance` answers NO_PLAN. */
+  noPlan: boolean;
 }
+
+/** The project a Home agent brief makes (D-039). */
+const PRJ = 'prj_01stubhomeagentstubhomeag';
+const CNV = `cnv_${PRJ.slice(4)}`;
+const SNAPSHOT = { projectId: PRJ, revision: 0, canvases: [{ id: CNV, title: 'Desk lamp', viewport: null }], nodes: [], edges: [], groups: [] };
+const canvasThread = (id: string, msgs: string[], proposals: unknown[] = []) => ({
+  id,
+  workspaceId: 'ws_stub',
+  projectId: PRJ,
+  canvasId: CNV,
+  surface: 'canvas',
+  skill: null,
+  tool: null,
+  llm: null,
+  mode: null,
+  autoBudget: null,
+  proposals,
+  auto: [],
+  messages: msgs.map((content, i) => ({ id: `${id}_m${i}`, role: i % 2 ? 'assistant' : 'user', content, createdAt: i, ...(i % 2 && proposals.length ? { proposalId: 'prop_stub1' } : {}) })),
+});
 
 const QUOTE = (total: number) => ({
   quoteId: 'q_stub',
@@ -120,7 +147,7 @@ const PLAN = {
 };
 
 async function setup(page: Page): Promise<Stub> {
-  const s: Stub = { run: runView({}), quoteTotal: 363, starts: 0, cancels: 0, ws: null, turns: [], messages: [], quotes: [] };
+  const s: Stub = { run: runView({}), quoteTotal: 363, starts: 0, cancels: 0, ws: null, turns: [], messages: [], quotes: [], created: [], threads: [], attached: [], sends: 0, noPlan: false };
   // Main-thread socket (no SharedWorker), so the page's WebSocket route sees it.
   await page.addInitScript(() => {
     delete (window as unknown as { SharedWorker?: unknown }).SharedWorker;
@@ -128,7 +155,12 @@ async function setup(page: Page): Promise<Stub> {
   await stubApi(page, { delayMs: 30 });
   await page.routeWebSocket(/\/api\/ws/, (ws) => {
     s.ws = ws;
-    ws.onMessage(() => {});
+    ws.onMessage((raw) => {
+      const msg = JSON.parse(String(raw)) as { type: string; id: string; payload?: { projectId?: string } };
+      if (msg.type === 'subscribe' && msg.payload?.projectId === PRJ) {
+        ws.send(JSON.stringify({ type: 'subscribed', id: msg.id, channel: 'project', projectId: PRJ, payload: { projectId: PRJ, revision: 0, seq: 0, canEdit: true, snapshot: SNAPSHOT } }));
+      }
+    });
   });
   const json = (route: Route, body: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
   await page.route(/\/api\//, async (route) => {
@@ -142,6 +174,7 @@ async function setup(page: Page): Promise<Stub> {
       const kind = url.searchParams.get('kind');
       return json(route, { models: kind === 'chat' ? [CHAT_MODEL] : kind === 'video' ? [VIDEO_MODEL] : kind ? [] : [VIDEO_MODEL, CHAT_MODEL] });
     }
+    if (path === '/api/agent/allowance' && s.noPlan) return json(route, { error: { code: 'NO_PLAN', message: 'An active plan is required' } }, 402);
     if (path === '/api/agent/allowance') return json(route, { plan: 'plus', allowanceUsd: 3.5, usedUsd: 0, resetsAt: Date.now() + 86_400_000, models: [{ id: CHAT_MODEL.id, name: CHAT_MODEL.name, unlimited: true }] });
     if (path === '/api/runs/quote' && method === 'POST') {
       s.quotes.push(JSON.parse(req.postData() ?? '{}') as Stub['quotes'][number]);
@@ -159,27 +192,39 @@ async function setup(page: Page): Promise<Stub> {
       return json(route, { runId: 'run_stub1', refunded: 363, canceled: 1 });
     }
     if (path.startsWith('/api/media/private/')) return route.fulfill({ status: 200, contentType: 'image/png', body: PNG });
-    if (path === '/api/agent/threads' && method === 'POST') return json(route, { thread: { id: 'thr_stub', workspaceId: 'ws_stub', projectId: null, canvasId: null, surface: 'home', skill: null, tool: null, llm: null, messages: [], proposals: [] } }, 201);
+    // D-039: a Home agent brief makes a canvas project and talks to that project's thread.
+    if (path === '/api/projects' && method === 'POST') {
+      s.created.push(JSON.parse(req.postData() ?? '{}') as Record<string, unknown>);
+      return json(route, { project: { id: PRJ, title: 'Desk lamp', kind: 'canvas' } }, 201);
+    }
+    if (path === `/api/projects/${PRJ}` && method === 'GET') return json(route, { project: { id: PRJ, title: 'Desk lamp', workspaceId: 'ws_stub' }, role: 'owner', canEdit: true, snapshot: SNAPSHOT });
+    if (path === '/api/agent/threads' && method === 'GET') {
+      const items = s.messages.length ? [{ id: 'thr_stub', projectId: PRJ, surface: 'canvas', skill: null, title: s.messages[0], updatedAt: Date.now() }] : [];
+      return json(route, { items });
+    }
+    if (path === '/api/agent/threads' && method === 'POST') {
+      s.threads.push(JSON.parse(req.postData() ?? '{}') as Record<string, unknown>);
+      return json(route, { thread: canvasThread('thr_stub', []) }, 201);
+    }
     if (path === '/api/agent/threads/thr_stub' && method === 'GET') {
-      const msgs = s.messages.map((content, i) => ({ id: `m${i}`, role: i % 2 ? 'assistant' : 'user', content, createdAt: i }));
-      return json(route, { thread: { id: 'thr_stub', workspaceId: 'ws_stub', projectId: null, canvasId: null, surface: 'home', skill: null, tool: null, llm: null, messages: msgs, proposals: [] } });
+      return json(route, { thread: canvasThread('thr_stub', s.messages, s.messages.length > 1 ? [PLAN] : []) });
     }
     if (path === '/api/agent/threads/thr_stub/messages' && method === 'POST') {
       const body = JSON.parse(req.postData() ?? '{}') as { text: string; llm?: string };
+      s.sends += 1;
       const turn = s.turns.shift() ?? { text: 'Okay.' };
       s.messages.push(body.text, turn.text);
-      // Tokens stream over the user socket while the request is open (agent.delta, D-014).
-      await new Promise((r) => setTimeout(r, 400));
-      s.ws?.send(JSON.stringify({ channel: 'user', type: 'agent.tool', id: 't1', payload: { threadId: 'thr_stub', turnId: 'turn1', name: 'models.capabilities', status: 'started' } }));
-      await new Promise((r) => setTimeout(r, 1500));
+      // Canvas threads stream on the project channel while the request is open (agent.delta, D-014).
+      const event = (type: string, payload: Record<string, unknown>) => s.ws?.send(JSON.stringify({ channel: 'project', projectId: PRJ, type, id: `e${Math.random()}`, payload: { threadId: 'thr_stub', turnId: 'turn1', ...payload } }));
+      await new Promise((r) => setTimeout(r, 1200));
       for (const word of turn.text.split(/(?<= )/)) {
-        s.ws?.send(JSON.stringify({ channel: 'user', type: 'agent.delta', id: `d${Math.random()}`, payload: { threadId: 'thr_stub', turnId: 'turn1', delta: word } }));
+        event('agent.delta', { delta: word });
         await new Promise((r) => setTimeout(r, 60));
       }
       await new Promise((r) => setTimeout(r, 300));
       return json(route, { turnId: 'turn1', messageId: 'm1', text: turn.text, reason: turn.plan ? 'proposal' : 'completed', proposal: turn.plan ? PLAN : null, error: null, llm: body.llm ?? 'deepseek-v4.1-flash' });
     }
-    if (path === '/api/agent/proposals/prop_stub1/apply') return json(route, { ok: true, proposalId: 'prop_stub1', kind: 'plan', projectId: 'prj_stub' });
+    if (path === '/api/agent/proposals/prop_stub1/apply') return json(route, { ok: true, proposalId: 'prop_stub1', kind: 'plan', projectId: PRJ, revision: 1, idMap: { a: 'node_a', b: 'node_b' } });
     return route.fallback();
   });
   return s;
@@ -288,101 +333,85 @@ test('a failed run shows the reason, that nothing was charged, and Retry', async
   await expect(page.getByTestId('home-run').nth(1)).toHaveAttribute('data-status', 'failed');
 });
 
-test('agent: small talk streams a short reply over the socket; a brief returns a plan; Build on canvas opens the project; the thread survives a reload', async ({ page }) => {
+test('agent brief (D-039): Home makes a project and opens its canvas; the brief is the thread’s first message with the pills; the reply streams on the project channel; Build on canvas builds into that project', async ({ page }) => {
   const s = await setup(page);
-  s.turns.push({ text: 'Hi. Tell me what the video is for, how long it should be and whether it is vertical or widescreen.' });
   s.turns.push({ text: 'Here is a **10-second** plan.\n\n- Shot 1: the switch\n- Shot 2: the glow', plan: true });
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');
-  await page.locator('#brief').fill('hello');
-  await page.locator('#brief').press('Enter');
-  const agent = page.getByTestId('home-agent');
-  await expect(agent.getByTestId('home-agent-user')).toHaveText('hello');
-  await expect(agent.getByTestId('home-agent-typing')).toContainText('Checking models…');
-  const reply = agent.getByTestId('home-agent-reply').last();
-  await expect(reply).toHaveAttribute('data-status', 'streaming');
-  await expect(reply).toContainText('Hi. Tell me');
-  await expect(reply).toHaveAttribute('data-status', 'done');
-  await expect(agent.getByTestId('home-plan')).toHaveCount(0);
-  await expect(agent.getByTestId('home-agent-llm')).toHaveText(/DeepSeek V4\.1 Flash.*No turn limit/);
-  const replyBox = agent.getByRole('textbox', { name: 'Reply to the agent' });
-  await replyBox.fill('A 10s vertical ad for a desk lamp');
-  await replyBox.press('Enter');
-  const plan = agent.getByTestId('home-plan');
-  await expect(plan).toBeVisible();
-  await expect(agent.locator('strong', { hasText: '10-second' })).toBeVisible();
-  await expect(plan).toContainText('Switch');
-  await expect(plan).toContainText('5s · Seedance 2.0 Fast');
-  await expect(plan).toContainText('“Light that works late”');
-  await expect(plan).toContainText('About 420 credits to generate. Building is free.');
-  await page.screenshot({ path: `${OUT}real-agent-plan.png` });
-  // Reload: the conversation comes back from the thread.
-  await page.reload();
-  await expect(page.getByTestId('home-agent').getByTestId('home-agent-user')).toHaveCount(2);
-  await expect(page.getByTestId('home-agent')).toContainText('Hi. Tell me what the video is for');
-});
-
-test('agent: the Home conversation comes from the server on a new device; Recent switches conversations; New conversation sticks after a reload', async ({ page }) => {
-  const s = await setup(page);
-  s.messages.push('A lamp ad for my desk brand', 'Here is what I would make.');
-  const thread = (id: string, msgs: string[]) => ({
-    thread: { id, workspaceId: 'ws_stub', projectId: null, canvasId: null, surface: 'home', skill: null, tool: null, llm: null, proposals: [], messages: msgs.map((content, i) => ({ id: `${id}_m${i}`, role: i % 2 ? 'assistant' : 'user', content, createdAt: i })) },
-  });
-  let graphql = 0;
-  await page.route(/\/api\/(graphql|agent\/threads\/thr_old)$/, async (route) => {
-    const req = route.request();
-    if (req.url().endsWith('/thr_old')) return route.fulfill({ contentType: 'application/json', body: JSON.stringify(thread('thr_old', ['Sneaker drop teaser', 'Two options below.'])) });
-    if (!(req.postData() ?? '').includes('agentThreads')) return route.fallback();
-    graphql += 1;
-    const items = [
-      { id: 'thr_stub', projectId: null, surface: 'home', title: 'A lamp ad for my desk brand', updatedAt: Date.now() - 60_000 },
-      { id: 'thr_old', projectId: null, surface: 'home', title: 'Sneaker drop teaser', updatedAt: Date.now() - 86_400_000 },
-    ];
-    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: { agentThreads: items } }) });
-  });
-  // A browser that never had a Home thread (another device): the latest one comes from the server.
-  await page.goto('/');
-  const agent = page.getByTestId('home-agent');
-  await expect(agent.getByTestId('home-agent-user')).toHaveText('A lamp ad for my desk brand');
-  expect(graphql).toBeGreaterThan(0);
-  await agent.getByRole('button', { name: 'Recent' }).click();
-  const menu = page.getByRole('menu', { name: 'Recent conversations' });
-  await expect(menu.getByRole('menuitem')).toHaveCount(1);
-  await menu.getByRole('menuitem', { name: /Sneaker drop teaser/ }).click();
-  await expect(agent.getByTestId('home-agent-user')).toHaveText('Sneaker drop teaser');
-  // This browser now remembers the one picked.
-  await page.reload();
-  await expect(page.getByTestId('home-agent').getByTestId('home-agent-user')).toHaveText('Sneaker drop teaser');
-  // New conversation: a reload does not bring an older one back.
-  await page.getByTestId('home-agent').getByRole('button', { name: 'New conversation' }).click();
-  await expect(page.getByTestId('home-agent')).toHaveCount(0);
-  await page.reload();
-  await expect(page.locator('#brief')).toBeVisible();
-  await page.waitForTimeout(500);
-  await expect(page.getByTestId('home-agent')).toHaveCount(0);
-});
-
-test('agent plan: Build on canvas applies it (free) and opens the new project', async ({ page }) => {
-  const s = await setup(page);
-  s.turns.push({ text: 'One option.', plan: true });
-  await page.goto('/');
+  // No conversation UI on Home.
+  await expect(page.getByRole('button', { name: 'New conversation' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Recent' })).toHaveCount(0);
   await page.locator('#brief').fill('A 10s vertical ad for a desk lamp');
   const turn = page.waitForRequest((r) => r.url().includes('/api/agent/threads/thr_stub/messages'));
   await page.getByRole('button', { name: 'Start' }).click();
-  // The pills go with the turn (they were dead controls): ratio, length and Auto video model.
-  expect(JSON.parse((await turn).postData() ?? '{}')).toMatchObject({ settings: { ratio: '9:16', seconds: 15, videoModel: null } });
-  const plan = page.getByTestId('home-plan');
-  await expect(plan).toBeVisible();
-  // UX audit: a plan that lands below the fold scrolls into view with its button.
+  await expect(page).toHaveURL(new RegExp(`/p/${PRJ}$`));
+  // One project, titled after the brief; the thread belongs to it (surface canvas).
+  expect(s.created).toEqual([{ title: 'A 10s vertical ad for a desk lamp' }]);
+  // The pills go with the turn: ratio, length and the Auto video model; the mode Home had.
+  expect(JSON.parse((await turn).postData() ?? '{}')).toMatchObject({ text: 'A 10s vertical ad for a desk lamp', settings: { ratio: '9:16', seconds: 15, videoModel: null }, mode: 'edit' });
+  expect(s.threads).toEqual([{ surface: 'canvas', projectId: PRJ }]);
+  const agent = page.locator('aside[aria-label="Agent"]');
+  await expect(agent.getByTestId('agent-user')).toHaveText('A 10s vertical ad for a desk lamp');
+  await expect(agent.getByTestId('agent-pending')).toBeVisible();
+  const plan = agent.getByTestId('plan-card');
+  await expect(plan).toBeVisible({ timeout: 10_000 });
+  await expect(agent.locator('strong', { hasText: '10-second' })).toBeVisible();
+  await expect(plan).toContainText('Desk at dusk');
+  await expect(plan).toContainText('Switch');
   await expect(plan.getByRole('button', { name: 'Build on canvas' })).toBeInViewport();
+  await page.screenshot({ path: `${OUT}real-agent-canvas-plan.png` });
   const applied = page.waitForRequest((r) => r.url().includes('/api/agent/proposals/prop_stub1/apply'));
   await plan.getByRole('button', { name: 'Build on canvas' }).click();
-  expect(JSON.parse((await applied).postData() ?? '{}')).toMatchObject({ optionIndex: 0, title: 'Desk at dusk' });
-  await expect(page).toHaveURL(/\/p\/prj_stub/);
+  expect(JSON.parse((await applied).postData() ?? '{}')).toMatchObject({ optionIndex: 0 });
+  await expect(plan.getByRole('status')).toContainText('2 nodes added to the canvas. Nothing was charged.');
+  await expect(page).toHaveURL(new RegExp(`/p/${PRJ}$`));
+  // Reload: the conversation comes back from the project's thread, the brief is not sent again.
+  await page.reload();
+  await expect(agent.getByTestId('agent-user')).toHaveCount(1);
+  await expect(agent).toContainText('Here is a');
+  expect(s.sends).toBe(1);
 });
 
-test('light mode and reduced motion: the card and the conversation use theme tokens; the typing dots hold still', async ({ page }) => {
+test('agent brief without a plan (D-007): the upgrade modal opens on Home before anything is made, and the brief stays', async ({ page }) => {
   const s = await setup(page);
-  s.turns.push({ text: 'Hi. What is the video for?' });
+  s.noPlan = true;
+  await page.goto('/');
+  await page.locator('#brief').fill('A 10s vertical ad for a desk lamp');
+  await page.getByRole('button', { name: 'Start' }).click();
+  await expect(page.getByRole('dialog', { name: 'The agent needs a plan' })).toBeVisible();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.locator('#brief')).toHaveValue('A 10s vertical ad for a desk lamp');
+  expect(s.created).toEqual([]);
+  expect(s.threads).toEqual([]);
+});
+
+test('older Home conversations: the canvas panel’s Conversations menu lists them; picking one moves it onto this canvas', async ({ page }) => {
+  const s = await setup(page);
+  await page.route(/\/api\/(graphql|agent\/threads\/thr_old\/attach)$/, async (route) => {
+    const req = route.request();
+    if (req.url().endsWith('/thr_old/attach')) {
+      s.attached.push(JSON.parse(req.postData() ?? '{}') as Record<string, unknown>);
+      const thread = { ...canvasThread('thr_old', ['Sneaker drop teaser', 'Two options below.']), projectId: PRJ };
+      return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ projectId: PRJ, thread }) });
+    }
+    if (!(req.postData() ?? '').includes('agentThreads')) return route.fallback();
+    const items = [{ id: 'thr_old', projectId: null, surface: 'home', title: 'Sneaker drop teaser', updatedAt: Date.now() - 86_400_000 }];
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: { agentThreads: items } }) });
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/p/${PRJ}`);
+  const agent = page.locator('aside[aria-label="Agent"]');
+  await agent.getByRole('button', { name: 'Conversations' }).click();
+  const menu = page.getByRole('menu', { name: 'Conversations' });
+  const old = menu.getByRole('menuitem', { name: /Sneaker drop teaser/ });
+  await expect(old).toContainText('From Home');
+  await old.click();
+  await expect(agent.getByTestId('agent-user')).toHaveText('Sneaker drop teaser');
+  expect(s.attached).toEqual([{ projectId: PRJ }]);
+});
+
+test('light mode and reduced motion: the run card uses theme tokens', async ({ page }) => {
+  await setup(page);
   await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
   await page.goto('/');
   await send(page, 'Video', 'A lamp turning on');
@@ -393,12 +422,4 @@ test('light mode and reduced motion: the card and the conversation use theme tok
   const body = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
   expect(bg).not.toBe(body);
   await page.screenshot({ path: `${OUT}real-run-light.png` });
-  await page.getByRole('tablist', { name: 'Creation mode' }).getByRole('tab', { name: 'Agent' }).click();
-  await page.locator('#brief').fill('hello');
-  await page.locator('#brief').press('Enter');
-  const dot = page.getByTestId('home-agent-typing').locator('i').first();
-  await expect(dot).toBeVisible();
-  expect(await dot.evaluate((el) => getComputedStyle(el).animationName)).toBe('none');
-  await expect(page.getByTestId('home-agent-reply').last()).toHaveAttribute('data-status', 'done');
-  await page.screenshot({ path: `${OUT}real-agent-light.png` });
 });

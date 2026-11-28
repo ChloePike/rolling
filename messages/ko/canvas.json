@@ -372,5 +372,13 @@
   "canvas.toast.assetReplaced": "{name}(으)로 교체했어요.",
   "canvas.drop.hint": "놓으면 내 에셋에 업로드하고 캔버스에 추가해요",
   "canvas.drop.uploading": "{n, plural, one {파일 #개를 내 에셋에 업로드하는 중이에요.} other {파일 #개를 내 에셋에 업로드하는 중이에요.}}",
-  "canvas.drop.refused": "{n, plural, one {파일 #개는 캔버스에 놓을 수 없어요.} other {파일 #개는 캔버스에 놓을 수 없어요.}}"
+  "canvas.drop.refused": "{n, plural, one {파일 #개는 캔버스에 놓을 수 없어요.} other {파일 #개는 캔버스에 놓을 수 없어요.}}",
+  "canvas.agent.refs": "첨부: {names}",
+  "canvas.agent.history.label": "대화",
+  "canvas.agent.history.loading": "불러오는 중…",
+  "canvas.agent.history.empty": "아직 다른 대화가 없어요",
+  "canvas.agent.history.untitled": "제목 없는 대화",
+  "canvas.agent.history.fromHome": "홈에서 · {date}",
+  "canvas.agent.history.moveHint": "이 캔버스에서 이어가요",
+  "canvas.agent.history.failed": "대화를 열 수 없어요. 다시 시도하세요."
 }

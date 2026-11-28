@@ -108,8 +108,9 @@ test.describe('Upgrade modal', () => {
     await page.getByRole('button', { name: 'Start' }).click();
     await modal(page, 'The agent needs a plan').getByRole('button', { name: 'Continue with Starter' }).click();
     await expect(modal(page, 'You’re on Starter')).toBeVisible();
-    // The kept brief goes to the agent: it shows in the Home conversation.
-    await expect(page.getByTestId('home-agent-user')).toHaveText('A 15s ad for a sparkling water', { timeout: 8000 });
+    // The kept brief opens its own canvas (D-039) and goes to the agent there.
+    await expect(page).toHaveURL(/\/p\/prj_[a-z0-9]+$/, { timeout: 8000 });
+    await expect(page.locator('aside[aria-label="Agent"]').getByTestId('agent-user')).toHaveText('A 15s ad for a sparkling water', { timeout: 8000 });
   });
 
   test('team invite without Team opens the Team variant with a seat stepper and the price from the config', async ({ page }) => {

@@ -1,58 +1,8 @@
-import type { Proposal, Thread } from '@/features/overlays/agent';
-
 /**
- * Home agent conversation: message model and pure helpers (unit tested in
- * `thread.test.ts`). The hook is `useHomeThread.ts`, the view `HomeThread.tsx`.
+ * Agent reply text in the canvas agent panel (pure helpers, unit tested in
+ * `agentText.test.ts`): the small Markdown subset the agent writes, rendered
+ * as text nodes only, and the mock agent's small-talk check.
  */
-
-export interface ThreadMsg {
-  id: string;
-  role: 'user' | 'agent';
-  text: string;
-  /** Agent messages: streaming while the turn runs; error with a retry of `retryText`. */
-  status: 'streaming' | 'done' | 'error';
-  /** The read tool running right now (e.g. `models.capabilities`), while streaming. */
-  tool?: string | null;
-  /** The plan proposal this reply carries. */
-  proposal?: Proposal | null;
-  /** Error replies: what to send again. */
-  retryText?: string;
-  /** Error replies: what the retry needs (an allowance or rate limit cannot be retried at once). */
-  retryable?: boolean;
-}
-
-/** Messages of a stored thread (`GET /api/agent/threads/:id`), proposals attached to the reply that made them. */
-export function messagesFromThread(thread: Pick<Thread, 'messages' | 'proposals'>): ThreadMsg[] {
-  const byId = new Map(thread.proposals.map((p) => [p.id, p]));
-  return thread.messages.map((m) => ({
-    id: m.id,
-    role: m.role === 'user' ? 'user' : 'agent',
-    text: m.content,
-    status: 'done',
-    ...(m.proposalId && byId.get(m.proposalId) ? { proposal: byId.get(m.proposalId)! } : {}),
-  }));
-}
-
-/** The open plan proposal (the newest one still `proposed`); older ones read as replaced. */
-export function openPlanId(messages: ThreadMsg[]): string | null {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const p = messages[i]!.proposal;
-    if (p && p.kind === 'plan') return p.status === 'proposed' ? p.id : null;
-  }
-  return null;
-}
-
-/** Human label key for a read tool the agent is running (`home.agent.tool.<key>`). */
-export function toolLabelKey(name: string | null | undefined): string | null {
-  if (!name) return null;
-  if (name.startsWith('models.')) return 'models';
-  if (name.startsWith('pricing.')) return 'pricing';
-  if (name.startsWith('assets.') || name.startsWith('characters.') || name.startsWith('voices.')) return 'assets';
-  if (name.startsWith('templates.')) return 'templates';
-  if (name.startsWith('account.')) return 'account';
-  if (name.startsWith('propose.')) return 'proposal';
-  return 'other';
-}
 
 export type Inline = { text: string; bold?: boolean; code?: boolean };
 export type Block = { type: 'p'; parts: Inline[] } | { type: 'ul' | 'ol'; items: Inline[][] };

@@ -372,5 +372,13 @@
   "canvas.toast.assetReplaced": "Replaced with {name}.",
   "canvas.drop.hint": "Drop to upload to your assets and add to the canvas",
   "canvas.drop.uploading": "{n, plural, one {Uploading # file to your assets.} other {Uploading # files to your assets.}}",
-  "canvas.drop.refused": "{n, plural, one {# file can’t go on the canvas.} other {# files can’t go on the canvas.}}"
+  "canvas.drop.refused": "{n, plural, one {# file can’t go on the canvas.} other {# files can’t go on the canvas.}}",
+  "canvas.agent.refs": "With {names}",
+  "canvas.agent.history.label": "Conversations",
+  "canvas.agent.history.loading": "Loading…",
+  "canvas.agent.history.empty": "No other conversations yet",
+  "canvas.agent.history.untitled": "Untitled conversation",
+  "canvas.agent.history.fromHome": "From Home · {date}",
+  "canvas.agent.history.moveHint": "Continues on this canvas",
+  "canvas.agent.history.failed": "That conversation couldn’t be opened. Try again."
 }

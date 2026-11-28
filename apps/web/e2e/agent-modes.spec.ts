@@ -138,15 +138,22 @@ test.describe('Home agent modes and the Preferences default', () => {
     await list.getByRole('button', { name: /^Read/ }).click();
     await page.locator('#brief').fill('Launch video for a desk lamp');
     await page.getByRole('button', { name: 'Start' }).click();
-    await expect(page.getByTestId('home-agent-reply').last()).toContainText('Read mode');
-    await expect(page.getByTestId('home-plan')).toHaveCount(0);
+    // D-039: the brief opens its own canvas; the panel runs it in the mode Home picked.
+    await expect(page).toHaveURL(/\/p\/[^/?]+/, { timeout: 15_000 });
+    await expect(panel(page).getByRole('button', { name: 'Agent mode: Read' })).toBeVisible();
+    await expect(panel(page).getByTestId('agent-reply').last()).toContainText('Read mode');
+    await expect(panel(page).getByTestId('plan-card')).toHaveCount(0);
 
+    await page.goto('/');
     await page.getByRole('button', { name: 'Agent mode: Read' }).click();
     await page.getByRole('dialog', { name: 'Agent mode: Read' }).getByRole('button', { name: /^Auto/ }).click();
     await expect(page.getByRole('button', { name: 'Run budget per turn' })).toHaveText(/Budget 300/);
     await page.locator('#brief').fill('Launch video for a desk lamp');
     await page.getByRole('button', { name: 'Start' }).click();
     await expect(page).toHaveURL(/\/p\/[^/?]+/, { timeout: 15_000 });
+    // Auto: the plan's first option is built on that canvas without a click.
+    await expect(panel(page).getByRole('button', { name: 'Agent mode: Auto' })).toBeVisible();
+    await expect(panel(page).getByTestId('plan-card').getByRole('status')).toContainText('added to the canvas');
   });
 
   test('Preferences sets the default mode for Home and the Auto budget', async ({ page }) => {

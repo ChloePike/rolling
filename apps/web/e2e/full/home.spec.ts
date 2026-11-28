@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { account, balance, env, getJson, shot, watchErrors, type RunView } from './support';
 
 /**
- * Matrix: HOME-1 … HOME-3 (Home run cards, the agent conversation, Blank canvas / All projects).
+ * Matrix: HOME-1 … HOME-3 (Home run cards, an agent brief opening its canvas (D-039), Blank canvas / All projects).
  * Nothing here spends: the run card's start is sent with `options.forceFailure` (refunded in full),
  * agent turns run on DeepSeek (unmetered).
  */
@@ -63,59 +63,49 @@ test('HOME-1 run cards: an Image send becomes a card under the prompt box (no to
   errs.assertClean();
 });
 
-test('HOME-2 agent conversation: small talk gets a short reply (no plan), a brief gets a plan card in view; the thread survives a reload, comes back from the server on a “new device”, and Recent switches conversations', async ({ page, context, baseURL }, testInfo) => {
+test('HOME-2 agent brief (D-039): Home opens a new canvas with the agent panel; small talk gets a short reply (no plan), a brief gets a plan card in view that builds into that project; the thread survives a reload and comes back on a “new device”', async ({ page, context, baseURL }, testInfo) => {
   test.setTimeout(8 * 60_000);
   await account(context, baseURL, 'homeagent', 'plus');
   const errs = watchErrors(page);
   await page.goto('/');
+  // No conversation UI on Home.
+  await expect(page.getByRole('button', { name: 'New conversation' })).toHaveCount(0);
   await page.locator('#brief').fill('hello');
   await page.locator('#brief').press('Enter');
-  const agent = page.getByTestId('home-agent');
-  await expect(agent.getByTestId('home-agent-user')).toHaveText('hello');
-  const reply = agent.getByTestId('home-agent-reply').last();
-  await expect(reply).toHaveAttribute('data-status', 'done', { timeout: 120_000 });
+  await expect(page).toHaveURL(/\/p\/prj_[A-Za-z0-9]+$/, { timeout: 30_000 });
+  const projectId = new URL(page.url()).pathname.split('/').pop()!;
+  const agent = page.locator('aside[aria-label="Agent"]');
+  await expect(agent.getByTestId('agent-user')).toHaveText('hello');
+  const reply = agent.getByTestId('agent-reply').last();
+  await expect(reply).toBeVisible({ timeout: 120_000 });
   const smallTalk = (await reply.innerText()).trim();
   expect(smallTalk.length).toBeGreaterThan(0);
   expect(smallTalk.length, `a short reply to small talk: “${smallTalk}”`).toBeLessThan(600);
   // No tool narration (“I’ll check the models first”).
   expect(smallTalk).not.toMatch(/^(I['’]ll|Let me) (check|look|read|fetch)/i);
-  await expect(agent.getByTestId('home-plan')).toHaveCount(0);
-  await expect(agent.getByTestId('home-agent-llm')).toContainText(/DeepSeek/);
+  await expect(agent.getByTestId('plan-card')).toHaveCount(0);
 
-  const box = agent.getByRole('textbox', { name: 'Reply to the agent' });
+  const box = agent.getByLabel('Tell the agent');
   await box.fill('A 10-second vertical ad for a desk lamp: the switch, then the warm glow on a notebook.');
   await box.press('Enter');
-  const plan = agent.getByTestId('home-plan');
+  const plan = agent.getByTestId('plan-card');
   await expect(plan).toBeVisible({ timeout: 4 * 60_000 });
   await expect(plan.getByRole('button', { name: 'Build on canvas' })).toBeInViewport({ timeout: 10_000 });
-  await expect(plan).toContainText(/Building is free/);
-  await shot(page, testInfo, 'home-agent-plan');
+  await shot(page, testInfo, 'home-agent-canvas-plan');
+  await plan.getByRole('button', { name: 'Build on canvas' }).click();
+  await expect(plan.getByRole('status')).toContainText('Nothing was charged', { timeout: 30_000 });
+  expect(new URL(page.url()).pathname).toBe(`/p/${projectId}`);
 
   await page.reload();
-  await expect(page.getByTestId('home-agent').getByTestId('home-agent-user')).toHaveCount(2, { timeout: 30_000 });
-
-  // The server lists the thread (GraphQL agentThreads): another device restores it.
-  const threads = await page.request.post('/api/graphql', { data: { query: '{ agentThreads(surface: "home", first: 5) { id title surface } }' } });
-  const list = ((await threads.json()) as { data: { agentThreads: Array<{ id: string; title: string; surface: string }> } }).data.agentThreads;
-  expect(list.length).toBeGreaterThanOrEqual(1);
-  expect(list[0]!.title).toBeTruthy();
+  await expect(agent.getByTestId('agent-user')).toHaveCount(2, { timeout: 30_000 });
+  // The server lists the thread under its project: another device restores it.
+  const threads = await getJson<{ items: Array<{ id: string; surface: string }> }>(page.request, `/api/agent/threads?projectId=${projectId}`);
+  expect(threads.items.map((t) => t.surface)).toContain('canvas');
   await page.evaluate(() => {
     for (const k of Object.keys(localStorage)) if (/agent|thread/i.test(k)) localStorage.removeItem(k);
   });
   await page.reload();
-  await expect(page.getByTestId('home-agent').getByTestId('home-agent-user').first()).toHaveText('hello', { timeout: 30_000 });
-
-  // A second conversation; Recent switches back to the first one.
-  await page.getByTestId('home-agent').getByRole('button', { name: 'New conversation' }).click();
-  await expect(page.getByTestId('home-agent')).toHaveCount(0);
-  await page.locator('#brief').fill('What can you make for a bakery?');
-  await page.locator('#brief').press('Enter');
-  await expect(page.getByTestId('home-agent').getByTestId('home-agent-reply').last()).toHaveAttribute('data-status', 'done', { timeout: 120_000 });
-  await page.getByTestId('home-agent').getByRole('button', { name: 'Recent' }).click();
-  const menu = page.getByRole('menu', { name: 'Recent conversations' });
-  await expect(menu.getByRole('menuitem').first()).toBeVisible({ timeout: 15_000 });
-  await menu.getByRole('menuitem').first().click();
-  await expect(page.getByTestId('home-agent').getByTestId('home-agent-user').first()).toHaveText('hello', { timeout: 30_000 });
+  await expect(agent.getByTestId('agent-user').first()).toHaveText('hello', { timeout: 30_000 });
   errs.assertClean();
 });
 

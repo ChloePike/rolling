@@ -2,7 +2,10 @@ import { useEffect, useSyncExternalStore } from 'react';
 import { getPrefs } from '@/lib/prefs';
 import { checkoutTopUp, getCredits as getSessionCredits } from '@/lib/session';
 import { apiFetch, ApiError, isApiError, isMockApi, openProjectChannel } from '@/features/overlays/backend';
-import { applyProposal, discardProposal, sendTurn, threadFor, type AgentMode, type ApplyResult, type AutoTurn, type Proposal } from '@/features/overlays/agent';
+import { applyProposal, discardProposal, sendTurn, skillId, threadFor, type AgentMode, type ApplyResult, type AutoTurn, type Proposal, type TurnSettings } from '@/features/overlays/agent';
+import { resolveAssetId } from '@/lib/transfers';
+import { startedFromHome } from './agent/handoff';
+import { isSmallTalk } from './agent/agentText';
 import { listRuns } from '@/features/overlays/runs';
 import type { MockProjectRoom } from './graph/mockRoom';
 import { GraphStore } from './graph/store';
@@ -262,8 +265,8 @@ export function openProject(projectId: string, events: ProjectEvents): ProjectSe
   const c = credits.get();
   room = new (mockData().room.MockProjectRoom)({
     projectId,
-    // `?mock=empty`: a canvas with no nodes yet (the empty state).
-    initial: flags.empty ? { revision: 1, nodes: [], edges: [], groups: [] } : mockData().canvas.mockGraph(),
+    // `?mock=empty`: a canvas with no nodes yet (the empty state); so is a project a Home brief started (D-039).
+    initial: flags.empty || startedFromHome(projectId) ? { revision: 1, nodes: [], edges: [], groups: [] } : mockData().canvas.mockGraph(),
     frozen: flags.frozen,
     failAll: flags.fail,
     latency: flags.fast ? 0 : 40,
@@ -811,8 +814,12 @@ export interface AgentSendOptions {
   projectId?: string;
   /** Selected node ids (the agent edits these first). */
   selection?: string[];
-  /** Asset ids of `@` references. */
+  /** Asset ids of `@` references (upload ids still in flight resolve first). */
   refs?: string[];
+  /** The Home prompt box's pills (video model, ratio, length), carried by a brief from Home (D-039). */
+  settings?: TurnSettings;
+  /** Skill chip label (`/TV ad`): the thread is created with it. */
+  skill?: string | null;
   /** Current nodes, to describe a graph patch's changes by title. */
   nodes?: GraphNode[];
   onDelta?: (delta: string) => void;
@@ -861,10 +868,21 @@ export function graphProposalFrom(proposal: Proposal, nodes: GraphNode[] = []): 
  */
 async function sendRealAgentMessage(text: string, opts: AgentSendOptions): Promise<AgentReply> {
   const projectId = opts.projectId!;
-  const thread = await threadFor(`canvas:${projectId}`, { surface: 'canvas', projectId });
+  const skill = skillId(opts.skill ?? null);
+  const thread = await threadFor(`canvas:${projectId}`, { surface: 'canvas', projectId, ...(skill ? { skill } : {}) });
+  // `@` uploads still in flight resolve to their asset ids first; anything else is dropped.
+  const refs = opts.refs?.length ? (await Promise.all(opts.refs.map((r) => resolveAssetId(r)))).filter((r) => r.startsWith('ast_')) : undefined;
   const r = await sendTurn(
     thread.id,
-    { text, selection: opts.selection, refs: opts.refs, llm: opts.llm === 'default' ? null : opts.llm, ...(opts.mode ? { mode: opts.mode } : {}), ...(opts.autoBudget !== undefined ? { autoBudget: opts.autoBudget } : {}) },
+    {
+      text,
+      selection: opts.selection,
+      refs,
+      llm: opts.llm === 'default' ? null : opts.llm,
+      ...(opts.settings ? { settings: opts.settings } : {}),
+      ...(opts.mode ? { mode: opts.mode } : {}),
+      ...(opts.autoBudget !== undefined ? { autoBudget: opts.autoBudget } : {}),
+    },
     { onDelta: opts.onDelta, ...(opts.onAuto ? { onAuto: opts.onAuto } : {}) },
     // Canvas threads stream on the project channel (D-014).
     (l) => subscribeProjectMessages(projectId, l),
@@ -910,6 +928,14 @@ export async function sendAgentMessage(text: string, opts: AgentSendOptions): Pr
     return { text: 'Read mode: I can explain and estimate, but nothing on the canvas changes. Switch to Edit or Auto to make the change.' };
   }
   const state = room?.state;
+  // An empty canvas (e.g. a brief from Home, D-039): a brief gets a plan to build, small talk a short answer.
+  if (state && state.nodes.length === 0) {
+    if (isSmallTalk(text)) return { text: 'Hi. Tell me what the video is for, how long it should be and whether it is vertical or widescreen, and I will plan the shots.' };
+    return {
+      text: 'Here are a few directions. Building the nodes is free; the estimate is what running them costs.',
+      plan: { proposalId: `prop_mock_plan_${++proposalSeq}`, options: agentPlanOptions() },
+    };
+  }
   const shots = (state?.nodes ?? []).filter((n) => n.kind === 'video');
   const m = /shot\s*(\d+|[a-z])\b/i.exec(text);
   const index = m ? (/^\d+$/.test(m[1]!) ? Number(m[1]) - 1 : m[1]!.toLowerCase().charCodeAt(0) - 97) : -1;

@@ -1,15 +1,29 @@
-import { cx, presenceProps, type PresenceState } from '@rolling/ui';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { cx, presenceProps, Skeleton, useToast, type PresenceState } from '@rolling/ui';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { AUTO_MODEL, ModelPicker, Paywall, catalogToOptions } from '@/features/overlays';
 import { mockData } from '@/lib/api/mode';
 import { useSkills, type RefItem } from '@/features/prompt';
 import { useAssetPicker } from '@/features/picker';
 import { UpgradeGate } from '@/lib/upgrade/store';
 import { useAgentAllowance } from '@/lib/session/agentAllowance';
+import { useCheckoutResume } from '@/lib/session';
 import { pickerModels, useModels } from '@/lib/models';
 import { ModelIcon, modelIcon } from '@/lib/modelIcons';
 import { FormattedMessage, useIntl } from 'react-intl';
-import { agentFailure, existingThread, undoAuto, type AutoRun, type AutoTurn } from '@/features/overlays/agent';
+import {
+  agentFailure,
+  attachThread,
+  existingThread,
+  getThread,
+  projectThreads,
+  recentThreads,
+  rememberThread,
+  undoAuto,
+  type AutoRun,
+  type AutoTurn,
+  type Thread,
+  type TurnSettings,
+} from '@/features/overlays/agent';
 import { AgentModeSwitch, AutoSummary, useAgentMode } from '@/features/agent-mode';
 import { isMockApi, savePendingAction, takePendingAction } from '@/features/overlays/backend';
 import { agentPlanOptions, applyAgentProposal, discardAgentProposal, graphProposalFrom, planOptionsFrom, sendAgentMessage, type GraphProposal } from '../api';
@@ -18,6 +32,8 @@ import { CanvasIcon } from '../icons';
 import { MenuPopover } from '../layers/Menu';
 import type { AgentPlanOption } from '../mocks';
 import { readLocal, writeLocal } from '../storage';
+import { parseAgentText, type Inline } from './agentText';
+import { peekHandoff, startedFromHome, takeHandoff, type AgentHandoff } from './handoff';
 import styles from './agent.module.css';
 
 export type AgentPlan = AgentPlanOption;
@@ -26,6 +42,10 @@ interface Message {
   role: 'user' | 'agent';
   text: string;
   fresh?: boolean;
+  /** User messages: names of the `@` references sent with it (a brief from Home). */
+  refNames?: string[];
+  /** Agent messages: the plan proposal this reply made (the plan card shows under it while it is the open one). */
+  planId?: string;
   proposal?: GraphProposal;
   /** Proposal outcome once the user acted on it. */
   outcome?: 'applied' | 'discarded' | 'stale';
@@ -55,6 +75,54 @@ interface AgentPanelProps {
   onUndoLocal?: () => void;
 }
 
+/** What a turn carries beyond the text: a brief from Home sets them all (D-039); the composer uses the panel's own. */
+/** A canvas agent turn kept across checkout (`canvas.agent` pending action). */
+interface PendingCanvasAgent {
+  projectId: string | undefined;
+  text: string;
+  extra?: DeliverExtra;
+}
+
+interface DeliverExtra {
+  refs?: string[];
+  refNames?: string[];
+  skill?: string | null;
+  llm?: string | null;
+  settings?: TurnSettings;
+  mode?: AgentHandoff['mode'];
+  autoBudget?: number;
+}
+
+/** An agent reply: the small Markdown subset it writes (paragraphs, lists, bold, code), as text nodes only. */
+function AgentText({ text }: { text: string }) {
+  const blocks = parseAgentText(text);
+  const inline = (parts: Inline[]) =>
+    parts.map((p, i) => (p.bold ? <strong key={i}>{p.text}</strong> : p.code ? <code key={i}>{p.text}</code> : <Fragment key={i}>{p.text}</Fragment>));
+  return (
+    <>
+      {blocks.map((b, i) =>
+        b.type === 'p' ? (
+          <p key={i} className={styles.para}>
+            {inline(b.parts)}
+          </p>
+        ) : b.type === 'ul' ? (
+          <ul key={i} className={styles.list}>
+            {b.items.map((it, j) => (
+              <li key={j}>{inline(it)}</li>
+            ))}
+          </ul>
+        ) : (
+          <ol key={i} className={styles.list}>
+            {b.items.map((it, j) => (
+              <li key={j}>{inline(it)}</li>
+            ))}
+          </ol>
+        ),
+      )}
+    </>
+  );
+}
+
 /** Agent LLM choice (D-009), remembered per browser until `PATCH /api/me/prefs` carries it. */
 export const AGENT_LLM_KEY = 'rolling.agent.llm';
 /** Generation model the agent proposes for new nodes; `auto` uses the classifier (D-009). */
@@ -77,59 +145,137 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
   const [liveAuto, setLiveAuto] = useState<AutoTurn | null>(null);
   const [paywall, setPaywall] = useState(false);
   const intl = useIntl();
-  const [messages, setMessages] = useState<Message[]>(() => (mock ? mockData().canvas.MOCK_AGENT.messages : []));
-  /** Real mode: the latest plan proposal of the thread (Build on canvas applies one option). */
-  const [planProposal, setPlanProposal] = useState<{ proposalId: string; options: AgentPlanOption[] } | null>(null);
+  const toast = useToast();
+  // D-039: a project a Home brief started shows no demo conversation (mock mode) and sends the brief on open.
+  const [fromHome] = useState(() => startedFromHome(projectId) || peekHandoff(projectId) !== null);
+  const demo = mock && !fromHome;
+  const [messages, setMessages] = useState<Message[]>(() => {
+    if (!demo) return [];
+    const m = mockData().canvas.MOCK_AGENT;
+    return m.messages.map((x, i) => (i === m.messages.length - 1 ? { ...x, planId: m.plan.id } : x));
+  });
+  /** The open plan proposal of the thread (Build on canvas applies one option); its card shows under the reply that made it. */
+  const [planProposal, setPlanProposal] = useState<{ proposalId: string; options: AgentPlanOption[] } | null>(() =>
+    demo ? { proposalId: mockData().canvas.MOCK_AGENT.plan.id, options: agentPlanOptions() } : null,
+  );
   const [draft, setDraft] = useState('');
   const [built, setBuilt] = useState<number | null>(null);
   const [option, setOption] = useState(0);
   const [pending, setPending] = useState(false);
-  const [skill, setSkill] = useState(() => (mock ? mockData().canvas.MOCK_AGENT.skill : ''));
-  const [menu, setMenu] = useState<'plus' | 'llm' | 'model' | null>(null);
-  const [llm, setLlm] = useState<string | null>(() => readLocal(AGENT_LLM_KEY));
-  const [model, setModel] = useState<string>(() => readLocal(AGENT_MODEL_KEY) ?? AUTO_MODEL);
+  // Real mode: the stored conversation is being read (a loading state, never demo content).
+  const [restoring, setRestoring] = useState(real);
+  const [skill, setSkill] = useState(() => (demo ? mockData().canvas.MOCK_AGENT.skill : (peekHandoff(projectId)?.skill ?? '')));
+  const [menu, setMenu] = useState<'plus' | 'llm' | 'model' | 'history' | null>(null);
+  const [llm, setLlm] = useState<string | null>(() => peekHandoff(projectId)?.llm ?? readLocal(AGENT_LLM_KEY));
+  const [model, setModel] = useState<string>(() => {
+    const h = peekHandoff(projectId);
+    return h ? (h.settings.videoModel ?? AUTO_MODEL) : (readLocal(AGENT_MODEL_KEY) ?? AUTO_MODEL);
+  });
+  /** The Home pills (ratio, length) a brief from Home carried: every turn of this panel keeps sending them. */
+  const turnSettings = useRef<TurnSettings | null>(peekHandoff(projectId)?.settings ?? null);
   const autoRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const options = mock ? agentPlanOptions() : (planProposal?.options ?? []);
+  const options = planProposal?.options ?? [];
   const plan = options.length ? options[option % options.length]! : null;
-  // Real mode: one agent message lists 0..2 leading messages before the plan card in mock; here all go after it.
-  const lead = mock ? 2 : 0;
+
+  /** Shows a stored thread: its messages, Auto summaries and the open plan. */
+  const showThread = (t: Thread) => {
+    threadId.current = t.id;
+    agentMode.adopt(t.mode);
+    const byId = new Map(t.proposals.map((p) => [p.id, p]));
+    const autoByMessage = new Map((t.auto ?? []).filter((a) => a.messageId).map((a) => [a.messageId!, a]));
+    const openPlan = [...t.proposals].reverse().find((p) => p.kind === 'plan' && p.status === 'proposed');
+    setMessages(
+      t.messages.map((m) => {
+        const auto = autoByMessage.get(m.id);
+        const p = m.proposalId ? byId.get(m.proposalId) : undefined;
+        // A change Auto applied shows in its summary, not as a proposal card.
+        const gp = p && !(auto && p.status === 'applied') ? graphProposalFrom(p, nodes) : null;
+        const outcome = p && p.status !== 'proposed' ? (p.status as Message['outcome']) : undefined;
+        return {
+          role: m.role === 'user' ? 'user' : 'agent',
+          text: m.content,
+          ...(gp ? { proposal: gp, outcome } : {}),
+          ...(auto ? { auto } : {}),
+          ...(openPlan && m.proposalId === openPlan.id ? { planId: openPlan.id } : {}),
+        };
+      }),
+    );
+    setPlanProposal(openPlan ? { proposalId: openPlan.id, options: planOptionsFrom(openPlan) } : null);
+    setOption(0);
+    setBuilt(null);
+  };
+
+  // The popup checkout's onJoined already sent the turn: its bound copy, takeable once the checkout resumes, is dropped
+  // so it never replays later (a redirect never runs onJoined; the mount restore above replays it then).
+  const sentOnJoin = useRef(false);
+  useCheckoutResume(() => {
+    if (!sentOnJoin.current) return;
+    sentOnJoin.current = false;
+    takePendingAction<PendingCanvasAgent>('canvas.agent', (d) => d.projectId === projectId);
+  });
+
+  /** A turn the join paywall interrupted (D-007), sent again with the choices it had. */
+  const resumeTurn = (p: PendingCanvasAgent) => {
+    const extra = p.extra ?? {};
+    if (extra.mode) agentMode.setMode(extra.mode);
+    if (extra.llm) setLlm(extra.llm);
+    if (extra.settings) turnSettings.current = extra.settings;
+    deliverRef.current(p.text, extra);
+  };
+
+  /** D-039: the brief Home handed over goes out as this thread's first message, with the prompt box's choices. */
+  const sendHandoff = (h: AgentHandoff) => {
+    agentMode.setMode(h.mode);
+    if (h.llm) setLlm(h.llm);
+    turnSettings.current = h.settings;
+    deliverRef.current(h.text, { refs: h.refs, refNames: h.refNames, skill: h.skill, llm: h.llm, settings: h.settings, mode: h.mode, ...(h.autoBudget !== undefined ? { autoBudget: h.autoBudget } : {}) });
+  };
 
   // Real mode: restore the canvas thread's conversation and its open proposals.
   useEffect(() => {
     if (!real) return;
     let live = true;
     // Only an existing thread is read here; a new one is created on the first send (members only, D-007).
-    existingThread(`canvas:${projectId}`).then(
+    // A browser that never opened this project's thread (another device) gets the caller's own latest one from the
+    // server; a teammate's thread is never adopted (it stays reachable in the Conversations menu).
+    const restore = async (): Promise<Thread | null> => {
+      const t = await existingThread(`canvas:${projectId}`);
+      if (t || peekHandoff(projectId)) return t;
+      const [latest] = await projectThreads(projectId!, 10, { mine: true }).catch(() => []);
+      if (!latest) return null;
+      const found = await getThread(latest.id).catch(() => null);
+      if (found) rememberThread(`canvas:${projectId}`, found.id);
+      return found;
+    };
+    restore().then(
       (t) => {
         if (!live) return;
-        if (t) {
-          threadId.current = t.id;
-          agentMode.adopt(t.mode);
-          const byId = new Map(t.proposals.map((p) => [p.id, p]));
-          const autoByMessage = new Map((t.auto ?? []).filter((a) => a.messageId).map((a) => [a.messageId!, a]));
-          setMessages(
-            t.messages.map((m) => {
-              const auto = autoByMessage.get(m.id);
-              const p = m.proposalId ? byId.get(m.proposalId) : undefined;
-              // A change Auto applied shows in its summary, not as a proposal card.
-              const gp = p && !(auto && p.status === 'applied') ? graphProposalFrom(p, nodes) : null;
-              const outcome = p && p.status !== 'proposed' ? (p.status as Message['outcome']) : undefined;
-              return { role: m.role === 'user' ? 'user' : 'agent', text: m.content, ...(gp ? { proposal: gp, outcome } : {}), ...(auto ? { auto } : {}) };
-            }),
-          );
-          const openPlan = [...t.proposals].reverse().find((p) => p.kind === 'plan' && p.status === 'proposed');
-          if (openPlan) setPlanProposal({ proposalId: openPlan.id, options: planOptionsFrom(openPlan) });
-        }
+        setRestoring(false);
+        if (t) showThread(t);
+        const handoff = takeHandoff(projectId);
+        if (handoff) return sendHandoff(handoff);
         // A brief interrupted by the join paywall resumes after checkout (D-007).
-        const pendingText = takePendingAction<{ projectId: string; text: string }>('canvas.agent');
-        if (pendingText?.projectId === projectId && pendingText.text) deliverRef.current(pendingText.text);
+        const pendingTurn = takePendingAction<PendingCanvasAgent>('canvas.agent', (d) => d.projectId === projectId);
+        if (pendingTurn?.text) resumeTurn(pendingTurn);
       },
-      () => {},
+      () => live && setRestoring(false),
     );
     return () => {
       live = false;
     };
+    // Once per project.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [real, projectId]);
+
+  // Mock mode: the brief from Home is sent once the panel is up (a timer, so a double mount sends it once).
+  useEffect(() => {
+    if (real) return;
+    const t = setTimeout(() => {
+      const handoff = takeHandoff(projectId);
+      if (handoff) sendHandoff(handoff);
+    }, 0);
+    return () => clearTimeout(t);
     // Once per project.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [real, projectId]);
@@ -160,7 +306,8 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
     const f = agentFailure(e);
     switch (f.kind) {
       case 'join':
-        savePendingAction('canvas.agent', { projectId, text: lastSent.current });
+        // The whole turn is kept (refs, skill, settings, mode, budget), not just the text: a Home hand-off is gone by now.
+        savePendingAction('canvas.agent', { projectId, text: lastSent.current, extra: lastExtra.current } satisfies PendingCanvasAgent);
         setDraft(lastSent.current);
         setMessages((m) => m.slice(0, -1));
         setPaywall(true);
@@ -178,23 +325,29 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
     }
   };
   const lastSent = useRef('');
-  const deliver = (text: string) => {
+  const lastExtra = useRef<DeliverExtra>({});
+  const deliver = (text: string, extra: DeliverExtra = {}) => {
     lastSent.current = text;
-    setMessages((m) => [...m, { role: 'user', text, fresh: true }]);
+    lastExtra.current = extra;
+    setMessages((m) => [...m, { role: 'user', text, fresh: true, ...(extra.refNames?.length ? { refNames: extra.refNames } : {}) }]);
     setDraft('');
     setPending(true);
     setStreamed('');
-    const mode = agentMode.mode;
-    const budget = agentMode.budget;
+    const mode = extra.mode ?? agentMode.mode;
+    const budget = extra.autoBudget ?? agentMode.budget;
+    const settings = extra.settings ?? (turnSettings.current ? { ...turnSettings.current, videoModel: model === AUTO_MODEL ? null : model } : undefined);
     setLiveAuto(null);
     void sendAgentMessage(text, {
-      llm: llmModel?.id ?? 'default',
+      llm: extra.llm ?? llmModel?.id ?? 'default',
       model,
       projectId: real ? projectId : undefined,
       selection,
       nodes,
       mode,
       autoBudget: budget,
+      ...(extra.refs?.length ? { refs: extra.refs } : {}),
+      ...(settings ? { settings } : {}),
+      skill: extra.skill !== undefined ? extra.skill : skill || null,
       onDelta: (d) => setStreamed((s) => s + d),
       onAuto: setLiveAuto,
     }).then(
@@ -214,11 +367,15 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
         setStreamed('');
         setLiveAuto(null);
         const replyText = reply.reason === 'safety_blocked' ? reply.text || intl.formatMessage({ id: 'canvas.agent.error.safety' }) : reply.text;
-        setMessages((m) => [...m.map((x) => (x.proposal && !x.outcome ? { ...x, outcome: 'discarded' as const } : x)), { role: 'agent', text: replyText, fresh: true, proposal, ...(auto ? { auto } : {}) }]);
+        setMessages((m) => [
+          ...m.map((x) => (x.proposal && !x.outcome ? { ...x, outcome: 'discarded' as const } : x)),
+          { role: 'agent', text: replyText, fresh: true, proposal, ...(auto ? { auto } : {}), ...(reply.plan ? { planId: reply.plan.proposalId } : {}) },
+        ]);
         if (reply.plan) {
           setPlanProposal(reply.plan);
           setOption(0);
-          setBuilt(null);
+          // Mock Auto (D-021): the plan's first option is built without a click, as the server does.
+          setBuilt(mock && mode === 'auto' && reply.plan.options[0] ? onBuild(reply.plan.options[0]) : null);
         }
         onPreview(proposal ? proposal.changes.map((c) => c.nodeId) : auto?.changes.length ? auto.changes.flatMap((c) => c.nodeIds) : null);
       },
@@ -285,10 +442,8 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
     // The server applies the picked option's ops as the user (free); nodes arrive as graph.patched.
     const index = options.indexOf(p);
     void applyAgentProposal(planProposal.proposalId, index).then(
-      (r) => {
-        setBuilt(Object.keys(r.idMap ?? {}).length || p.shots.length * 2);
-        setPlanProposal(null);
-      },
+      // The card stays, saying what was built; the next plan replaces it.
+      (r) => setBuilt(Object.keys(r.idMap ?? {}).length || p.shots.length * 2),
       (e: unknown) => {
         const t = failText(e);
         if (t) setMessages((m) => [...m, { role: 'agent', text: t, fresh: true }]);
@@ -326,6 +481,89 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
     });
   };
 
+  /** The plan option card (CanvasPlan.dc.html): cost, shots, "Build on canvas" and Shuffle. */
+  const planCard = (p: AgentPlan) => (
+    <div className={styles.plan} data-testid="plan-card" data-option={p.id}>
+      <div key={p.id} className={cx(styles.planBody, option > 0 && styles.msgIn)} data-motion="">
+        <div className={styles.planHead}>
+          <span>{p.title}</span>
+          <span className={styles.planCost}>
+            <FormattedMessage id="canvas.agent.estimate" values={{ n: p.estimate }} />
+          </span>
+        </div>
+        {p.shots.map((s) => (
+          <div key={s.n} className={styles.shot}>
+            <span className={styles.shotN} style={{ background: s.tone }}>
+              {s.n}
+            </span>
+            <span>
+              <FormattedMessage id="canvas.agent.shot" values={{ title: s.title, seconds: s.seconds, visual: s.visual }} />
+            </span>
+          </div>
+        ))}
+      </div>
+      {built === null ? (
+        <div className={styles.planActions}>
+          <button type="button" className={cx(styles.build, 'rl-press')} onClick={() => build(p)}>
+            <FormattedMessage id="canvas.agent.build" />
+          </button>
+          {options.length > 1 ? (
+            <button
+              type="button"
+              className={styles.shuffle}
+              aria-label={intl.formatMessage({ id: 'canvas.agent.shuffleLabel' }, { n: ((option + 1) % options.length) + 1, total: options.length })}
+              onClick={() => setOption((o) => (o + 1) % options.length)}
+            >
+              <FormattedMessage id="canvas.agent.shuffle" />
+            </button>
+          ) : null}
+        </div>
+      ) : (
+        <span className={cx(styles.built, styles.msgIn)} data-motion="" role="status">
+          <FormattedMessage id="canvas.agent.built" values={{ n: built }} />
+        </span>
+      )}
+    </div>
+  );
+
+  /* ---------- Conversations (D-039): this project's threads and the earlier Home ones ---------- */
+  const [history, setHistory] = useState<{ project: Array<{ id: string; title: string | null; updatedAt: number }>; home: Array<{ id: string; title: string; updatedAt: number }> } | null>(null);
+  const loadHistory = () => {
+    if (!real || !projectId) return;
+    void Promise.all([projectThreads(projectId).catch(() => []), recentThreads('home', 20, { projectless: true }).catch(() => [])]).then(([project, home]) =>
+      // Filtered on the server: built Home threads never crowd out the older unbuilt ones.
+      setHistory({ project, home: home.filter((t) => !t.projectId) }),
+    );
+  };
+  const switchTo = (load: () => Promise<Thread>) => {
+    if (pending || !projectId) return;
+    void load().then(
+      (t) => {
+        rememberThread(`canvas:${projectId}`, t.id);
+        showThread(t);
+        onPreview(null);
+      },
+      () => toast.show({ message: intl.formatMessage({ id: 'canvas.agent.history.failed' }) }),
+    );
+  };
+  const when = (ms: number) => intl.formatDate(ms, { month: 'short', day: 'numeric' });
+  const historyEntries = [
+    ...(history?.project ?? []).map((t) => ({
+      key: t.id,
+      label: t.title || intl.formatMessage({ id: 'canvas.agent.history.untitled' }),
+      meta: when(t.updatedAt),
+      checked: t.id === threadId.current,
+      onSelect: () => (t.id === threadId.current ? undefined : switchTo(() => getThread(t.id))),
+    })),
+    ...(history?.home ?? []).map((t) => ({
+      key: t.id,
+      label: t.title || intl.formatMessage({ id: 'canvas.agent.history.untitled' }),
+      meta: intl.formatMessage({ id: 'canvas.agent.history.fromHome' }, { date: when(t.updatedAt) }),
+      hint: intl.formatMessage({ id: 'canvas.agent.history.moveHint' }),
+      onSelect: () => switchTo(() => attachThread(t.id, projectId!)),
+    })),
+  ];
+
   return (
     <aside aria-label={intl.formatMessage({ id: 'canvas.agent.label' })} className={cx(styles.panel, 'rl-panel')} {...presenceProps(state)}>
       <div className={styles.head}>
@@ -354,106 +592,102 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
           side="bottom"
           pillClassName={styles.pill}
         />
+        {real ? (
+          <MenuPopover
+            open={menu === 'history'}
+            onOpenChange={(o) => {
+              setMenu(o ? 'history' : null);
+              if (o) loadHistory();
+            }}
+            label={intl.formatMessage({ id: 'canvas.agent.history.label' })}
+            title={intl.formatMessage({ id: 'canvas.agent.history.label' })}
+            side="bottom"
+            align="end"
+            entries={
+              history === null
+                ? [{ key: 'loading', label: intl.formatMessage({ id: 'canvas.agent.history.loading' }), disabled: true, onSelect: () => {} }]
+                : historyEntries.length
+                  ? historyEntries
+                  : [{ key: 'none', label: intl.formatMessage({ id: 'canvas.agent.history.empty' }), disabled: true, onSelect: () => {} }]
+            }
+            trigger={(t) => (
+              <button {...t} type="button" className={styles.close} aria-label={intl.formatMessage({ id: 'canvas.agent.history.label' })} title={intl.formatMessage({ id: 'canvas.agent.history.label' })}>
+                <CanvasIcon name="history" size={16} />
+              </button>
+            )}
+          />
+        ) : null}
         <button type="button" className={styles.close} aria-label={intl.formatMessage({ id: 'canvas.agent.hide' })} onClick={onClose}>
           <CanvasIcon name="close" size={16} />
         </button>
       </div>
-      <div className={styles.thread} aria-live="polite">
-        {messages.slice(0, lead).map((m, i) => (
-          <div key={i} className={m.role === 'user' ? styles.user : styles.agent}>
-            {m.text}
+      <div className={styles.thread} aria-live="polite" aria-busy={restoring || undefined}>
+        {restoring && !messages.length ? (
+          // Real mode: the stored conversation loads; never demo content in its place.
+          <div className={styles.loading} data-testid="agent-loading">
+            <Skeleton text width="70%" height={14} />
+            <Skeleton text width="90%" height={14} />
+            <Skeleton text width="55%" height={14} />
           </div>
-        ))}
-        {plan ? (
-        <div className={styles.plan} data-testid="plan-card" data-option={plan.id}>
-          <div key={plan.id} className={cx(styles.planBody, option > 0 && styles.msgIn)} data-motion="">
-            <div className={styles.planHead}>
-              <span>{plan.title}</span>
-              <span className={styles.planCost}>
-                <FormattedMessage id="canvas.agent.estimate" values={{ n: plan.estimate }} />
-              </span>
-            </div>
-            {plan.shots.map((s) => (
-              <div key={s.n} className={styles.shot}>
-                <span className={styles.shotN} style={{ background: s.tone }}>
-                  {s.n}
-                </span>
-                <span>
-                  <FormattedMessage id="canvas.agent.shot" values={{ title: s.title, seconds: s.seconds, visual: s.visual }} />
-                </span>
-              </div>
-            ))}
-          </div>
-          {built === null ? (
-            <div className={styles.planActions}>
-              <button type="button" className={cx(styles.build, 'rl-press')} onClick={() => build(plan)}>
-                <FormattedMessage id="canvas.agent.build" />
-              </button>
-              <button
-                type="button"
-                className={styles.shuffle}
-                aria-label={intl.formatMessage({ id: 'canvas.agent.shuffleLabel' }, { n: ((option + 1) % options.length) + 1, total: options.length })}
-                onClick={() => setOption((o) => (o + 1) % options.length)}
-              >
-                <FormattedMessage id="canvas.agent.shuffle" />
-              </button>
-            </div>
-          ) : (
-            <span className={cx(styles.built, styles.msgIn)} data-motion="" role="status">
-              <FormattedMessage id="canvas.agent.built" values={{ n: built }} />
-            </span>
-          )}
-        </div>
         ) : null}
-        {messages.slice(lead).map((m, i) => (
-          <div key={i + lead} className={cx(m.role === 'user' ? styles.user : styles.agent, m.fresh && styles.msgIn)} data-motion="">
-            {m.text}
-            {m.proposal ? (
-              <div className={styles.plan} data-testid="graph-proposal" data-outcome={m.outcome ?? 'open'}>
-                <div className={styles.planHead}>
-                  <span>{m.proposal.summary}</span>
-                  <span className={styles.planCost}>
-                    <FormattedMessage id="canvas.agent.proposal.free" />
-                  </span>
+        {messages.map((m, i) => (
+          <Fragment key={i}>
+            <div className={cx(m.role === 'user' ? styles.user : styles.agent, m.fresh && styles.msgIn)} data-motion="" data-testid={m.role === 'user' ? 'agent-user' : 'agent-reply'}>
+              {m.role === 'agent' ? <AgentText text={m.text} /> : m.text}
+              {m.refNames?.length ? (
+                <span className={styles.refs}>
+                  <FormattedMessage id="canvas.agent.refs" values={{ names: intl.formatList(m.refNames, { type: 'conjunction' }) }} />
+                </span>
+              ) : null}
+              {m.proposal ? (
+                <div className={styles.plan} data-testid="graph-proposal" data-outcome={m.outcome ?? 'open'}>
+                  <div className={styles.planHead}>
+                    <span>{m.proposal.summary}</span>
+                    <span className={styles.planCost}>
+                      <FormattedMessage id="canvas.agent.proposal.free" />
+                    </span>
+                  </div>
+                  {m.proposal.changes.map((c) => (
+                    <div key={c.nodeId} className={styles.change}>
+                      <span className={styles.changeTitle}>{c.title}</span>
+                      <span>{c.detail}</span>
+                    </div>
+                  ))}
+                  {m.outcome ? (
+                    <span className={styles.built} role="status">
+                      <FormattedMessage id={`canvas.agent.proposal.${m.outcome}`} />
+                    </span>
+                  ) : (
+                    <div className={styles.planActions}>
+                      <button type="button" className={cx(styles.build, 'rl-press')} onClick={() => settle(i, 'applied')}>
+                        <FormattedMessage id="canvas.agent.proposal.apply" />
+                      </button>
+                      <button type="button" className={styles.shuffle} onClick={() => settle(i, 'discarded')}>
+                        <FormattedMessage id="canvas.agent.proposal.discard" />
+                      </button>
+                    </div>
+                  )}
                 </div>
-                {m.proposal.changes.map((c) => (
-                  <div key={c.nodeId} className={styles.change}>
-                    <span className={styles.changeTitle}>{c.title}</span>
-                    <span>{c.detail}</span>
-                  </div>
-                ))}
-                {m.outcome ? (
-                  <span className={styles.built} role="status">
-                    <FormattedMessage id={`canvas.agent.proposal.${m.outcome}`} />
-                  </span>
-                ) : (
-                  <div className={styles.planActions}>
-                    <button type="button" className={cx(styles.build, 'rl-press')} onClick={() => settle(i + lead, 'applied')}>
-                      <FormattedMessage id="canvas.agent.proposal.apply" />
-                    </button>
-                    <button type="button" className={styles.shuffle} onClick={() => settle(i + lead, 'discarded')}>
-                      <FormattedMessage id="canvas.agent.proposal.discard" />
-                    </button>
-                  </div>
-                )}
-              </div>
-            ) : null}
-            {m.auto ? (
-              <AutoSummary
-                turn={m.auto}
-                onUndo={(changeId) => undo({ changeId })}
-                onUndoAll={(turnId) => undo({ turnId })}
-                onApproveRun={approveRun}
-                busy={undoBusy}
-                failed={undoFailed}
-                approved={approved}
-              />
-            ) : null}
-          </div>
+              ) : null}
+              {m.auto ? (
+                <AutoSummary
+                  turn={m.auto}
+                  onUndo={(changeId) => undo({ changeId })}
+                  onUndoAll={(turnId) => undo({ turnId })}
+                  onApproveRun={approveRun}
+                  busy={undoBusy}
+                  failed={undoFailed}
+                  approved={approved}
+                />
+              ) : null}
+            </div>
+            {plan && planProposal && m.planId === planProposal.proposalId ? planCard(plan) : null}
+          </Fragment>
         ))}
+        {plan && planProposal && !messages.some((m) => m.planId === planProposal.proposalId) ? planCard(plan) : null}
         {pending ? (
-          <div className={cx(styles.agent, styles.pending, styles.msgIn)} data-motion="" role="status">
-            {streamed || <FormattedMessage id="canvas.agent.thinking" />}
+          <div className={cx(styles.agent, styles.pending, styles.msgIn)} data-motion="" role="status" data-testid="agent-pending">
+            {streamed ? <AgentText text={streamed} /> : <FormattedMessage id="canvas.agent.thinking" />}
             {liveAuto ? <AutoSummary turn={liveAuto} onUndo={() => {}} onUndoAll={() => {}} onApproveRun={() => {}} busy={new Set(liveAuto.changes.map((c) => c.id))} /> : null}
           </div>
         ) : null}
@@ -592,9 +826,13 @@ export function AgentPanel({ state, onClose, onBuild, isMember, onApplyProposal,
         reason={{ kind: 'agent' }}
         onClose={() => setPaywall(false)}
         onJoined={() => {
-          takePendingAction('canvas.agent');
+          const kept = takePendingAction<PendingCanvasAgent>('canvas.agent', (d) => d.projectId === projectId);
+          if (kept?.text) return resumeTurn(kept);
+          // A popup checkout: the kept turn is still bound to it; the draft goes out with the choices it was sent with.
           const text = draft.trim();
-          if (text) deliver(text);
+          if (!text) return;
+          sentOnJoin.current = true;
+          deliver(text, text === lastSent.current ? lastExtra.current : {});
         }}
       />
     </aside>

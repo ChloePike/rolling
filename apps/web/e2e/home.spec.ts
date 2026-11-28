@@ -267,10 +267,11 @@ test.describe('home interactions', () => {
     await expect(ta).toHaveValue('A 15s ad for a sparkling water');
     await expect(page).toHaveURL(/\/$/);
     await paywall.getByRole('button', { name: /^Continue with/ }).click();
-    // After checkout the kept brief goes to the agent: it shows in the conversation with the agent's plan.
-    const agent = page.getByTestId('home-agent');
-    await expect(agent.getByTestId('home-agent-user')).toHaveText('A 15s ad for a sparkling water');
-    await expect(agent.getByTestId('home-plan')).toBeVisible();
+    // After checkout the kept brief opens its own canvas (D-039): the agent panel shows it with the plan.
+    await expect(page).toHaveURL(/\/p\/prj_[a-z0-9]+$/);
+    const agent = page.locator('aside[aria-label="Agent"]');
+    await expect(agent.getByTestId('agent-user')).toHaveText('A 15s ad for a sparkling water');
+    await expect(agent.getByTestId('plan-card')).toBeVisible();
   });
 
   test('`@` picker: opens on @ at the end, filters by the query, multi-selects, Enter adds chips with source, Esc closes and strips the @', async ({ page }) => {
@@ -558,64 +559,78 @@ test.describe('home flows', () => {
   /** The newest run card. */
   const card = (page: Page) => page.getByTestId('home-run').first();
 
-  test('member agent send: the conversation shows the brief and a plan; Build on canvas creates the project and opens it', async ({ page }) => {
+  /** The canvas agent panel (D-039: the only place the agent conversation lives). */
+  const agentPanel = (page: Page) => page.locator('aside[aria-label="Agent"]');
+
+  test('member agent send (D-039): a new canvas opens with the brief in its agent panel and a plan; Build on canvas builds into it', async ({ page }) => {
     await seed(page);
     await openApp(page);
+    // Home has no conversation UI: no thread, Recent or New conversation under the prompt box.
+    await expect(page.getByRole('button', { name: 'New conversation' })).toHaveCount(0);
     await page.locator('textarea').fill('Launch video for a desk lamp');
     await page.getByRole('button', { name: 'Start' }).click();
-    const agent = page.getByTestId('home-agent');
-    await expect(agent.getByTestId('home-agent-user')).toHaveText('Launch video for a desk lamp');
-    // The message moved into the conversation: the prompt box is free again.
-    await expect(page.locator('#brief')).toHaveValue('');
-    const plan = agent.getByTestId('home-plan');
-    await expect(plan).toBeVisible();
-    await expect(plan.getByRole('radio')).toHaveCount(2);
-    await expect(plan).toContainText('About 26 credits to generate. Building is free.');
-    await plan.getByRole('radio', { name: /City heat/ }).click();
-    await expect(plan).toContainText('A can opens in slow motion');
-    await plan.getByRole('button', { name: 'Build on canvas' }).click();
     await expect(page).toHaveURL(/\/p\/prj_[a-z0-9]+$/);
+    const projectUrl = page.url();
+    const agent = agentPanel(page);
+    await expect(agent.getByTestId('agent-user')).toHaveText('Launch video for a desk lamp');
+    const plan = agent.getByTestId('plan-card');
+    await expect(plan).toBeVisible();
+    await expect(plan).toContainText('Option A · Riverside at dawn');
+    // The new project's canvas starts empty (no demo nodes), then the picked option is built into it.
+    await expect(page.locator('[data-testid^="node-"]')).toHaveCount(0);
+    await plan.getByRole('button', { name: /Shuffle/ }).click();
+    await expect(plan).toContainText('Option B · Kitchen counter');
+    await plan.getByRole('button', { name: 'Build on canvas' }).click();
+    await expect(plan.getByRole('status')).toContainText('added to the canvas. Nothing was charged.');
+    await expect(page.locator('[data-testid^="node-"]').first()).toBeVisible();
+    expect(page.url()).toBe(projectUrl);
+    // Home lists the project under its brief's title; the prompt box was cleared.
     await page.goto('/');
-    await expect(page.locator('#projects').getByRole('link', { name: /City heat/ })).toBeVisible();
+    await expect(page.locator('#brief')).toHaveValue('');
+    await expect(page.locator('#projects').getByRole('link', { name: /Launch video for a desk lamp/ })).toBeVisible();
   });
 
-  test('agent: text streams with a typing indicator, small talk gets a short reply without a plan, follow-ups continue the thread', async ({ page }) => {
+  test('agent on the brief’s canvas: the reply streams with a thinking state; small talk gets no plan, a follow-up from the panel does', async ({ page }) => {
     await seed(page, { mocks: { latencyMs: 600 } });
     await openApp(page);
     await page.locator('textarea').fill('hello');
     await page.getByRole('button', { name: 'Start' }).click();
-    const agent = page.getByTestId('home-agent');
-    await expect(agent.getByTestId('home-agent-typing')).toBeVisible();
-    const reply = agent.getByTestId('home-agent-reply').last();
-    await expect(reply).toHaveAttribute('data-status', 'streaming');
-    await expect(reply).toHaveAttribute('data-status', 'done');
-    await expect(reply).toContainText('Tell me what the video is for');
-    await expect(agent.getByTestId('home-plan')).toHaveCount(0);
-    // The selected LLM is named on the conversation (its allowance line is checked against staging).
-    await expect(agent.getByTestId('home-agent-llm')).toContainText('DeepSeek');
-    // Follow-up from the thread's own composer: Enter sends, Shift+Enter breaks the line.
-    const replyBox = agent.getByRole('textbox', { name: 'Reply to the agent' });
-    await replyBox.fill('A 15s vertical ad');
-    await replyBox.press('Shift+Enter');
-    await replyBox.pressSequentially('for sparkling water');
-    await expect(replyBox).toHaveValue('A 15s vertical ad\nfor sparkling water');
-    await replyBox.evaluate((el) => el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, isComposing: true })));
-    await expect(agent.getByTestId('home-agent-user')).toHaveCount(1);
-    await replyBox.press('Enter');
-    await expect(agent.getByTestId('home-agent-user')).toHaveCount(2);
-    await expect(replyBox).toHaveValue('');
-    await expect(agent.getByTestId('home-plan')).toBeVisible();
-    await page.screenshot({ path: `${OUT}agent-thread.png` });
-    // Edit puts the option into the composer; Discard drops the plan.
-    await agent.getByRole('button', { name: 'Edit' }).click();
-    await expect(replyBox).toHaveValue('Change “Morning ritual”: ');
-    await expect(replyBox).toBeFocused();
-    await agent.getByRole('button', { name: 'Discard' }).click();
-    await expect(agent.getByTestId('home-plan')).toHaveAttribute('data-status', 'discarded');
-    await expect(agent).toContainText('Discarded. Nothing was built.');
-    // New conversation clears the thread.
-    await agent.getByRole('button', { name: 'New conversation' }).click();
-    await expect(page.getByTestId('home-agent')).toHaveCount(0);
+    await expect(page).toHaveURL(/\/p\/prj_[a-z0-9]+$/);
+    const agent = agentPanel(page);
+    await expect(agent.getByTestId('agent-pending')).toBeVisible();
+    await expect(agent.getByTestId('agent-reply').last()).toContainText('Tell me what the video is for');
+    await expect(agent.getByTestId('plan-card')).toHaveCount(0);
+    // Follow-up from the panel's composer: Enter sends.
+    const box = agent.getByLabel('Tell the agent');
+    await box.fill('A 15s vertical ad for sparkling water');
+    await box.press('Enter');
+    await expect(agent.getByTestId('agent-user')).toHaveCount(2);
+    await expect(box).toHaveValue('');
+    await expect(agent.getByTestId('plan-card')).toBeVisible();
+    await page.screenshot({ path: `${OUT}agent-canvas-plan.png` });
+  });
+
+  test('a Home brief carries the prompt box choices to the canvas: skill, Auto mode, `@` references', async ({ page }) => {
+    await seed(page);
+    await openApp(page);
+    await page.locator('textarea').click();
+    await page.keyboard.type('Ad for @');
+    const picker = page.getByRole('dialog', { name: 'Add a reference' });
+    await page.keyboard.type('mia');
+    await picker.getByRole('option', { name: /Mia/ }).click();
+    await page.locator('textarea').press('Enter');
+    await expect(picker).toHaveCount(0);
+    await expect(page.getByTestId('ref-chips')).toContainText('@Mia');
+    await page.getByRole('button', { name: 'Agent mode: Edit' }).click();
+    await page.getByRole('dialog', { name: 'Agent mode: Edit' }).getByRole('button', { name: /^Auto/ }).click();
+    await page.getByRole('button', { name: 'Start' }).click();
+    await expect(page).toHaveURL(/\/p\/prj_[a-z0-9]+$/);
+    const agent = agentPanel(page);
+    await expect(agent.getByRole('button', { name: 'Agent mode: Auto' })).toBeVisible();
+    await expect(agent.getByTestId('agent-user')).toContainText('Ad for');
+    await expect(agent.getByTestId('agent-user')).toContainText(/With .*Mia/);
+    // Auto (D-021): the plan's first option is built without a click.
+    await expect(agent.getByTestId('plan-card').getByRole('status')).toContainText('added to the canvas');
   });
 
   test('Enter sends the brief; Shift+Enter adds a line; Enter while an IME is composing does not send', async ({ page }) => {
@@ -627,9 +642,10 @@ test.describe('home flows', () => {
     await expect(brief).toHaveValue('Launch video\nfor a desk lamp');
     // An IME confirming a candidate fires Enter with isComposing: it must not send.
     await brief.evaluate((el) => el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, isComposing: true })));
-    await expect(page.getByTestId('home-agent')).toHaveCount(0);
+    await expect(page).toHaveURL(/\/$/);
     await brief.press('Enter');
-    await expect(page.getByTestId('home-agent-user')).toHaveText('Launch video\nfor a desk lamp');
+    await expect(page).toHaveURL(/\/p\/prj_[a-z0-9]+$/);
+    await expect(agentPanel(page).getByTestId('agent-user')).toHaveText('Launch video\nfor a desk lamp');
   });
 
   test('image send under the confirm threshold: a run card shows queued → generating → done; View opens the result viewer', async ({ page }) => {

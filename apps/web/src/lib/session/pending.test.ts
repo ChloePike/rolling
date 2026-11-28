@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { bindPendingToCheckout, markCheckoutResumed, resetPendingForTests, savePendingAction, takePendingAction } from './pending';
+import { bindPendingToCheckout, hasPendingAction, markCheckoutResumed, resetPendingForTests, savePendingAction, takePendingAction } from './pending';
 
 function memoryStorage(): Storage {
   const m = new Map<string, string>();
@@ -27,6 +27,17 @@ describe('pending actions (resume after checkout)', () => {
     expect(takePendingAction<{ path: string }>('tools.run', (d) => d.path === '/create/remix')).toBeNull();
     expect(takePendingAction<{ path: string }>('tools.run', (d) => d.path === '/create/avatar')).toEqual({ path: '/create/avatar', prompt: 'hi' });
     expect(takePendingAction('tools.run')).toBeNull();
+  });
+
+  it('anySlot sees an action bound to a checkout that has not completed yet', () => {
+    savePendingAction('home.agent', { text: 'a trailer' });
+    bindPendingToCheckout('cs_9');
+    expect(hasPendingAction('home.agent')).toBe(false);
+    expect(hasPendingAction('home.agent', undefined, { anySlot: true })).toBe(true);
+    expect(hasPendingAction('home.run', undefined, { anySlot: true })).toBe(false);
+    markCheckoutResumed('cs_9');
+    expect(takePendingAction('home.agent')).toEqual({ text: 'a trailer' });
+    expect(hasPendingAction('home.agent', undefined, { anySlot: true })).toBe(false);
   });
 
   it('an action bound to a checkout replays only after that checkout completed', () => {

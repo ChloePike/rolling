@@ -66,3 +66,14 @@
 .change{display:flex;flex-direction:column;gap:2px;color:var(--c-text-2);font-size:12px;line-height:1.5}
 .changeTitle{color:var(--c-text-1);font-weight:600}
 .agent .plan{margin-top:8px;color:var(--c-text-1)}
+/* D-039: a brief from Home keeps its line breaks; its `@` references are listed under it. */
+.user{white-space:pre-wrap;overflow-wrap:anywhere}
+.refs{display:block;margin-top:4px;font-size:12px;color:var(--c-text-3)}
+/* Agent replies: the Markdown subset (paragraphs, lists, bold, code) as text. */
+.para{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.para + .para,.para + .list,.list + .para{margin-top:8px}
+.list{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:2px}
+.agent strong{color:var(--c-text-1);font-weight:600}
+.agent code{font-family:ui-monospace,monospace;font-size:12px;background:var(--c-surface-4);border-radius:4px;padding:0 4px}
+/* The stored conversation loading (real mode): skeleton lines, never demo content. */
+.loading{display:flex;flex-direction:column;gap:8px;padding-top:4px}

@@ -58,22 +58,24 @@ test('AGENT-2 LLM routing: a turn on DeepSeek V4.1 Flash 1017 answers on that pu
   expect((await getJson<Allowance>(req, '/api/agent/allowance')).usedUsd).toBe(0);
 });
 
-test('AGENT-3 Home agent: brief → plan options with estimates → Build on canvas creates nodes and spends nothing', async ({ page, context, baseURL }, testInfo) => {
+test('AGENT-3 Home agent (D-039): brief → its own canvas → plan options with estimates in the agent panel → Build on canvas creates nodes there and spends nothing', async ({ page, context, baseURL }, testInfo) => {
   test.setTimeout(6 * 60_000);
   await account(context, baseURL, 'agentplan', 'plus');
   const before = await balance(page.request);
   await page.goto('/');
   await page.locator('#brief').fill('15-second vertical ad for a sparkling water brand: morning by a river, the bottle on a rock, a fresh pop and the logo.');
   await page.locator('#brief').press('Enter');
-  const plan = page.getByTestId('home-plan');
-  await expect(plan).toBeVisible({ timeout: 4 * 60_000 });
-  await shot(page, testInfo, 'home-plan');
-  const options = page.locator('[data-testid^="home-plan-option-"]');
-  expect(await options.count()).toBeGreaterThanOrEqual(2);
-  await expect(options.first()).toContainText(/credits/);
-  await options.first().click();
-  await plan.getByRole('button', { name: 'Build on canvas' }).click();
   await page.waitForURL(/\/p\/prj_/, { timeout: 60_000 });
+  const projectPath = new URL(page.url()).pathname;
+  const plan = page.locator('aside[aria-label="Agent"]').getByTestId('plan-card');
+  await expect(plan).toBeVisible({ timeout: 4 * 60_000 });
+  await shot(page, testInfo, 'canvas-plan');
+  await expect(plan).toContainText(/credits/);
+  // 2–3 options: Shuffle shows the next one.
+  await expect(plan.getByRole('button', { name: /Shuffle/ })).toBeVisible();
+  await plan.getByRole('button', { name: 'Build on canvas' }).click();
+  await expect(plan.getByRole('status')).toContainText('Nothing was charged', { timeout: 60_000 });
+  expect(new URL(page.url()).pathname).toBe(projectPath);
   await expect(page.getByTestId('canvas')).toBeVisible();
   await expect(page.locator('[data-node-kind="video"]').first()).toBeVisible({ timeout: 30_000 });
   // Approval gate: building is free, no run exists.

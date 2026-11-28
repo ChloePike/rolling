@@ -75,7 +75,7 @@ const SURFACES: Array<[string, (page: Page) => Promise<void>, (page: Page) => Pr
     },
   ],
   [
-    'agent conversation (message, typing, plan card)',
+    'agent brief opens its canvas (message, thinking, plan card in the panel)',
     (p) => open(p),
     async (p) => {
       await p.locator('textarea').fill('A 15 second ad for a sparkling water brand');

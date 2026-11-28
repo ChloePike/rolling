@@ -142,6 +142,80 @@ describe("home plan → Build on canvas", () => {
   });
 });
 
+describe("D-039: a Home brief starts on its own canvas", () => {
+  it("a canvas thread's plan builds into that project, with the prompt box settings", async () => {
+    const { user, ws } = await member("handoff");
+    const created = await body(await api(user, "/api/projects", { json: { title: "Sparkling water ad" } }), 201);
+    const projectId = created.project.id as string;
+    const id = await thread(user, { surface: "canvas", projectId, skill: "tv-ad" });
+    const llm = useLlm([{ text: "Two options.", toolCalls: [{ name: "propose.plan", args: PLAN }] }]);
+    const turn = await body(
+      await api(user, `/api/agent/threads/${id}/messages`, { json: { text: "15-second vertical ad for a sparkling water", settings: { ratio: "9:16", seconds: 15 }, mode: "edit" } }),
+      200,
+    );
+    expect(turn.proposal.kind).toBe("plan");
+    // The prompt box's pills reach the agent's context.
+    expect(JSON.stringify(llm.requests[0]!.messages)).toContain("9:16");
+    const applied = await body(await api(user, `/api/agent/proposals/${turn.proposal.id}/apply`, { json: { optionIndex: 1 } }), 200);
+    expect(applied.projectId).toBe(projectId);
+    const project = await body(await api(user, `/api/projects/${projectId}`), 200);
+    expect(project.snapshot.nodes.filter((n: any) => n.kind === "video")).toHaveLength(2);
+    // No second project was made, and nothing was spent.
+    expect((await env.DB.prepare("SELECT COUNT(*) AS c FROM projects WHERE workspace_id = ?").bind(ws).first<{ c: number }>())!.c).toBe(1);
+    expect((await env.DB.prepare("SELECT COUNT(*) AS c FROM ledger_lines WHERE workspace_id = ?").bind(ws).first<{ c: number }>())!.c).toBe(0);
+  });
+
+  it("an old Home conversation moves onto a canvas (new or existing project) and lists under it", async () => {
+    const { user, ws } = await member("attach");
+    const other = await member("attachother");
+    const id = await thread(user, { surface: "home" });
+    useLlm([{ text: "Two options.", toolCalls: [{ name: "propose.plan", args: PLAN }] }]);
+    const turn = await body(await api(user, `/api/agent/threads/${id}/messages`, { json: { text: "Sneaker drop teaser\nfor a launch" } }), 200);
+    // Another workspace cannot move it; a project of another workspace is refused.
+    expect((await api(other.user, `/api/agent/threads/${id}/attach`, { json: {} })).status).toBe(404);
+    const foreign = await body(await api(other.user, "/api/projects", { json: { title: "Theirs" } }), 201);
+    expect((await api(user, `/api/agent/threads/${id}/attach`, { json: { projectId: foreign.project.id } })).status).toBe(404);
+
+    // No project given: a new canvas titled after the first line of the brief.
+    const moved = await body(await api(user, `/api/agent/threads/${id}/attach`, { json: {} }), 200);
+    expect(moved.projectId).toMatch(/^prj_/);
+    expect(moved.thread).toMatchObject({ id, projectId: moved.projectId, surface: "canvas" });
+    const project = await body(await api(user, `/api/projects/${moved.projectId}`), 200);
+    expect(project.project.title).toBe("Sneaker drop teaser");
+    const listed = await body(await api(user, `/api/agent/threads?projectId=${moved.projectId}`), 200);
+    expect(listed.items.map((t: any) => t.id)).toEqual([id]);
+    // A teammate's canvas thread on the project lists for everyone, but `mine` leaves it out (the panel never adopts it).
+    await env.DB.prepare("INSERT INTO agent_threads (id, workspace_id, project_id, surface, skill, title, updated_at, created_by) VALUES (?, ?, ?, 'canvas', NULL, 'Theirs', ?, ?)")
+      .bind(`thr_mate_${id}`, ws, moved.projectId, Date.now() + 1000, "usr_teammate")
+      .run();
+    const all = await body(await api(user, `/api/agent/threads?projectId=${moved.projectId}`), 200);
+    expect(all.items.map((t: any) => t.id)).toEqual([`thr_mate_${id}`, id]);
+    const mineOnly = await body(await api(user, `/api/agent/threads?projectId=${moved.projectId}&mine=1`), 200);
+    expect(mineOnly.items.map((t: any) => t.id)).toEqual([id]);
+    await env.DB.prepare("DELETE FROM agent_threads WHERE id = ?").bind(`thr_mate_${id}`).run();
+    // Its open plan now builds into that project; moving it again is refused.
+    const applied = await body(await api(user, `/api/agent/proposals/${turn.proposal.id}/apply`, { json: { optionIndex: 0 } }), 200);
+    expect(applied.projectId).toBe(moved.projectId);
+    expect((await api(user, `/api/agent/threads/${id}/attach`, { json: {} })).status).toBe(409);
+    expect((await env.DB.prepare("SELECT COUNT(*) AS c FROM projects WHERE workspace_id = ?").bind(ws).first<{ c: number }>())!.c).toBe(1);
+
+    // Into an existing project of the same workspace.
+    const id2 = await thread(user, { surface: "home" });
+    const mine = await body(await api(user, "/api/projects", { json: { title: "Mine" } }), 201);
+    const moved2 = await body(await api(user, `/api/agent/threads/${id2}/attach`, { json: { projectId: mine.project.id } }), 200);
+    expect(moved2.projectId).toBe(mine.project.id);
+    // Two concurrent moves (double click, two tabs): one project, the other request is refused.
+    const id3 = await thread(user, { surface: "home" });
+    const before = (await env.DB.prepare("SELECT COUNT(*) AS c FROM projects WHERE workspace_id = ?").bind(ws).first<{ c: number }>())!.c;
+    const both = await Promise.all([api(user, `/api/agent/threads/${id3}/attach`, { json: {} }), api(user, `/api/agent/threads/${id3}/attach`, { json: {} })]);
+    expect(both.map((r) => r.status).sort()).toEqual([200, 409]);
+    expect((await env.DB.prepare("SELECT COUNT(*) AS c FROM projects WHERE workspace_id = ?").bind(ws).first<{ c: number }>())!.c).toBe(before + 1);
+    // A canvas thread cannot be moved.
+    const canvasThread = await thread(user, { surface: "canvas", projectId: mine.project.id });
+    expect((await api(user, `/api/agent/threads/${canvasThread}/attach`, { json: {} })).status).toBe(409);
+  });
+});
+
 async function projectWithShots(user: string): Promise<{ projectId: string; ids: Record<string, string>; revision: number }> {
   const created = await body(await api(user, "/api/projects", { json: { title: "Agent canvas" } }), 201);
   const projectId = created.project.id as string;

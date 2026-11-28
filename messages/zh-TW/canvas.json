@@ -372,5 +372,13 @@
   "canvas.toast.assetReplaced": "已取代為 {name}。",
   "canvas.drop.hint": "放開即可上傳到你的素材並加入畫布",
   "canvas.drop.uploading": "{n, plural, one {正在將 # 個檔案上傳到你的素材。} other {正在將 # 個檔案上傳到你的素材。}}",
-  "canvas.drop.refused": "{n, plural, one {# 個檔案無法放到畫布上。} other {# 個檔案無法放到畫布上。}}"
+  "canvas.drop.refused": "{n, plural, one {# 個檔案無法放到畫布上。} other {# 個檔案無法放到畫布上。}}",
+  "canvas.agent.refs": "附帶 {names}",
+  "canvas.agent.history.label": "對話",
+  "canvas.agent.history.loading": "正在載入…",
+  "canvas.agent.history.empty": "還沒有其他對話",
+  "canvas.agent.history.untitled": "未命名對話",
+  "canvas.agent.history.fromHome": "來自首頁 · {date}",
+  "canvas.agent.history.moveHint": "在此畫布上繼續",
+  "canvas.agent.history.failed": "無法開啟該對話，請重試。"
 }

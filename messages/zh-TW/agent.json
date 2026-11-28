@@ -32,7 +32,6 @@
   "agent.auto.run.refused.SAFETY_BLOCKED": "未開始：此內容無法在這裡製作",
   "agent.auto.run.refused.blocked": "未開始：部分節點無法執行",
   "agent.auto.run.refused.other": "未開始",
-  "agent.auto.homeBuilt": "已建立在新畫布上",
   "agent.prefs.mode": "代理模式",
   "agent.prefs.mode.hint": "首頁與新專案預設使用的模式。每個專案會記住自己的模式。",
   "agent.prefs.budget": "自動執行預算",
