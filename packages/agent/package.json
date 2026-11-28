@@ -12,6 +12,7 @@
     "test": "vitest run",
     "gen:prompts": "node scripts/gen-prompts.mjs",
     "eval:live": "NODE_USE_ENV_PROXY=1 tsx evals/live.ts",
+    "eval:safety-fp": "NODE_USE_ENV_PROXY=1 tsx evals/safety-fp-live.ts",
     "eval:score": "tsx evals/score.ts",
     "eval:read": "tsx evals/transcript.ts"
   },
