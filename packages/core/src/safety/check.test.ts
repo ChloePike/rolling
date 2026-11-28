@@ -38,7 +38,7 @@ const SAFE_IMAGE: ImageAssessment = {
 type Answer = string | Error | 'hang';
 
 /** Fake chat adapter: answers by request kind (text classifier, vision, face-detect). */
-function fakeLlm(answers: { text?: Answer; vision?: Answer | ((n: number) => Answer); faces?: Answer }) {
+function fakeLlm(answers: { text?: Answer | ((call: number) => Answer); vision?: Answer | ((n: number) => Answer); faces?: Answer }) {
   const calls: ChatRequest[] = [];
   const llm: LlmProvider = {
     id: 'fake',
@@ -49,7 +49,7 @@ function fakeLlm(answers: { text?: Answer; vision?: Answer | ((n: number) => Ans
       let a: Answer | undefined;
       if (req.model === FACE_DETECT_MODEL) a = answers.faces;
       else if (images > 0) a = typeof answers.vision === 'function' ? answers.vision(images) : answers.vision;
-      else a = answers.text;
+      else a = typeof answers.text === 'function' ? answers.text(calls.length) : answers.text;
       if (a === undefined) a = '{}';
       if (a === 'hang') {
         await new Promise((resolve) => {
@@ -193,6 +193,13 @@ describe('preCheck: text classifier', () => {
     const plain = await preCheck({ prompt: 'a lighthouse', references: [], mature: false }, deps(fakeLlm({ text: answer }).llm));
     expect(plain.verdict).toBe('allow');
     expect(plain.checks.find((c) => c.name === 'text')?.status).toBe('error');
+  });
+
+  it('retries the text classifier once after a timeout, so one slow call is not a block', async () => {
+    const f = fakeLlm({ text: (n) => (n === 1 ? 'hang' : text({})) });
+    const v = await preCheck({ prompt: 'two adults', references: [], mature: true }, deps(f.llm));
+    expect(v.verdict).toBe('allow');
+    expect(f.calls).toHaveLength(2);
   });
 
   it('fails closed without any LLM on mature runs', async () => {

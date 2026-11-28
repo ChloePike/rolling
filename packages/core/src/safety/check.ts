@@ -227,7 +227,12 @@ export async function preCheck(input: PreCheckInput, deps: SafetyDeps): Promise<
       const t0 = Date.now();
       let costUsd: number | undefined;
       const { value, hit } = await cached(deps, key, async () => {
-        const res = await classifyText(deps.llm!, model, { prompt: input.prompt, ...(input.negativePrompt && { negativePrompt: input.negativePrompt }), captions, mature: input.mature }, deps.newKey(), deps.textTimeoutMs);
+        const ask = () => classifyText(deps.llm!, model, { prompt: input.prompt, ...(input.negativePrompt && { negativePrompt: input.negativePrompt }), captions, mature: input.mature }, deps.newKey(), deps.textTimeoutMs);
+        // One retry on a timeout: on a mature run a classifier timeout blocks (fail closed), which the user sees as a false block.
+        const res = await ask().catch((err: unknown) => {
+          if (err instanceof SafetyLlmError && err.code === 'timeout') return ask();
+          throw err;
+        });
         costUsd = res.costUsd;
         return res.value;
       });
